@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
+<script src="./assets/js/config.js"></script>
+<script src="./assets/js/api-shim.js"></script>
+<script src="./assets/js/sw-register.js"></script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Monitoring Tonase Persiapan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
+  --border:#252538;--border2:#2e2e48;
+  --txt:#e8eaf0;--txt2:#9da3b8;--txt3:#6b7280;
+  --green:#10b981;--green2:#059669;--green-bg:rgba(16,185,129,.12);
+  --blue:#3b82f6;--blue-bg:rgba(59,130,246,.12);
+  --amber:#f59e0b;--amber-bg:rgba(245,158,11,.12);
+  --red:#ef4444;--red-bg:rgba(239,68,68,.12);
+  --purple:#8b5cf6;--purple-bg:rgba(139,92,246,.12);
+  --cyan:#06b6d4;--cyan-bg:rgba(6,182,212,.12);
+  --orange:#f97316;--orange-bg:rgba(249,115,22,.12);
+  --sidebar-w:200px;
+  --font-mono:'JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;}
+.shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg2);
+  padding:12px 10px;display:flex;flex-direction:column;gap:6px;
+  border-right:1px solid var(--border);flex-shrink:0;overflow-y:auto;
+  transition:width .25s ease, min-width .25s ease, padding .25s ease, opacity .15s ease;}
+.sidebar.collapsed{width:0;min-width:0;padding:0;overflow:hidden;opacity:0;border:none;}
+.sidebar.collapsed *{display:none;}
+.toggle-sidebar-btn{position:fixed;left:calc(var(--sidebar-w) + 0px);top:14px;z-index:200;
+  background:var(--bg2);border:1px solid var(--border);border-radius:0 8px 8px 0;
+  padding:6px 5px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--txt2);transition:left .25s ease, color .15s;line-height:0;}
+.toggle-sidebar-btn:hover{color:var(--txt);}
+.toggle-sidebar-btn.collapsed{left:0;}
+.logo{display:flex;align-items:center;gap:8px;padding:4px 2px 10px;
+  border-bottom:1px solid var(--border);margin-bottom:4px;}
+.logo-icon{background:var(--green);width:28px;height:28px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.logo-text{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;}
+.logo-sub{font-size:9.5px;color:var(--txt2);margin-top:1px;}
+.sec-title{color:var(--txt3);font-size:10px;text-transform:uppercase;letter-spacing:.8px;font-weight:700;padding:4px 8px 2px;}
+.mitem{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:7px;color:var(--txt2);font-size:11px;cursor:pointer;transition:all .15s;font-weight:500;white-space:nowrap;}
+.mitem.active{background:rgba(16,185,129,.15);color:var(--green);}
+.mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--txt);}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* TOPBAR */
+.topbar{height:48px;background:var(--bg2);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;}
+.topbar-title{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;}
+.topbar-sub{font-size:10px;color:var(--txt2);}
+.topbar-right{display:flex;align-items:center;gap:8px;}
+.btn-refresh{display:flex;align-items:center;gap:5px;padding:5px 12px;background:var(--green);
+  border:none;border-radius:7px;color:#fff;font-size:10px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.btn-refresh:hover{opacity:.85;}
+.live-clock{font-family:var(--font-mono);font-size:12px;color:var(--cyan);font-weight:600;}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+.content::-webkit-scrollbar{width:5px;}
+.content::-webkit-scrollbar-track{background:transparent;}
+.content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px;}
+
+/* FILTER BAR */
+.filter-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;
+  padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.filter-label{font-size:10.5px;color:var(--txt2);font-weight:600;white-space:nowrap;}
+.filter-sel{padding:5px 10px;border-radius:6px;font-size:10.5px;background:var(--bg-card2);
+  border:1px solid var(--border2);color:var(--txt);font-family:'Inter',sans-serif;cursor:pointer;}
+.period-badge{padding:4px 12px;border-radius:20px;font-size:10px;font-weight:700;
+  background:var(--green-bg);color:var(--green);border:1px solid rgba(16,185,129,.3);}
+.btn-tampil{padding:5px 14px;border-radius:6px;font-size:10.5px;font-weight:600;cursor:pointer;
+  background:var(--green);border:none;color:#fff;font-family:'Inter',sans-serif;}
+
+/* SUMMARY STRIP */
+.summary-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.sum-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;position:relative;overflow:hidden;}
+.sum-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;border-radius:10px 0 0 10px;}
+.sum-card.c-green::before{background:var(--green);}
+.sum-card.c-blue::before{background:var(--blue);}
+.sum-card.c-amber::before{background:var(--amber);}
+.sum-card.c-purple::before{background:var(--purple);}
+.sum-card.c-orange::before{background:var(--orange);}
+.sum-label{font-size:9.5px;color:var(--txt2);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+.sum-val{font-family:'Outfit',sans-serif;font-size:22px;font-weight:800;line-height:1;margin-bottom:3px;}
+.sum-val.c-green{color:var(--green);}
+.sum-val.c-blue{color:var(--blue);}
+.sum-val.c-amber{color:var(--amber);}
+.sum-val.c-purple{color:var(--purple);}
+.sum-val.c-orange{color:var(--orange);}
+.sum-sub{font-size:9px;color:var(--txt3);}
+
+/* PIC GRID */
+.pic-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.pic-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;}
+.pic-header{padding:10px 12px 8px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);}
+.pic-avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--border2);}
+.pic-avatar-ph{width:36px;height:36px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;color:#fff;border:2px solid rgba(255,255,255,.1);}
+.pic-name{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;line-height:1.2;}
+.pic-role{font-size:9px;color:var(--txt2);margin-top:1px;}
+.pic-upload-btn{margin-left:auto;background:none;border:1px dashed var(--border2);border-radius:5px;
+  padding:4px 7px;color:var(--txt3);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;
+  transition:all .15s;white-space:nowrap;flex-shrink:0;}
+.pic-upload-btn:hover{border-color:var(--green);color:var(--green);}
+.pic-stats{padding:8px 12px;display:flex;flex-direction:column;gap:5px;}
+.pic-stat-row{display:flex;justify-content:space-between;align-items:center;gap:4px;}
+.pic-stat-lbl{font-size:9.5px;color:var(--txt2);flex-shrink:0;}
+.pic-stat-val{font-family:var(--font-mono);font-size:11px;font-weight:600;text-align:right;}
+.pic-stat-target{font-size:8.5px;color:var(--txt3);text-align:right;}
+.pic-progress-wrap{padding:0 12px 7px;}
+.pic-progress-label{display:flex;justify-content:space-between;margin-bottom:3px;}
+.pic-progress-label span{font-size:8.5px;color:var(--txt3);}
+.pic-bar-bg{height:4px;border-radius:10px;background:var(--border2);overflow:hidden;}
+.pic-bar-fill{height:100%;border-radius:10px;transition:width .6s ease;}
+.pic-chart-wrap{padding:0 6px 6px;height:58px;}
+.pic-chart-wrap canvas{width:100%!important;height:58px!important;}
+.pic-footer{padding:7px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;}
+.pic-badge{padding:3px 9px;border-radius:20px;font-size:9px;font-weight:700;}
+.pic-badge.on-track{background:var(--green-bg);color:var(--green);border:1px solid rgba(16,185,129,.3);}
+.pic-badge.below{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,.3);}
+.pic-badge.exceed{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(59,130,246,.3);}
+.pic-today-lbl{font-size:9px;color:var(--txt3);margin-left:auto;}
+.pic-today-val{font-family:var(--font-mono);font-size:10.5px;font-weight:600;color:var(--cyan);}
+.divider-row{height:1px;background:var(--border);margin:3px 0;}
+
+/* BOTTOM ROW */
+.bottom-row{display:grid;grid-template-columns:1.5fr 1fr;gap:10px;}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.card-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.card-title{font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px;}
+.card-badge{padding:3px 9px;border-radius:20px;font-size:9px;font-weight:600;background:var(--green-bg);color:var(--green);}
+.card-body{padding:10px 12px;}
+.trend-chart-wrap{height:130px;}
+.trend-chart-wrap canvas{width:100%!important;height:130px!important;}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--txt2);}
+.legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+
+/* REKAP TABLE */
+.rekap-table{width:100%;border-collapse:collapse;font-size:10.5px;}
+.rekap-table th{padding:6px 8px;text-align:left;color:var(--txt3);font-weight:600;font-size:9px;
+  text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);}
+.rekap-table td{padding:6px 8px;border-bottom:1px solid rgba(37,37,56,.6);vertical-align:middle;}
+.rekap-table tr:last-child td{border-bottom:none;}
+.num{font-family:var(--font-mono);font-size:10.5px;font-weight:600;text-align:right;}
+.rek-name{font-weight:700;font-size:11.5px;}
+.rek-chip{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:700;}
+
+/* LOADING */
+.loading-overlay{position:fixed;inset:0;background:rgba(13,13,26,.85);display:flex;
+  align-items:center;justify-content:center;z-index:100;flex-direction:column;gap:10px;}
+.spinner{width:30px;height:30px;border:3px solid var(--border2);border-top-color:var(--green);
+  border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.hidden-upload{display:none;}
+
+/* FOTO LIGHTBOX & HOVER ZOOM */
+.pic-avatar-wrap{position:relative;flex-shrink:0;cursor:zoom-in;}
+.pic-avatar-wrap img,.pic-avatar-wrap .pic-avatar-ph{
+  transition:transform .2s ease, box-shadow .2s ease;}
+.pic-avatar-wrap:hover img,.pic-avatar-wrap:hover .pic-avatar-ph{
+  transform:scale(2.8);z-index:50;box-shadow:0 8px 32px rgba(0,0,0,.7);
+  border-radius:50%;}
+.photo-lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
+  z-index:1000;align-items:center;justify-content:center;cursor:zoom-out;}
+.photo-lightbox.show{display:flex;}
+.photo-lightbox img{max-width:60vw;max-height:80vh;border-radius:16px;
+  box-shadow:0 20px 60px rgba(0,0,0,.8);object-fit:contain;}
+.photo-lightbox-name{position:absolute;bottom:10%;left:50%;transform:translateX(-50%);
+  font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;color:#fff;
+  text-shadow:0 2px 10px rgba(0,0,0,.8);}
+.photo-upload-saving{font-size:8.5px;color:var(--amber);margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- SIDEBAR -->
+<button class="toggle-sidebar-btn" id="toggle-btn" onclick="toggleSidebar()" title="Sembunyikan/tampilkan menu">
+  <svg id="toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+</button>
+<div class="sidebar" id="sidebar">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </div>
+    <div><div class="logo-text">PPR Stock</div><div class="logo-sub">Tonase Persiapan</div></div>
+  </div>
+  <div class="sec-title">Menu</div>
+  <div class="mitem" onclick="navTo('index')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    <span>Monitoring Stock</span>
+  </div>
+  <div class="mitem" onclick="navTo('kanban')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+    <span>Monitoring Kanban</span>
+  </div>
+  <div class="mitem active">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8l4 2 3 5H16z"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>
+    <span>Rekap Muatan</span>
+  </div>
+  <div class="mitem" onclick="navTo('residance')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span>Loading Time</span>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title">?? Monitoring Tonase Persiapan</div>
+      <div class="topbar-sub">REKAP MUATAN (Pipa) + REKAP MUATAN FITTING (Box) — Filter Bulanan</div>
+    </div>
+    <div class="topbar-right">
+      <span class="live-clock" id="live-clock">--:--:--</span>
+      <button class="btn-refresh" onclick="clearApiCache();loadData()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- FILTER BAR — Bulanan only -->
+    <div class="filter-bar">
+      <span class="filter-label">Periode Bulanan:</span>
+      <select class="filter-sel" id="inp-bulan"></select>
+      <select class="filter-sel" id="inp-tahun"></select>
+      <button class="btn-tampil" onclick="loadData()">Tampilkan</button>
+      <div style="width:1px;height:20px;background:var(--border2);"></div>
+      <span class="period-badge" id="period-badge">—</span>
+    </div>
+
+    <!-- SUMMARY -->
+    <div class="summary-strip">
+      <div class="sum-card c-green">
+        <div class="sum-label">Total Persiapan Pipa</div>
+        <div class="sum-val c-green" id="sum-pipa">—</div>
+        <div class="sum-sub">kg bulan ini</div>
+      </div>
+      <div class="sum-card c-blue">
+        <div class="sum-label">Total Persiapan Fitting</div>
+        <div class="sum-val c-blue" id="sum-fitting">—</div>
+        <div class="sum-sub">Box (Doni + Iman + Wang)</div>
+      </div>
+      <div class="sum-card c-amber">
+        <div class="sum-label">Total Kiriman (I053)</div>
+        <div class="sum-val c-amber" id="sum-kiriman">—</div>
+        <div class="sum-sub">kg dari Dashboard Kirim</div>
+      </div>
+      <div class="sum-card c-purple">
+        <div class="sum-label">Target Pipa Bulan Ini</div>
+        <div class="sum-val c-purple" id="sum-target-pipa">—</div>
+        <div class="sum-sub">kg (Doni+Iman+Saepul+Sulis)</div>
+      </div>
+      <div class="sum-card c-orange">
+        <div class="sum-label">Target Fitting Bulan Ini</div>
+        <div class="sum-val c-orange" id="sum-target-fitting">—</div>
+        <div class="sum-sub">Box (Doni+Iman+Wang)</div>
+      </div>
+    </div>
+
+    <!-- PIC CARDS -->
+    <div class="pic-grid" id="pic-grid"></div>
+
+    <!-- BOTTOM ROW -->
+    <div class="bottom-row">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Tren Tonase Pipa Harian per PIC
+          </div>
+          <span class="card-badge" id="trend-badge">—</span>
+        </div>
+        <div class="card-body">
+          <div class="trend-chart-wrap"><canvas id="chart-trend"></canvas></div>
+          <div class="legend" id="trend-legend"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Rekapitulasi per PIC
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table class="rekap-table">
+            <thead>
+              <tr>
+                <th>PIC</th>
+                <th style="text-align:right;">Pipa (kg)</th>
+                <th style="text-align:right;">Fitting (Bx)</th>
+                <th style="text-align:right;">% Pipa</th>
+                <th style="text-align:right;">% Fitting</th>
+              </tr>
+            </thead>
+            <tbody id="rekap-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div style="height:4px;"></div>
+  </div>
+</div>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <span style="font-size:10px;color:var(--txt2);">Memuat data...</span>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="photo-lightbox" id="photo-lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="">
+  <div class="photo-lightbox-name" id="lightbox-name"></div>
+</div>
+
+<input type="file" class="hidden-upload" id="upload-doni"  accept="image/*" onchange="handleUpload('DONI',this)">
+<input type="file" class="hidden-upload" id="upload-iman"  accept="image/*" onchange="handleUpload('IMAN',this)">
+<input type="file" class="hidden-upload" id="upload-saepul" accept="image/*" onchange="handleUpload('SAEPUL',this)">
+<input type="file" class="hidden-upload" id="upload-sulis" accept="image/*" onchange="handleUpload('SULIS',this)">
+<input type="file" class="hidden-upload" id="upload-wang"  accept="image/*" onchange="handleUpload('WANG',this)">
+
+<script>
+
+// ================================================================
+//  CONFIG
+// ================================================================
+// PIC: DONI, IMAN = pipa + fitting | SAEPUL, SULIS = pipa only | WANG = fitting only
+var PIC_LIST   = ['DONI','IMAN','SAEPUL','SULIS','WANG'];
+var PIC_COLORS = { DONI:'#3b82f6', IMAN:'#10b981', SAEPUL:'#f59e0b', SULIS:'#8b5cf6', WANG:'#f97316' };
+var PIC_BG     = { DONI:'#1e3a5f', IMAN:'#064e3b', SAEPUL:'#78350f', SULIS:'#3b0764', WANG:'#431407' };
+var PIC_INIT   = { DONI:'DO', IMAN:'IM', SAEPUL:'SA', SULIS:'SU', WANG:'WA' };
+
+// TARGET PER PIC
+var TARGET_PIPA    = { DONI:94514.26, IMAN:94514.26, SAEPUL:11119.32, SULIS:11119.32, WANG:0 };
+var TARGET_FITTING = { DONI:3511, IMAN:3511, SAEPUL:0, SULIS:0, WANG:5267 };
+var HAS_FITTING    = { DONI:true, IMAN:true, SAEPUL:false, SULIS:false, WANG:true };
+var HAS_PIPA       = { DONI:true, IMAN:true, SAEPUL:true,  SULIS:true,  WANG:false };
+
+var allData  = null;
+var chartTrend = null;
+var picCharts  = {};
+var picPhotos  = {};
+
+// ================================================================
+//  INIT
+// ================================================================
+(function init(){
+  var now = new Date();
+  var bs = document.getElementById('inp-bulan');
+  ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+    .forEach(function(b,i){ var o=document.createElement('option'); o.value=i+1; o.textContent=b; if(i===now.getMonth()) o.selected=true; bs.appendChild(o); });
+  var ts = document.getElementById('inp-tahun');
+  for(var y=now.getFullYear();y>=2024;y--){ var o=document.createElement('option'); o.value=y; o.textContent=y; if(y===now.getFullYear()) o.selected=true; ts.appendChild(o); }
+  // Muat foto dari localStorage dulu (immediate display)
+  PIC_LIST.forEach(function(p){ var s=localStorage.getItem('rp_'+p); if(s) picPhotos[p]=s; });
+  // Kemudian load dari GS (permanen, override localStorage)
+  if(typeof google!=='undefined'&&google.script){
+    google.script.run
+      .withSuccessHandler(function(res){
+        if(res&&res.success&&res.photos){
+          var changed=false;
+          Object.keys(res.photos).forEach(function(p){
+            if(res.photos[p]){ picPhotos[p]=res.photos[p]; try{localStorage.setItem('rp_'+p,res.photos[p]);}catch(e){} changed=true; }
+          });
+          if(changed&&allData) renderPicCards(allData);
+        }
+      })
+      .withFailureHandler(function(){})
+      .getPhotos();
+  }
+  setInterval(function(){ var n=new Date(); document.getElementById('live-clock').textContent=pad2(n.getHours())+':'+pad2(n.getMinutes())+':'+pad2(n.getSeconds()); },1000);
+  loadData();
+})();
+
+function triggerUpload(el){
+  if(!el) return;
+  var p=el.getAttribute('data-pic');
+  var inp=document.getElementById('upload-'+p.toLowerCase());
+  if(inp) inp.click();
+}
+
+function openLightbox(pic){
+  var src=picPhotos[pic]||'';
+  if(!src) return;
+  var lb=document.getElementById('photo-lightbox');
+  var img=document.getElementById('lightbox-img');
+  var nm=document.getElementById('lightbox-name');
+  if(!lb||!img) return;
+  img.src=src;
+  if(nm) nm.textContent=pic;
+  lb.classList.add('show');
+}
+function openLightboxByEl(el){
+  if(!el) return;
+  openLightbox(el.getAttribute('data-pic'));
+}
+function closeLightbox(){
+  var lb=document.getElementById('photo-lightbox');
+  if(lb) lb.classList.remove('show');
+}
+// Close lightbox on Escape
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeLightbox(); });
+
+function toggleSidebar(){
+  var sb=document.getElementById('sidebar');
+  var btn=document.getElementById('toggle-btn');
+  var icon=document.getElementById('toggle-icon');
+  var collapsed=sb.classList.toggle('collapsed');
+  btn.classList.toggle('collapsed', collapsed);
+  if(collapsed){
+    btn.style.left='0px';
+    icon.innerHTML='<path d="M9 18l6-6-6-6"/>';
+  } else {
+    btn.style.left='calc(var(--sidebar-w))';
+    icon.innerHTML='<path d="M15 18l-6-6 6-6"/>';
+  }
+  // Resize charts setelah animasi selesai
+  setTimeout(function(){
+    if(chartTrend) chartTrend.resize();
+    Object.values(picCharts).forEach(function(c){ if(c) c.resize(); });
+  },270);
+}
+
+// Peta nama menu -> file statis di repo GitHub Pages ini.
+var PAGE_MAP = {
+  ''                : 'index.html',
+  'index'           : 'index.html',
+  'kanban'          : 'kanban.html',
+  'rekap'           : 'rekap_muatan.html',
+  'wh_control_tower': 'wh_control_tower.html',
+  'residance'       : 'residance_time.html'
+};
+function navTo(pg){
+  var t = PAGE_MAP[pg || ''] || 'index.html';
+  if(window.top!==window.self) window.top.location.href=t; else window.location.href=t;
+}
+
+function buildParams(){
+  return { mode:'bulanan', bulan:document.getElementById('inp-bulan').value, tahun:document.getElementById('inp-tahun').value };
+}
+
+function loadData(){
+  showLoading(true);
+  var p = buildParams();
+  if(typeof google!=='undefined'&&google.script){
+    google.script.run
+      .withSuccessHandler(function(d){ showLoading(false); if(d&&d.success){ allData=d; render(d); } else showErr(d&&d.error?d.error:'Data tidak tersedia'); })
+      .withFailureHandler(function(e){ showLoading(false); showErr(e&&e.message?e.message:'Koneksi gagal'); })
+      .getRekapMuatanData(p);
+  } else {
+    setTimeout(function(){ showLoading(false); allData=demoData(p); render(allData); },700);
+  }
+}
+
+// ================================================================
+//  DEMO DATA
+// ================================================================
+function demoData(p){
+  var bNames=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  var lbl=bNames[parseInt(p.bulan||7,10)-1]+' '+p.tahun;
+  var labels=['01/07','03/07','05/07','07/07','09/07'];
+  var pics={
+    DONI:  {pipa:45200,fitting:1650,pipaHarian:[8000,9500,10200,8800,8700],fittingHarian:[300,320,340,310,380]},
+    IMAN:  {pipa:44800,fitting:1620,pipaHarian:[7800,9200,10000,8600,9200],fittingHarian:[290,310,330,300,390]},
+    SAEPUL:{pipa:6800, fitting:0,   pipaHarian:[1200,1400,1500,1300,1400],fittingHarian:[0,0,0,0,0]},
+    SULIS: {pipa:6950, fitting:0,   pipaHarian:[1300,1500,1600,1250,1300],fittingHarian:[0,0,0,0,0]},
+    WANG:  {pipa:0,    fitting:2600,pipaHarian:[0,0,0,0,0],              fittingHarian:[500,520,540,510,530]}
+  };
+  var totalPipa=0,totalFitting=0,totalKiriman=0;
+  PIC_LIST.forEach(function(p){ totalPipa+=pics[p].pipa; totalFitting+=pics[p].fitting; });
+  totalKiriman=95000;
+  return {success:true,periodeLabel:lbl,totalPipa:totalPipa,totalFitting:totalFitting,
+    totalKiriman:totalKiriman,pics:pics,trendLabels:labels};
+}
+
+// ================================================================
+//  RENDER
+// ================================================================
+function render(d){
+  var lbl=d.periodeLabel||'-';
+  setText('period-badge',lbl); setText('trend-badge',lbl);
+  setText('sum-pipa', fmt(d.totalPipa));
+  setText('sum-fitting', fmtInt(d.totalFitting)+' Box');
+  setText('sum-kiriman', fmt(d.totalKiriman));
+  // Total target pipa = semua PIC yang punya target pipa
+  var tgtPipa=PIC_LIST.reduce(function(a,p){ return a+(TARGET_PIPA[p]||0); },0);
+  var tgtFit =PIC_LIST.reduce(function(a,p){ return a+(TARGET_FITTING[p]||0); },0);
+  setText('sum-target-pipa', fmt(tgtPipa)+' kg');
+  setText('sum-target-fitting', fmtInt(tgtFit)+' Box');
+  renderPicCards(d);
+  renderTrendChart(d);
+  renderRekapTable(d);
+}
+
+// ================================================================
+//  PIC CARDS
+// ================================================================
+function renderPicCards(d){
+  var pics=d.pics||{};
+  var grid=document.getElementById('pic-grid');
+  grid.innerHTML='';
+  PIC_LIST.forEach(function(pic){
+    var info=pics[pic]||{pipa:0,fitting:0,pipaHarian:[],fittingHarian:[]};
+    var col=PIC_COLORS[pic], bg=PIC_BG[pic];
+    var hasPipa=HAS_PIPA[pic], hasFit=HAS_FITTING[pic];
+    var tgtPipa=TARGET_PIPA[pic], tgtFit=TARGET_FITTING[pic];
+    var pctPipa=hasPipa&&tgtPipa>0 ? Math.min(Math.round(info.pipa/tgtPipa*100),999) : null;
+    var pctFit =hasFit&&tgtFit>0   ? Math.min(Math.round(info.fitting/tgtFit*100),999) : null;
+    // Badge berdasarkan pipa (atau fitting jika WANG)
+    var mainPct = pic==='WANG' ? pctFit : pctPipa;
+    var badge   = mainPct>=100?'exceed':(mainPct>=80?'on-track':'below');
+    var badgeLbl= mainPct>=100?'? Tercapai':(mainPct>=80?'On Track':'Di Bawah Target');
+    var todayPipa=(info.pipaHarian&&info.pipaHarian.length)?info.pipaHarian[info.pipaHarian.length-1]:0;
+    var todayFit =(info.fittingHarian&&info.fittingHarian.length)?info.fittingHarian[info.fittingHarian.length-1]:0;
+
+    var avatarInner=picPhotos[pic]
+      ? '<img src="'+picPhotos[pic]+'" class="pic-avatar" alt="'+pic+'">'
+      : '<div class="pic-avatar-ph" style="background:'+bg+';border-color:'+col+'40;">'+PIC_INIT[pic]+'</div>';
+        var avatarHtml='<div class="pic-avatar-wrap" data-pic="'+pic+'" onclick="openLightboxByEl(this)" title="Klik untuk perbesar">'+avatarInner+'</div>';
+
+    // Stats HTML
+    var statsHtml='';
+    if(hasPipa){
+      statsHtml+=
+        '<div class="pic-stat-row">'+
+          '<span class="pic-stat-lbl">Persiapan Pipa (kg)</span>'+
+          '<div style="text-align:right;">'+
+            '<div class="pic-stat-val" style="color:'+col+'">'+fmt(info.pipa)+'</div>'+
+            '<div class="pic-stat-target">Target: '+fmt(tgtPipa)+' kg</div>'+
+          '</div>'+
+        '</div>';
+    }
+    if(hasFit){
+      statsHtml+=
+        '<div class="pic-stat-row">'+
+          '<span class="pic-stat-lbl">Persiapan Fitting (Bx)</span>'+
+          '<div style="text-align:right;">'+
+            '<div class="pic-stat-val" style="color:'+col+'">'+fmtInt(info.fitting)+'</div>'+
+            '<div class="pic-stat-target">Target: '+fmtInt(tgtFit)+' Box</div>'+
+          '</div>'+
+        '</div>';
+    }
+
+    // Progress bars
+    var progressHtml='';
+    if(hasPipa&&pctPipa!==null){
+      progressHtml+=
+        '<div class="pic-progress-wrap">'+
+          '<div class="pic-progress-label"><span>Pipa '+pctPipa+'%</span><span>'+fmt(info.pipa)+' / '+fmt(tgtPipa)+' kg</span></div>'+
+          '<div class="pic-bar-bg"><div class="pic-bar-fill" id="bar-pipa-'+pic+'" style="width:0%;background:'+col+'"></div></div>'+
+        '</div>';
+    }
+    if(hasFit&&pctFit!==null){
+      progressHtml+=
+        '<div class="pic-progress-wrap">'+
+          '<div class="pic-progress-label"><span>Fitting '+pctFit+'%</span><span>'+fmtInt(info.fitting)+' / '+fmtInt(tgtFit)+' Bx</span></div>'+
+          '<div class="pic-bar-bg"><div class="pic-bar-fill" id="bar-fit-'+pic+'" style="width:0%;background:'+col+'80"></div></div>'+
+        '</div>';
+    }
+
+    // Today info
+    var todayHtml='';
+    if(hasPipa) todayHtml+='<span class="pic-today-val" style="color:'+col+'">'+fmt(todayPipa)+' kg</span>';
+    if(hasPipa&&hasFit) todayHtml+='<span style="color:var(--txt3);font-size:8px;"> | </span>';
+    if(hasFit)  todayHtml+='<span class="pic-today-val" style="color:'+col+'80">'+fmtInt(todayFit)+' Bx</span>';
+
+    var card=document.createElement('div');
+    card.className='pic-card';
+    card.innerHTML=
+      '<div class="pic-header">'+
+        avatarHtml+
+        '<div style="flex:1;min-width:0;">'+
+          '<div class="pic-name" style="color:'+col+'">'+pic+'</div>'+
+          '<div class="pic-role">'+(pic==='WANG'?'PIC Fitting':'PIC Persiapan Muatan')+'</div>'+
+        '</div>'+
+        '<buttonclass="pic-upload-btn" data-pic="'+pic+'" onclick="event.stopPropagation();triggerUpload(this)" title="Upload foto">??</button>'+
+          '<span class="photo-upload-saving" id="photo-saving-'+pic+'" style="display:none;"></span>'+
+        '</div>'+
+        '</div>'+
+      '<div class="pic-stats">'+statsHtml+'</div>'+
+      progressHtml+
+      '<div class="pic-chart-wrap"><canvas id="minichart-'+pic+'"></canvas></div>'+
+      '<div class="pic-footer">'+
+        '<span class="pic-badge '+(mainPct!==null?badge:'below')+'">'+badgeLbl+'</span>'+
+        '<span class="pic-today-lbl">Hari ini:</span>'+
+        todayHtml+
+      '</div>';
+
+    grid.appendChild(card);
+
+    // Animate bars
+    setTimeout(function(){
+      if(hasPipa&&pctPipa!==null){ var b=document.getElementById('bar-pipa-'+pic); if(b) b.style.width=Math.min(pctPipa,100)+'%'; }
+      if(hasFit&&pctFit!==null){   var b2=document.getElementById('bar-fit-'+pic);  if(b2) b2.style.width=Math.min(pctFit,100)+'%'; }
+    },150);
+
+    // Mini chart — pipa (atau fitting untuk WANG)
+    var chartData = pic==='WANG' ? info.fittingHarian : info.pipaHarian;
+    buildMiniChart(pic, chartData||[], col, d.trendLabels||[]);
+  });
+}
+
+function buildMiniChart(pic,data,color,labels){
+  var canvas=document.getElementById('minichart-'+pic); if(!canvas) return;
+  if(picCharts[pic]) picCharts[pic].destroy();
+  picCharts[pic]=new Chart(canvas.getContext('2d'),{
+    type:'line',
+    data:{labels:labels.length?labels:data.map(function(_,i){return 'D'+(i+1);}),
+      datasets:[{data:data,borderColor:color,borderWidth:2,backgroundColor:color+'22',fill:true,tension:0.4,pointRadius:0,pointHoverRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:600},
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{display:false},y:{display:false}}}
+  });
+}
+
+// ================================================================
+//  TREND CHART
+// ================================================================
+function renderTrendChart(d){
+  var labels=d.trendLabels||[];
+  var pics=d.pics||{};
+  // Hanya PIC yang punya pipa di chart tren
+  var pipaPICs=PIC_LIST.filter(function(p){ return HAS_PIPA[p]; });
+  var datasets=pipaPICs.map(function(pic){
+    var info=pics[pic]||{};
+    return {label:pic,data:info.pipaHarian||[],borderColor:PIC_COLORS[pic],borderWidth:2,
+      backgroundColor:PIC_COLORS[pic]+'18',fill:false,tension:0.35,
+      pointRadius:3,pointHoverRadius:5,pointBackgroundColor:PIC_COLORS[pic]};
+  });
+  var ctx=document.getElementById('chart-trend').getContext('2d');
+  if(chartTrend) chartTrend.destroy();
+  chartTrend=new Chart(ctx,{
+    type:'line',data:{labels:labels,datasets:datasets},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:800},
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},
+        tooltip:{backgroundColor:'#1e1e30',borderColor:'#2e2e48',borderWidth:1,
+          titleColor:'#e8eaf0',bodyColor:'#9da3b8',padding:8,
+          callbacks:{label:function(c){ return ' '+c.dataset.label+': '+fmt(c.parsed.y)+' kg'; }}}},
+      scales:{x:{grid:{color:'#25253820'},ticks:{color:'#6b7280',font:{size:7.5}}},
+        y:{grid:{color:'#25253820'},ticks:{color:'#6b7280',font:{size:7.5},callback:function(v){return fmt(v)+' kg';}}}}}
+  });
+  var lg=document.getElementById('trend-legend');
+  lg.innerHTML=pipaPICs.map(function(pic){
+    return '<div class="legend-item"><div class="legend-dot" style="background:'+PIC_COLORS[pic]+'"></div>'+pic+'</div>';
+  }).join('');
+}
+
+// ================================================================
+//  REKAP TABLE
+// ================================================================
+function renderRekapTable(d){
+  var pics=d.pics||{};
+  var tbody=document.getElementById('rekap-tbody');
+  tbody.innerHTML=PIC_LIST.map(function(pic){
+    var info=pics[pic]||{pipa:0,fitting:0};
+    var col=PIC_COLORS[pic];
+    var tgtPipa=TARGET_PIPA[pic], tgtFit=TARGET_FITTING[pic];
+    var hasPipa=HAS_PIPA[pic], hasFit=HAS_FITTING[pic];
+    var pctPipa=hasPipa&&tgtPipa>0?Math.min(Math.round(info.pipa/tgtPipa*100),999):null;
+    var pctFit =hasFit&&tgtFit>0 ?Math.min(Math.round(info.fitting/tgtFit*100),999):null;
+    var clsPipa=pctPipa===null?'':pctPipa>=100?'blue':pctPipa>=80?'green':'amber';
+    var clsFit =pctFit===null ?'':pctFit>=100?'blue':pctFit>=80?'green':'amber';
+    return '<tr>'+
+      '<td><span class="rek-name" style="color:'+col+'">'+pic+'</span></td>'+
+      '<td class="num">'+(hasPipa?fmt(info.pipa):'-')+'</td>'+
+      '<td class="num" style="text-align:right;">'+(hasFit?fmtInt(info.fitting):'—')+'</td>'+
+      '<td style="text-align:right;">'+(pctPipa!==null?'<span class="rek-chip" style="background:var(--'+clsPipa+'-bg);color:var(--'+clsPipa+');border:1px solid var(--'+clsPipa+')40;">'+pctPipa+'%</span>':'—')+'</td>'+
+      '<td style="text-align:right;">'+(pctFit!==null?'<span class="rek-chip" style="background:var(--'+clsFit+'-bg);color:var(--'+clsFit+');border:1px solid var(--'+clsFit+')40;">'+pctFit+'%</span>':'—')+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+// ================================================================
+//  FOTO
+// ================================================================
+function handleUpload(pic, input){
+  if(!input.files||!input.files[0]) return;
+  var file=input.files[0];
+  // Kompres gambar sebelum upload
+  var img=new Image();
+  var url=URL.createObjectURL(file);
+  img.onload=function(){
+    var MAX=400; // max 400px
+    var w=img.width, h=img.height;
+    if(w>MAX||h>MAX){ var s=Math.min(MAX/w,MAX/h); w=Math.round(w*s); h=Math.round(h*s); }
+    var canvas=document.createElement('canvas');
+    canvas.width=w; canvas.height=h;
+    canvas.getContext('2d').drawImage(img,0,0,w,h);
+    var dataUrl=canvas.toDataURL('image/jpeg',0.75);
+    URL.revokeObjectURL(url);
+    // Simpan ke memory + localStorage
+    picPhotos[pic]=dataUrl;
+    try{ localStorage.setItem('rp_'+pic, dataUrl); }catch(e){}
+    if(allData) renderPicCards(allData);
+    // Simpan ke GS PropertiesService (permanen lintas browser)
+    if(typeof google!=='undefined'&&google.script){
+      // Tampilkan indikator saving
+      var saveEl=document.getElementById('photo-saving-'+pic);
+      if(saveEl){ saveEl.textContent='Menyimpan...'; saveEl.style.display='block'; }
+      google.script.run
+        .withSuccessHandler(function(res){
+          var el=document.getElementById('photo-saving-'+pic);
+          if(el){ el.textContent=res&&res.success?'? Tersimpan':'? '+((res&&res.error)||'Gagal'); setTimeout(function(){ el.style.display='none'; },3000); }
+        })
+        .withFailureHandler(function(){
+          var el=document.getElementById('photo-saving-'+pic);
+          if(el){ el.textContent='? Koneksi gagal'; setTimeout(function(){ el.style.display='none'; },3000); }
+        })
+        .savePhoto(pic, dataUrl);
+    }
+  };
+  img.src=url;
+}
+
+// ================================================================
+//  UTILS
+// ================================================================
+function setText(id,v){ var e=document.getElementById(id); if(e) e.textContent=v; }
+function fmt(n){ return Number(n||0).toLocaleString('id-ID',{maximumFractionDigits:2}); }
+function fmtInt(n){ return Math.round(Number(n||0)).toLocaleString('id-ID'); }
+function pad2(n){ return n<10?'0'+n:String(n); }
+function showLoading(v){ document.getElementById('loading-overlay').style.display=v?'flex':'none'; }
+function showErr(m){ showLoading(false); console.error(m); }
+</script>
+</body>
+</html>

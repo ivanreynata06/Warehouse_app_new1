@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
+<script src="./assets/js/config.js"></script>
+<script src="./assets/js/api-shim.js"></script>
+<script src="./assets/js/sw-register.js"></script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading Time Pengiriman</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:#0d0d1a;color:#e8eaf0;}
+  .wrap{display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;text-align:center;padding:24px;}
+  h1{font-size:18px;font-weight:600;}
+  p{color:#9da3b8;font-size:13px;max-width:420px;line-height:1.6;}
+  a{margin-top:8px;color:#3b82f6;text-decoration:none;font-size:13px;font-weight:600;}
+  a:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Loading Time Pengiriman</h1>
+    <p>
+      Halaman ini belum tersedia — file sumber <code>residance_time.html</code>
+      belum ikut diupload saat migrasi ke GitHub Pages. Backend-nya
+      (<code>getResidenceTimeData</code>, <code>getPendingRows</code>, dst.)
+      sudah siap dipanggil, tinggal halaman HTML-nya menyusul dibuat.
+    </p>
+    <a href="./index.html">&larr; Kembali ke Dashboard</a>
+  </div>
+</body>
+</html>
