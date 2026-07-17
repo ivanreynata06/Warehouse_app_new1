@@ -15,7 +15,7 @@
  * file-file di repo ini, supaya browser pengguna ambil versi baru.
  * -----------------------------------------------------------------
  */
-const CACHE_NAME = 'wh-dashboard-cache-v1';
+const CACHE_NAME = 'wh-dashboard-cache-v2';
 
 const PRECACHE_URLS = [
   './',
@@ -52,6 +52,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
+  // Cuma tangani http/https. Skip scheme lain (chrome-extension://, dll)
+  // karena Cache API browser tidak mendukungnya dan akan error kalau dipaksa.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
+
   // Jangan campur tangani request ke Apps Script (data dashboard).
   if (url.hostname.indexOf('script.google') !== -1 ||
       url.hostname.indexOf('googleusercontent') !== -1) {
@@ -64,7 +70,7 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           if (res && res.ok) {
             const clone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
           }
           return res;
         })
