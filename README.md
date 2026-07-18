@@ -77,6 +77,32 @@ halaman tujuan yang terbaru dari GitHub, bukan versi lama yang
 mungkin masih tersimpan di cache. Jadi pindah menu dijamin selalu
 dapat versi terbaru, tanpa perlu hard refresh.
 
+## Kenapa refresh data kadang lama?
+
+Setiap kali dashboard di-refresh, beberapa fungsi backend dipanggil
+BERSAMAAN (mis. `wh_control_tower.html` manggil 6-7 fungsi sekaligus:
+stock, outbound, inbound, kanban, kanban-trend, rekap, loading-time).
+Tiap panggilan ke Apps Script memang bawaannya butuh waktu (baca
+spreadsheet), dan browser juga membatasi jumlah koneksi bersamaan ke
+domain yang sama — jadi kalau banyak dipanggil sekaligus, sebagian
+harus antre.
+
+Untuk mengurangi ini, `backend/kode.gs` sekarang punya **cache di
+sisi server** (`CacheService`) untuk semua fungsi baca data
+(`getDashboardData`, `getKanbanData`, `getRekapMuatanData`, dst):
+- Panggilan pertama tetap baca langsung dari spreadsheet (tidak bisa
+  dihindari, itu yang lama).
+- Panggilan berikutnya dengan parameter sama, dalam **90 detik**
+  (untuk `getPendingRows`/`getResidenceTimeData` cuma **15 detik**,
+  karena datanya dipakai di alur ubah status pengiriman — supaya
+  tidak nyangkut basi lama setelah user update status), langsung
+  dijawab dari cache server — nyaris instan, walau dipanggil dari
+  Refresh berkali-kali atau dari banyak orang/tab sekaligus.
+
+Kalau mau ubah lama cache-nya, atur `CACHE_TTL_DEFAULT` /
+`CACHE_TTL_OVERRIDE` di bagian atas `backend/kode.gs`, lalu deploy
+ulang seperti biasa.
+
 ## Kenapa kadang harus hard refresh sebelum ini?
 
 GitHub Pages nge-*cache* file JS di browser pengunjung (cache HTTP

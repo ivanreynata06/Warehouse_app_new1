@@ -39,6 +39,24 @@ var API_FUNCTIONS = {
   deletePhoto             : deletePhoto
 };
 
+// Fungsi READ (baca data) yang aman di-cache di server selama beberapa
+// detik. TIDAK termasuk fungsi yang mengubah data (set*/save*/delete*)
+// — itu harus selalu jalan langsung, tidak boleh kena cache.
+var CACHEABLE_ACTIONS = {
+  getGroupList: true, getDashboardData: true, getOutboundData: true,
+  getInboundData: true, getKanbanData: true, getRekapMuatanData: true,
+  getResidenceTimeData: true, getPendingRows: true, getPhotos: true
+};
+// TTL per fungsi (detik). Default 90s buat dashboard umum.
+// getPendingRows/getResidenceTimeData TTL pendek (15s) karena datanya
+// dipakai di alur "tandai terkirim/batal" — jangan sampai basi lama
+// setelah user baru saja mengubah status.
+var CACHE_TTL_OVERRIDE = {
+  getPendingRows: 15,
+  getResidenceTimeData: 15
+};
+var CACHE_TTL_DEFAULT = 90;
+
 function doGet(e) {
   return handleApiRequest(e);
 }
@@ -72,6 +90,8 @@ function handleApiRequest(e) {
       result = { success: false, error: 'Parameter "action" wajib diisi.' };
     } else if (!API_FUNCTIONS.hasOwnProperty(action)) {
       result = { success: false, error: 'Aksi "' + action + '" tidak dikenali / tidak diizinkan.' };
+    } else if (CACHEABLE_ACTIONS[action]) {
+      result = callWithServerCache(action, args);
     } else {
       result = API_FUNCTIONS[action].apply(null, args);
     }
@@ -81,6 +101,36 @@ function handleApiRequest(e) {
 
   return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Bungkus fungsi baca data dengan CacheService supaya panggilan berulang
+// (klik Refresh, atau beberapa orang buka dashboard bersamaan) dalam
+// jendela CACHE_TTL_SECONDS langsung dijawab dari cache (instan),
+// tidak perlu baca ulang spreadsheet tiap kali.
+function callWithServerCache(action, args) {
+  var cache    = CacheService.getScriptCache();
+  var cacheKey = 'api::' + action + '::' + JSON.stringify(args);
+
+  try {
+    var cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {
+    // cache error (mis. corrupt) -> abaikan, lanjut ambil data asli di bawah
+  }
+
+  var result = API_FUNCTIONS[action].apply(null, args);
+
+  try {
+    // CacheService punya batas ukuran per key (~100KB). Kalau data
+    // hasilnya lebih besar dari itu, put() akan gagal -> ditangkap di
+    // sini supaya tidak bikin seluruh request error, cache-nya cuma
+    // dilewati untuk kasus itu (fungsi tetap kembalikan data asli).
+    cache.put(cacheKey, JSON.stringify(result), CACHE_TTL_OVERRIDE[action] || CACHE_TTL_DEFAULT);
+  } catch (e) {
+    // data kegedean buat di-cache -> tidak apa, tetap return data aslinya
+  }
+
+  return result;
 }
 
 // ============================================================
