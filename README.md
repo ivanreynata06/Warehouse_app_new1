@@ -17,11 +17,10 @@ index.html               <- Dashboard Pipa & Fitting PPR (menu utama)
 kanban.html               <- Dashboard Kanban PPR
 rekap_muatan.html         <- Monitoring Tonase Persiapan
 wh_control_tower.html     <- WH Control Tower
-residance_time.html       <- placeholder (lihat catatan di bawah)
-sw.js                      <- Service Worker (cache asset statis)
+residance_time.html       <- Loading Time Pengiriman
 assets/js/config.js        <- ISI URL WEB APP APPS SCRIPT DI SINI
 assets/js/api-shim.js      <- pengganti google.script.run, tidak perlu diubah
-assets/js/sw-register.js   <- daftar service worker, tidak perlu diubah
+assets/js/sw-register.js   <- pembersih Service Worker lama, tidak perlu diubah
 backend/kode.gs             <- kode Apps Script (backend), paste ke Apps Script editor
 ```
 
@@ -70,7 +69,7 @@ Branch: `main` / folder `/ (root)` → Save**.
 Situs akan aktif di `https://USERNAME.github.io/NAMA-REPO/`.
 
 Buka `index.html` lewat URL itu (bukan `file://`), supaya `fetch()`
-dan Service Worker bisa jalan normal.
+bisa jalan normal.
 
 ## Kenapa navigasi menu sekarang tidak lagi ke situs Apps Script?
 
@@ -81,24 +80,29 @@ repo GitHub yang sama** (`kanban.html`, `rekap_muatan.html`, dst.),
 jadi pengguna tidak pernah lagi diarahkan keluar ke domain Apps
 Script — Apps Script murni jadi backend data.
 
-## Cache — supaya loading di GitHub Pages cepat
+## Cache
 
-Ada 2 lapis cache:
+Awalnya repo ini pakai Service Worker (`sw.js`) untuk cache file
+statis. **Sudah dihapus** — ternyata browser cuma mau cek versi baru
+Service Worker maksimal 1x/24 jam kecuali DevTools dibuka, jadi
+dashboard bisa "nyangkut" di versi lama sampai satu hari untuk siapa
+pun yang sudah pernah buka situsnya. `assets/js/sw-register.js`
+sekarang isinya kebalikannya: otomatis **unregister** Service Worker
++ hapus cache lama dari browser siapa pun yang sempat ke-install,
+sekali jalan, permanen bersih — tidak perlu F12 manual lagi. GitHub
+Pages sendiri sudah cukup cepat lewat HTTP cache browser biasa.
 
-1. **Service Worker (`sw.js`)** — meng-cache file statis (HTML/JS)
-   di browser, supaya kunjungan berikutnya loading instan walau
-   koneksi lambat. Request ke Apps Script **tidak** disentuh SW ini.
-   ⚠️ Setiap kali kamu update isi file di repo, naikkan versi
-   `CACHE_NAME` di `sw.js` (`v1` → `v2`), supaya browser pengguna
-   mengambil versi baru, bukan versi cache lama.
-2. **Cache data API (`api-shim.js`)** — hasil tiap panggilan
-   `getDashboardData`, `getKanbanData`, dll disimpan di
-   `sessionStorage` selama `APPS_CACHE_TTL_MS` (default 3 menit,
-   diatur di `config.js`). Saat pindah menu / reload, data lama
-   langsung tampil (cepat), lalu otomatis di-update diam-diam kalau
-   sudah lewat TTL. Tombol **Refresh** di tiap halaman sudah
-   dipasangi `clearApiCache()` supaya selalu ambil data terbaru saat
-   diklik manual.
+Cache yang **masih dipakai** cuma satu lapis:
+
+- **Cache data API (`api-shim.js`)** — hasil tiap panggilan
+  `getDashboardData`, `getKanbanData`, dll disimpan di
+  `sessionStorage` selama `APPS_CACHE_TTL_MS` (default 3 menit,
+  diatur di `config.js`). Saat pindah menu / reload, data lama
+  langsung tampil (cepat), lalu otomatis di-update diam-diam kalau
+  sudah lewat TTL. Tombol **Refresh** di tiap halaman sudah
+  dipasangi `clearApiCache()` supaya selalu ambil data terbaru saat
+  diklik manual. Cache ini aman — `sessionStorage` otomatis kosong
+  lagi setiap tab ditutup, tidak akan pernah "nyangkut" permanen.
 
 ## Catatan penting
 
