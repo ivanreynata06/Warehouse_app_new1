@@ -5,6 +5,9 @@
 <script src="./assets/js/config.js?v=20260718c"></script>
 <script src="./assets/js/api-shim.js?v=20260718c"></script>
 <script src="./assets/js/sw-register.js?v=20260718c"></script>
+<!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -750,6 +753,7 @@ var PAGE_MAP = {
 };
 function navTo(pg){
   var t = PAGE_MAP[pg || ''] || 'index.html';
+  t += '?_=' + Date.now();
   if(window.top!==window.self)window.top.location.href=t;else window.location.href=t;
 }
 
@@ -783,6 +787,7 @@ function updateThemeBtn(t){
 // ================================================================
 var _dataStock=null, _dataIO=null, _dataKanban=null, _dataRekap=null, _dataLT=null;
 var _pending=0;
+var _ioPending=0;
 
 function loadAll(){
   showLoading(true,'Memuat semua modul...');
@@ -798,11 +803,18 @@ function loadAll(){
       .withSuccessHandler(function(d){ _dataStock=d; checkDone('stock'); })
       .withFailureHandler(function(){ _dataStock=null; checkDone('stock'); })
       .getDashboardData('harian',{dari:todayStr(),sampai:todayStr()});
-    // Outbound + Inbound
+    // Outbound
+    _ioPending=2;
     google.script.run
-      .withSuccessHandler(function(d){ _dataIO={out:d}; loadInbound(p); })
-      .withFailureHandler(function(){ _dataIO=null; checkDone('io'); })
+      .withSuccessHandler(function(d){ _dataIO=_dataIO||{}; _dataIO.out=d; ioStepDone(); })
+      .withFailureHandler(function(){ _dataIO=_dataIO||{}; ioStepDone(); })
       .getOutboundData({bulan:p.bulan,tahun:p.tahun});
+    // Inbound (dipanggil BARENGAN dengan outbound, bukan menunggu outbound selesai
+    // dulu — sebelumnya berantai, nambah 1 round-trip Apps Script yang bikin lambat)
+    google.script.run
+      .withSuccessHandler(function(d){ _dataIO=_dataIO||{}; _dataIO.in=d; ioStepDone(); })
+      .withFailureHandler(function(){ _dataIO=_dataIO||{}; ioStepDone(); })
+      .getInboundData({bulan:p.bulan,tahun:p.tahun});
     // Kanban
     google.script.run
       .withSuccessHandler(function(d){ _dataKanban=d; checkDone('kanban'); })
@@ -832,11 +844,9 @@ function loadAll(){
   }
 }
 
-function loadInbound(p){
-  google.script.run
-    .withSuccessHandler(function(d){ if(_dataIO) _dataIO.in=d; checkDone('io'); })
-    .withFailureHandler(function(){ checkDone('io'); })
-    .getInboundData({bulan:p.bulan,tahun:p.tahun});
+function ioStepDone(){
+  _ioPending--;
+  if(_ioPending<=0) checkDone('io');
 }
 
 function checkDone(key){

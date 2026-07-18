@@ -71,6 +71,12 @@ Situs akan aktif di `https://USERNAME.github.io/NAMA-REPO/`.
 Buka `index.html` lewat URL itu (bukan `file://`), supaya `fetch()`
 bisa jalan normal.
 
+Setiap kali pindah menu (`navTo()`/`goTo()`), URL tujuan otomatis
+ditambah `?_=<timestamp>` — ini memaksa browser selalu mengambil HTML
+halaman tujuan yang terbaru dari GitHub, bukan versi lama yang
+mungkin masih tersimpan di cache. Jadi pindah menu dijamin selalu
+dapat versi terbaru, tanpa perlu hard refresh.
+
 ## Kenapa kadang harus hard refresh sebelum ini?
 
 GitHub Pages nge-*cache* file JS di browser pengunjung (cache HTTP

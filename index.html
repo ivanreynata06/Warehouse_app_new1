@@ -5,6 +5,9 @@
 <script src="./assets/js/config.js?v=20260718c"></script>
 <script src="./assets/js/api-shim.js?v=20260718c"></script>
 <script src="./assets/js/sw-register.js?v=20260718c"></script>
+<!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1074,6 +1077,9 @@ var PAGE_MAP = {
 };
 function navTo(page) {
   var target = PAGE_MAP[page || ''] || 'index.html';
+  // Tambah cache-buster supaya selalu ambil versi terbaru file HTML tujuan,
+  // bukan versi lama yang mungkin masih tersimpan di cache browser.
+  target += '?_=' + Date.now();
   if (window.top !== window.self) { window.top.location.href = target; }
   else { window.location.href = target; }
 }
