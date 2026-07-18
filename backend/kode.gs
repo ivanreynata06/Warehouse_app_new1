@@ -32,6 +32,7 @@ var API_FUNCTIONS = {
   setStatusBatal          : setStatusBatal,
   setIkutFittingRucika    : setIkutFittingRucika,
   setStatusPending        : setStatusPending,
+  setStatusTerkirim       : setStatusTerkirim,
   clearStatusPending      : clearStatusPending,
   savePhoto               : savePhoto,
   getPhotos               : getPhotos,
@@ -417,6 +418,26 @@ function clearStatusPending(row) {
     if (cur.indexOf('PENDING') === 0) {
       sheet.getRange(row, 10).setValue('');
     }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ================================================================
+//  Simpan status TERKIRIM / GAGAL kirim ke kolom J sheet PENGIRIMAN.
+//  Dipanggil dari residance_time.html setelah checker menandai
+//  kiriman sudah sampai tujuan (TERKIRIM) atau gagal dikirim (GAGAL).
+//  `label` sudah dirakit lengkap di sisi frontend, mis:
+//    "TERKIRIM - 14:30 | catatan opsional"
+//    "GAGAL - alasan | catatan opsional"
+// ================================================================
+function setStatusTerkirim(row, label) {
+  try {
+    var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(SH_PENGIRIMAN);
+    if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    sheet.getRange(row, 10).setValue(label); // J = STATUS
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };

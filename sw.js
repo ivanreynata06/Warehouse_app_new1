@@ -1,21 +1,23 @@
 /*!
  * sw.js — Service Worker
  * -----------------------------------------------------------------
- * Meng-cache file statis (HTML, JS shell) situs ini di browser
- * (Cache Storage) memakai strategi "network falling back to cache":
- * coba ambil versi terbaru dari GitHub Pages, tapi kalau lambat/offline,
- * langsung pakai versi cache supaya halaman tetap terbuka cepat.
+ * Strategi: NETWORK-FIRST, fallback ke cache.
+ * Selalu coba ambil versi TERBARU dari GitHub Pages dulu; cache
+ * cuma dipakai kalau network gagal/offline. Ini sengaja BUKAN
+ * cache-first, karena cache-first pernah bikin dashboard nyangkut
+ * di versi lama terus-menerus (baru ke-refresh kalau DevTools
+ * dibuka, yang memaksa Chrome cek update SW lebih agresif).
  *
  * PENTING: request ke Apps Script (script.google.com /
  * googleusercontent.com) sengaja TIDAK di-cache di sini — data
  * dashboard sudah punya cache-nya sendiri (lihat api-shim.js) yang
  * bisa diatur freshness-nya lewat config.js.
  *
- * Naikkan angka CACHE_NAME (v1 -> v2, dst) tiap kali kamu update
- * file-file di repo ini, supaya browser pengguna ambil versi baru.
+ * Naikkan angka CACHE_NAME (v2 -> v3, dst) tiap kali kamu update
+ * file-file di repo ini, supaya cache lama otomatis dibersihkan.
  * -----------------------------------------------------------------
  */
-const CACHE_NAME = 'wh-dashboard-cache-v2';
+const CACHE_NAME = 'wh-dashboard-cache-v3';
 
 const PRECACHE_URLS = [
   './',
@@ -65,19 +67,14 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => cached);
-      // Kalau ada di cache, tampilkan langsung (cepat) sambil update di
-      // belakang layar; kalau tidak ada, tunggu network.
-      return cached || network;
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(req)) // offline / network gagal -> baru pakai cache
   );
 });

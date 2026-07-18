@@ -102,12 +102,10 @@ Ada 2 lapis cache:
 
 ## Catatan penting
 
-- **`residance_time.html` masih placeholder.** File sumber untuk
-  menu "Loading Time Pengiriman" belum ikut di-upload saat migrasi
-  ini, jadi saya buatkan halaman sementara saja. Fungsi backend-nya
-  (`getResidenceTimeData`, `getPendingRows`, `setWaktuMulai`, dst.)
-  **sudah** terpasang di `backend/kode.gs` dan siap dipakai — kirim
-  saja file HTML aslinya kalau mau saya sambungkan juga.
+- **`residance_time.html` sudah lengkap** (menu "Loading Time Pengiriman"),
+  termasuk fungsi backend `setStatusTerkirim` yang sebelumnya belum ada
+  di `backend/kode.gs` — sudah ditambahkan mengikuti pola
+  `setStatusPending`/`setStatusBatal` yang sudah ada.
 - **CORS `savePhoto`**: fungsi ini dikirim lewat `POST` dengan
   `Content-Type: text/plain` (bukan `application/json`) supaya
   browser tidak mengirim *preflight* `OPTIONS` — Apps Script Web App
