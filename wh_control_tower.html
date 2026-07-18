@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id" data-theme="light">
+<html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
 <script src="./assets/js/config.js?v=20260718c"></script>
@@ -11,733 +11,791 @@
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>WH Control Tower — PPR Stock</title>
+<title>RUCIKA — Warehouse Control Tower</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 /* ================================================================
-   VARIABLES — Light Theme (default) + Dark overrides
+   RUCIKA WAREHOUSE CONTROL TOWER
+   Brand: Rucika navy (#0d3b73) + signal cyan (#00aeef) — "dimana air
+   mengalir sampai jauh". Dark cockpit theme is the signature look;
+   light theme available for daytime office use.
 ================================================================ */
-:root {
-  --bg-page:   #f0f2f7;
-  --bg-card:   #ffffff;
-  --bg-card2:  #f7f8fc;
-  --bg-header: #ffffff;
-  --bg-sidebar:#1a1f36;
-  --border:    #e4e7f0;
-  --border2:   #d1d5e8;
-  --txt:       #1a1f36;
-  --txt2:      #5a637a;
-  --txt3:      #9aa3b8;
-  --txt-inv:   #ffffff;
-  --green:     #10b981;  --green-bg:  #ecfdf5;  --green-b: #a7f3d0;
-  --blue:      #3b82f6;  --blue-bg:   #eff6ff;  --blue-b:  #bfdbfe;
-  --amber:     #f59e0b;  --amber-bg:  #fffbeb;  --amber-b: #fde68a;
-  --red:       #ef4444;  --red-bg:    #fef2f2;  --red-b:   #fecaca;
-  --purple:    #8b5cf6;  --purple-bg: #f5f3ff;  --purple-b:#ddd6fe;
-  --cyan:      #06b6d4;  --cyan-bg:   #ecfeff;  --cyan-b:  #a5f3fc;
-  --orange:    #f97316;  --orange-bg: #fff7ed;  --orange-b:#fed7aa;
-  --sidebar-w: 210px;
-  --topbar-h:  56px;
-  --shadow:    0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.04);
-  --shadow-lg: 0 4px 20px rgba(0,0,0,.1);
-  --radius:    12px;
+:root{
+  --rc-navy:      #0a2647;
+  --rc-navy2:     #0d3b73;
+  --rc-cyan:      #00b4e8;
+  --rc-cyan2:     #5be3ff;
+
+  --bg-page:    radial-gradient(1200px 700px at 12% -10%, #16345f 0%, transparent 55%),
+                radial-gradient(1000px 600px at 100% 0%, #0e2d55 0%, transparent 50%),
+                #070d1a;
+  --bg-page-solid:#070d1a;
+  --bg-card:    linear-gradient(180deg,#101a30 0%,#0c1526 100%);
+  --bg-card2:   #0d1830;
+  --bg-sunken:  #060c18;
+  --bg-header:  rgba(10,18,36,.88);
+  --bg-sidebar: linear-gradient(180deg,#081326 0%,#050c18 100%);
+  --border:     rgba(120,160,220,.12);
+  --border2:    rgba(120,160,220,.22);
+  --txt:        #eaf1fb;
+  --txt2:       #93a4c4;
+  --txt3:       #5b6a8c;
+  --txt-inv:    #06101f;
+
+  --green:  #22d3a5; --green-bg: rgba(34,211,165,.12);  --green-b: rgba(34,211,165,.35);
+  --blue:   #3b9dff; --blue-bg:  rgba(59,157,255,.12);  --blue-b:  rgba(59,157,255,.35);
+  --amber:  #ffb020; --amber-bg: rgba(255,176,32,.12);  --amber-b: rgba(255,176,32,.35);
+  --red:    #ff5470; --red-bg:   rgba(255,84,112,.12);  --red-b:   rgba(255,84,112,.35);
+  --purple: #a78bfa; --purple-bg:rgba(167,139,250,.12); --purple-b:rgba(167,139,250,.35);
+  --cyan:   #00d4ff; --cyan-bg:  rgba(0,212,255,.12);   --cyan-b:  rgba(0,212,255,.35);
+  --orange: #ff8a4c; --orange-bg:rgba(255,138,76,.12);  --orange-b:rgba(255,138,76,.35);
+
+  --sidebar-w: 218px;
+  --topbar-h:  60px;
+  --radius:    16px;
+  --radius-sm: 10px;
   --font-mono: 'JetBrains Mono',monospace;
+  --font-disp: 'Outfit',sans-serif;
+
+  /* 3D elevation system */
+  --e1: 0 1px 0 rgba(255,255,255,.03) inset, 0 10px 24px -12px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.35);
+  --e2: 0 1px 0 rgba(255,255,255,.04) inset, 0 18px 40px -14px rgba(0,0,0,.65), 0 4px 10px rgba(0,0,0,.4);
+  --e-glow-cyan: 0 0 0 1px rgba(0,180,232,.25), 0 8px 30px -6px rgba(0,180,232,.35);
+  --e-glow-green:0 0 0 1px rgba(34,211,165,.25), 0 8px 30px -6px rgba(34,211,165,.3);
+  --e-glow-red:  0 0 0 1px rgba(255,84,112,.3), 0 8px 30px -6px rgba(255,84,112,.35);
 }
-[data-theme="dark"] {
-  --bg-page:   #0f1117;
-  --bg-card:   #1a1f2e;
-  --bg-card2:  #1f2436;
-  --bg-header: #141824;
-  --bg-sidebar:#0d1117;
-  --border:    #2a3048;
-  --border2:   #323856;
-  --txt:       #e8eaf6;
-  --txt2:      #9aa3c8;
-  --txt3:      #5a637a;
-  --txt-inv:   #ffffff;
-  --green-bg:  rgba(16,185,129,.12); --green-b: rgba(16,185,129,.3);
-  --blue-bg:   rgba(59,130,246,.12); --blue-b:  rgba(59,130,246,.3);
-  --amber-bg:  rgba(245,158,11,.12); --amber-b: rgba(245,158,11,.3);
-  --red-bg:    rgba(239,68,68,.12);  --red-b:   rgba(239,68,68,.3);
-  --purple-bg: rgba(139,92,246,.12); --purple-b:rgba(139,92,246,.3);
-  --cyan-bg:   rgba(6,182,212,.12);  --cyan-b:  rgba(6,182,212,.3);
-  --orange-bg: rgba(249,115,22,.12); --orange-b:rgba(249,115,22,.3);
-  --shadow:    0 1px 3px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
-  --shadow-lg: 0 4px 24px rgba(0,0,0,.35);
+[data-theme="light"]{
+  --bg-page: radial-gradient(1200px 700px at 10% -10%,#eaf4ff 0%,transparent 55%), #eef1f8;
+  --bg-page-solid:#eef1f8;
+  --bg-card:  linear-gradient(180deg,#ffffff 0%,#f9fbff 100%);
+  --bg-card2: #f2f5fb;
+  --bg-sunken:#eaeef7;
+  --bg-header:rgba(255,255,255,.9);
+  --bg-sidebar: linear-gradient(180deg,#0d1f3d 0%,#081326 100%);
+  --border:  #e2e7f2;
+  --border2: #d3d9ea;
+  --txt:  #101a30;
+  --txt2: #5a6785;
+  --txt3: #97a1bd;
+  --txt-inv:#ffffff;
+  --e1: 0 1px 0 rgba(255,255,255,.7) inset, 0 10px 24px -14px rgba(20,30,60,.22), 0 2px 6px rgba(20,30,60,.08);
+  --e2: 0 1px 0 rgba(255,255,255,.7) inset, 0 18px 40px -16px rgba(20,30,60,.28), 0 4px 10px rgba(20,30,60,.1);
 }
 
-/* ================================================================
-   RESET & BASE
-================================================================ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
-  background:var(--bg-page);color:var(--txt);font-size:12.5px;transition:background .2s,color .2s;}
-.shell{display:flex;height:100vh;width:100vw;}
+  background:var(--bg-page);color:var(--txt);font-size:12.5px;
+  transition:background .25s,color .25s;}
+::selection{background:var(--rc-cyan);color:#04101f;}
+.shell{display:flex;height:100vh;width:100vw;perspective:2200px;}
 
-/* ================================================================
-   SIDEBAR
-================================================================ */
+/* ================================================================ SIDEBAR */
 .sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg-sidebar);
-  display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;transition:width .25s;}
+  display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:relative;
+  box-shadow:6px 0 30px -10px rgba(0,0,0,.5);z-index:5;}
+.sidebar::before{content:'';position:absolute;top:0;right:0;bottom:0;width:1px;
+  background:linear-gradient(180deg,rgba(0,180,232,.4),rgba(0,180,232,0) 60%);}
 .sidebar::-webkit-scrollbar{width:3px;}
-.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px;}
-.sb-logo{padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.07);}
-.sb-brand{display:flex;align-items:center;gap:10px;}
-.sb-icon{width:32px;height:32px;border-radius:9px;background:var(--green);
-  display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.sb-name{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#fff;line-height:1.2;}
-.sb-sub{font-size:9px;color:rgba(255,255,255,.45);margin-top:2px;}
-.sb-section{padding:12px 12px 4px;font-size:9px;font-weight:700;color:rgba(255,255,255,.3);
-  text-transform:uppercase;letter-spacing:.8px;}
-.mitem{display:flex;align-items:center;gap:8px;padding:7px 12px;margin:1px 6px;
-  border-radius:8px;color:rgba(255,255,255,.55);font-size:10.5px;cursor:pointer;
-  transition:all .15s;font-weight:500;white-space:nowrap;}
-.mitem.active{background:rgba(16,185,129,.18);color:#6ee7b7;}
-.mitem:hover:not(.active){background:rgba(255,255,255,.07);color:rgba(255,255,255,.85);}
-.mitem svg{flex-shrink:0;opacity:.7;}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px;}
+
+.sb-logo{padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex;flex-direction:column;align-items:flex-start;gap:10px;}
+.sb-logo img{width:118px;filter:drop-shadow(0 2px 8px rgba(0,180,232,.25));}
+.sb-tag{font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.4px;font-style:italic;}
+.sb-appname{font-family:var(--font-disp);font-size:11.5px;font-weight:700;color:#fff;
+  display:flex;align-items:center;gap:6px;}
+.sb-appname .dot3d{width:7px;height:7px;border-radius:50%;background:var(--rc-cyan);
+  box-shadow:0 0 0 3px rgba(0,180,232,.18),0 0 10px rgba(0,180,232,.9);animation:pulse3d 2.4s infinite;}
+@keyframes pulse3d{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.55;transform:scale(.75);}}
+
+.sb-section{padding:16px 16px 6px;font-size:9px;font-weight:700;color:rgba(255,255,255,.28);
+  text-transform:uppercase;letter-spacing:1px;}
+.mitem{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:2px 8px;
+  border-radius:10px;color:rgba(255,255,255,.55);font-size:11px;cursor:pointer;
+  transition:all .18s cubic-bezier(.2,.8,.3,1);font-weight:500;white-space:nowrap;position:relative;}
+.mitem.active{background:linear-gradient(90deg,rgba(0,180,232,.22),rgba(0,180,232,.04));
+  color:#8fe8ff;box-shadow:var(--e1), inset 0 0 0 1px rgba(0,180,232,.25);}
+.mitem.active::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);
+  width:3px;height:16px;border-radius:3px;background:var(--rc-cyan);box-shadow:0 0 8px var(--rc-cyan);}
+.mitem:hover:not(.active){background:rgba(255,255,255,.06);color:rgba(255,255,255,.9);transform:translateX(2px);}
+.mitem svg{flex-shrink:0;opacity:.75;}
 .mitem.active svg{opacity:1;}
 
-/* ================================================================
-   MAIN
-================================================================ */
+.sb-footer{margin-top:auto;padding:14px 16px 18px;border-top:1px solid rgba(255,255,255,.06);}
+.sb-live{display:flex;align-items:center;gap:7px;font-size:9.5px;color:rgba(255,255,255,.4);}
+.sb-live .lv{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse3d 2s infinite;}
+
+/* ================================================================ MAIN */
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
 
-/* TOPBAR */
-.topbar{height:var(--topbar-h);background:var(--bg-header);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;
-  box-shadow:0 1px 4px rgba(0,0,0,.04);}
+.topbar{height:var(--topbar-h);background:var(--bg-header);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;flex-shrink:0;box-shadow:0 4px 20px rgba(0,0,0,.15);position:relative;z-index:4;}
 .tb-left{display:flex;align-items:center;gap:12px;}
-.tb-title{font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;}
-.tb-badge{padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;
-  background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);}
-.tb-right{display:flex;align-items:center;gap:8px;}
-.tb-clock{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--blue);}
-.btn-icon{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);
-  background:var(--bg-card);display:flex;align-items:center;justify-content:center;
-  cursor:pointer;color:var(--txt2);transition:all .15s;}
-.btn-icon:hover{background:var(--bg-card2);color:var(--txt);}
-.btn-refresh{display:flex;align-items:center;gap:6px;padding:6px 14px;
-  background:var(--green);border:none;border-radius:8px;color:#fff;
-  font-size:10.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:opacity .15s;}
-.btn-refresh:hover{opacity:.85;}
-.theme-toggle{display:flex;align-items:center;gap:5px;padding:5px 10px;
-  border-radius:8px;border:1px solid var(--border);background:var(--bg-card2);
-  cursor:pointer;font-size:10px;font-weight:600;color:var(--txt2);transition:all .15s;}
+.tb-title{font-family:var(--font-disp);font-size:16px;font-weight:800;letter-spacing:.2px;
+  background:linear-gradient(90deg,var(--txt),var(--rc-cyan2));-webkit-background-clip:text;
+  background-clip:text;-webkit-text-fill-color:transparent;}
+.tb-badge{padding:3px 11px;border-radius:20px;font-size:9px;font-weight:700;
+  background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);
+  box-shadow:var(--e-glow-green);}
+.tb-right{display:flex;align-items:center;gap:9px;}
+.tb-clock{font-family:var(--font-mono);font-size:13.5px;font-weight:700;color:var(--rc-cyan2);
+  letter-spacing:.5px;text-shadow:0 0 12px rgba(0,180,232,.4);}
+.btn-icon{width:33px;height:33px;border-radius:9px;border:1px solid var(--border);
+  background:var(--bg-card2);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--txt2);transition:all .18s;box-shadow:var(--e1);}
+.btn-icon:hover{background:var(--bg-card);color:var(--txt);transform:translateY(-1px);}
+.btn-refresh{display:flex;align-items:center;gap:6px;padding:7px 15px;
+  background:linear-gradient(135deg,var(--rc-cyan),#0080b3);border:none;border-radius:9px;color:#04101f;
+  font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;
+  box-shadow:0 6px 18px -4px rgba(0,180,232,.55);transition:all .18s;}
+.btn-refresh:hover{transform:translateY(-1px);box-shadow:0 8px 22px -4px rgba(0,180,232,.7);}
+.btn-refresh:active{transform:translateY(0);}
+.btn-refresh.spin svg{animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.theme-toggle{display:flex;align-items:center;gap:5px;padding:6px 11px;
+  border-radius:9px;border:1px solid var(--border);background:var(--bg-card2);
+  cursor:pointer;font-size:10px;font-weight:600;color:var(--txt2);transition:all .18s;box-shadow:var(--e1);}
 .theme-toggle:hover{color:var(--txt);}
 
-/* CONTENT */
-.content{flex:1;overflow-y:auto;padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;}
-.content::-webkit-scrollbar{width:5px;}
+.content{flex:1;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px;}
+.content::-webkit-scrollbar{width:6px;}
 .content::-webkit-scrollbar-track{background:transparent;}
 .content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px;}
 
-/* ================================================================
-   FILTER BAR
-================================================================ */
+/* ================================================================ FILTER BAR */
 .filter-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:var(--shadow);}
-.filter-group{display:flex;align-items:center;gap:6px;}
+  padding:11px 18px;display:flex;align-items:center;gap:11px;flex-wrap:wrap;box-shadow:var(--e1);}
+.filter-group{display:flex;align-items:center;gap:7px;}
 .filter-lbl{font-size:10px;font-weight:600;color:var(--txt2);white-space:nowrap;}
-.fbtn{padding:4px 11px;border-radius:6px;font-size:9.5px;font-weight:600;cursor:pointer;
+.fbtn{padding:5px 12px;border-radius:8px;font-size:9.5px;font-weight:700;cursor:pointer;
   border:1px solid var(--border2);background:transparent;color:var(--txt2);
   font-family:'Inter',sans-serif;transition:all .15s;}
-.fbtn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
+.fbtn.active{background:linear-gradient(135deg,var(--rc-cyan),#0080b3);border-color:transparent;color:#04101f;
+  box-shadow:0 4px 14px -3px rgba(0,180,232,.5);}
 .fbtn:hover:not(.active){background:var(--bg-card2);color:var(--txt);}
-.fsel{padding:5px 10px;border-radius:6px;font-size:10px;background:var(--bg-card2);
+.fsel{padding:6px 11px;border-radius:8px;font-size:10px;background:var(--bg-sunken);
   border:1px solid var(--border2);color:var(--txt);font-family:'Inter',sans-serif;cursor:pointer;}
 .fsep{width:1px;height:22px;background:var(--border2);}
-.period-badge{padding:3px 12px;border-radius:20px;font-size:9.5px;font-weight:700;
+.period-badge{padding:4px 13px;border-radius:20px;font-size:9.5px;font-weight:700;
   background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-b);}
-.btn-apply{padding:5px 14px;border-radius:6px;font-size:10px;font-weight:600;
-  background:var(--blue);border:none;color:#fff;cursor:pointer;font-family:'Inter',sans-serif;}
+.btn-apply{padding:6px 16px;border-radius:8px;font-size:10px;font-weight:700;
+  background:var(--rc-navy2);border:1px solid var(--border2);color:#fff;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:all .15s;}
+.btn-apply:hover{background:var(--rc-cyan);color:#04101f;}
 
-/* ================================================================
-   NOTIFICATION STRIP
-================================================================ */
-.notif-strip{display:flex;gap:8px;flex-wrap:wrap;}
-.notif-item{display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:9px;
-  font-size:10px;font-weight:500;border:1px solid;flex:1;min-width:180px;}
-.notif-item.green{background:var(--green-bg);color:var(--green);border-color:var(--green-b);}
-.notif-item.amber{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-b);}
-.notif-item.red{background:var(--red-bg);color:var(--red);border-color:var(--red-b);}
-.notif-item.blue{background:var(--blue-bg);color:var(--blue);border-color:var(--blue-b);}
-.notif-icon{font-size:14px;flex-shrink:0;}
-.notif-text{flex:1;}
-.notif-text strong{display:block;font-weight:700;margin-bottom:1px;}
+/* ================================================================ NOTIFICATION STRIP */
+.notif-strip{display:flex;gap:9px;flex-wrap:wrap;}
+.notif-item{display:flex;align-items:center;gap:8px;padding:9px 13px;border-radius:11px;
+  font-size:10px;font-weight:500;border:1px solid;flex:1;min-width:200px;box-shadow:var(--e1);
+  background:var(--bg-card);}
+.notif-item.green{color:var(--green);border-color:var(--green-b);box-shadow:var(--e-glow-green);}
+.notif-item.amber{color:var(--amber);border-color:var(--amber-b);}
+.notif-item.red{color:var(--red);border-color:var(--red-b);box-shadow:var(--e-glow-red);}
+.notif-item.blue{color:var(--blue);border-color:var(--blue-b);}
+.notif-icon{font-size:15px;flex-shrink:0;filter:drop-shadow(0 0 4px currentColor);}
+.notif-text{flex:1;color:var(--txt2);}
+.notif-text strong{display:block;font-weight:700;margin-bottom:1px;color:var(--txt);}
 
-/* ================================================================
-   KPI STRIP (Row 1)
-================================================================ */
-.kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
+/* ================================================================ KPI STRIP */
+.kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:11px;}
 .kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:12px 14px;position:relative;overflow:hidden;box-shadow:var(--shadow);}
-.kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0;}
-.kpi-card.c-green::after{background:var(--green);}
-.kpi-card.c-blue::after{background:var(--blue);}
-.kpi-card.c-amber::after{background:var(--amber);}
-.kpi-card.c-red::after{background:var(--red);}
-.kpi-card.c-purple::after{background:var(--purple);}
-.kpi-card.c-cyan::after{background:var(--cyan);}
-.kpi-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
-  color:var(--txt3);margin-bottom:6px;}
-.kpi-val{font-family:'Outfit',sans-serif;font-size:22px;font-weight:800;line-height:1;margin-bottom:4px;}
-.kpi-val.c-green{color:var(--green);}
-.kpi-val.c-blue{color:var(--blue);}
-.kpi-val.c-amber{color:var(--amber);}
-.kpi-val.c-red{color:var(--red);}
-.kpi-val.c-purple{color:var(--purple);}
-.kpi-val.c-cyan{color:var(--cyan);}
-.kpi-sub{font-size:9px;color:var(--txt3);}
-.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;
-  padding:2px 6px;border-radius:20px;margin-top:4px;}
+  padding:13px 15px;position:relative;overflow:hidden;box-shadow:var(--e1);
+  transition:transform .25s cubic-bezier(.2,.8,.3,1),box-shadow .25s;transform-style:preserve-3d;}
+.kpi-card:hover{transform:translateY(-3px) rotateX(2deg);box-shadow:var(--e2);}
+.kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0;
+  box-shadow:0 0 12px 0 currentColor;}
+.kpi-card.c-green::after{background:var(--green);color:var(--green);}
+.kpi-card.c-blue::after{background:var(--blue);color:var(--blue);}
+.kpi-card.c-amber::after{background:var(--amber);color:var(--amber);}
+.kpi-card.c-red::after{background:var(--red);color:var(--red);}
+.kpi-card.c-purple::after{background:var(--purple);color:var(--purple);}
+.kpi-card.c-cyan::after{background:var(--cyan);color:var(--cyan);}
+.kpi-card.c-orange::after{background:var(--orange);color:var(--orange);}
+.kpi-label{font-size:8.6px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--txt3);margin-bottom:7px;}
+.kpi-val{font-family:var(--font-disp);font-size:21px;font-weight:800;line-height:1;margin-bottom:5px;
+  letter-spacing:-.2px;}
+.kpi-val.c-green{color:var(--green);} .kpi-val.c-blue{color:var(--blue);} .kpi-val.c-amber{color:var(--amber);}
+.kpi-val.c-red{color:var(--red);} .kpi-val.c-purple{color:var(--purple);} .kpi-val.c-cyan{color:var(--cyan);}
+.kpi-val.c-orange{color:var(--orange);}
+.kpi-sub{font-size:8.6px;color:var(--txt3);}
+.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:8.8px;font-weight:700;
+  padding:2px 7px;border-radius:20px;margin-top:5px;}
 .kpi-delta.up{background:var(--green-bg);color:var(--green);}
 .kpi-delta.down{background:var(--red-bg);color:var(--red);}
-.kpi-icon-bg{position:absolute;right:10px;top:50%;transform:translateY(-50%);
-  opacity:.08;font-size:36px;pointer-events:none;}
+.kpi-delta.flat{background:var(--bg-card2);color:var(--txt3);}
+.kpi-icon-bg{position:absolute;right:9px;top:8px;opacity:.1;font-size:30px;pointer-events:none;transform:rotate(-6deg);}
 
-/* ================================================================
-   CARDS
-================================================================ */
+/* ================================================================ CARDS */
 .card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
-  overflow:hidden;box-shadow:var(--shadow);}
-.card-header{padding:12px 16px;border-bottom:1px solid var(--border);
+  overflow:hidden;box-shadow:var(--e1);transition:box-shadow .25s;}
+.card:hover{box-shadow:var(--e2);}
+.card-header{padding:13px 17px;border-bottom:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.card-title{font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;
-  display:flex;align-items:center;gap:6px;color:var(--txt);}
-.card-title-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.card-badge{padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700;}
+.card-title{font-family:var(--font-disp);font-size:12.5px;font-weight:700;
+  display:flex;align-items:center;gap:7px;color:var(--txt);}
+.card-title-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 8px 1px currentColor;}
+.card-badge{padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;}
 .card-badge.green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);}
 .card-badge.blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-b);}
 .card-badge.amber{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-b);}
-.card-body{padding:14px 16px;}
+.card-badge.red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-b);}
+.card-body{padding:15px 17px;}
 
-/* ================================================================
-   SECTION GRID LAYOUTS
-================================================================ */
-.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-.grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:10px;}
-.grid-1-2{display:grid;grid-template-columns:1fr 2fr;gap:10px;}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.grid-3-2{display:grid;grid-template-columns:3fr 2fr;gap:10px;}
+/* ================================================================ SECTION DIVIDER */
+.sec-divider{display:flex;align-items:center;gap:10px;margin-top:4px;}
+.sec-divider-label{font-family:var(--font-disp);font-size:11px;font-weight:700;color:var(--rc-cyan2);
+  text-transform:uppercase;letter-spacing:1px;white-space:nowrap;display:flex;align-items:center;gap:7px;}
+.sec-divider-line{flex:1;height:1px;background:linear-gradient(90deg,var(--border2),transparent);}
 
-/* ================================================================
-   CHART CONTAINERS
-================================================================ */
+/* ================================================================ GRIDS */
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:11px;}
+.grid-1-2{display:grid;grid-template-columns:1fr 2fr;gap:11px;}
+.grid-gauge{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:11px;}
+
+/* ================================================================ CHARTS */
 .chart-wrap{position:relative;}
 .chart-wrap canvas{width:100%!important;}
-.h110 canvas{height:110px!important;}
-.h150 canvas{height:150px!important;}
-.h180 canvas{height:180px!important;}
-.h200 canvas{height:200px!important;}
-
-/* LEGEND */
-.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
+.h110 canvas{height:110px!important;} .h140 canvas{height:140px!important;}
+.h160 canvas{height:160px!important;} .h190 canvas{height:190px!important;}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;}
 .leg-item{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--txt2);}
-.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-.leg-sq{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;box-shadow:0 0 6px currentColor;}
+.leg-sq{width:9px;height:9px;border-radius:3px;flex-shrink:0;box-shadow:0 0 6px currentColor;}
 
-/* ================================================================
-   STOCK SECTION
-================================================================ */
-.stock-mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px;}
-.stock-mini{padding:8px 10px;border-radius:8px;background:var(--bg-card2);border:1px solid var(--border);}
-.stock-mini-lbl{font-size:8.5px;color:var(--txt3);margin-bottom:3px;}
-.stock-mini-val{font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;}
-.stock-mini-sub{font-size:8px;color:var(--txt3);margin-top:1px;}
+/* ================================================================ STOCK */
+.stock-mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:11px;}
+.stock-mini{padding:10px 11px;border-radius:11px;background:var(--bg-card2);border:1px solid var(--border);
+  position:relative;overflow:hidden;}
+.stock-mini::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:currentColor;}
+.stock-mini-lbl{font-size:8.4px;color:var(--txt3);margin-bottom:3px;}
+.stock-mini-val{font-family:var(--font-disp);font-size:16px;font-weight:800;}
+.stock-mini-sub{font-size:7.8px;color:var(--txt3);margin-top:1px;}
 
-/* GAUGE */
-.gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 0;}
-.gauge-val{font-family:'Outfit',sans-serif;font-size:28px;font-weight:800;margin-top:4px;}
-.gauge-lbl{font-size:9px;color:var(--txt3);margin-top:2px;}
+/* ================================================================ GAUGE (from kanban module) */
+.gauge-card{display:flex;flex-direction:column;align-items:center;}
+.gauge-cap{font-size:9px;color:var(--txt3);margin-bottom:2px;text-align:center;}
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;}
+.gauge-svg{width:100%;max-width:220px;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45));}
+.gauge-stats{display:flex;justify-content:space-around;width:100%;margin-top:2px;}
+.gauge-stat{text-align:center;}
+.gauge-stat-val{font-family:var(--font-disp);font-size:15px;font-weight:800;}
+.gauge-stat-lbl{font-size:8.4px;color:var(--txt3);margin-top:1px;}
+.status-pill{padding:3px 11px;border-radius:20px;font-size:9px;font-weight:800;letter-spacing:.3px;}
+.status-pill.aman{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);}
+.status-pill.waspada{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-b);}
+.status-pill.kritis{background:var(--red-bg);color:var(--red);border:1px solid var(--red-b);}
 
-/* ================================================================
-   PARETO CHART INFO
-================================================================ */
-.pareto-note{font-size:9px;color:var(--txt3);margin-top:6px;padding:6px 8px;
-  background:var(--amber-bg);border-radius:6px;border:1px solid var(--amber-b);color:var(--amber);}
-
-/* ================================================================
-   KANBAN BARS
-================================================================ */
-.kanban-item{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
-.kanban-lbl{font-size:9px;color:var(--txt2);width:80px;flex-shrink:0;overflow:hidden;
+/* ================================================================ KANBAN LIST */
+.kanban-item{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.kanban-lbl{font-size:9px;color:var(--txt2);width:96px;flex-shrink:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;}
-.kanban-bar-bg{flex:1;height:8px;background:var(--bg-card2);border-radius:10px;overflow:hidden;
+.kanban-bar-bg{flex:1;height:8px;background:var(--bg-sunken);border-radius:10px;overflow:hidden;
   border:1px solid var(--border);}
-.kanban-bar-fill{height:100%;border-radius:10px;transition:width .6s ease;}
-.kanban-val{font-family:var(--font-mono);font-size:8.5px;font-weight:600;width:36px;
+.kanban-bar-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.2,.8,.3,1);
+  box-shadow:0 0 8px currentColor;}
+.kanban-val{font-family:var(--font-mono);font-size:8.5px;font-weight:700;width:38px;
   text-align:right;flex-shrink:0;}
-.kanban-status{font-size:7.5px;font-weight:700;padding:1px 6px;border-radius:20px;flex-shrink:0;}
+.kanban-status{font-size:7.5px;font-weight:700;padding:2px 7px;border-radius:20px;flex-shrink:0;}
 .ks-aman{background:var(--green-bg);color:var(--green);}
 .ks-hampir{background:var(--amber-bg);color:var(--amber);}
 .ks-kritis{background:var(--red-bg);color:var(--red);}
 
-/* ================================================================
-   PIC REKAP
-================================================================ */
-.pic-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
-.pic-mini{background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;
-  padding:10px 10px 8px;display:flex;flex-direction:column;gap:4px;}
-.pic-mini-head{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
-.pic-av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}
-.pic-name{font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;}
+/* ================================================================ PIC REKAP */
+.pic-row{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;}
+.pic-mini{background:var(--bg-card2);border:1px solid var(--border);border-radius:13px;
+  padding:12px 12px 10px;display:flex;flex-direction:column;gap:4px;transition:transform .2s;}
+.pic-mini:hover{transform:translateY(-2px);}
+.pic-mini-head{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.pic-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-disp);font-size:11px;font-weight:800;color:#04101f;flex-shrink:0;
+  box-shadow:0 4px 12px -2px currentColor;}
+.pic-name{font-family:var(--font-disp);font-size:11.5px;font-weight:700;}
 .pic-role{font-size:8px;color:var(--txt3);}
 .pic-stat{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;}
 .pic-stat-lbl{font-size:8.5px;color:var(--txt2);}
-.pic-stat-val{font-family:var(--font-mono);font-size:9.5px;font-weight:600;}
-.pic-bar-bg{height:4px;background:var(--border2);border-radius:10px;overflow:hidden;margin-top:3px;}
-.pic-bar-fill{height:100%;border-radius:10px;transition:width .6s ease;}
+.pic-stat-val{font-family:var(--font-mono);font-size:9.5px;font-weight:700;}
+.pic-bar-bg{height:5px;background:var(--bg-sunken);border-radius:10px;overflow:hidden;margin-top:3px;}
+.pic-bar-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.2,.8,.3,1);box-shadow:0 0 6px currentColor;}
 .pic-pct{font-size:8px;color:var(--txt3);text-align:right;margin-top:2px;}
 
-/* GLOBAL TARGET */
-.global-target-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
-.gt-card{padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--bg-card2);}
-.gt-label{font-size:8.5px;color:var(--txt3);margin-bottom:5px;font-weight:600;}
-.gt-bar-bg{height:10px;background:var(--border2);border-radius:10px;overflow:hidden;}
-.gt-bar-fill{height:100%;border-radius:10px;transition:width .6s ease;}
-.gt-nums{display:flex;justify-content:space-between;margin-top:4px;font-size:8.5px;color:var(--txt2);}
-.gt-pct{font-family:'Outfit',sans-serif;font-size:18px;font-weight:800;margin-top:2px;}
+.global-target-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px;}
+.gt-card{padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card2);}
+.gt-label{font-size:8.6px;color:var(--txt3);margin-bottom:6px;font-weight:600;}
+.gt-bar-bg{height:11px;background:var(--bg-sunken);border-radius:10px;overflow:hidden;}
+.gt-bar-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.2,.8,.3,1);box-shadow:0 0 10px currentColor;}
+.gt-nums{display:flex;justify-content:space-between;margin-top:5px;font-size:8.5px;color:var(--txt2);}
+.gt-pct{font-family:var(--font-disp);font-size:19px;font-weight:800;margin-top:3px;}
 
-/* ================================================================
-   LOADING
-================================================================ */
-.loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.88);
+/* ================================================================ LOADING TIME */
+.lt-mini-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;}
+.lt-mini{padding:11px 12px;border-radius:12px;background:var(--bg-card2);border:1px solid var(--border);text-align:left;}
+.lt-mini-lbl{font-size:8.4px;color:var(--txt3);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;}
+.lt-mini-val{font-family:var(--font-disp);font-size:20px;font-weight:800;}
+
+/* ================================================================ LOADING OVERLAY */
+.loading-overlay{position:fixed;inset:0;background:rgba(6,10,20,.92);
   display:flex;align-items:center;justify-content:center;z-index:999;
-  flex-direction:column;gap:10px;transition:background .2s;}
-[data-theme="dark"] .loading-overlay{background:rgba(10,12,18,.88);}
-.spinner{width:34px;height:34px;border:3px solid var(--border2);
-  border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg);}}
-.loading-txt{font-size:11px;color:var(--txt2);font-weight:500;}
+  flex-direction:column;gap:12px;transition:opacity .3s;}
+[data-theme="light"] .loading-overlay{background:rgba(240,243,250,.94);}
+.spinner3d{width:44px;height:44px;position:relative;}
+.spinner3d::before,.spinner3d::after{content:'';position:absolute;inset:0;border-radius:50%;
+  border:3px solid transparent;border-top-color:var(--rc-cyan);animation:spin3d 1s linear infinite;}
+.spinner3d::after{border-top-color:var(--rc-cyan2);opacity:.5;animation-duration:1.4s;animation-direction:reverse;}
+@keyframes spin3d{to{transform:rotate(360deg);}}
+.loading-txt{font-size:11px;color:var(--txt2);font-weight:600;letter-spacing:.3px;}
 
-/* DIVIDER */
-.sec-divider{display:flex;align-items:center;gap:10px;margin:2px 0;}
-.sec-divider-label{font-size:10px;font-weight:700;color:var(--txt2);white-space:nowrap;}
-.sec-divider-line{flex:1;height:1px;background:var(--border);}
-
-/* NUM utility */
-.num{font-family:var(--font-mono);}
+/* ================================================================ MISC */
+.pareto-note{font-size:9px;margin-top:8px;padding:7px 10px;
+  background:var(--amber-bg);border-radius:9px;border:1px solid var(--amber-b);color:var(--amber);
+  display:flex;align-items:center;gap:6px;}
+.hint-note{font-size:9px;color:var(--txt3);margin-bottom:8px;}
+.mini-icon{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:13px;box-shadow:var(--e1);}
+.kritis-list{display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto;}
+.kritis-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;
+  border-radius:9px;background:var(--bg-card2);border:1px solid var(--border);font-size:9.5px;}
+.kritis-row .kn{color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.kritis-row .kv{font-family:var(--font-mono);font-weight:700;flex-shrink:0;}
+@media (max-width:1400px){.kpi-strip{grid-template-columns:repeat(4,1fr);}.grid-gauge{grid-template-columns:1fr 1fr;}}
 </style>
 </head>
 <body>
 <div class="shell">
 
-<!-- ============================================================
-     SIDEBAR
-============================================================ -->
-<div class="sidebar">
-  <div class="sb-logo">
-    <div class="sb-brand">
-      <div class="sb-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      </div>
-      <div>
-        <div class="sb-name">PPR Stock</div>
-        <div class="sb-sub">Warehouse Control Tower</div>
-      </div>
+  <!-- ═══════════════════════════════════════════ SIDEBAR ═══════════════════════════════════════════ -->
+  <div class="sidebar">
+    <div class="sb-logo">
+      <img src="data:image/png;base64,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" alt="Rucika">
+      <div class="sb-appname"><span class="dot3d"></span>Control Tower</div>
+      <div class="sb-tag">Dimana air mengalir sampai jauh</div>
     </div>
-  </div>
-  <div class="sb-section">Menu Utama</div>
-  <div class="mitem active" onclick="navTo('wh_control_tower')">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="4"/><rect x="10" y="3" width="12" height="4"/><rect x="2" y="10" width="12" height="4"/><rect x="16" y="10" width="6" height="4"/><rect x="2" y="17" width="6" height="4"/><rect x="10" y="17" width="12" height="4"/></svg>
-    <span>Dashboard WH Import</span>
-  </div>
-  <div class="mitem" onclick="navTo('index')">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-    <span>Monitoring Stock</span>
-  </div>
-  <div class="mitem" onclick="navTo('kanban')">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
-    <span>Monitoring Kanban</span>
-  </div>
-  <div class="mitem" onclick="navTo('rekap')">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8l4 2 3 5H16z"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>
-    <span>Rekap Muatan</span>
-  </div>
-  <div class="mitem" onclick="navTo('residance')">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    <span>Loading Time</span>
-  </div>
-</div>
-
-<!-- ============================================================
-     MAIN
-============================================================ -->
-<div class="main">
-
-  <!-- TOPBAR -->
-  <div class="topbar">
-    <div class="tb-left">
-      <div>
-        <div class="tb-title">🏭 Warehouse Control Tower</div>
-      </div>
-      <span class="tb-badge" id="period-main-badge">—</span>
+    <div class="sb-section">Menu Utama</div>
+    <div class="mitem active" onclick="navTo('wh_control_tower')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      Control Tower
     </div>
-    <div class="tb-right">
-      <span class="tb-clock" id="live-clock">--:--:--</span>
-      <div class="theme-toggle" onclick="toggleTheme()">
-        <span id="theme-icon">🌙</span>
-        <span id="theme-lbl">Dark</span>
-      </div>
-      <button class="btn-refresh" onclick="clearApiCache();loadAll()">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        Refresh
-      </button>
+    <div class="mitem" onclick="navTo('kanban')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3.34 19a10 10 0 1 1 17.32 0"/><path d="m12 14 4-4"/></svg>
+      Kanban Rak
+    </div>
+    <div class="mitem" onclick="navTo('residance')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      Residence Time
+    </div>
+    <div class="mitem" onclick="navTo('rekap')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 2v4M8 2v4M3 9h18"/><rect x="3" y="4" width="18" height="18" rx="2"/></svg>
+      Rekap Muatan
+    </div>
+    <div class="sb-section">Sistem</div>
+    <div class="mitem" onclick="clearApiCache();loadAll()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+      Refresh Data
+    </div>
+    <div class="sb-footer">
+      <div class="sb-live"><span class="lv"></span>Live · Terhubung ke Spreadsheet</div>
     </div>
   </div>
 
-  <!-- CONTENT -->
-  <div class="content">
-
-    <!-- ═══════════════════════════════════════════
-         FILTER BAR
-    ═══════════════════════════════════════════ -->
-    <div class="filter-bar">
-      <div class="filter-group">
-        <span class="filter-lbl">Periode:</span>
-        <button class="fbtn active" id="fbtn-bulanan" onclick="setGlobalMode('bulanan')">Bulanan</button>
-        <button class="fbtn" id="fbtn-tahunan" onclick="setGlobalMode('tahunan')">Tahunan</button>
+  <!-- ═══════════════════════════════════════════ MAIN ═══════════════════════════════════════════ -->
+  <div class="main">
+    <div class="topbar">
+      <div class="tb-left">
+        <span class="tb-title">Warehouse Control Tower</span>
+        <span class="tb-badge" id="period-main-badge">—</span>
       </div>
-      <div class="fsep"></div>
-      <div class="filter-group" id="fg-bulan">
-        <span class="filter-lbl">Bulan:</span>
-        <select class="fsel" id="sel-bulan"></select>
-        <select class="fsel" id="sel-tahun"></select>
-      </div>
-      <div class="filter-group" id="fg-tahun" style="display:none;">
-        <span class="filter-lbl">Tahun:</span>
-        <select class="fsel" id="sel-tahun-t"></select>
-      </div>
-      <button class="btn-apply" onclick="loadAll()">Tampilkan</button>
-      <div class="fsep"></div>
-      <span class="period-badge" id="period-badge">—</span>
-    </div>
-
-    <!-- ═══════════════════════════════════════════
-         NOTIFICATION STRIP
-    ═══════════════════════════════════════════ -->
-    <div class="notif-strip" id="notif-strip">
-      <div class="notif-item blue"><span class="notif-icon">ℹ️</span>
-        <div class="notif-text"><strong>Memuat data...</strong>Sedang mengambil data dari semua modul</div>
+      <div class="tb-right">
+        <span class="tb-clock" id="live-clock">00:00:00</span>
+        <button class="theme-toggle" onclick="toggleTheme()"><span id="theme-icon">☀️</span><span id="theme-lbl">Light</span></button>
+        <button class="btn-icon" title="Cetak / PDF" onclick="window.print()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+        </button>
+        <button class="btn-refresh" id="btn-refresh" onclick="clearApiCache();loadAll()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+          Refresh
+        </button>
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════
-         KPI STRIP
-    ═══════════════════════════════════════════ -->
-    <div class="kpi-strip">
-      <div class="kpi-card c-blue">
-        <div class="kpi-label">Total Stok Pipa</div>
-        <div class="kpi-val c-blue" id="kpi-stok-pipa">—</div>
-        <div class="kpi-sub">kg hari ini</div>
-        <div class="kpi-icon-bg">📦</div>
-      </div>
-      <div class="kpi-card c-green">
-        <div class="kpi-label">Total Stok Fitting</div>
-        <div class="kpi-val c-green" id="kpi-stok-fitting">—</div>
-        <div class="kpi-sub">kg hari ini</div>
-        <div class="kpi-icon-bg">🔩</div>
-      </div>
-      <div class="kpi-card c-amber">
-        <div class="kpi-label">Outbound (Pipa)</div>
-        <div class="kpi-val c-amber" id="kpi-out-pipa">—</div>
-        <div class="kpi-sub">kg periode ini</div>
-        <div class="kpi-icon-bg">🚚</div>
-      </div>
-      <div class="kpi-card c-cyan">
-        <div class="kpi-label">Inbound (Pipa)</div>
-        <div class="kpi-val c-cyan" id="kpi-in-pipa">—</div>
-        <div class="kpi-sub">kg periode ini</div>
-        <div class="kpi-icon-bg">📥</div>
-      </div>
-      <div class="kpi-card c-purple">
-        <div class="kpi-label">Kapasitas Rak Pipa</div>
-        <div class="kpi-val c-purple" id="kpi-rak-pipa">—</div>
-        <div class="kpi-sub">rak terpakai</div>
-        <div class="kpi-icon-bg">🏗️</div>
-      </div>
-      <div class="kpi-card c-red">
-        <div class="kpi-label">Loading Time Avg</div>
-        <div class="kpi-val c-red" id="kpi-loading-avg">—</div>
-        <div class="kpi-sub">mnt/pengiriman bulan ini</div>
-        <div class="kpi-icon-bg">⏱️</div>
-      </div>
-    </div>
+    <div class="content">
 
-    <!-- ═══════════════════════════════════════════
-         SECTION 1: STOCK + OUTBOUND VS INBOUND
-    ═══════════════════════════════════════════ -->
-    <div class="sec-divider">
-      <span class="sec-divider-label">📊 STOCK & TRANSAKSI</span>
-      <div class="sec-divider-line"></div>
-    </div>
+      <!-- FILTER BAR -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <button class="fbtn active" id="fbtn-bulanan" onclick="setGlobalMode('bulanan')">Bulanan</button>
+          <button class="fbtn" id="fbtn-tahunan" onclick="setGlobalMode('tahunan')">Tahunan</button>
+        </div>
+        <div class="fsep"></div>
+        <div class="filter-group" id="fg-bulan">
+          <span class="filter-lbl">Bulan:</span>
+          <select class="fsel" id="sel-bulan"></select>
+          <select class="fsel" id="sel-tahun"></select>
+        </div>
+        <div class="filter-group" id="fg-tahun" style="display:none;">
+          <span class="filter-lbl">Tahun:</span>
+          <select class="fsel" id="sel-tahun-t"></select>
+        </div>
+        <button class="btn-apply" onclick="loadAll()">Tampilkan</button>
+        <div class="fsep"></div>
+        <span class="period-badge" id="period-badge">—</span>
+        <div style="flex:1"></div>
+        <span style="font-size:9px;color:var(--txt3);">Update terakhir: <b id="last-update" style="color:var(--txt2)">—</b></span>
+      </div>
 
-    <div class="grid-3">
-      <!-- STOCK TONASE -->
+      <!-- NOTIFICATION STRIP -->
+      <div class="notif-strip" id="notif-strip">
+        <div class="notif-item blue"><span class="notif-icon">ℹ️</span>
+          <div class="notif-text"><strong>Memuat data...</strong>Sedang mengambil data dari semua modul</div>
+        </div>
+      </div>
+
+      <!-- KPI STRIP -->
+      <div class="kpi-strip" id="kpi-strip">
+        <div class="kpi-card c-blue">
+          <div class="kpi-label">Stok Pipa</div>
+          <div class="kpi-val c-blue" id="kpi-stok-pipa">—</div>
+          <div class="kpi-sub">kg hari ini</div>
+          <div class="kpi-delta flat" id="kpi-stok-pipa-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">📦</div>
+        </div>
+        <div class="kpi-card c-green">
+          <div class="kpi-label">Stok Fitting</div>
+          <div class="kpi-val c-green" id="kpi-stok-fitting">—</div>
+          <div class="kpi-sub">kg hari ini</div>
+          <div class="kpi-delta flat" id="kpi-stok-fitting-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">🔩</div>
+        </div>
+        <div class="kpi-card c-amber">
+          <div class="kpi-label">Outbound (Pipa+Fit)</div>
+          <div class="kpi-val c-amber" id="kpi-out">—</div>
+          <div class="kpi-sub">kg periode ini</div>
+          <div class="kpi-delta flat" id="kpi-out-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">🚚</div>
+        </div>
+        <div class="kpi-card c-cyan">
+          <div class="kpi-label">Inbound (Pipa+Fit)</div>
+          <div class="kpi-val c-cyan" id="kpi-in">—</div>
+          <div class="kpi-sub">kg periode ini</div>
+          <div class="kpi-delta flat" id="kpi-in-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">📥</div>
+        </div>
+        <div class="kpi-card c-purple">
+          <div class="kpi-label">Utilisasi Rak Pipa</div>
+          <div class="kpi-val c-purple" id="kpi-rak-pipa">—</div>
+          <div class="kpi-sub">dari 204 rak</div>
+          <div class="kpi-delta flat" id="kpi-rak-pipa-delta">—</div>
+          <div class="kpi-icon-bg">🏗️</div>
+        </div>
+        <div class="kpi-card c-orange">
+          <div class="kpi-label">Utilisasi Box Fitting</div>
+          <div class="kpi-val c-orange" id="kpi-rak-fit">—</div>
+          <div class="kpi-sub">dari 23.748 box</div>
+          <div class="kpi-delta flat" id="kpi-rak-fit-delta">—</div>
+          <div class="kpi-icon-bg">🧰</div>
+        </div>
+        <div class="kpi-card c-red">
+          <div class="kpi-label">Loading Time Avg</div>
+          <div class="kpi-val c-red" id="kpi-loading-avg">—</div>
+          <div class="kpi-sub">mnt/pengiriman bln ini</div>
+          <div class="kpi-delta flat" id="kpi-loading-delta">— pengiriman</div>
+          <div class="kpi-icon-bg">⏱️</div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 1: STOCK TONASE ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">📊 Stock Hari Ini &amp; Perkembangan Bulanan</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="grid-1-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--blue);color:var(--blue)"></div>Stock Tonase — Hari Ini</div>
+            <span class="card-badge blue" id="stock-badge">—</span>
+          </div>
+          <div class="card-body">
+            <div class="stock-mini-grid">
+              <div class="stock-mini" style="color:var(--green)"><div class="stock-mini-lbl">Pipa Kelen Green</div><div class="stock-mini-val" id="st-pipa-green">—</div><div class="stock-mini-sub">kg</div></div>
+              <div class="stock-mini" style="color:var(--txt2)"><div class="stock-mini-lbl">Pipa Kelen Grey</div><div class="stock-mini-val" id="st-pipa-grey">—</div><div class="stock-mini-sub">kg</div></div>
+              <div class="stock-mini" style="color:var(--cyan)"><div class="stock-mini-lbl">Fitting Kelen Green</div><div class="stock-mini-val" id="st-fit-green">—</div><div class="stock-mini-sub">kg</div></div>
+              <div class="stock-mini" style="color:var(--purple)"><div class="stock-mini-lbl">Fitting Kelen Grey</div><div class="stock-mini-val" id="st-fit-grey">—</div><div class="stock-mini-sub">kg</div></div>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 12px;border-radius:11px;background:linear-gradient(135deg,rgba(0,180,232,.12),rgba(0,180,232,.02));border:1px solid var(--cyan-b);">
+              <span style="font-size:9px;color:var(--txt3);">Total Stok Global</span>
+              <span style="font-family:var(--font-disp);font-size:18px;font-weight:800;color:var(--rc-cyan2);" id="st-total-global">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--rc-cyan2);color:var(--rc-cyan2)"></div>Perkembangan Stock Tonase — 6 Periode Terakhir</div>
+            <span class="card-badge blue" id="stock-trend-badge">kg</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h190"><canvas id="chart-stock-trend"></canvas></div>
+            <div class="legend">
+              <div class="leg-item"><div class="leg-sq" style="background:#3b9dff;color:#3b9dff"></div>Pipa</div>
+              <div class="leg-item"><div class="leg-sq" style="background:#22d3a5;color:#22d3a5"></div>Fitting</div>
+              <div class="leg-item"><div class="leg-dot" style="background:#5be3ff;color:#5be3ff"></div>Total Tonase</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 2: OUTBOUND VS INBOUND ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">🚚 Outbound vs Inbound — Perkembangan Bulanan</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--amber);color:var(--amber)"></div>Outbound vs Inbound — PIPA (kg)</div>
+            <span class="card-badge amber" id="io-pipa-badge">—</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h160"><canvas id="chart-io-pipa"></canvas></div>
+            <div class="legend" id="io-pipa-legend"></div>
+            <div class="pareto-note" id="io-pipa-notif" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--cyan);color:var(--cyan)"></div>Outbound vs Inbound — FITTING (kg)</div>
+            <span class="card-badge blue" id="io-fit-badge">—</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h160"><canvas id="chart-io-fitting"></canvas></div>
+            <div class="legend" id="io-fit-legend"></div>
+            <div class="pareto-note" id="io-fit-notif" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 3: KAPASITAS KANBAN / RAK ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">🏗️ Kapasitas Rak / Kanban — Hari Ini &amp; Tren Bulanan</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="grid-gauge">
+        <!-- GAUGE PIPA -->
+        <div class="card gauge-card">
+          <div class="card-header" style="width:100%;">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--purple);color:var(--purple)"></div>Utilisasi Rak Pipa</div>
+            <span class="status-pill aman" id="gauge-pipa-badge">—</span>
+          </div>
+          <div class="card-body" style="width:100%;">
+            <div class="gauge-cap" id="gauge-pipa-cap">Kapasitas Pipa PPR: 204 rak</div>
+            <div class="gauge-wrap">
+              <svg class="gauge-svg" viewBox="0 0 240 140" id="gaugeSvgPipa">
+                <defs>
+                  <linearGradient id="gGreenP" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22d3a5"/><stop offset="100%" stop-color="#86efd0"/></linearGradient>
+                  <linearGradient id="gAmberP" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ffb020"/><stop offset="100%" stop-color="#ffd580"/></linearGradient>
+                  <linearGradient id="gRedP" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ff5470"/><stop offset="100%" stop-color="#ff9fb1"/></linearGradient>
+                  <filter id="glow3dP"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="#000" stroke-width="16" stroke-linecap="round" opacity=".25" transform="translate(0,6)"/>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="rgba(120,140,180,.18)" stroke-width="16" stroke-linecap="round"/>
+                <path id="gaugeArcPipa" d="M 22 125 A 98 98 0 0 1 22 125" fill="none" stroke="url(#gGreenP)" stroke-width="16" stroke-linecap="round" filter="url(#glow3dP)"/>
+                <line id="needlePipa" x1="120" y1="125" x2="120" y2="35" stroke="#eaf1fb" stroke-width="2.5" stroke-linecap="round" opacity=".9" style="transform-origin:120px 125px;transform:rotate(-90deg);transition:transform .9s cubic-bezier(.34,1.2,.64,1);"/>
+                <circle cx="120" cy="125" r="7" fill="#0c1526" stroke="#eaf1fb" stroke-width="2.5"/>
+                <circle cx="120" cy="125" r="4" fill="#22d3a5" id="needleDotPipa"/>
+                <text x="16" y="138" fill="#5b6a8c" font-size="9" text-anchor="middle">0%</text>
+                <text x="120" y="22" fill="#5b6a8c" font-size="9" text-anchor="middle">50%</text>
+                <text x="224" y="138" fill="#5b6a8c" font-size="9" text-anchor="middle">100%</text>
+                <text id="gaugePctPipa" x="120" y="108" fill="#eaf1fb" font-size="24" font-weight="800" text-anchor="middle">0%</text>
+                <text x="120" y="124" fill="#5b6a8c" font-size="9" text-anchor="middle">Utilisasi</text>
+              </svg>
+            </div>
+            <div class="gauge-stats">
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--green)" id="gs-pakai-pipa">-</div><div class="gauge-stat-lbl">Terpakai</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--blue)" id="gs-sisa-pipa">-</div><div class="gauge-stat-lbl">Sisa</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--txt3)" id="gs-max-pipa">-</div><div class="gauge-stat-lbl">Maksimum</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GAUGE FITTING -->
+        <div class="card gauge-card">
+          <div class="card-header" style="width:100%;">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--cyan);color:var(--cyan)"></div>Utilisasi Box Fitting</div>
+            <span class="status-pill aman" id="gauge-fit-badge">—</span>
+          </div>
+          <div class="card-body" style="width:100%;">
+            <div class="gauge-cap" id="gauge-fit-cap">Kapasitas Fitting PPR: 23.748 box</div>
+            <div class="gauge-wrap">
+              <svg class="gauge-svg" viewBox="0 0 240 140" id="gaugeSvgFit">
+                <defs>
+                  <linearGradient id="gGreenF" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22d3a5"/><stop offset="100%" stop-color="#86efd0"/></linearGradient>
+                  <linearGradient id="gAmberF" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ffb020"/><stop offset="100%" stop-color="#ffd580"/></linearGradient>
+                  <linearGradient id="gRedF" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ff5470"/><stop offset="100%" stop-color="#ff9fb1"/></linearGradient>
+                  <filter id="glow3dF"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="#000" stroke-width="16" stroke-linecap="round" opacity=".25" transform="translate(0,6)"/>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="rgba(120,140,180,.18)" stroke-width="16" stroke-linecap="round"/>
+                <path id="gaugeArcFit" d="M 22 125 A 98 98 0 0 1 22 125" fill="none" stroke="url(#gGreenF)" stroke-width="16" stroke-linecap="round" filter="url(#glow3dF)"/>
+                <line id="needleFit" x1="120" y1="125" x2="120" y2="35" stroke="#eaf1fb" stroke-width="2.5" stroke-linecap="round" opacity=".9" style="transform-origin:120px 125px;transform:rotate(-90deg);transition:transform .9s cubic-bezier(.34,1.2,.64,1);"/>
+                <circle cx="120" cy="125" r="7" fill="#0c1526" stroke="#eaf1fb" stroke-width="2.5"/>
+                <circle cx="120" cy="125" r="4" fill="#22d3a5" id="needleDotFit"/>
+                <text x="16" y="138" fill="#5b6a8c" font-size="9" text-anchor="middle">0%</text>
+                <text x="120" y="22" fill="#5b6a8c" font-size="9" text-anchor="middle">50%</text>
+                <text x="224" y="138" fill="#5b6a8c" font-size="9" text-anchor="middle">100%</text>
+                <text id="gaugePctFit" x="120" y="108" fill="#eaf1fb" font-size="24" font-weight="800" text-anchor="middle">0%</text>
+                <text x="120" y="124" fill="#5b6a8c" font-size="9" text-anchor="middle">Utilisasi</text>
+              </svg>
+            </div>
+            <div class="gauge-stats">
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--green)" id="gs-pakai-fit">-</div><div class="gauge-stat-lbl">Terpakai</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--blue)" id="gs-sisa-fit">-</div><div class="gauge-stat-lbl">Sisa</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--txt3)" id="gs-max-fit">-</div><div class="gauge-stat-lbl">Maksimum</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TREND + KRITIS LIST -->
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><div class="card-title-dot" style="background:var(--green);color:var(--green)"></div>Tren Penggunaan Rak/Box — Bulanan</div>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrap h140"><canvas id="chart-kanban-trend"></canvas></div>
+              <div class="legend">
+                <div class="leg-item"><div class="leg-sq" style="background:var(--purple);color:var(--purple)"></div>Pipa (Rak)</div>
+                <div class="leg-item"><div class="leg-sq" style="background:var(--cyan);color:var(--cyan)"></div>Fitting (Box)</div>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="flex:1;">
+            <div class="card-header">
+              <div class="card-title"><div class="card-title-dot" style="background:var(--red);color:var(--red)"></div>Item Status Kurang</div>
+              <span class="card-badge red" id="kritis-badge">0</span>
+            </div>
+            <div class="card-body">
+              <div class="kritis-list" id="kritis-list"><div style="color:var(--txt3);font-size:10px;text-align:center;padding:14px 0;">Memuat...</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 4: REKAP MUATAN PER PIC ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">👷 Rekap Muatan per PIC</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
       <div class="card">
         <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--blue)"></div>
-            Stock Tonase — Hari Ini
-          </div>
-          <span class="card-badge blue" id="stock-badge">—</span>
+          <div class="card-title"><div class="card-title-dot" style="background:var(--orange);color:var(--orange)"></div>Persiapan Pipa &amp; Fitting per PIC — Pencapaian vs Target</div>
+          <span class="card-badge amber" id="rekap-badge">—</span>
         </div>
         <div class="card-body">
-          <div class="stock-mini-grid">
-            <div class="stock-mini">
-              <div class="stock-mini-lbl">Pipa Kelen Green</div>
-              <div class="stock-mini-val" style="color:var(--green)" id="st-pipa-green">—</div>
-              <div class="stock-mini-sub">kg</div>
+          <div class="pic-row" id="pic-row"></div>
+          <div class="global-target-row" id="global-target">
+            <div class="gt-card">
+              <div class="gt-label">🔵 Global Pencapaian Pipa</div>
+              <div class="gt-bar-bg"><div class="gt-bar-fill" id="gt-pipa-bar" style="width:0%;background:var(--blue);color:var(--blue)"></div></div>
+              <div class="gt-nums"><span id="gt-pipa-actual">0 kg</span><span id="gt-pipa-target">— kg</span></div>
+              <div class="gt-pct" style="color:var(--blue)" id="gt-pipa-pct">0%</div>
             </div>
-            <div class="stock-mini">
-              <div class="stock-mini-lbl">Pipa Kelen Grey</div>
-              <div class="stock-mini-val" style="color:var(--txt2)" id="st-pipa-grey">—</div>
-              <div class="stock-mini-sub">kg</div>
-            </div>
-            <div class="stock-mini">
-              <div class="stock-mini-lbl">Fitting Kelen Green</div>
-              <div class="stock-mini-val" style="color:var(--cyan)" id="st-fit-green">—</div>
-              <div class="stock-mini-sub">kg</div>
-            </div>
-            <div class="stock-mini">
-              <div class="stock-mini-lbl">Fitting Kelen Grey</div>
-              <div class="stock-mini-val" style="color:var(--purple)" id="st-fit-grey">—</div>
-              <div class="stock-mini-sub">kg</div>
+            <div class="gt-card">
+              <div class="gt-label">🟠 Global Pencapaian Fitting</div>
+              <div class="gt-bar-bg"><div class="gt-bar-fill" id="gt-fit-bar" style="width:0%;background:var(--orange);color:var(--orange)"></div></div>
+              <div class="gt-nums"><span id="gt-fit-actual">0 Bx</span><span id="gt-fit-target">— Bx</span></div>
+              <div class="gt-pct" style="color:var(--orange)" id="gt-fit-pct">0%</div>
             </div>
           </div>
-          <div style="margin-top:10px;">
-            <div style="font-size:9px;color:var(--txt3);margin-bottom:4px;">Tren 7 Hari Terakhir (Stok)</div>
-            <div class="chart-wrap h110"><canvas id="chart-stock-trend"></canvas></div>
-          </div>
         </div>
       </div>
 
-      <!-- OUTBOUND vs INBOUND — PIPA (Bar/Pareto) -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--amber)"></div>
-            Outbound vs Inbound — PIPA (kg)
-          </div>
-          <span class="card-badge amber" id="io-pipa-badge">—</span>
-        </div>
-        <div class="card-body">
-          <div class="chart-wrap h150"><canvas id="chart-io-pipa"></canvas></div>
-          <div class="legend" id="io-pipa-legend"></div>
-          <div class="pareto-note" id="io-pipa-notif" style="display:none;"></div>
-        </div>
+      <!-- ═══════════ SECTION 5: LOADING TIME / RESIDENCE TIME ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">⏱️ Loading Time Pengiriman — Bulan Ini</span>
+        <div class="sec-divider-line"></div>
       </div>
 
-      <!-- OUTBOUND vs INBOUND — FITTING (Line/Pareto) -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--cyan)"></div>
-            Outbound vs Inbound — FITTING (kg)
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--red);color:var(--red)"></div>Statistik Pengiriman Bulan Ini</div>
           </div>
-          <span class="card-badge blue" id="io-fit-badge">—</span>
-        </div>
-        <div class="card-body">
-          <div class="chart-wrap h150"><canvas id="chart-io-fitting"></canvas></div>
-          <div class="legend" id="io-fit-legend"></div>
-          <div class="pareto-note" id="io-fit-notif" style="display:none;"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════
-         SECTION 2: KANBAN KAPASITAS
-    ═══════════════════════════════════════════ -->
-    <div class="sec-divider">
-      <span class="sec-divider-label">🏗️ KAPASITAS KANBAN / RAK</span>
-      <div class="sec-divider-line"></div>
-    </div>
-
-    <div class="grid-3">
-      <!-- KANBAN PIPA - Bar utilization -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--purple)"></div>
-            Utilisasi Rak Pipa
-          </div>
-          <span class="card-badge" style="background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-b);" id="rak-pipa-badge">—</span>
-        </div>
-        <div class="card-body" style="max-height:180px;overflow-y:auto;" id="kanban-pipa-bars">
-          <div style="color:var(--txt3);font-size:10px;text-align:center;padding:20px 0;">Memuat...</div>
-        </div>
-      </div>
-
-      <!-- KANBAN FITTING - Bar utilization -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--cyan)"></div>
-            Utilisasi Box Fitting
-          </div>
-          <span class="card-badge blue" id="rak-fit-badge">—</span>
-        </div>
-        <div class="card-body" style="max-height:180px;overflow-y:auto;" id="kanban-fit-bars">
-          <div style="color:var(--txt3);font-size:10px;text-align:center;padding:20px 0;">Memuat...</div>
-        </div>
-      </div>
-
-      <!-- KANBAN TREN -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--green)"></div>
-            Tren Penggunaan Rak/Box
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="chart-wrap h180"><canvas id="chart-kanban-trend"></canvas></div>
-          <div class="legend">
-            <div class="leg-item"><div class="leg-sq" style="background:var(--purple)"></div>Pipa (Rak)</div>
-            <div class="leg-item"><div class="leg-sq" style="background:var(--cyan)"></div>Fitting (Box)</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════
-         SECTION 3: REKAP MUATAN PER PIC
-    ═══════════════════════════════════════════ -->
-    <div class="sec-divider">
-      <span class="sec-divider-label">👷 REKAP MUATAN PER PIC</span>
-      <div class="sec-divider-line"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">
-          <div class="card-title-dot" style="background:var(--orange)"></div>
-          Persiapan Pipa & Fitting per PIC — Pencapaian vs Target
-        </div>
-        <span class="card-badge amber" id="rekap-badge">—</span>
-      </div>
-      <div class="card-body">
-        <!-- PIC Cards -->
-        <div class="pic-row" id="pic-row"></div>
-        <!-- Global Target -->
-        <div class="global-target-row" id="global-target">
-          <div class="gt-card">
-            <div class="gt-label">🔵 Global Pencapaian Pipa</div>
-            <div class="gt-bar-bg"><div class="gt-bar-fill" id="gt-pipa-bar" style="width:0%;background:var(--blue)"></div></div>
-            <div class="gt-nums"><span id="gt-pipa-actual">0 kg</span><span id="gt-pipa-target">— kg</span></div>
-            <div class="gt-pct" style="color:var(--blue)" id="gt-pipa-pct">0%</div>
-          </div>
-          <div class="gt-card">
-            <div class="gt-label">🟠 Global Pencapaian Fitting</div>
-            <div class="gt-bar-bg"><div class="gt-bar-fill" id="gt-fit-bar" style="width:0%;background:var(--orange)"></div></div>
-            <div class="gt-nums"><span id="gt-fit-actual">0 Bx</span><span id="gt-fit-target">— Bx</span></div>
-            <div class="gt-pct" style="color:var(--orange)" id="gt-fit-pct">0%</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════
-         SECTION 4: LOADING TIME SUMMARY
-    ═══════════════════════════════════════════ -->
-    <div class="sec-divider">
-      <span class="sec-divider-label">⏱️ LOADING TIME PENGIRIMAN</span>
-      <div class="sec-divider-line"></div>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--red)"></div>
-            Statistik Pengiriman Bulan Ini
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="kpi-strip" style="grid-template-columns:repeat(3,1fr);gap:8px;">
-            <div class="kpi-card c-blue" style="box-shadow:none;border-color:var(--border);">
-              <div class="kpi-label">Total SPM</div>
-              <div class="kpi-val c-blue" id="lt-total" style="font-size:20px;">—</div>
+          <div class="card-body">
+            <div class="lt-mini-strip">
+              <div class="lt-mini"><div class="lt-mini-lbl">Total SPM</div><div class="lt-mini-val" style="color:var(--blue)" id="lt-total">—</div></div>
+              <div class="lt-mini"><div class="lt-mini-lbl">Selesai Muat</div><div class="lt-mini-val" style="color:var(--green)" id="lt-selesai">—</div></div>
+              <div class="lt-mini"><div class="lt-mini-lbl">Batal Kirim</div><div class="lt-mini-val" style="color:var(--red)" id="lt-batal">—</div></div>
             </div>
-            <div class="kpi-card c-green" style="box-shadow:none;">
-              <div class="kpi-label">Selesai Muat</div>
-              <div class="kpi-val c-green" id="lt-selesai" style="font-size:20px;">—</div>
-            </div>
-            <div class="kpi-card c-red" style="box-shadow:none;">
-              <div class="kpi-label">Batal Kirim</div>
-              <div class="kpi-val c-red" id="lt-batal" style="font-size:20px;">—</div>
+            <div style="margin-top:12px;">
+              <div style="font-size:9px;color:var(--txt3);margin-bottom:5px;">Intensitas Pengiriman 7 Hari Terakhir</div>
+              <div class="chart-wrap h110"><canvas id="chart-lt-trend"></canvas></div>
             </div>
           </div>
-          <div style="margin-top:10px;">
-            <div style="font-size:9px;color:var(--txt3);margin-bottom:4px;">Intensitas Pengiriman 7 Hari Terakhir</div>
-            <div class="chart-wrap h110"><canvas id="chart-lt-trend"></canvas></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--amber);color:var(--amber)"></div>Distribusi Durasi Muat (Bulan Ini)</div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h190"><canvas id="chart-lt-dist"></canvas></div>
           </div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <div class="card-title-dot" style="background:var(--amber)"></div>
-            Distribusi Durasi Muat (Bulan Ini)
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="chart-wrap h180"><canvas id="chart-lt-dist"></canvas></div>
-        </div>
-      </div>
-    </div>
-
-    <div style="height:8px;"></div>
-  </div><!-- /content -->
-</div><!-- /main -->
+      <div style="height:6px;"></div>
+    </div><!-- /content -->
+  </div><!-- /main -->
 </div><!-- /shell -->
 
 <!-- LOADING -->
 <div class="loading-overlay" id="loading-overlay">
-  <div class="spinner"></div>
+  <div class="spinner3d"></div>
   <div class="loading-txt" id="loading-txt">Memuat data...</div>
 </div>
 
 <script>
-
-// ================================================================
-//  CONFIG
-// ================================================================
+/* ================================================================
+   CONFIG
+================================================================ */
 var PIC_LIST   = ['DONI','IMAN','SAEPUL','SULIS','WANG'];
-var PIC_COLORS = {DONI:'#3b82f6',IMAN:'#10b981',SAEPUL:'#f59e0b',SULIS:'#8b5cf6',WANG:'#f97316'};
-var PIC_BG     = {DONI:'#1e3a5f',IMAN:'#064e3b',SAEPUL:'#78350f',SULIS:'#3b0764',WANG:'#431407'};
+var PIC_COLORS = {DONI:'#3b9dff',IMAN:'#22d3a5',SAEPUL:'#ffb020',SULIS:'#a78bfa',WANG:'#ff8a4c'};
 var PIC_INIT   = {DONI:'DO',IMAN:'IM',SAEPUL:'SA',SULIS:'SU',WANG:'WA'};
 var TARGET_PIPA    = {DONI:94514.26,IMAN:94514.26,SAEPUL:11119.32,SULIS:11119.32,WANG:0};
 var TARGET_FITTING = {DONI:3511,IMAN:3511,SAEPUL:0,SULIS:0,WANG:5267};
 var HAS_PIPA    = {DONI:true,IMAN:true,SAEPUL:true,SULIS:true,WANG:false};
 var HAS_FITTING = {DONI:true,IMAN:true,SAEPUL:false,SULIS:false,WANG:true};
+var MAX_KANBAN_PIPA    = 204;
+var MAX_KANBAN_FITTING = 23748;
+var BNAMES  = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+var BNAMES3 = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
 var globalMode = 'bulanan';
 var charts = {};
 
-// ================================================================
-//  INIT
-// ================================================================
+/* ================================================================
+   INIT
+================================================================ */
 (function init(){
   var now = new Date();
-  var bNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-  // Bulan
   var bs=document.getElementById('sel-bulan');
-  bNames.forEach(function(b,i){var o=document.createElement('option');o.value=i+1;o.textContent=b;if(i===now.getMonth())o.selected=true;bs.appendChild(o);});
-  // Tahun
+  BNAMES.forEach(function(b,i){var o=document.createElement('option');o.value=i+1;o.textContent=b;if(i===now.getMonth())o.selected=true;bs.appendChild(o);});
   ['sel-tahun','sel-tahun-t'].forEach(function(id){
     var ts=document.getElementById(id);
     for(var y=now.getFullYear();y>=2023;y--){var o=document.createElement('option');o.value=y;o.textContent=y;if(y===now.getFullYear())o.selected=true;ts.appendChild(o);}
   });
-  // Theme
-  var saved=localStorage.getItem('wct_theme')||'light';
+  var saved=localStorage.getItem('wct_theme')||'dark';
   document.documentElement.setAttribute('data-theme',saved);
   updateThemeBtn(saved);
-  // Clock
   setInterval(function(){var n=new Date();document.getElementById('live-clock').textContent=p2(n.getHours())+':'+p2(n.getMinutes())+':'+p2(n.getSeconds());},1000);
   loadAll();
 })();
@@ -756,7 +814,6 @@ function navTo(pg){
   t += '?_=' + Date.now();
   if(window.top!==window.self)window.top.location.href=t;else window.location.href=t;
 }
-
 function setGlobalMode(m){
   globalMode=m;
   document.getElementById('fbtn-bulanan').classList.toggle('active',m==='bulanan');
@@ -764,330 +821,392 @@ function setGlobalMode(m){
   document.getElementById('fg-bulan').style.display=m==='bulanan'?'flex':'none';
   document.getElementById('fg-tahun').style.display=m==='tahunan'?'flex':'none';
 }
-
 function buildParams(){
   if(globalMode==='bulanan') return {mode:'bulanan',bulan:document.getElementById('sel-bulan').value,tahun:document.getElementById('sel-tahun').value};
-  return {mode:'tahunan',tahun:document.getElementById('sel-tahun-t').value};
+  var t=document.getElementById('sel-tahun-t').value;
+  return {mode:'tahunan',bulan:'12',tahun:t};
 }
-
 function toggleTheme(){
   var cur=document.documentElement.getAttribute('data-theme');
   var next=cur==='light'?'dark':'light';
   document.documentElement.setAttribute('data-theme',next);
   localStorage.setItem('wct_theme',next);
   updateThemeBtn(next);
+  setTimeout(renderAllCharts,50);
 }
 function updateThemeBtn(t){
   document.getElementById('theme-icon').textContent=t==='light'?'🌙':'☀️';
   document.getElementById('theme-lbl').textContent=t==='light'?'Dark':'Light';
 }
+function getLastNMonths(n,endBulan,endTahun){
+  var out=[];
+  var b=parseInt(endBulan,10), t=parseInt(endTahun,10);
+  for(var i=n-1;i>=0;i--){
+    var mm=b-i, yy=t;
+    while(mm<=0){mm+=12;yy-=1;}
+    out.push({bulan:mm,tahun:yy,label:BNAMES3[mm-1]+' '+String(yy).slice(2)});
+  }
+  return out;
+}
 
-// ================================================================
-//  LOAD ALL DATA
-// ================================================================
-var _dataStock=null, _dataIO=null, _dataKanban=null, _dataRekap=null, _dataLT=null;
+/* ================================================================
+   LOAD ALL DATA
+================================================================ */
+var _dataStock=null, _dataIOOut=null, _dataIOIn=null, _dataKanban=null, _dataKanbanTrend=null, _dataRekap=null, _dataLT=null;
+var _stockTrend=[], _ioTrend=[];
 var _pending=0;
-var _ioPending=0;
+var _months=[];
+var USE_DEMO = !(typeof google!=='undefined' && google.script && google.script.run);
 
 function loadAll(){
-  showLoading(true,'Memuat semua modul...');
-  _pending=4;
+  showLoading(true,'Menghubungkan ke spreadsheet...');
+  document.getElementById('btn-refresh').classList.add('spin');
   var p=buildParams();
-  var bNames=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  var lbl=globalMode==='bulanan'?(bNames[parseInt(p.bulan||7,10)-1]+' '+p.tahun):'Tahun '+p.tahun;
+  var lbl=globalMode==='bulanan'?(BNAMES3[parseInt(p.bulan||7,10)-1]+' '+p.tahun):'Tahun '+p.tahun;
   setText('period-main-badge',lbl); setText('period-badge',lbl);
+  _months=getLastNMonths(6,p.bulan,p.tahun);
+  _pending=6;
+  _pendingIO=2;
+  _pendingKanban=2;
 
-  if(typeof google!=='undefined'&&google.script){
-    // Stock (hari ini)
-    google.script.run
-      .withSuccessHandler(function(d){ _dataStock=d; checkDone('stock'); })
-      .withFailureHandler(function(){ _dataStock=null; checkDone('stock'); })
+  if(!USE_DEMO){
+    google.script.run.withSuccessHandler(function(d){_dataStock=d;checkDone('stock');}).withFailureHandler(function(){_dataStock=null;checkDone('stock');})
       .getDashboardData('harian',{dari:todayStr(),sampai:todayStr()});
-    // Outbound
-    _ioPending=2;
-    google.script.run
-      .withSuccessHandler(function(d){ _dataIO=_dataIO||{}; _dataIO.out=d; ioStepDone(); })
-      .withFailureHandler(function(){ _dataIO=_dataIO||{}; ioStepDone(); })
+    google.script.run.withSuccessHandler(function(d){_dataIOOut=d;checkDone('io');}).withFailureHandler(function(){_dataIOOut=null;checkDone('io');})
       .getOutboundData({bulan:p.bulan,tahun:p.tahun});
-    // Inbound (dipanggil BARENGAN dengan outbound, bukan menunggu outbound selesai
-    // dulu — sebelumnya berantai, nambah 1 round-trip Apps Script yang bikin lambat)
-    google.script.run
-      .withSuccessHandler(function(d){ _dataIO=_dataIO||{}; _dataIO.in=d; ioStepDone(); })
-      .withFailureHandler(function(){ _dataIO=_dataIO||{}; ioStepDone(); })
+    google.script.run.withSuccessHandler(function(d){_dataIOIn=d;checkDone('io');}).withFailureHandler(function(){_dataIOIn=null;checkDone('io');})
       .getInboundData({bulan:p.bulan,tahun:p.tahun});
-    // Kanban
-    google.script.run
-      .withSuccessHandler(function(d){ _dataKanban=d; checkDone('kanban'); })
-      .withFailureHandler(function(){ _dataKanban=null; checkDone('kanban'); })
+    // Snapshot HARI INI saja (mode harian) — supaya rak/box tidak terhitung dobel dari
+    // beberapa baris histori tanggal yang sama item dalam 1 bulan.
+    google.script.run.withSuccessHandler(function(d){_dataKanban=d;checkDone('kanban');}).withFailureHandler(function(){_dataKanban=null;checkDone('kanban');})
+      .getKanbanData('harian',{dari:todayStr(),sampai:todayStr()});
+    // Histori bulanan HANYA dipakai untuk grafik tren (field .trend/.trendFitting-nya
+    // dibangun dari seluruh histori sheet, independen dari filter di atas).
+    google.script.run.withSuccessHandler(function(d){_dataKanbanTrend=d;checkDone('kanban');}).withFailureHandler(function(){_dataKanbanTrend=null;checkDone('kanban');})
       .getKanbanData('bulanan',{bulan:p.bulan,tahun:p.tahun});
-    // Rekap Muatan
-    google.script.run
-      .withSuccessHandler(function(d){ _dataRekap=d; checkDone('rekap'); })
-      .withFailureHandler(function(){ _dataRekap=null; checkDone('rekap'); })
+    google.script.run.withSuccessHandler(function(d){_dataRekap=d;checkDone('rekap');}).withFailureHandler(function(){_dataRekap=null;checkDone('rekap');})
       .getRekapMuatanData({mode:'bulanan',bulan:p.bulan,tahun:p.tahun});
-    // Loading Time
-    google.script.run
-      .withSuccessHandler(function(d){ _dataLT=d; })
-      .withFailureHandler(function(){ _dataLT=null; })
+    google.script.run.withSuccessHandler(function(d){_dataLT=d;checkDone('lt');}).withFailureHandler(function(){_dataLT=null;checkDone('lt');})
       .getResidenceTimeData('bulan');
+    loadStockTrend(_months);
+    loadIOTrend(_months);
   } else {
-    // DEMO
     setTimeout(function(){
       _dataStock=demoStock();
-      _dataIO={out:demoIO('out'),in:demoIO('in')};
-      _dataKanban=demoKanban();
+      _dataIOOut=demoIO('out'); _dataIOIn=demoIO('in');
+      _dataKanban=demoKanbanToday();
+      _dataKanbanTrend=demoKanbanTrend();
       _dataRekap=demoRekap(p);
-      _dataLT={bulan:{total:70,selesai:63,avgMin:103,batalKirim:4},trend7:[{label:'09',total:8},{label:'10',total:12},{label:'11',total:10},{label:'12',total:9},{label:'13',total:11},{label:'14',total:6},{label:'15',total:14}]};
+      _dataLT=demoLT();
+      _stockTrend=demoStockTrend(_months);
+      _ioTrend=demoIOTrend(_months);
       _pending=0; renderAll();
       showLoading(false);
-    },900);
+      document.getElementById('btn-refresh').classList.remove('spin');
+      setText('last-update', p2(new Date().getHours())+':'+p2(new Date().getMinutes()));
+    },700);
   }
 }
 
-function ioStepDone(){
-  _ioPending--;
-  if(_ioPending<=0) checkDone('io');
-}
-
+// checkDone increments: 6 base completion-events (stock, io-pair, kanban-pair, rekap, lt)
+var _pendingIO=2;
+var _pendingKanban=2;
 function checkDone(key){
+  if(key==='io'){ _pendingIO--; if(_pendingIO>0) return; }
+  if(key==='kanban'){ _pendingKanban--; if(_pendingKanban>0) return; }
   _pending--;
   if(key==='stock') renderStock();
   if(key==='io') renderIO();
-  if(key==='kanban') renderKanban();
+  if(key==='kanban') renderKanbanGauges();
   if(key==='rekap') renderRekap();
-  if(_pending<=0){ renderAll(); showLoading(false); }
+  if(key==='lt') renderLT();
+  if(_pending<=0){
+    renderAll();
+    showLoading(false);
+    document.getElementById('btn-refresh').classList.remove('spin');
+    setText('last-update', p2(new Date().getHours())+':'+p2(new Date().getMinutes()));
+  }
 }
 
+function loadStockTrend(months){
+  _stockTrend=months.map(function(m){return {label:m.label,pipa:0,fitting:0,total:0,loaded:false};});
+  var left=months.length;
+  months.forEach(function(m,idx){
+    google.script.run.withSuccessHandler(function(d){
+      var t=(d&&d.stock&&d.stock.tonase)||{pipaGreen:0,pipaGrey:0,fittingGreen:0,fittingGrey:0,total:0};
+      _stockTrend[idx].pipa=(t.pipaGreen||0)+(t.pipaGrey||0);
+      _stockTrend[idx].fitting=(t.fittingGreen||0)+(t.fittingGrey||0);
+      _stockTrend[idx].total=t.total||(_stockTrend[idx].pipa+_stockTrend[idx].fitting);
+      _stockTrend[idx].loaded=true;
+      left--; if(left<=0) renderStockTrendChart();
+    }).withFailureHandler(function(){ left--; if(left<=0) renderStockTrendChart(); })
+      .getDashboardData('bulanan',{bulan:m.bulan,tahun:m.tahun});
+  });
+}
+
+function loadIOTrend(months){
+  _ioTrend=months.map(function(m){return {label:m.label,outPipa:0,inPipa:0,outFit:0,inFit:0};});
+  var left=months.length*2;
+  months.forEach(function(m,idx){
+    google.script.run.withSuccessHandler(function(d){
+      _ioTrend[idx].outPipa=(d&&d.pipa)||0; _ioTrend[idx].outFit=(d&&d.fitting)||0;
+      left--; if(left<=0) renderIOTrendCharts();
+    }).withFailureHandler(function(){ left--; if(left<=0) renderIOTrendCharts(); })
+      .getOutboundData({bulan:m.bulan,tahun:m.tahun});
+    google.script.run.withSuccessHandler(function(d){
+      _ioTrend[idx].inPipa=(d&&d.pipa)||0; _ioTrend[idx].inFit=(d&&d.fitting)||0;
+      left--; if(left<=0) renderIOTrendCharts();
+    }).withFailureHandler(function(){ left--; if(left<=0) renderIOTrendCharts(); })
+      .getInboundData({bulan:m.bulan,tahun:m.tahun});
+  });
+}
+
+/* ================================================================
+   RENDER — ORCHESTRATOR
+================================================================ */
 function renderAll(){
   renderNotifs();
   renderKPIStrip();
+  renderStock();
+  renderStockTrendChart();
+  renderIO();
+  renderIOTrendCharts();
+  renderKanbanGauges();
+  renderRekap();
   renderLT();
 }
-
-// ================================================================
-//  DEMO DATA
-// ================================================================
-function demoStock(){
-  return{success:true,stock:{globalTonase:401461,tonase:{pipaGreen:292430,pipaGrey:7033,fittingGreen:73905,fittingGrey:24388},
-    stok:{pipaGreen:158401,pipaGrey:231,fittingGreen:920085,fittingGrey:203649}},
-    outbound:{pipa:51936,fitting:23688},inbound:{pipa:39000,fitting:10397}};
-}
-function demoIO(type){
-  var d={trend:[]};
-  var months=['Jan','Feb','Mar','Apr','Mei','Jun','Jul'];
-  months.forEach(function(m){
-    d.trend.push({label:m,pipa:Math.round(40000+Math.random()*30000),fitting:Math.round(15000+Math.random()*15000)});
-  });
-  d.pipa=d.trend.reduce(function(a,v){return a+v.pipa;},0);
-  d.fitting=d.trend.reduce(function(a,v){return a+v.fitting;},0);
-  return{success:true,outbound:d,inbound:d,pipa:d.pipa,fitting:d.fitting,trend:d.trend};
-}
-function demoKanban(){
-  return{success:true,pipa:[{nama:'Pipa 20mm PN10',rakTerpakai:12,status:'AMAN'},{nama:'Pipa 25mm PN20',rakTerpakai:18,status:'HAMPIR PENUH'},{nama:'Pipa 32mm PN10',rakTerpakai:8,status:'AMAN'},{nama:'Pipa 40mm PN20',rakTerpakai:22,status:'KRITIS'}],
-    fitting:[{nama:'Elbow 90° 20mm',rakTerpakai:45,status:'AMAN'},{nama:'Tee 25mm',rakTerpakai:78,status:'HAMPIR PENUH'},{nama:'Coupling 32mm',rakTerpakai:30,status:'AMAN'}],
-    trend:[{label:'Apr',pipa:180,fitting:400},{label:'Mei',pipa:195,fitting:420},{label:'Jun',pipa:188,fitting:435},{label:'Jul',pipa:202,fitting:450}],
-    trendFitting:[{label:'Apr',pipa:400},{label:'Mei',pipa:420},{label:'Jun',pipa:435},{label:'Jul',pipa:450}]};
-}
-function demoRekap(p){
-  var bNames=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  return{success:true,periodeLabel:bNames[parseInt(p.bulan||7,10)-1]+' '+p.tahun,
-    totalPipa:51936,totalFitting:5394,totalKiriman:51936,
-    pics:{DONI:{pipa:21911,fitting:2978,pipaHarian:[],fittingHarian:[]},
-      IMAN:{pipa:21911,fitting:753,pipaHarian:[],fittingHarian:[]},
-      SAEPUL:{pipa:6818,fitting:0,pipaHarian:[],fittingHarian:[]},
-      SULIS:{pipa:1295,fitting:0,pipaHarian:[],fittingHarian:[]},
-      WANG:{pipa:0,fitting:1338,pipaHarian:[],fittingHarian:[]}}};
+function renderAllCharts(){
+  renderStockTrendChart(); renderIOTrendCharts(); renderKanbanTrendChart();
+  renderLTCharts();
 }
 
-// ================================================================
-//  RENDER — NOTIFICATIONS
-// ================================================================
+/* ================================================================
+   RENDER — NOTIFICATIONS
+================================================================ */
 function renderNotifs(){
   var strip=document.getElementById('notif-strip');
   var notifs=[];
-  // IO balance check
-  if(_dataIO&&_dataIO.out&&_dataIO.in){
-    var outP=(_dataIO.out.pipa||0), inP=(_dataIO.in.pipa||0);
-    var ratio=inP>0?outP/inP:null;
-    if(ratio!==null&&ratio>1.2) notifs.push({type:'red',icon:'🔴',title:'Outbound Pipa > Inbound!',msg:'Outbound '+fmt(outP)+' kg melebihi Inbound '+fmt(inP)+' kg — risiko kekosongan stok'});
-    else if(ratio!==null&&ratio<0.5) notifs.push({type:'amber',icon:'⚠️',title:'Inbound Pipa jauh melebihi Outbound',msg:'Kemungkinan penumpukan stok — Inbound '+fmt(inP)+' kg vs Outbound '+fmt(outP)+' kg'});
-    else notifs.push({type:'green',icon:'✅',title:'Inbound vs Outbound Pipa Seimbang',msg:'Rasio: '+Math.round((outP/inP)*100)+'% | Stok terjaga dengan baik'});
+  var outP=_dataIOOut?(_dataIOOut.pipa||0):0, inP=_dataIOIn?(_dataIOIn.pipa||0):0;
+  var outF=_dataIOOut?(_dataIOOut.fitting||0):0, inF=_dataIOIn?(_dataIOIn.fitting||0):0;
+  var totOut=outP+outF, totIn=inP+inF;
+  if(totIn>0){
+    var ratio=totOut/totIn;
+    if(ratio>1.2) notifs.push({type:'red',icon:'🔴',title:'Outbound melebihi Inbound!',msg:'Outbound '+fmt(totOut)+' kg melebihi Inbound '+fmt(totIn)+' kg — risiko kekosongan stok'});
+    else if(ratio<0.5) notifs.push({type:'amber',icon:'⚠️',title:'Inbound jauh melebihi Outbound',msg:'Kemungkinan penumpukan stok — Inbound '+fmt(totIn)+' kg vs Outbound '+fmt(totOut)+' kg'});
+    else notifs.push({type:'green',icon:'✅',title:'Inbound vs Outbound Seimbang',msg:'Rasio: '+Math.round(ratio*100)+'% | Stok terjaga dengan baik'});
   }
-  // Kanban kritis
   if(_dataKanban&&_dataKanban.pipa){
-    var kritis=_dataKanban.pipa.filter(function(r){ return r.status&&r.status.indexOf('KRITIS')!==-1; }).length;
-    if(kritis>0) notifs.push({type:'red',icon:'🚨',title:kritis+' Item Pipa Status KRITIS',msg:'Rak hampir penuh — perlu pengeluaran segera'});
+    var totalRak=_dataKanban.pipa.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
+    var pctRak=Math.round(totalRak/MAX_KANBAN_PIPA*100);
+    var kurang=_dataKanban.pipa.filter(function(r){return r.status==='KURANG';}).length;
+    if(pctRak>=90) notifs.push({type:'red',icon:'🚨',title:'Rak Pipa Kritis ('+pctRak+'%)',msg:'Kapasitas rak hampir penuh — perlu pengeluaran segera'});
+    else if(pctRak>=70) notifs.push({type:'amber',icon:'⚠️',title:'Rak Pipa Waspada ('+pctRak+'%)',msg:totalRak+' dari '+MAX_KANBAN_PIPA+' rak terpakai'});
+    if(kurang>0) notifs.push({type:'amber',icon:'📉',title:kurang+' Item Berstatus KURANG',msg:'Perlu perhatian pada stok kanban rak/box'});
   }
-  // Rekap muatan
   if(_dataRekap&&_dataRekap.pics){
     var totalPipa=_dataRekap.totalPipa||0;
-    var totalTarget=PIC_LIST.reduce(function(a,p){return a+(TARGET_PIPA[p]||0);},0);
+    var totalTarget=PIC_LIST.reduce(function(a,pc){return a+(TARGET_PIPA[pc]||0);},0);
     var pct=totalTarget>0?Math.round(totalPipa/totalTarget*100):0;
     if(pct<60) notifs.push({type:'amber',icon:'📦',title:'Persiapan Pipa '+pct+'% dari Target',msg:'Total '+fmt(totalPipa)+' kg dari target '+fmt(totalTarget)+' kg'});
     else notifs.push({type:'blue',icon:'📦',title:'Persiapan Pipa On Track ('+pct+'%)',msg:'Total '+fmt(totalPipa)+' kg dari target '+fmt(totalTarget)+' kg'});
   }
-  if(!notifs.length) notifs.push({type:'blue',icon:'✅',title:'Data berhasil dimuat','msg':'Semua modul aktif'});
+  if(!notifs.length) notifs.push({type:'blue',icon:'✅',title:'Data berhasil dimuat',msg:'Semua modul aktif dan sinkron'});
   strip.innerHTML=notifs.map(function(n){
     return '<div class="notif-item '+n.type+'"><span class="notif-icon">'+n.icon+'</span><div class="notif-text"><strong>'+n.title+'</strong>'+n.msg+'</div></div>';
   }).join('');
 }
 
-// ================================================================
-//  RENDER — KPI STRIP
-// ================================================================
+/* ================================================================
+   RENDER — KPI STRIP
+================================================================ */
+function trendDelta(arr,key){
+  if(!arr||arr.length<2) return null;
+  var last=arr[arr.length-1][key]||0, prev=arr[arr.length-2][key]||0;
+  if(prev===0) return null;
+  var pct=Math.round((last-prev)/prev*100);
+  return pct;
+}
+function setDelta(id,pct,suffix){
+  var el=document.getElementById(id); if(!el) return;
+  if(pct===null||pct===undefined||isNaN(pct)){ el.className='kpi-delta flat'; el.textContent='— vs bln lalu'; return; }
+  var dir=pct>0?'up':pct<0?'down':'flat';
+  var arrow=pct>0?'▲':pct<0?'▼':'—';
+  el.className='kpi-delta '+dir;
+  el.textContent=arrow+' '+Math.abs(pct)+'% '+(suffix||'vs bln lalu');
+}
 function renderKPIStrip(){
   if(_dataStock&&_dataStock.stock){
     var t=_dataStock.stock.tonase||{};
-    setText('kpi-stok-pipa', fmt(t.pipaGreen||0+t.pipaGrey||0));
-    setText('kpi-stok-fitting', fmt(t.fittingGreen||0+t.fittingGrey||0));
     setText('kpi-stok-pipa', fmt((t.pipaGreen||0)+(t.pipaGrey||0)));
     setText('kpi-stok-fitting', fmt((t.fittingGreen||0)+(t.fittingGrey||0)));
   }
-  if(_dataIO&&_dataIO.out) setText('kpi-out-pipa', fmt(_dataIO.out.pipa||0));
-  if(_dataIO&&_dataIO.in)  setText('kpi-in-pipa',  fmt(_dataIO.in.pipa||0));
-  if(_dataKanban&&_dataKanban.pipa) setText('kpi-rak-pipa', fmtInt(_dataKanban.pipa.reduce(function(a,r){return a+(r.rakTerpakai||0);},0)));
-  if(_dataLT&&_dataLT.bulan) setText('kpi-loading-avg', _dataLT.bulan.avgMin?fmtMin(_dataLT.bulan.avgMin):'—');
+  var outP=_dataIOOut?(_dataIOOut.pipa||0):0, outF=_dataIOOut?(_dataIOOut.fitting||0):0;
+  var inP=_dataIOIn?(_dataIOIn.pipa||0):0, inF=_dataIOIn?(_dataIOIn.fitting||0):0;
+  setText('kpi-out', fmt(outP+outF));
+  setText('kpi-in', fmt(inP+inF));
+  if(_dataKanban&&_dataKanban.pipa){
+    var totalRak=_dataKanban.pipa.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
+    setText('kpi-rak-pipa', Math.round(totalRak/MAX_KANBAN_PIPA*100)+'%');
+  }
+  if(_dataKanban&&_dataKanban.fitting){
+    var totalFit=_dataKanban.fitting.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
+    setText('kpi-rak-fit', Math.round(totalFit/MAX_KANBAN_FITTING*100)+'%');
+  }
+  if(_dataLT){
+    var s=computeLTStats(_dataLT);
+    setText('kpi-loading-avg', s.avgMin?fmtMin(s.avgMin):'—');
+    setDelta('kpi-loading-delta', null); document.getElementById('kpi-loading-delta').textContent=s.selesai+' selesai dari '+s.total;
+  }
+  // Deltas from monthly trend arrays
+  setDelta('kpi-stok-pipa-delta', trendDelta(_stockTrend,'pipa'));
+  setDelta('kpi-stok-fitting-delta', trendDelta(_stockTrend,'fitting'));
+  setDelta('kpi-out-delta', trendDelta(_ioTrend.map(function(r){return{v:(r.outPipa||0)+(r.outFit||0)};}),'v'));
+  setDelta('kpi-in-delta', trendDelta(_ioTrend.map(function(r){return{v:(r.inPipa||0)+(r.inFit||0)};}),'v'));
+  if(_dataKanbanTrend&&_dataKanbanTrend.trend&&_dataKanbanTrend.trend.length>1){
+    var d=trendDelta(_dataKanbanTrend.trend,'rakTerpakai'); setDelta('kpi-rak-pipa-delta',d);
+  }
+  if(_dataKanbanTrend&&_dataKanbanTrend.trendFitting&&_dataKanbanTrend.trendFitting.length>1){
+    var d2=trendDelta(_dataKanbanTrend.trendFitting,'rakTerpakai'); setDelta('kpi-rak-fit-delta',d2);
+  }
 }
 
-// ================================================================
-//  RENDER — STOCK
-// ================================================================
+/* ================================================================
+   RENDER — STOCK
+================================================================ */
 function renderStock(){
   if(!_dataStock||!_dataStock.stock) return;
   var t=_dataStock.stock.tonase||{};
   var now=new Date();
-  var bNames=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  setText('stock-badge',bNames[now.getMonth()]+' '+now.getFullYear()+' (Hari Ini)');
+  setText('stock-badge', now.getDate()+' '+BNAMES3[now.getMonth()]+' '+now.getFullYear());
   setText('st-pipa-green', fmt(t.pipaGreen||0));
   setText('st-pipa-grey',  fmt(t.pipaGrey||0));
   setText('st-fit-green',  fmt(t.fittingGreen||0));
   setText('st-fit-grey',   fmt(t.fittingGrey||0));
-  // Trend chart — gunakan trend7 dari LT atau buat dummy
-  var labels=['','','','','','',''];
-  var vals=labels.map(function(){ return 0; });
-  if(_dataLT&&_dataLT.trend7){
-    labels=_dataLT.trend7.map(function(r){ return r.label||''; });
-    vals=_dataLT.trend7.map(function(r){ return r.total||0; });
-  }
+  setText('st-total-global', fmt(t.total||0)+' kg');
+}
+function renderStockTrendChart(){
+  if(!_stockTrend||!_stockTrend.length) return;
+  var labels=_stockTrend.map(function(r){return r.label;});
   buildChart('chart-stock-trend','bar',{
     labels:labels,
-    datasets:[{label:'SPM/Hari',data:vals,backgroundColor:'#3b82f640',borderColor:'#3b82f6',borderWidth:2,borderRadius:4}]
-  },{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.y+' SPM';}}}},scales:{x:{grid:{display:false},ticks:{font:{size:8}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:8}}}}});
+    datasets:[
+      {type:'bar',label:'Pipa',data:_stockTrend.map(function(r){return r.pipa;}),backgroundColor:mkGrad('#3b9dff'),borderColor:'#3b9dff',borderWidth:1.5,borderRadius:6,order:3,barPercentage:.62},
+      {type:'bar',label:'Fitting',data:_stockTrend.map(function(r){return r.fitting;}),backgroundColor:mkGrad('#22d3a5'),borderColor:'#22d3a5',borderWidth:1.5,borderRadius:6,order:2,barPercentage:.62},
+      {type:'line',label:'Total Tonase',data:_stockTrend.map(function(r){return r.total;}),borderColor:'#5be3ff',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#5be3ff',pointBorderColor:'#04101f',tension:.35,fill:false,order:1}
+    ]
+  },{plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y)+' kg';}}}},
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
 }
 
-// ================================================================
-//  RENDER — IO PIPA & FITTING
-// ================================================================
+/* ================================================================
+   RENDER — IO (current period totals) + monthly trend charts
+================================================================ */
 function renderIO(){
-  if(!_dataIO) return;
-  var outD=_dataIO.out, inD=_dataIO.in;
-  if(!outD&&!inD) return;
-  var outTrend=(outD&&outD.trend)||[];
-  var inTrend=(inD&&inD.trend)||[];
-  // Merge labels
-  var labSet={};
-  outTrend.forEach(function(r){ labSet[r.label]=1; });
-  inTrend.forEach(function(r){ labSet[r.label]=1; });
-  var labels=Object.keys(labSet).sort();
-  var outPipa=labels.map(function(l){ var r=outTrend.find(function(x){return x.label===l;}); return r?r.pipa:0; });
-  var inPipa =labels.map(function(l){ var r=inTrend.find(function(x){return x.label===l;});  return r?r.pipa:0; });
-  var outFit=labels.map(function(l){ var r=outTrend.find(function(x){return x.label===l;}); return r?r.fitting:0; });
-  var inFit =labels.map(function(l){ var r=inTrend.find(function(x){return x.label===l;});  return r?r.fitting:0; });
-  var totalOutP=outD?outD.pipa||0:0, totalInP=inD?inD.pipa||0:0;
-  var totalOutF=outD?outD.fitting||0:0, totalInF=inD?inD.fitting||0:0;
-  setText('io-pipa-badge','Out: '+fmt(totalOutP)+' | In: '+fmt(totalInP)+' kg');
-  setText('io-fit-badge','Out: '+fmt(totalOutF)+' | In: '+fmt(totalInF)+' kg');
-  // PIPA chart: Bar (kotak) untuk visualisasi
+  var outP=_dataIOOut?(_dataIOOut.pipa||0):0, inP=_dataIOIn?(_dataIOIn.pipa||0):0;
+  var outF=_dataIOOut?(_dataIOOut.fitting||0):0, inF=_dataIOIn?(_dataIOIn.fitting||0):0;
+  setText('io-pipa-badge','Out: '+fmt(outP)+' | In: '+fmt(inP)+' kg');
+  setText('io-fit-badge','Out: '+fmt(outF)+' | In: '+fmt(inF)+' kg');
+  document.getElementById('io-pipa-legend').innerHTML='<div class="leg-item"><div class="leg-sq" style="background:#ffb020;color:#ffb020"></div>Outbound (Bar)</div><div class="leg-item"><div class="leg-dot" style="background:#00d4ff;color:#00d4ff"></div>Inbound (Garis)</div>';
+  document.getElementById('io-fit-legend').innerHTML='<div class="leg-item"><div class="leg-sq" style="background:#a78bfa;color:#a78bfa"></div>Outbound (Bar)</div><div class="leg-item"><div class="leg-dot" style="background:#22d3a5;color:#22d3a5"></div>Inbound (Garis)</div>';
+  var notifP=document.getElementById('io-pipa-notif');
+  if(outP>inP*1.15){notifP.style.display='flex';notifP.textContent='⚠️ Outbound Pipa ('+fmt(outP)+' kg) melebihi Inbound ('+fmt(inP)+' kg) — risiko kekosongan stok!';}
+  else notifP.style.display='none';
+  var notifF=document.getElementById('io-fit-notif');
+  if(outF>inF*1.15){notifF.style.display='flex';notifF.textContent='⚠️ Outbound Fitting ('+fmt(outF)+' kg) melebihi Inbound ('+fmt(inF)+' kg)!';}
+  else notifF.style.display='none';
+}
+function renderIOTrendCharts(){
+  if(!_ioTrend||!_ioTrend.length) return;
+  var labels=_ioTrend.map(function(r){return r.label;});
   buildChart('chart-io-pipa','bar',{
     labels:labels,
     datasets:[
-      {label:'Outbound Pipa',data:outPipa,backgroundColor:'#f59e0b80',borderColor:'#f59e0b',borderWidth:2,borderRadius:4,order:2},
-      {label:'Inbound Pipa',data:inPipa,backgroundColor:'#06b6d480',borderColor:'#06b6d4',borderWidth:2,borderRadius:4,order:1}
+      {type:'bar',label:'Outbound Pipa',data:_ioTrend.map(function(r){return r.outPipa;}),backgroundColor:mkGrad('#ffb020'),borderColor:'#ffb020',borderWidth:1.5,borderRadius:6,order:2,barPercentage:.6},
+      {type:'line',label:'Inbound Pipa',data:_ioTrend.map(function(r){return r.inPipa;}),borderColor:'#00d4ff',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#00d4ff',pointBorderColor:'#04101f',tension:.35,fill:false,order:1}
     ]
   },{plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y)+' kg';}}}},
-    scales:{x:{grid:{display:false},ticks:{font:{size:8}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:8},callback:function(v){return fmt(v)+' kg';}}}}});
-  document.getElementById('io-pipa-legend').innerHTML='<div class="leg-item"><div class="leg-sq" style="background:#f59e0b"></div>Outbound</div><div class="leg-item"><div class="leg-sq" style="background:#06b6d4"></div>Inbound</div>';
-  // Notif pipa
-  var notifP=document.getElementById('io-pipa-notif');
-  if(totalOutP>totalInP*1.15){notifP.style.display='block';notifP.textContent='⚠️ Outbound Pipa ('+fmt(totalOutP)+' kg) melebihi Inbound ('+fmt(totalInP)+' kg) — risiko kekosongan stok!';}
-  else {notifP.style.display='none';}
-  // FITTING chart: Bar + Line (Pareto style)
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
   buildChart('chart-io-fitting','bar',{
     labels:labels,
     datasets:[
-      {label:'Outbound Fitting',data:outFit,backgroundColor:'#8b5cf680',borderColor:'#8b5cf6',borderWidth:2,borderRadius:4,type:'bar',order:2},
-      {label:'Inbound Fitting',data:inFit,borderColor:'#10b981',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#10b981',tension:0.3,type:'line',fill:false,order:1}
+      {type:'bar',label:'Outbound Fitting',data:_ioTrend.map(function(r){return r.outFit;}),backgroundColor:mkGrad('#a78bfa'),borderColor:'#a78bfa',borderWidth:1.5,borderRadius:6,order:2,barPercentage:.6},
+      {type:'line',label:'Inbound Fitting',data:_ioTrend.map(function(r){return r.inFit;}),borderColor:'#22d3a5',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#22d3a5',pointBorderColor:'#04101f',tension:.35,fill:false,order:1}
     ]
   },{plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y)+' kg';}}}},
-    scales:{x:{grid:{display:false},ticks:{font:{size:8}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:8},callback:function(v){return fmt(v)+' kg';}}}}});
-  document.getElementById('io-fit-legend').innerHTML='<div class="leg-item"><div class="leg-sq" style="background:#8b5cf6"></div>Outbound (Bar)</div><div class="leg-item"><div class="leg-dot" style="background:#10b981;border-radius:50%"></div>Inbound (Garis)</div>';
-  var notifF=document.getElementById('io-fit-notif');
-  if(totalOutF>totalInF*1.15){notifF.style.display='block';notifF.textContent='⚠️ Outbound Fitting ('+fmt(totalOutF)+' kg) melebihi Inbound ('+fmt(totalInF)+' kg)!';}
-  else {notifF.style.display='none';}
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
 }
 
-// ================================================================
-//  RENDER — KANBAN
-// ================================================================
-function renderKanban(){
+/* ================================================================
+   RENDER — KANBAN GAUGES + TREND + KRITIS LIST
+================================================================ */
+function statusOf(pct){ return pct<70?'AMAN':pct<90?'WASPADA':'KRITIS'; }
+function animateGauge(prefix,pct,gradId,needleColor){
+  var cx=120, cy=125, r=98;
+  var sx=cx+r*Math.cos(Math.PI), sy=cy+r*Math.sin(Math.PI);
+  var ang=Math.PI+(pct/100)*Math.PI;
+  var ex=cx+r*Math.cos(ang), ey=cy+r*Math.sin(ang);
+  var d = pct<1 ? 'M '+sx+' '+sy+' A '+r+' '+r+' 0 0 1 '+(sx+0.01)+' '+sy
+                : 'M '+sx+' '+sy+' A '+r+' '+r+' 0 0 1 '+ex+' '+ey;
+  var arc=document.getElementById('gaugeArc'+prefix);
+  if(arc){ arc.setAttribute('d',d); arc.setAttribute('stroke','url(#'+gradId+')'); }
+  var needle=document.getElementById('needle'+prefix);
+  if(needle) needle.style.transform='rotate('+(-90+(pct/100)*180)+'deg)';
+  var dot=document.getElementById('needleDot'+prefix);
+  if(dot) dot.setAttribute('fill',needleColor);
+  setText('gaugePct'+prefix,pct+'%');
+}
+function renderGaugeBlock(prefix,items,maxCap,unit,capLabel){
+  var totalPakai=(items||[]).reduce(function(s,r){return s+(r.rakTerpakai||0);},0);
+  var sisa=Math.max(0,maxCap-totalPakai);
+  var pct=totalPakai>0?Math.min(100,Math.round(totalPakai/maxCap*100)):0;
+  var st=statusOf(pct);
+  var suf=prefix==='Pipa'?'P':'F';
+  var gradId=st==='AMAN'?'gGreen'+suf:st==='WASPADA'?'gAmber'+suf:'gRed'+suf;
+  var col=st==='AMAN'?'#22d3a5':st==='WASPADA'?'#ffb020':'#ff5470';
+  animateGauge(prefix,pct,gradId,col);
+  setText('gs-pakai-'+prefix.toLowerCase(),fmt(totalPakai));
+  setText('gs-sisa-'+prefix.toLowerCase(),fmt(sisa));
+  setText('gs-max-'+prefix.toLowerCase(),fmt(maxCap));
+  setText('gauge-'+prefix.toLowerCase()+'-cap',capLabel+': '+fmt(maxCap)+' '+unit);
+  var badge=document.getElementById('gauge-'+prefix.toLowerCase()+'-badge');
+  if(badge){ badge.textContent=st; badge.className='status-pill '+(st==='AMAN'?'aman':st==='WASPADA'?'waspada':'kritis'); }
+  return {totalPakai:totalPakai,sisa:sisa,pct:pct,status:st};
+}
+function renderKanbanGauges(){
   if(!_dataKanban) return;
-  // Pipa bars
-  var pipaCont=document.getElementById('kanban-pipa-bars');
-  var MAX_RAK=204;
-  if(_dataKanban.pipa&&_dataKanban.pipa.length){
-    var totalRak=_dataKanban.pipa.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
-    setText('rak-pipa-badge',fmtInt(totalRak)+'/'+MAX_RAK+' rak');
-    pipaCont.innerHTML=_dataKanban.pipa.slice(0,12).map(function(r){
-      var pct=MAX_RAK>0?Math.min(Math.round((r.rakTerpakai||0)/MAX_RAK*100),100):0;
-      var col=r.status&&r.status.indexOf('KRITIS')!==-1?'var(--red)':r.status&&r.status.indexOf('HAMPIR')!==-1?'var(--amber)':'var(--green)';
-      var cls=r.status&&r.status.indexOf('KRITIS')!==-1?'ks-kritis':r.status&&r.status.indexOf('HAMPIR')!==-1?'ks-hampir':'ks-aman';
-      var lbl=r.status&&r.status.indexOf('KRITIS')!==-1?'Kritis':r.status&&r.status.indexOf('HAMPIR')!==-1?'Hampir':'Aman';
-      return '<div class="kanban-item"><span class="kanban-lbl" title="'+escHtml(r.nama||'')+'">'+escHtml((r.nama||'').substring(0,12))+'</span>'+
-        '<div class="kanban-bar-bg"><div class="kanban-bar-fill" style="width:'+pct+'%;background:'+col+'"></div></div>'+
-        '<span class="kanban-val">'+fmtInt(r.rakTerpakai||0)+'</span>'+
-        '<span class="kanban-status '+cls+'">'+lbl+'</span></div>';
-    }).join('');
-  } else {
-    pipaCont.innerHTML='<div style="color:var(--txt3);font-size:10px;text-align:center;padding:20px 0;">Tidak ada data</div>';
-  }
-  // Fitting bars
-  var fitCont=document.getElementById('kanban-fit-bars');
-  var MAX_FIT=3511;
-  if(_dataKanban.fitting&&_dataKanban.fitting.length){
-    var totalFit=_dataKanban.fitting.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
-    setText('rak-fit-badge',fmtInt(totalFit)+' Box terpakai');
-    fitCont.innerHTML=_dataKanban.fitting.slice(0,12).map(function(r){
-      var pct=Math.min(Math.round((r.rakTerpakai||0)/(MAX_FIT/10)*100),100);
-      var col=r.status&&r.status.indexOf('KRITIS')!==-1?'var(--red)':r.status&&r.status.indexOf('HAMPIR')!==-1?'var(--amber)':'var(--cyan)';
-      var cls=r.status&&r.status.indexOf('KRITIS')!==-1?'ks-kritis':r.status&&r.status.indexOf('HAMPIR')!==-1?'ks-hampir':'ks-aman';
-      var lbl=r.status&&r.status.indexOf('KRITIS')!==-1?'Kritis':r.status&&r.status.indexOf('HAMPIR')!==-1?'Hampir':'Aman';
-      return '<div class="kanban-item"><span class="kanban-lbl" title="'+escHtml(r.nama||'')+'">'+escHtml((r.nama||'').substring(0,12))+'</span>'+
-        '<div class="kanban-bar-bg"><div class="kanban-bar-fill" style="width:'+pct+'%;background:'+col+'"></div></div>'+
-        '<span class="kanban-val">'+fmtInt(r.rakTerpakai||0)+'</span>'+
-        '<span class="kanban-status '+cls+'">'+lbl+'</span></div>';
-    }).join('');
-  } else {
-    fitCont.innerHTML='<div style="color:var(--txt3);font-size:10px;text-align:center;padding:20px 0;">Tidak ada data</div>';
-  }
-  // Tren kanban
-  var trendData=_dataKanban.trend||[];
-  var trendFit=_dataKanban.trendFitting||_dataKanban.trendFit||[];
-  var labels=[...new Set([...trendData.map(function(r){return r.label;}), ...trendFit.map(function(r){return r.label;})])].sort();
-  var pipaVals=labels.map(function(l){ var r=trendData.find(function(x){return x.label===l;}); return r?(r.pipa||r.rakTerpakai||r.value||0):0; });
-  var fitVals =labels.map(function(l){ var r=trendFit.find(function(x){return x.label===l;});  return r?(r.pipa||r.rakTerpakai||r.value||0):0; });
+  renderGaugeBlock('Pipa',_dataKanban.pipa||[],MAX_KANBAN_PIPA,'rak','Kapasitas Pipa PPR');
+  renderGaugeBlock('Fit',_dataKanban.fitting||[],MAX_KANBAN_FITTING,'box','Kapasitas Fitting PPR');
+  renderKanbanTrendChart();
+  renderKritisList();
+}
+function renderKanbanTrendChart(){
+  if(!_dataKanbanTrend) return;
+  var trendData=_dataKanbanTrend.trend||[], trendFit=_dataKanbanTrend.trendFitting||[];
+  var labSet={}; trendData.forEach(function(r){labSet[r.label]=1;}); trendFit.forEach(function(r){labSet[r.label]=1;});
+  var labels=Object.keys(labSet);
   buildChart('chart-kanban-trend','bar',{
     labels:labels,
     datasets:[
-      {label:'Pipa (Rak)',data:pipaVals,backgroundColor:'#8b5cf680',borderColor:'#8b5cf6',borderWidth:2,borderRadius:4},
-      {label:'Fitting (Box)',data:fitVals,backgroundColor:'#06b6d440',borderColor:'#06b6d4',borderWidth:2,borderRadius:4}
+      {label:'Pipa (Rak)',data:labels.map(function(l){var r=trendData.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#a78bfa'),borderColor:'#a78bfa',borderWidth:1.5,borderRadius:6,barPercentage:.6},
+      {label:'Fitting (Box)',data:labels.map(function(l){var r=trendFit.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#00d4ff'),borderColor:'#00d4ff',borderWidth:1.5,borderRadius:6,barPercentage:.6}
     ]
   },{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y);}}}},
-    scales:{x:{grid:{display:false},ticks:{font:{size:8}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:8}}}}});
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
+}
+function renderKritisList(){
+  var all=[].concat((_dataKanban&&_dataKanban.pipa)||[],(_dataKanban&&_dataKanban.fitting)||[]);
+  var kurang=all.filter(function(r){return r.status==='KURANG';}).sort(function(a,b){return (a.selisih||0)-(b.selisih||0);});
+  setText('kritis-badge',kurang.length);
+  var cont=document.getElementById('kritis-list');
+  if(!kurang.length){ cont.innerHTML='<div style="color:var(--txt3);font-size:10px;text-align:center;padding:14px 0;">✅ Tidak ada item KURANG</div>'; return; }
+  cont.innerHTML=kurang.slice(0,10).map(function(r){
+    return '<div class="kritis-row"><span class="kn" title="'+escHtml(r.nama||'')+'">'+escHtml(r.nama||r.kode||'')+'</span><span class="kv" style="color:var(--red)">'+fmt(r.selisih||0)+'</span></div>';
+  }).join('');
 }
 
-// ================================================================
-//  RENDER — REKAP MUATAN
-// ================================================================
+/* ================================================================
+   RENDER — REKAP MUATAN PER PIC
+================================================================ */
 function renderRekap(){
   if(!_dataRekap||!_dataRekap.pics) return;
   setText('rekap-badge',_dataRekap.periodeLabel||'—');
@@ -1096,7 +1215,7 @@ function renderRekap(){
   picRow.innerHTML='';
   PIC_LIST.forEach(function(pic){
     var info=pics[pic]||{pipa:0,fitting:0};
-    var col=PIC_COLORS[pic], bg=PIC_BG[pic];
+    var col=PIC_COLORS[pic];
     var hp=HAS_PIPA[pic], hf=HAS_FITTING[pic];
     var tp=TARGET_PIPA[pic], tf=TARGET_FITTING[pic];
     var pctP=hp&&tp>0?Math.min(Math.round(info.pipa/tp*100),999):null;
@@ -1106,30 +1225,26 @@ function renderRekap(){
     var statsHtml='';
     if(hp){
       statsHtml+='<div class="pic-stat"><span class="pic-stat-lbl">Pipa (kg)</span><span class="pic-stat-val" style="color:'+col+'">'+fmt(info.pipa)+'</span></div>'+
-        '<div class="pic-bar-bg"><div class="pic-bar-fill" id="pb-pipa-'+pic+'" style="width:0%;background:'+col+'"></div></div>'+
+        '<div class="pic-bar-bg"><div class="pic-bar-fill" id="pb-pipa-'+pic+'" style="width:0%;background:'+col+';color:'+col+'"></div></div>'+
         '<div class="pic-pct">'+fmt(tp)+' kg | '+pctP+'%</div>';
     }
     if(hf){
-      statsHtml+='<div class="pic-stat" style="margin-top:4px;"><span class="pic-stat-lbl">Fitting (Bx)</span><span class="pic-stat-val" style="color:'+col+'80">'+fmtInt(info.fitting)+'</span></div>'+
-        '<div class="pic-bar-bg"><div class="pic-bar-fill" id="pb-fit-'+pic+'" style="width:0%;background:'+col+'60"></div></div>'+
+      statsHtml+='<div class="pic-stat" style="margin-top:4px;"><span class="pic-stat-lbl">Fitting (Bx)</span><span class="pic-stat-val" style="color:'+col+'">'+fmtInt(info.fitting)+'</span></div>'+
+        '<div class="pic-bar-bg"><div class="pic-bar-fill" id="pb-fit-'+pic+'" style="width:0%;background:'+col+';color:'+col+'"></div></div>'+
         '<div class="pic-pct">'+fmtInt(tf)+' Bx | '+pctF+'%</div>';
     }
     card.innerHTML=
       '<div class="pic-mini-head">'+
         '<div class="pic-av" style="background:'+col+';">'+PIC_INIT[pic]+'</div>'+
-        '<div><div class="pic-name" style="color:'+col+'">'+pic+'</div>'+
-          '<div class="pic-role">'+(pic==='WANG'?'Fitting':'Persiapan')+'</div>'+
-        '</div>'+
+        '<div><div class="pic-name" style="color:'+col+'">'+pic+'</div><div class="pic-role">'+(pic==='WANG'?'Fitting':'Persiapan')+'</div></div>'+
       '</div>'+statsHtml;
     picRow.appendChild(card);
     setTimeout(function(){
       if(pctP!==null){var b=document.getElementById('pb-pipa-'+pic);if(b)b.style.width=Math.min(pctP,100)+'%';}
       if(pctF!==null){var b2=document.getElementById('pb-fit-'+pic);if(b2)b2.style.width=Math.min(pctF,100)+'%';}
-    },200);
+    },150);
   });
-  // Global target
-  var totPipa=_dataRekap.totalPipa||0;
-  var totFit=_dataRekap.totalFitting||0;
+  var totPipa=_dataRekap.totalPipa||0, totFit=_dataRekap.totalFitting||0;
   var tgtP=PIC_LIST.reduce(function(a,p){return a+(TARGET_PIPA[p]||0);},0);
   var tgtF=PIC_LIST.reduce(function(a,p){return a+(TARGET_FITTING[p]||0);},0);
   var gPP=tgtP>0?Math.min(Math.round(totPipa/tgtP*100),100):0;
@@ -1137,74 +1252,199 @@ function renderRekap(){
   setTimeout(function(){
     var bp=document.getElementById('gt-pipa-bar'); if(bp) bp.style.width=gPP+'%';
     var bf=document.getElementById('gt-fit-bar');  if(bf) bf.style.width=gPF+'%';
-  },300);
+  },200);
   setText('gt-pipa-actual',fmt(totPipa)+' kg'); setText('gt-pipa-target',fmt(tgtP)+' kg'); setText('gt-pipa-pct',gPP+'%');
   setText('gt-fit-actual',fmtInt(totFit)+' Bx'); setText('gt-fit-target',fmtInt(tgtF)+' Bx'); setText('gt-fit-pct',gPF+'%');
 }
 
-// ================================================================
-//  RENDER — LOADING TIME
-// ================================================================
+/* ================================================================
+   RENDER — LOADING TIME (computed from raw records — backend does
+   not pre-aggregate, so we derive total/selesai/batal/avg/distribusi
+   from monthRows client-side)
+================================================================ */
+function timeToMin(s){ if(!s) return null; var p=String(s).split(':'); if(p.length<2) return null; var h=parseInt(p[0],10), m=parseInt(p[1],10); if(isNaN(h)||isNaN(m)) return null; return h*60+m; }
+function computeLTStats(d){
+  var rows=(d&&d.monthRows)||[];
+  var total=rows.length, batal=0, selesai=0, durs=[];
+  rows.forEach(function(r){
+    if(r.isCancelled){ batal++; return; }
+    if(r.waktuMulai && r.waktuSelesai){
+      selesai++;
+      var a=timeToMin(r.waktuMulai), b=timeToMin(r.waktuSelesai);
+      if(a!==null&&b!==null){ var diff=b-a; if(diff<0) diff+=1440; if(diff>=0&&diff<720) durs.push(diff); }
+    }
+  });
+  var avgMin = durs.length ? Math.round(durs.reduce(function(a,b){return a+b;},0)/durs.length) : 0;
+  var dist=[0,0,0,0,0]; // <30 / 30-60 / 60-120 / 120-180 / >180
+  durs.forEach(function(m){
+    if(m<30) dist[0]++; else if(m<60) dist[1]++; else if(m<120) dist[2]++; else if(m<180) dist[3]++; else dist[4]++;
+  });
+  return {total:total,selesai:selesai,batal:batal,avgMin:avgMin,dist:dist};
+}
 function renderLT(){
   if(!_dataLT) return;
-  var b=_dataLT.bulan||{};
-  setText('lt-total',b.total||'—');
-  setText('lt-selesai',b.selesai||'—');
-  setText('lt-batal',b.batalKirim||'0');
-  setText('kpi-loading-avg',b.avgMin?fmtMin(b.avgMin):'—');
-  // Trend 7 hari
+  var s=computeLTStats(_dataLT);
+  setText('lt-total',s.total); setText('lt-selesai',s.selesai); setText('lt-batal',s.batal);
+  renderLTCharts();
+}
+function renderLTCharts(){
+  if(!_dataLT) return;
   var t7=_dataLT.trend7||[];
   buildChart('chart-lt-trend','line',{
     labels:t7.map(function(r){return r.label||'';}),
     datasets:[{label:'Total SPM',data:t7.map(function(r){return r.total||0;}),
-      borderColor:'#ef4444',borderWidth:2,pointRadius:4,pointBackgroundColor:'#ef4444',
-      backgroundColor:'#ef444420',fill:true,tension:0.35}]
+      borderColor:'#ff5470',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#ff5470',pointBorderColor:'#04101f',
+      backgroundColor:mkGradV('#ff5470'),fill:true,tension:.35}]
   },{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.y+' SPM';}}}},
-    scales:{x:{grid:{display:false},ticks:{font:{size:8}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:8}}}}});
-  // Distribusi durasi - dari data tersedia
-  var distData=[
-    {label:'< 30 mnt',val:0,color:'#10b981'},
-    {label:'30-60 mnt',val:0,color:'#3b82f6'},
-    {label:'1-2 jam',val:0,color:'#f59e0b'},
-    {label:'2-3 jam',val:0,color:'#f97316'},
-    {label:'> 3 jam',val:0,color:'#ef4444'}
-  ];
-  if(_dataLT.durDist) _dataLT.durDist.forEach(function(d,i){if(distData[i])distData[i].val=d.count||0;});
+    scales:{x:{grid:{display:false}},y:{ticks:{stepSize:1}}}});
+  var s=computeLTStats(_dataLT);
+  var distLabels=['< 30 mnt','30-60 mnt','1-2 jam','2-3 jam','> 3 jam'];
+  var distColors=['#22d3a5','#3b9dff','#ffb020','#ff8a4c','#ff5470'];
   buildChart('chart-lt-dist','doughnut',{
-    labels:distData.map(function(d){return d.label;}),
-    datasets:[{data:distData.map(function(d){return d.val||1;}),backgroundColor:distData.map(function(d){return d.color;}),borderWidth:2,borderColor:'#fff'}]
-  },{plugins:{legend:{position:'right',labels:{font:{size:9},padding:8}},tooltip:{callbacks:{label:function(c){return ' '+c.label+': '+c.parsed+' kiriman';}}}},cutout:'60%'});
+    labels:distLabels,
+    datasets:[{data:s.dist,backgroundColor:distColors,borderWidth:2,borderColor:isDarkTheme()?'#0c1526':'#fff',hoverOffset:8}]
+  },{plugins:{legend:{position:'right',labels:{padding:9,boxWidth:9,boxHeight:9}},tooltip:{callbacks:{label:function(c){return ' '+c.label+': '+c.parsed+' kiriman';}}}},cutout:'62%'});
 }
 
-// ================================================================
-//  CHART BUILDER
-// ================================================================
-function buildChart(id, type, data, options){
+/* ================================================================
+   CHART BUILDER — dark "control tower" theme, gradient 3D fills,
+   drop-shadow plugin for elevated bars/lines.
+================================================================ */
+function isDarkTheme(){ return document.documentElement.getAttribute('data-theme')!=='light'; }
+function mkGrad(hex){
+  return function(context){
+    var chart=context.chart; var area=chart.chartArea;
+    if(!area) return hex+'55';
+    var g=chart.ctx.createLinearGradient(0,area.bottom,0,area.top);
+    g.addColorStop(0,hexA(hex,.08)); g.addColorStop(1,hexA(hex,.85));
+    return g;
+  };
+}
+function mkGradV(hex){
+  return function(context){
+    var chart=context.chart; var area=chart.chartArea;
+    if(!area) return hex+'33';
+    var g=chart.ctx.createLinearGradient(0,area.top,0,area.bottom);
+    g.addColorStop(0,hexA(hex,.35)); g.addColorStop(1,hexA(hex,0));
+    return g;
+  };
+}
+function hexA(hex,a){
+  var r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+var shadow3dPlugin={
+  id:'shadow3d',
+  beforeDatasetsDraw:function(chart){
+    var ctx=chart.ctx; ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.35)'; ctx.shadowBlur=8; ctx.shadowOffsetY=4;
+  },
+  afterDatasetsDraw:function(chart){ chart.ctx.restore(); }
+};
+Chart.register(shadow3dPlugin);
+
+function buildChart(id,type,data,options){
   var el=document.getElementById(id); if(!el) return;
   if(charts[id]) charts[id].destroy();
-  var isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  var dark=isDarkTheme();
+  var gridCol = dark?'rgba(147,164,196,.08)':'rgba(20,30,60,.06)';
+  var tickCol = dark?'#93a4c4':'#5a6785';
   var defaultOpts={
-    responsive:true, maintainAspectRatio:false, animation:{duration:700},
+    responsive:true, maintainAspectRatio:false, animation:{duration:750,easing:'easeOutQuart'},
     plugins:{
-      legend:{labels:{font:{size:9},color:isDark?'#9aa3c8':'#5a637a'}},
-      tooltip:{backgroundColor:isDark?'#1a1f2e':'#fff',borderColor:isDark?'#2a3048':'#e4e7f0',
-        borderWidth:1,titleColor:isDark?'#e8eaf6':'#1a1f36',bodyColor:isDark?'#9aa3c8':'#5a637a',padding:10}
+      legend:{labels:{font:{size:9.5,family:'Inter'},color:tickCol,usePointStyle:true,pointStyle:'circle'}},
+      tooltip:{backgroundColor:dark?'#101a30':'#fff',borderColor:dark?'rgba(120,160,220,.25)':'#e4e7f0',
+        borderWidth:1,titleColor:dark?'#eaf1fb':'#101a30',bodyColor:dark?'#93a4c4':'#5a6785',padding:10,
+        titleFont:{family:'Outfit',weight:'700'},bodyFont:{family:'Inter'},cornerRadius:8,displayColors:true}
     },
     scales:(type==='bar'||type==='line')?{
-      x:{grid:{color:isDark?'rgba(255,255,255,.04)':'rgba(0,0,0,.04)'},
-         ticks:{color:isDark?'#9aa3c8':'#5a637a',font:{size:8}}},
-      y:{grid:{color:isDark?'rgba(255,255,255,.04)':'rgba(0,0,0,.05)'},
-         ticks:{color:isDark?'#9aa3c8':'#5a637a',font:{size:8}}}
+      x:{grid:{display:false},border:{color:gridCol},ticks:{color:tickCol,font:{size:9}}},
+      y:{grid:{color:gridCol},border:{display:false},ticks:{color:tickCol,font:{size:9}}}
     }:{}
   };
-  // Deep merge
   function merge(a,b){var o=Object.assign({},a);Object.keys(b||{}).forEach(function(k){o[k]=a[k]&&typeof a[k]==='object'&&!Array.isArray(a[k])&&b[k]&&typeof b[k]==='object'?merge(a[k],b[k]):b[k];});return o;}
   charts[id]=new Chart(el.getContext('2d'),{type:type,data:data,options:merge(defaultOpts,options||{})});
 }
 
-// ================================================================
-//  UTILS
-// ================================================================
+/* ================================================================
+   DEMO DATA (used when previewed outside Google Apps Script)
+================================================================ */
+function demoStock(){
+  return{success:true,stock:{globalTonase:401461,tonase:{pipaGreen:282530.65,pipaGrey:7033.37,fittingGreen:70287.08,fittingGrey:24748.89,total:384600},
+    stok:{pipaGreen:158401,pipaGrey:231,fittingGreen:920085,fittingGrey:203649,total:1282366}}};
+}
+function demoIO(kind){
+  var pipa=Math.round(38000+Math.random()*22000), fitting=Math.round(9000+Math.random()*8000);
+  var trend=[]; for(var i=0;i<6;i++) trend.push({label:'D'+(i+1),pipa:Math.round(pipa/6),fitting:Math.round(fitting/6)});
+  return{success:true,total:pipa+fitting,pipa:pipa,fitting:fitting,trend:trend};
+}
+function demoStockTrend(months){
+  var base=340000;
+  return months.map(function(m,i){
+    var total=base+i*8000+Math.round(Math.random()*15000);
+    var pipa=Math.round(total*.76), fitting=total-pipa;
+    return {label:m.label,pipa:pipa,fitting:fitting,total:total};
+  });
+}
+function demoIOTrend(months){
+  return months.map(function(m){
+    return {label:m.label,
+      outPipa:Math.round(35000+Math.random()*25000), inPipa:Math.round(30000+Math.random()*25000),
+      outFit:Math.round(8000+Math.random()*9000),  inFit:Math.round(7000+Math.random()*9000)};
+  });
+}
+function demoKanbanToday(){
+  // Snapshot HARI INI — total rak/box harus proporsional terhadap kapasitas maksimum
+  // (204 rak Pipa, 23.748 box Fitting), meniru data real per item.
+  var pipa=[], fitting=[];
+  var namesP=['Pipa 20mm PN10','Pipa 25mm PN10','Pipa 32mm PN10','Pipa 40mm PN10','Pipa 50mm PN10','Pipa 63mm PN10','Pipa 75mm PN10','Pipa 90mm PN10','Pipa 110mm PN10','Pipa 125mm PN10'];
+  var namesF=['Elbow 90° 20mm','Tee 25mm Equal','Coupling 32mm','Reducer 40x25mm','Elbow 45° 50mm','Cap End 63mm','Flange Adaptor 75mm','Socket 20mm','Union 25mm','Ball Valve 32mm'];
+  var remainP=182;
+  namesP.forEach(function(n,i){
+    var isLast=i===namesP.length-1;
+    var rak=isLast?remainP:Math.max(1,Math.round(remainP/(namesP.length-i)*(0.6+Math.random()*0.8)));
+    rak=Math.min(rak,remainP); remainP-=rak;
+    pipa.push({kode:'PP'+(100+i),nama:n,stok:rak*40,rakTerpakai:rak,selisih:Math.round(rak*0.15),status:Math.random()>.85?'KURANG':'CUKUP'});
+  });
+  var remainF=16318;
+  namesF.forEach(function(n,i){
+    var isLast=i===namesF.length-1;
+    var box=isLast?remainF:Math.max(10,Math.round(remainF/(namesF.length-i)*(0.6+Math.random()*0.8)));
+    box=Math.min(box,remainF); remainF-=box;
+    fitting.push({kode:'FT'+(200+i),nama:n,stok:box*5,rakTerpakai:box,selisih:Math.round(box*0.15),status:Math.random()>.85?'KURANG':'CUKUP'});
+  });
+  return{success:true,pipa:pipa,fitting:fitting};
+}
+function demoKanbanTrend(){
+  var trend=[],trendFitting=[];
+  ['Feb 26','Mar 26','Apr 26','Mei 26','Jun 26','Jul 26'].forEach(function(m,i){
+    trend.push({label:m,rakTerpakai:Math.round(150+i*5+Math.random()*15)});
+    trendFitting.push({label:m,rakTerpakai:Math.round(13500+i*350+Math.random()*1200)});
+  });
+  return{success:true,trend:trend,trendFitting:trendFitting};
+}
+function demoRekap(p){
+  return{success:true,periodeLabel:BNAMES3[parseInt(p.bulan||7,10)-1]+' '+p.tahun,
+    totalPipa:51936,totalFitting:5394,
+    pics:{DONI:{pipa:21911,fitting:2978},IMAN:{pipa:21911,fitting:753},SAEPUL:{pipa:6818,fitting:0},SULIS:{pipa:1295,fitting:0},WANG:{pipa:0,fitting:1338}}};
+}
+function demoLT(){
+  var rows=[]; var now=new Date();
+  for(var i=0;i<70;i++){
+    var cancelled=Math.random()<0.06;
+    var mulaiH=7+Math.floor(Math.random()*10), mulaiM=Math.floor(Math.random()*60);
+    var durMin=20+Math.floor(Math.random()*200);
+    var endTot=mulaiH*60+mulaiM+durMin;
+    rows.push({isCancelled:cancelled,waktuMulai:!cancelled?p2(mulaiH)+':'+p2(mulaiM):'',waktuSelesai:!cancelled?p2(Math.floor(endTot/60)%24)+':'+p2(endTot%60):''});
+  }
+  var trend7=[]; var days=['10 Jul','11 Jul','12 Jul','13 Jul','14 Jul','15 Jul','16 Jul'];
+  days.forEach(function(d){ trend7.push({label:d,total:Math.round(Math.random()*7)}); });
+  return {success:true,monthRows:rows,trend7:trend7};
+}
+
+/* ================================================================
+   UTILS
+================================================================ */
 function setText(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
 function fmt(n){return Number(n||0).toLocaleString('id-ID',{maximumFractionDigits:2});}
 function fmtInt(n){return Math.round(Number(n||0)).toLocaleString('id-ID');}
@@ -1213,8 +1453,9 @@ function p2(n){return n<10?'0'+n:String(n);}
 function todayStr(){var n=new Date();return n.getFullYear()+'-'+p2(n.getMonth()+1)+'-'+p2(n.getDate());}
 function escHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function showLoading(v,msg){
-  document.getElementById('loading-overlay').style.display=v?'flex':'none';
-  if(msg) setText('loading-txt',msg||'Memuat...');
+  var ov=document.getElementById('loading-overlay');
+  ov.style.display=v?'flex':'none';
+  if(msg) setText('loading-txt',msg);
 }
 </script>
 </body>
