@@ -131,7 +131,18 @@
 
   global.google = global.google || {};
   global.google.script = global.google.script || {};
-  global.google.script.run = makeRunner();
+
+  // PENTING: "run" didefinisikan sebagai GETTER, bukan objek statis.
+  // Setiap kali kode menulis "google.script.run", getter ini dipanggil
+  // dan membuat runner (successCb/failureCb) BARU yang terisolasi.
+  // Ini meniru perilaku asli Apps Script, dan memperbaiki bug di mana
+  // beberapa pemanggilan paralel (mis. wh_control_tower.html yang
+  // memanggil 5 fungsi backend sekaligus) saling menimpa
+  // successHandler satu sama lain kalau runner-nya dipakai bersama.
+  Object.defineProperty(global.google.script, 'run', {
+    get: function () { return makeRunner(); },
+    configurable: true
+  });
 
   // Dipanggil dari tombol Refresh supaya ambil data baru, bukan cache
   global.clearApiCache = function () {
