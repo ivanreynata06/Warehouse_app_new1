@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js"></script>
-<script src="./assets/js/api-shim.js"></script>
-<script src="./assets/js/sw-register.js"></script>
+<script src="./assets/js/config.js?v=20260718c"></script>
+<script src="./assets/js/api-shim.js?v=20260718c"></script>
+<script src="./assets/js/sw-register.js?v=20260718c"></script>
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -812,8 +812,10 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
     </div>
     <div class="sidebar-divider"></div>
     <div class="sec-title">Menu Utama</div>
+    <div class="mitem" onclick="goTo('wh_control_tower')"><i data-lucide="layout-dashboard" style="width:12px;flex-shrink:0;"></i><span>Dashboard WH Import</span></div>
     <div class="mitem" onclick="goTo('index')"><i data-lucide="layout-dashboard" style="width:12px;flex-shrink:0;"></i><span>Monitoring Stock, Inbound &amp; Outbound</span></div>
     <div class="mitem" onclick="goTo('kanban')"><i data-lucide="layout-grid" style="width:12px;flex-shrink:0;"></i><span>Monitoring Kanban</span></div>
+    <div class="mitem" onclick="goTo('rekap')"><i data-lucide="truck" style="width:12px;flex-shrink:0;"></i><span>Rekap Muatan</span></div>
     <div class="mitem active"><i data-lucide="timer" style="width:12px;flex-shrink:0;"></i><span>Loading Time</span></div>
     <div class="sidebar-divider"></div>
     <div class="sec-title">Filter Periode</div>

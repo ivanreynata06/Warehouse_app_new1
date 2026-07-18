@@ -71,6 +71,23 @@ Situs akan aktif di `https://USERNAME.github.io/NAMA-REPO/`.
 Buka `index.html` lewat URL itu (bukan `file://`), supaya `fetch()`
 bisa jalan normal.
 
+## Kenapa kadang harus hard refresh sebelum ini?
+
+GitHub Pages nge-*cache* file JS di browser pengunjung (cache HTTP
+biasa, bukan Service Worker — itu sudah dihapus). Supaya update ke
+`assets/js/config.js` / `api-shim.js` / `sw-register.js` **langsung**
+kepakai tanpa perlu siapa pun hard refresh manual, tiap `<script src="...">`
+ke 3 file itu (di 5 halaman HTML) diberi query version, contoh:
+
+```html
+<script src="./assets/js/api-shim.js?v=20260718c"></script>
+```
+
+**Setiap kali kamu (atau saya) mengubah isi salah satu dari 3 file
+itu, naikkan angka `v=...` di SEMUA 5 file HTML** (cari-ganti biasa),
+supaya browser pengunjung otomatis mengambil versi baru — bukan
+versi lama yang nyangkut di cache mereka.
+
 ## Kenapa navigasi menu sekarang tidak lagi ke situs Apps Script?
 
 Sebelumnya tombol menu (`navTo('kanban')`, dst.) selalu redirect ke

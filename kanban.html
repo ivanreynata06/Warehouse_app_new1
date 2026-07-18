@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js"></script>
-<script src="./assets/js/api-shim.js"></script>
-<script src="./assets/js/sw-register.js"></script>
+<script src="./assets/js/config.js?v=20260718c"></script>
+<script src="./assets/js/api-shim.js?v=20260718c"></script>
+<script src="./assets/js/sw-register.js?v=20260718c"></script>
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -640,7 +640,7 @@
   <div class="mitem" onclick="navTo('wh_control_tower')"><i data-lucide="layout-dashboard" style="width:13px;"></i><span>Dashboard WH Import</span></div>
   <div class="mitem" onclick="navTo('index')"><i data-lucide="layout-dashboard" style="width:13px;"></i><span>Monitoring Stock, Inbound &amp; Outbound</span></div>
   <div class="mitem active"><i data-lucide="layout-grid" style="width:13px;"></i><span>Monitoring Kanban</span></div>
-  <div class="mitem"><i data-lucide="truck" style="width:13px;"></i><span>Rekap Muatan</span></div>
+  <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:13px;"></i><span>Rekap Muatan</span></div>
   <div class="mitem"><i data-lucide="clipboard-list" style="width:13px;"></i><span>Stock Opname</span></div>
   <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:13px;"></i><span>Loading Time Pengiriman</span></div>
 </div>

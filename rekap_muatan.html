@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js"></script>
-<script src="./assets/js/api-shim.js"></script>
-<script src="./assets/js/sw-register.js"></script>
+<script src="./assets/js/config.js?v=20260718c"></script>
+<script src="./assets/js/api-shim.js?v=20260718c"></script>
+<script src="./assets/js/sw-register.js?v=20260718c"></script>
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -203,6 +203,10 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
     <div><div class="logo-text">PPR Stock</div><div class="logo-sub">Tonase Persiapan</div></div>
   </div>
   <div class="sec-title">Menu</div>
+  <div class="mitem" onclick="navTo('wh_control_tower')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="4"/><rect x="10" y="3" width="12" height="4"/><rect x="2" y="10" width="12" height="4"/><rect x="16" y="10" width="6" height="4"/><rect x="2" y="17" width="6" height="4"/><rect x="10" y="17" width="12" height="4"/></svg>
+    <span>Dashboard WH Import</span>
+  </div>
   <div class="mitem" onclick="navTo('index')">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
     <span>Monitoring Stock</span>
