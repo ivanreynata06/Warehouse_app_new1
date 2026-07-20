@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
+<script src="./assets/js/config.js?v=20260720c"></script>
+<script src="./assets/js/api-shim.js?v=20260720c"></script>
+<script src="./assets/js/sw-register.js?v=20260720c"></script>
+<!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Pipa & Fitting PPR</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg-main:#0f0f1a; --bg-sidebar:#161622; --bg-card:#1c1c2a;
+      --text-main:#e8eaf0; --text-muted:#9da3b8;
+      --accent-green:#10b981; --accent-red:#ef4444;
+      --border-color:#2c2c42; --ppr-green:#22c55e; --ppr-grey:#8b93a8;
+      --sidebar-w:200px;
+      --font-scale:1;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+    /* ============================================================
+       FIX #1 ? Fullscreen responsif: gunakan vh/vw + clamp font
+       ============================================================ */
+    html,body{
+      height:100%; width:100%; overflow:hidden;
+      font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+      background:var(--bg-main); color:var(--text-main);
+      font-size:calc(clamp(11px,1.1vw,13px) * var(--font-scale,1));
+    }
+
+    .app-shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
+
+    /* SIDEBAR */
+    .sidebar{
+      width:var(--sidebar-w);min-width:var(--sidebar-w);
+      background:var(--bg-sidebar);padding:12px 10px;
+      display:flex;flex-direction:column;gap:8px;
+      border-right:1px solid var(--border-color);flex-shrink:0;
+      transition:width .25s ease,min-width .25s ease,padding .25s ease;overflow:hidden;
+    }
+    body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
+    .logo{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;}
+    .logo-icon{background:var(--ppr-green);width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .sidebar-header{display:flex;align-items:center;justify-content:space-between;}
+    .btn-tog{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;}
+    .btn-tog:hover{background:rgba(255,255,255,.06);color:var(--text-main);}
+    .sec-title{color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:4px 4px 2px;white-space:nowrap;}
+    .mitem{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s;}
+    .mitem.active{background:rgba(22,163,74,.15);color:var(--ppr-green);font-weight:600;}
+    .mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--text-main);}
+
+    /* MAIN */
+    .main-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+    /* NAVBAR */
+    .navbar{height:48px;background:var(--bg-sidebar);display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border-color);flex-shrink:0;}
+    .nav-left{display:flex;align-items:center;gap:8px;}
+    .btn-menu{background:none;border:1px solid var(--border-color);color:var(--text-main);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;}
+    .search-bar{position:relative;}
+    .search-bar input{width:180px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;padding:5px 8px 5px 28px;color:white;outline:none;font-size:11px;}
+    .search-bar .si{position:absolute;left:7px;top:50%;transform:translateY(-50%);color:var(--text-muted);}
+    .nav-right{display:flex;align-items:center;gap:10px;}
+    .nav-icon{background:none;border:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;}
+    .avatar{width:28px;height:28px;border-radius:50%;background:var(--ppr-green);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;}
+
+    /* ============================================================
+       FILTER BAR ? Stock (tanggal+group)
+       ============================================================ */
+    .filter-bar{
+      background:var(--bg-sidebar);border-bottom:1px solid var(--border-color);
+      padding:5px 14px;display:flex;align-items:center;gap:7px;
+      flex-wrap:nowrap;flex-shrink:0;overflow-x:auto;
+    }
+    .filter-bar::-webkit-scrollbar{height:3px;}
+    .filter-bar::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
+    .flabel{font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:3px;white-space:nowrap;}
+    .fmode-group{display:flex;background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;overflow:hidden;}
+    .fmode-btn{background:none;border:none;color:var(--text-muted);padding:4px 10px;font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;}
+    .fmode-btn.active{background:var(--ppr-green);color:white;font-weight:600;}
+    .fmode-btn:not(.active):hover{background:rgba(255,255,255,.05);color:var(--text-main);}
+    .fsec{display:flex;align-items:center;gap:5px;}
+    .fsec.hidden{display:none;}
+    .fsel,.finput{
+      background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;
+      color:var(--text-main);padding:4px 20px 4px 7px;font-size:10px;
+      outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
+    }
+    .finput[type="date"]{color-scheme:dark;padding-right:7px;}
+    .fsel:focus,.finput:focus{border-color:var(--ppr-green);}
+    .fsel-wrap{position:relative;}
+    .fsel-wrap::after{content:'';position:absolute;right:6px;top:50%;transform:translateY(-50%);border:3px solid transparent;border-top-color:var(--text-muted);pointer-events:none;}
+    .fdiv{width:1px;height:16px;background:var(--border-color);flex-shrink:0;}
+    .btn-apply{background:var(--ppr-green);color:white;border:none;border-radius:6px;padding:4px 11px;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:3px;white-space:nowrap;}
+    .btn-apply:hover{background:#15803d;}
+    .btn-reset{background:none;color:var(--text-muted);border:1px solid var(--border-color);border-radius:6px;padding:4px 9px;font-size:10px;cursor:pointer;white-space:nowrap;}
+    .fbadge{display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,.12);color:var(--ppr-green);border:1px solid rgba(22,163,74,.3);border-radius:20px;padding:2px 8px;font-size:10px;white-space:nowrap;}
+    .fbadge-x{cursor:pointer;font-size:13px;opacity:.7;}
+    .fbadge-x:hover{opacity:1;}
+
+    /* ============================================================
+       FIX #3 & #5 ? Group sebagai DROPDOWN bukan pill
+       ============================================================ */
+    .group-filter-wrap{display:flex;align-items:center;gap:8px;}
+    .group-label{font-size:10px;color:var(--text-muted);white-space:nowrap;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+    /* Dropdown group ? styled sama dengan fsel */
+    #sel-group{
+      background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;
+      color:var(--text-main);padding:4px 26px 4px 8px;font-size:11px;
+      outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
+      min-width:120px;max-width:200px;
+    }
+    #sel-group:focus{border-color:var(--ppr-green);}
+    .group-dd-wrap{position:relative;}
+    .group-dd-wrap::after{content:'';position:absolute;right:8px;top:50%;transform:translateY(-50%);border:3px solid transparent;border-top-color:var(--text-muted);pointer-events:none;}
+
+    /* ============================================================
+       IO Filter - compact 2-row layout
+       ============================================================ */
+    .io-filter{display:flex;flex-direction:column;gap:3px;margin-top:5px;padding:5px 7px;background:rgba(255,255,255,.03);border-radius:6px;border:1px solid var(--border-color);}
+    .io-filter-row1{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0;}
+    .io-filter-row2{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0;}
+    .io-filter-label{font-size:9px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;}
+    .io-fsel,.io-finput{
+      background:var(--bg-main);border:1px solid var(--border-color);border-radius:5px;
+      color:var(--text-main);padding:3px 4px 3px 5px;font-size:9px;
+      outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
+    }
+    .io-finput[type="date"]{color-scheme:dark;min-width:88px;max-width:100px;}
+    .io-fsel-wrap{position:relative;}
+    .io-fsel-wrap::after{content:'';position:absolute;right:5px;top:50%;transform:translateY(-50%);border:2px solid transparent;border-top-color:var(--text-muted);pointer-events:none;}
+    .io-fsel:focus,.io-finput:focus{border-color:var(--ppr-green);}
+    .io-btn-group{display:flex;gap:3px;margin-left:auto;flex-shrink:0;}
+    .btn-io-apply{background:var(--ppr-green);color:white;border:none;border-radius:5px;padding:3px 8px;font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;}
+    .btn-io-apply:hover{background:#15803d;}
+    .btn-io-reset{background:rgba(255,255,255,.06);color:var(--text-muted);border:1px solid var(--border-color);border-radius:5px;padding:3px 8px;font-size:9px;cursor:pointer;white-space:nowrap;}
+    .btn-io-reset:hover{background:rgba(255,255,255,.1);color:var(--text-main);}
+    .io-fsec{display:flex;align-items:center;gap:3px;}
+    .io-fsec.hidden{display:none;}
+    .io-badge{display:inline-flex;align-items:center;background:rgba(22,163,74,.1);color:var(--ppr-green);border:1px solid rgba(22,163,74,.25);border-radius:10px;padding:1px 6px;font-size:9px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;margin-left:auto;}
+
+    /* ============================================================
+       LOADING ? Logo Rucika dengan animasi gelombang air
+       ============================================================ */
+    .loading-overlay{position:fixed;inset:0;background:rgba(18,18,28,.85);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+    .loading-overlay.show{display:flex;}
+
+    .rucika-logo-wrap{
+      position:relative;
+      width:200px;height:90px;
+      border-radius:45px;
+      background:linear-gradient(135deg,#1e5fae 0%,#2563eb 50%,#1e5fae 100%);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      overflow:hidden;
+      box-shadow:0 8px 30px rgba(37,99,235,.4);
+      animation:logoFloat 2.4s ease-in-out infinite;
+    }
+    @keyframes logoFloat{
+      0%,100%{transform:translateY(0);}
+      50%{transform:translateY(-6px);}
+    }
+    .rucika-text{
+      font-family:'Segoe UI',Tahoma,sans-serif;
+      font-weight:800;font-size:24px;letter-spacing:1px;
+      color:#fff;z-index:2;
+      text-shadow:0 2px 6px rgba(0,0,0,.25);
+    }
+    .rucika-tagline{
+      font-family:'Brush Script MT',cursive,'Segoe UI',sans-serif;
+      font-style:italic;font-size:9px;color:#cfe8ff;
+      z-index:2;margin-top:1px;letter-spacing:.3px;
+    }
+    /* Gelombang air animasi di bagian bawah logo */
+    .wave-container{
+      position:absolute;left:0;right:0;bottom:0;height:26px;
+      overflow:hidden;z-index:1;
+    }
+    .wave{
+      position:absolute;bottom:0;left:0;
+      width:200%;height:100%;
+      background-repeat:repeat-x;
+      background-size:50% 100%;
+    }
+    .wave1{
+      background-image:radial-gradient(circle at 25px -5px,transparent 20px,#5ab4f0 21px);
+      background-size:50px 30px;
+      opacity:.55;
+      animation:waveMove 3.2s linear infinite;
+    }
+    .wave2{
+      background-image:radial-gradient(circle at 25px 0px,transparent 18px,#7cc8f5 19px);
+      background-size:40px 26px;
+      opacity:.4;
+      animation:waveMove 2.1s linear infinite reverse;
+    }
+    @keyframes waveMove{
+      0%{transform:translateX(0);}
+      100%{transform:translateX(-50%);}
+    }
+
+    /* Ripple/gelombang melingkar menyebar dari logo */
+    .ripple-ring{
+      position:absolute;border:2px solid rgba(91,180,240,.5);
+      border-radius:45px;
+      width:200px;height:90px;
+      animation:rippleOut 2.4s ease-out infinite;
+      pointer-events:none;
+    }
+    .ripple-ring.r2{ animation-delay:.8s; }
+    .ripple-ring.r3{ animation-delay:1.6s; }
+    @keyframes rippleOut{
+      0%{transform:scale(1);opacity:.6;}
+      100%{transform:scale(1.35);opacity:0;}
+    }
+
+    .loading-text{color:var(--text-muted);font-size:12px;letter-spacing:.3px;}
+
+    /* ERROR */
+    .error-banner{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#fca5a5;padding:6px 14px;font-size:11px;display:none;align-items:center;gap:7px;flex-shrink:0;}
+    .error-banner.show{display:flex;}
+
+    /* ============================================================
+       FIX #1 ? BODY GRID: minmax(0,1fr) agar tidak overflow
+       ============================================================ */
+    .dash-body{
+      flex:1;overflow:hidden;padding:8px 12px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);
+      grid-template-rows:auto 1fr;
+      gap:8px;min-height:0;
+    }
+    .dash-header{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+    .dash-title{font-size:15px;font-weight:700;}
+    .dash-sub{color:var(--text-muted);font-size:10px;}
+    .dash-periode{color:var(--ppr-green);}
+
+    /* CARDS */
+    .card{background:var(--bg-card);border-radius:9px;padding:10px 12px;border:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;min-height:0;}
+    .card-title{font-size:10px;color:var(--text-muted);margin-bottom:1px;}
+    .card-src{font-size:9px;color:var(--text-muted);margin-bottom:4px;}
+    .unit{font-size:10px;color:var(--text-muted);font-weight:400;}
+
+    /* TONASE GLOBAL */
+    .global-val{font-size:clamp(20px,2vw,26px);font-weight:800;display:flex;align-items:baseline;gap:5px;line-height:1.1;}
+    .global-sub{font-size:9px;color:var(--text-muted);margin-top:1px;margin-bottom:6px;}
+
+    /* GROUP BADGE header */
+    .group-active-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,.12);color:var(--ppr-green);border:1px solid rgba(22,163,74,.25);border-radius:5px;padding:2px 6px;font-size:9px;font-weight:600;margin-left:4px;vertical-align:middle;}
+    .group-active-badge.hidden{display:none;}
+
+    /* DONUT */
+    .donut-row{display:flex;align-items:center;gap:10px;margin-top:5px;flex:1;min-height:0;}
+    .donut{width:clamp(56px,5.5vw,72px);height:clamp(56px,5.5vw,72px);border-radius:50%;position:relative;flex-shrink:0;}
+    .donut::after{
+      content:'';position:absolute;
+      width:68%;height:68%;
+      background:#242435;border-radius:50%;
+      top:50%;left:50%;transform:translate(-50%,-50%);
+    }
+    .legend{font-size:10px;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}
+    .leg-grp{font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+    .leg-row{display:flex;justify-content:space-between;align-items:center;gap:3px;}
+    .leg-label{display:flex;align-items:center;gap:4px;color:var(--text-muted);font-size:10px;min-width:0;}
+
+    /* FIX #2 ? angka tonase rincian drawing lebih besar & tebal */
+    .leg-val{font-weight:700;color:var(--text-main);font-size:clamp(12px,1.2vw,14px);white-space:nowrap;}
+
+    .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+    .leg-div{border:none;border-top:1px solid var(--border-color);margin:3px 0;}
+
+    /* STOCK TABLE */
+    .stok-tbl{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;}
+    .stok-tbl td{padding:3px 2px;border-bottom:1px solid rgba(255,255,255,.04);}
+    .stok-lbl{color:var(--text-muted);display:flex;align-items:center;gap:4px;}
+    .stok-v{font-weight:600;text-align:right;}
+    .stok-u{font-size:9px;color:var(--text-muted);text-align:right;}
+
+    /* BAR CHART */
+    .bar-wrap{display:flex;align-items:flex-end;justify-content:space-around;height:40px;margin-top:5px;}
+    .bar-col{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;}
+    .bar-rect{width:18px;border-radius:3px;transition:height .4s ease;min-height:3px;}
+    .bar-lbl{font-size:8px;color:var(--text-muted);text-align:center;}
+    .bar-legend{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;}
+    .bar-leg-item{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--text-muted);}
+
+    /* OUTBOUND/INBOUND summary */
+    .io-summary{display:flex;gap:6px;margin-top:5px;}
+    .io-item{background:rgba(255,255,255,.04);border-radius:6px;padding:5px 8px;flex:1;}
+    .io-label{font-size:9px;color:var(--text-muted);margin-bottom:1px;}
+    .io-val{font-size:12px;font-weight:700;}
+
+    /* LINE CHART */
+    .lc-wrap{flex:1;min-height:0;margin-top:5px;position:relative;}
+    .lc-svg{width:100%;height:100%;min-height:50px;display:block;}
+    .chart-area-fill{opacity:.1;}
+    .lc-dates{display:flex;justify-content:space-between;color:var(--text-muted);font-size:8px;margin-top:2px;}
+    .lc-legend{display:flex;gap:8px;margin-top:2px;}
+    .lc-leg{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--text-muted);}
+
+    /* FAST MOVING */
+    .fm-tabs{display:flex;gap:5px;margin:5px 0 4px;}
+    .fm-tab{background:none;border:1px solid var(--border-color);color:var(--text-muted);padding:4px 10px;border-radius:5px;cursor:pointer;font-size:10px;transition:all .15s;display:flex;align-items:center;gap:4px;}
+    .fm-tab.active{border-color:var(--ppr-green);color:var(--ppr-green);background:rgba(22,163,74,.06);}
+    .fm-tbl{width:100%;border-collapse:collapse;font-size:10px;}
+    .fm-tbl th{color:var(--text-muted);font-weight:500;padding:3px 3px 5px;border-bottom:1px solid var(--border-color);font-size:9px;text-align:left;}
+    .fm-tbl td{padding:5px 3px;border-bottom:1px solid rgba(255,255,255,.03);}
+    .prod-cell{display:flex;align-items:flex-start;gap:6px;}
+    .prod-icon{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;}
+    .prod-icon.green{background:rgba(22,163,74,.15);}
+    .prod-icon.grey{background:rgba(107,114,128,.15);}
+    .prod-name{font-size:10px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;word-break:break-word;}
+    .prod-code{font-size:9px;color:var(--text-muted);}
+    .no-data{color:var(--text-muted);text-align:center;padding:14px 0;font-size:10px;}
+
+    /* COL LAYOUT ? semua kolom flex column, isi ruang penuh */
+    .col1{display:flex;flex-direction:column;gap:7px;min-height:0;overflow:hidden;}
+    .col2{display:flex;flex-direction:column;gap:7px;min-height:0;overflow:hidden;}
+    .col3{display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+    .col1 .card:last-child{flex:1;min-height:0;}
+    .col2 .card{flex:1;min-height:0;}
+    .col3 .card{flex:1;min-height:0;}
+
+    .card-val-sm{font-size:clamp(15px,1.6vw,20px);font-weight:700;display:flex;align-items:baseline;gap:5px;}
+
+    /* FM scroll */
+    .fm-scroll{overflow-y:auto;flex:1;min-height:0;}
+    .fm-scroll::-webkit-scrollbar{width:3px;}
+    .fm-scroll::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
+
+    /* LIVE CLOCK */
+    .live-clock{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;}
+    .clock-time{font-size:14px;font-weight:700;color:var(--text-main);letter-spacing:1px;font-variant-numeric:tabular-nums;}
+    .clock-date{font-size:9px;color:var(--text-muted);}
+
+    /* KANBAN STATUS BANNER */
+    .kanban-bar{
+      display:flex;gap:8px;padding:5px 14px;flex-shrink:0;
+      background:var(--bg-sidebar);border-bottom:1px solid var(--border-color);
+    }
+    .kanban-item{
+      flex:1;display:flex;align-items:center;gap:8px;
+      padding:6px 10px;border-radius:7px;border:1px solid;position:relative;overflow:hidden;
+    }
+    .kanban-item.aman{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3);}
+    .kanban-item.warning{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4);animation:kanban-pulse 2s ease-in-out infinite;}
+    @keyframes kanban-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.0);}50%{box-shadow:0 0 0 3px rgba(239,68,68,.15);}}
+    .kanban-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .kanban-item.aman .kanban-icon{background:rgba(16,185,129,.2);}
+    .kanban-item.warning .kanban-icon{background:rgba(239,68,68,.2);}
+    .kanban-label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;}
+    .kanban-val{font-size:11px;font-weight:700;}
+    .kanban-item.aman .kanban-val{color:#10b981;}
+    .kanban-item.warning .kanban-val{color:#ef4444;}
+    .kanban-status{font-size:9px;font-weight:600;padding:2px 7px;border-radius:10px;}
+    .kanban-item.aman .kanban-status{background:rgba(16,185,129,.15);color:#10b981;}
+    .kanban-item.warning .kanban-status{background:rgba(239,68,68,.15);color:#ef4444;}
+    .kanban-limit{font-size:8px;color:var(--text-muted);}
+    .kanban-info{font-size:9px;color:var(--text-muted);margin-top:1px;}
+    .kanban-item.warning .kanban-info{color:#fca5a5;}
+    .kanban-notif{position:absolute;top:4px;right:6px;font-size:8px;font-weight:700;
+      background:rgba(239,68,68,.2);color:#ef4444;border-radius:4px;padding:1px 5px;
+      border:1px solid rgba(239,68,68,.3);}
+
+    /* ============================================================
+       FONT SIZE CONTROL
+       ============================================================ */
+    .font-ctrl {
+      display:flex; align-items:center; gap:3px;
+      border:1px solid var(--border-color); border-radius:6px;
+      overflow:hidden; background:none;
+    }
+    .font-ctrl-btn {
+      background:none; border:none; color:var(--text-muted);
+      cursor:pointer; padding:3px 7px; font-size:11px;
+      font-weight:700; transition:all .15s; line-height:1;
+    }
+    .font-ctrl-btn:hover { background:rgba(34,197,94,.15); color:var(--ppr-green); }
+    .font-ctrl-label {
+      font-size:9px; color:var(--text-muted); padding:0 4px;
+      border-left:1px solid var(--border-color);
+      border-right:1px solid var(--border-color);
+      white-space:nowrap; line-height:1; display:flex; align-items:center;
+    }
+
+    /* ============================================================
+       TEMA TOGGLE BUTTON
+       ============================================================ */
+    .btn-theme {
+      background:none; border:1px solid var(--border-color);
+      color:var(--text-muted); cursor:pointer; padding:3px 9px;
+      border-radius:6px; display:flex; align-items:center; gap:5px;
+      font-size:10px; font-weight:600; white-space:nowrap; transition:all .2s;
+    }
+    .btn-theme:hover { background:rgba(34,197,94,.12); color:var(--ppr-green); border-color:var(--ppr-green); }
+
+    /* ============================================================
+       TEMA LIGHT MODE ? warna lebih kontras & terbaca
+       ============================================================ */
+    body.theme-light {
+      --bg-main:#eef0f5;
+      --bg-sidebar:#f8f9fb;
+      --bg-card:#ffffff;
+      --text-main:#1a1d2e;
+      --text-muted:#4a5270;
+      --border-color:#d0d5e8;
+      --ppr-green:#15803d;
+      --ppr-grey:#475569;
+    }
+    body.theme-light .app-shell { background:var(--bg-main); }
+    body.theme-light .sidebar { box-shadow:2px 0 8px rgba(0,0,0,.08); }
+    body.theme-light .card { box-shadow:0 1px 4px rgba(0,0,0,.07); }
+    body.theme-light .navbar { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    body.theme-light .donut::after { background:#ffffff; }
+    body.theme-light .search-bar input {
+      color:#1a1d2e; background:#ffffff;
+      border-color:#d0d5e8;
+    }
+    body.theme-light .fsel,
+    body.theme-light .finput,
+    body.theme-light .io-fsel,
+    body.theme-light .io-finput,
+    body.theme-light #sel-group {
+      color:#1a1d2e; background:#ffffff; border-color:#d0d5e8;
+    }
+    body.theme-light .finput[type="date"],
+    body.theme-light .io-finput[type="date"] { color-scheme:light; }
+    body.theme-light .fmode-btn:not(.active) { color:#4a5270; }
+    body.theme-light .fmode-btn:not(.active):hover { background:rgba(0,0,0,.06); color:#1a1d2e; }
+    body.theme-light .fmode-group { background:#f0f2f8; }
+    body.theme-light .btn-menu { color:#1a1d2e; border-color:#d0d5e8; }
+    body.theme-light .nav-icon { color:#4a5270; }
+    body.theme-light .nav-icon:hover { color:#1a1d2e; }
+    body.theme-light .mitem { color:#4a5270; }
+    body.theme-light .mitem:hover:not(.active) { background:rgba(0,0,0,.05); color:#1a1d2e; }
+    body.theme-light .sec-title { color:#6b7280; }
+    body.theme-light .io-item { background:rgba(0,0,0,.04); border:1px solid #d0d5e8; }
+    body.theme-light .io-label { color:#4a5270; }
+    body.theme-light .io-filter { background:rgba(0,0,0,.03); border-color:#d0d5e8; }
+    body.theme-light .stok-tbl td { border-bottom:1px solid #e8eaf0; }
+    body.theme-light .stok-lbl { color:#4a5270; }
+    body.theme-light .stok-u { color:#6b7280; }
+    body.theme-light .stok-v { color:#1a1d2e; }
+    body.theme-light .fm-tbl th { color:#4a5270; border-color:#d0d5e8; }
+    body.theme-light .fm-tbl td { border-bottom:1px solid #eef0f8; }
+    body.theme-light .prod-name { color:#1a1d2e; }
+    body.theme-light .prod-code { color:#6b7280; }
+    body.theme-light .bar-lbl { color:#6b7280; }
+    body.theme-light .bar-leg-item { color:#4a5270; }
+    body.theme-light .leg-label { color:#4a5270; }
+    body.theme-light .leg-val { color:#1a1d2e; }
+    body.theme-light .leg-grp { color:#6b7280; }
+    body.theme-light .lc-leg { color:#4a5270; }
+    body.theme-light .lc-dates { color:#6b7280; }
+    body.theme-light .card-title { color:#4a5270; }
+    body.theme-light .card-src { color:#6b7280; }
+    body.theme-light .unit { color:#4a5270; }
+    body.theme-light .global-sub { color:#4a5270; }
+    body.theme-light .dash-sub { color:#4a5270; }
+    body.theme-light .dash-title { color:#1a1d2e; }
+    body.theme-light .no-data { color:#6b7280; }
+    body.theme-light .kanban-item.aman { background:rgba(21,128,61,.07); border-color:rgba(21,128,61,.3); }
+    body.theme-light .kanban-item.aman .kanban-label { color:#15803d; }
+    body.theme-light .kanban-item.warning { background:rgba(220,38,38,.06); }
+    body.theme-light .kanban-status.aman { background:rgba(21,128,61,.12); color:#15803d; border-color:rgba(21,128,61,.3); }
+    body.theme-light .flabel { color:#4a5270; }
+    body.theme-light .fdiv { background:#d0d5e8; }
+    body.theme-light .fbadge { background:rgba(21,128,61,.08); color:#15803d; border-color:rgba(21,128,61,.3); }
+    body.theme-light .io-badge { background:rgba(21,128,61,.08); color:#15803d; }
+    body.theme-light .group-active-badge { background:rgba(21,128,61,.08); color:#15803d; }
+    body.theme-light .group-hint { color:#15803d; }
+    body.theme-light .loading-overlay { background:rgba(238,240,245,.9); }
+    body.theme-light .ripple-ring{ border-color:rgba(37,99,235,.4); }
+    body.theme-light .loading-text { color:#4a5270; }
+    body.theme-light .btn-io-reset { background:rgba(0,0,0,.04); color:#4a5270; }
+    body.theme-light .btn-io-reset:hover { background:rgba(0,0,0,.08); color:#1a1d2e; }
+    body.theme-light .font-ctrl { border-color:#d0d5e8; }
+    body.theme-light .font-ctrl-btn { color:#4a5270; }
+    body.theme-light .font-ctrl-btn:hover { background:rgba(21,128,61,.1); color:#15803d; }
+    body.theme-light .font-ctrl-label { color:#6b7280; border-color:#d0d5e8; }
+    body.theme-light .fm-tab { color:#4a5270; border-color:#d0d5e8; }
+    body.theme-light .fm-tab:hover { color:#1a1d2e; }
+    body.theme-light .leg-div { border-color:#d0d5e8; }
+    body.theme-light .io-filter-label { color:#4a5270; }
+    body.theme-light .group-label { color:#4a5270; }
+  /* ============================================================
+     MOBILE: halaman dulunya overflow:hidden total (desktop-only,
+     tidak bisa discroll di HP). Di layar sempit, izinkan scroll
+     normal + tumpuk kartu jadi 1 kolom + sidebar jadi overlay.
+     ============================================================ */
+  @media (max-width:860px){
+    html,body{ overflow:auto; height:auto; min-height:100%; }
+    .app-shell{ height:auto; min-height:100vh; overflow:visible; }
+    .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60;
+      box-shadow:10px 0 30px rgba(0,0,0,.45); }
+    .main-right{ overflow:visible; min-height:100vh; width:100%; }
+    .dash-body{
+      overflow:visible !important;
+      grid-template-columns:1fr !important;
+      grid-template-rows:auto !important;
+      height:auto;
+    }
+    .col1,.col2,.col3{ overflow:visible !important; min-height:auto !important; }
+    .card{ overflow:visible !important; min-height:auto !important; }
+    .fm-scroll{ max-height:260px; }
+  }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div style="position:relative;display:flex;align-items:center;justify-content:center;">
+    <div class="ripple-ring"></div>
+    <div class="ripple-ring r2"></div>
+    <div class="ripple-ring r3"></div>
+    <div class="rucika-logo-wrap">
+      <span class="rucika-text">RUCIKA</span>
+      <span class="rucika-tagline">Dimana air mengalir sampai jauh</span>
+      <div class="wave-container">
+        <div class="wave wave1"></div>
+        <div class="wave wave2"></div>
+      </div>
+    </div>
+  </div>
+  <div class="loading-text" id="loadingText">Memuat data...</div>
+</div>
+
+<div class="app-shell">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <img src="./assets/img/rucika-logo.png" alt="Rucika" style="height:22px;width:auto;object-fit:contain;">
+        <span>PPR Stock</span>
+      </div>
+      <button class="btn-tog" onclick="toggleSidebar()">
+        <i data-lucide="chevron-left" style="width:13px;"></i>
+      </button>
+    </div>
+    <div class="sec-title">Menu</div>
+    <div class="mitem" onclick="navTo('wh_control_tower')"><i data-lucide="layout-dashboard" style="width:13px;"></i><span>Dashboard WH Import</span></div>
+    <div class="mitem active"><i data-lucide="layout-dashboard" style="width:13px;"></i><span>Monitoring Stock, Inbound &amp; Outbound</span></div>
+    <div class="mitem" onclick="navTo('kanban')"><i data-lucide="layout-grid" style="width:13px;"></i><span>Monitoring Kanban</span></div>
+    <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:13px;"></i><span>Rekap Muatan</span></div>
+    <div class="mitem"><i data-lucide="clipboard-list" style="width:13px;"></i><span>Stock Opname</span></div>
+    <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:13px;"></i><span>Loading Time Pengiriman</span></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main-right">
+
+    <!-- NAVBAR -->
+    <div class="navbar">
+      <div class="nav-left">
+        <button class="btn-menu" onclick="toggleSidebar()">
+          <i data-lucide="menu" style="width:14px;"></i>
+        </button>
+        <div class="search-bar">
+          <i data-lucide="search" class="si" style="width:11px;"></i>
+          <input type="text" placeholder="Cari item...">
+        </div>
+      </div>
+      <div class="nav-right">
+        <!-- LIVE CLOCK -->
+        <div class="live-clock" id="liveClock">
+          <div class="clock-time" id="clockTime">00:00:00</div>
+          <div class="clock-date" id="clockDate">?</div>
+        </div>
+        <div style="width:1px;height:24px;background:var(--border-color);margin:0 4px;"></div>
+        <button class="nav-icon" onclick="clearApiCache();loadData()" title="Refresh">
+          <i data-lucide="refresh-cw" style="width:15px;"></i>
+        </button>
+        <button class="nav-icon"><i data-lucide="bell" style="width:15px;"></i></button>
+        <!-- Font Size Control -->
+        <div class="font-ctrl" title="Ukuran Font">
+          <button class="font-ctrl-btn" onclick="changeFontSize(-1)" title="Perkecil font">A&#8722;</button>
+          <span class="font-ctrl-label" id="fontSizeLabel">100%</span>
+          <button class="font-ctrl-btn" onclick="changeFontSize(1)" title="Perbesar font">A+</button>
+        </div>
+        <!-- Tema -->
+        <button class="btn-theme" id="btnTheme" onclick="toggleTheme()" title="Ganti Tema">
+          <i data-lucide="sun" style="width:13px;" id="themeIcon"></i>
+          <span id="themeLabel">Light</span>
+        </button>
+        <div class="avatar">WH</div>
+      </div>
+    </div>
+
+    <!-- ERROR -->
+    <div class="error-banner" id="errorBanner">
+      <i data-lucide="alert-triangle" style="width:13px;flex-shrink:0;"></i>
+      <span id="errorMsg">Gagal memuat data.</span>
+    </div>
+
+    <!-- KANBAN STATUS BAR -->
+    <div class="kanban-bar" id="kanbanBar">
+      <!-- Pipa PPR -->
+      <div class="kanban-item aman" id="kanban-pipa">
+        <div class="kanban-icon">
+          <i data-lucide="database" style="width:14px;color:#10b981;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div class="kanban-label">Pipa PPR (Green + Grey)</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="kanban-val" id="kanban-pipa-val">? kg</span>
+            <span class="kanban-status" id="kanban-pipa-status">AMAN</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;margin-top:1px;">
+            <span class="kanban-limit">Batas Kanban: 304.530,14 kg</span>
+          </div>
+          <div class="kanban-info" id="kanban-pipa-info">Stok dalam batas aman kanban</div>
+        </div>
+        <div class="kanban-notif" id="kanban-pipa-notif" style="display:none;">? MELEBIHI KANBAN</div>
+      </div>
+      <!-- Fitting PPR -->
+      <div class="kanban-item aman" id="kanban-fitting">
+        <div class="kanban-icon">
+          <i data-lucide="git-branch" style="width:14px;color:#10b981;"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div class="kanban-label">Fitting PPR (Green + Grey)</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="kanban-val" id="kanban-fitting-val">? kg</span>
+            <span class="kanban-status" id="kanban-fitting-status">AMAN</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:1px;">
+            <span class="kanban-limit">Batas Kanban: 111.870,96 kg</span>
+          </div>
+          <div class="kanban-info" id="kanban-fitting-info">? Stok dalam batas aman kanban. U</div>
+        </div>
+        <div class="kanban-notif" id="kanban-fitting-notif" style="display:none;">??MELEBIHI KANBAN</div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         FILTER BAR ? STOCK (tanggal + group dropdown)
+         FIX #3/#5: group pakai <select> dropdown
+         ============================================================ -->
+    <div class="filter-bar">
+      <span class="flabel"><i data-lucide="calendar" style="width:10px;"></i>Stok:</span>
+      <div class="fmode-group">
+        <button class="fmode-btn" id="mode-harian" onclick="setMode('harian')">Harian</button>
+        <button class="fmode-btn active" id="mode-bulanan" onclick="setMode('bulanan')">Bulanan</button>
+        <button class="fmode-btn" id="mode-tahunan" onclick="setMode('tahunan')">Tahunan</button>
+      </div>
+      <div class="fdiv"></div>
+      <div class="fsec hidden" id="section-harian">
+        <span class="flabel">Tanggal</span>
+        <input type="date" class="finput" id="date-from">
+      </div>
+      <div class="fsec" id="section-bulanan">
+        <div class="fsel-wrap">
+          <select class="fsel" id="sel-bulan">
+            <option value="1">Januari</option><option value="2">Februari</option>
+            <option value="3">Maret</option><option value="4">April</option>
+            <option value="5">Mei</option><option value="6">Juni</option>
+            <option value="7">Juli</option><option value="8">Agustus</option>
+            <option value="9">September</option><option value="10">Oktober</option>
+            <option value="11">November</option><option value="12">Desember</option>
+          </select>
+        </div>
+        <div class="fsel-wrap">
+          <select class="fsel" id="sel-tahun-bulanan"></select>
+        </div>
+      </div>
+      <div class="fsec hidden" id="section-tahunan">
+        <div class="fsel-wrap">
+          <select class="fsel" id="sel-tahun-tahunan"></select>
+        </div>
+      </div>
+      <div class="fdiv"></div>
+      <!-- FIX #3/#5: Group dropdown -->
+      <span class="flabel"><i data-lucide="layers" style="width:10px;"></i>Group:</span>
+      <div class="group-dd-wrap">
+        <select id="sel-group" onchange="selectGroupDropdown(this.value)">
+          <option value="">Semua Group</option>
+          <!-- diisi dinamis oleh loadGroupList() -->
+        </select>
+      </div>
+      <div class="fdiv"></div>
+      <button class="btn-apply" onclick="applyFilter()">
+        <i data-lucide="search" style="width:9px;"></i> Tampilkan
+      </button>
+      <button class="btn-reset" onclick="resetFilter()">Reset</button>
+      <div class="fdiv"></div>
+      <div class="fbadge">
+        <i data-lucide="check-circle-2" style="width:9px;"></i>
+        <span id="badge-text">&#8212;</span>
+        <span class="fbadge-x" onclick="resetFilter()">&#215;</span>
+      </div>
+    </div>
+
+    <!-- DASHBOARD BODY -->
+    <div class="dash-body">
+
+      <!-- HEADER -->
+      <div class="dash-header">
+        <span class="dash-title">Dashboard Pipa &amp; Fitting PPR</span>
+        <span class="dash-sub">DASHBOARD WAREHOUSE &middot;
+          <span class="dash-periode" id="periodeLabel">&#8212;</span>
+        </span>
+        <span class="group-active-badge hidden" id="group-active-badge">
+          <i data-lucide="tag" style="width:8px;"></i>
+          <span id="group-badge-text">&#8212;</span>
+        </span>
+      </div>
+
+      <!-- KOLOM 1: Stock -->
+      <div class="col1">
+
+        <!-- Card Tonase GLOBAL -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="card-title">Total Tonase Stok
+                <span style="font-size:9px;color:var(--text-muted);font-style:italic;">&nbsp;</span>
+              </div>
+              <div class="global-sub"> </div>
+            </div>
+            <i data-lucide="weight" style="color:var(--ppr-green);width:14px;flex-shrink:0;"></i>
+          </div>
+          <div class="global-val">
+            <span id="val-global-tonase">&#8212;</span>
+            <span class="unit">kg</span>
+          </div>
+
+          <div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--border-color);">
+            <div style="font-size:9px;color:var(--text-muted);margin-bottom:4px;display:flex;align-items:center;gap:3px;">
+              <i data-lucide="filter" style="width:8px;"></i>
+              Rincian Drawing KELEN
+              <span id="group-hint-tonase" style="color:var(--ppr-green);font-weight:600;"></span>
+            </div>
+            <div class="donut-row">
+              <div class="donut" id="donut-tonase"
+                style="background:conic-gradient(var(--ppr-green) 0% 25%,#4ade80 25% 50%,var(--ppr-grey) 50% 75%,#9ca3af 75% 100%);"></div>
+              <div class="legend">
+                <div class="leg-grp">Pipa PPR</div>
+                <div class="leg-row">
+                  <div class="leg-label"><span class="dot" style="background:var(--ppr-green);"></span>Kelen Green</div>
+                  <div class="leg-val" id="val-ton-pipa-green">&#8212;</div>
+                </div>
+                <div class="leg-row">
+                  <div class="leg-label"><span class="dot" style="background:#4ade80;"></span>Kelen Grey</div>
+                  <div class="leg-val" id="val-ton-pipa-grey">&#8212;</div>
+                </div>
+                <hr class="leg-div">
+                <div class="leg-grp">Fitting PPR</div>
+                <div class="leg-row">
+                  <div class="leg-label"><span class="dot" style="background:var(--ppr-grey);"></span>Kelen Green</div>
+                  <div class="leg-val" id="val-ton-fitting-green">&#8212;</div>
+                </div>
+                <div class="leg-row">
+                  <div class="leg-label"><span class="dot" style="background:#9ca3af;"></span>Kelen Grey</div>
+                  <div class="leg-val" id="val-ton-fitting-grey">&#8212;</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Stock Pcs -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1px;">
+            <div>
+              <div class="card-title">Total Stock Pipa &amp; Fitting PPR</div>
+              <div class="card-src">
+                <span id="group-hint-stok" style="color:var(--ppr-green);font-weight:600;"></span>
+              </div>
+            </div>
+          </div>
+          <div class="card-val-sm"><span id="val-stok-total">&#8212;</span><span class="unit">Pcs/Btg</span></div>
+          <div class="bar-wrap" id="bar-stok-chart"></div>
+          <div class="bar-legend">
+            <div class="bar-leg-item"><span class="dot" style="background:#16a34a"></span>Pipa Green</div>
+            <div class="bar-leg-item"><span class="dot" style="background:#4ade80"></span>Pipa Grey</div>
+            <div class="bar-leg-item"><span class="dot" style="background:#6b7280"></span>Fitting Green</div>
+            <div class="bar-leg-item"><span class="dot" style="background:#9ca3af"></span>Fitting Grey</div>
+          </div>
+          <table class="stok-tbl">
+            <tr><td><div class="stok-lbl"><span class="dot" style="background:#16a34a"></span>Pipa Kelen Green</div></td><td class="stok-v" id="val-stok-pipa-green">&#8212;</td><td class="stok-u">Btg</td></tr>
+            <tr><td><div class="stok-lbl"><span class="dot" style="background:#4ade80"></span>Pipa Kelen Grey</div></td><td class="stok-v" id="val-stok-pipa-grey">&#8212;</td><td class="stok-u">Btg</td></tr>
+            <tr><td><div class="stok-lbl"><span class="dot" style="background:#6b7280"></span>Fitting Kelen Green</div></td><td class="stok-v" id="val-stok-fitting-green">&#8212;</td><td class="stok-u">Pcs</td></tr>
+            <tr><td><div class="stok-lbl"><span class="dot" style="background:#9ca3af"></span>Fitting Kelen Grey</div></td><td class="stok-v" id="val-stok-fitting-grey">&#8212;</td><td class="stok-u">Pcs</td></tr>
+          </table>
+        </div>
+
+      </div><!-- col1 -->
+
+      <!-- KOLOM 2: Outbound + Inbound dengan filter terpisah -->
+      <div class="col2">
+
+        <!-- ============================================================
+             FIX #4 ? Outbound dengan filter tanggal sendiri
+             ============================================================ -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="card-title">Tonase Outbound (Pengiriman)</div>
+              <div class="card-src"></div>
+              <div style="font-size:clamp(15px,1.7vw,20px);font-weight:700;display:flex;align-items:baseline;gap:5px;margin-top:3px;">
+                <span id="val-outbound-total">&#8212;</span><span class="unit">kg</span>
+              </div>
+            </div>
+            <i data-lucide="trending-up" style="color:var(--ppr-green);width:15px;flex-shrink:0;margin-top:3px;"></i>
+          </div>
+
+          <!-- Mini filter Outbound - 2 baris -->
+          <div class="io-filter">
+            <div class="io-filter-row1">
+              <span class="io-filter-label"><i data-lucide="calendar" style="width:9px;vertical-align:middle;"></i> Filter:</span>
+              <div style="display:flex;background:rgba(0,0,0,.2);border:1px solid var(--border-color);border-radius:5px;overflow:hidden;flex-shrink:0;">
+                <button class="fmode-btn active" style="padding:2px 6px;font-size:9px;" id="out-mode-harian" onclick="setIOMode('out','harian')">Harian</button>
+                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="out-mode-bulanan" onclick="setIOMode('out','bulanan')">Bulanan</button>
+                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="out-mode-tahunan" onclick="setIOMode('out','tahunan')">Tahunan</button>
+                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="out-mode-semua" onclick="setIOMode('out','semua')">Semua</button>
+              </div>
+              <span class="io-badge" id="out-badge">&#8212;</span>
+            </div>
+            <div class="io-filter-row2">
+              <div class="io-fsec" id="out-section-harian">
+                <input type="date" class="io-finput" id="out-date-from">
+                <span style="font-size:9px;color:var(--text-muted);">s/d</span>
+                <input type="date" class="io-finput" id="out-date-to">
+              </div>
+              <div class="io-fsec hidden" id="out-section-bulanan">
+                <div class="io-fsel-wrap">
+                  <select class="io-fsel" id="out-sel-bulan">
+                    <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+                    <option value="4">Apr</option><option value="5">Mei</option><option value="6">Jun</option>
+                    <option value="7">Jul</option><option value="8">Agu</option><option value="9">Sep</option>
+                    <option value="10">Okt</option><option value="11">Nov</option><option value="12">Des</option>
+                  </select>
+                </div>
+                <div class="io-fsel-wrap">
+                  <select class="io-fsel" id="out-sel-tahun"></select>
+                </div>
+              </div>
+              <div class="io-fsec hidden" id="out-section-tahunan">
+                <div class="io-fsel-wrap"><select class="io-fsel" id="out-sel-tahun-t"></select></div>
+              </div>
+              <div class="io-fsec hidden" id="out-section-semua"></div>
+              <div class="io-btn-group">
+                <button class="btn-io-apply" onclick="applyIOFilter('out')">Tampilkan</button>
+                <button class="btn-io-reset" onclick="resetIOFilter('out')">Reset</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="io-summary">
+            <div class="io-item">
+              <div class="io-label">Pipa PPR (Green+Grey)</div>
+              <div class="io-val" style="color:var(--ppr-green);" id="val-out-pipa">&#8212;</div>
+            </div>
+            <div class="io-item">
+              <div class="io-label">Fitting PPR (Green+Grey)</div>
+              <div class="io-val" style="color:var(--ppr-grey);" id="val-out-fitting">&#8212;</div>
+            </div>
+          </div>
+          <div class="lc-wrap">
+            <svg class="lc-svg" id="svg-out" viewBox="0 0 300 70" preserveAspectRatio="none">
+              <path id="area-out-pipa"    d="" fill="#16a34a" class="chart-area-fill"/>
+              <path id="area-out-fitting" d="" fill="#6b7280" class="chart-area-fill"/>
+              <path id="line-out-pipa"    d="" fill="none" stroke="#16a34a" stroke-width="2"/>
+              <path id="line-out-fitting" d="" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
+            </svg>
+          </div>
+          <div class="lc-dates" id="dates-outbound"></div>
+          <div class="lc-legend">
+            <div class="lc-leg"><span class="dot" style="background:var(--ppr-green)"></span>Pipa PPR</div>
+            <div class="lc-leg"><span class="dot" style="background:#9ca3af"></span>Fitting PPR</div>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             FIX #4 ? Inbound dengan filter tanggal sendiri, default=semua
+             ============================================================ -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="card-title">Tonase Inbound (Produksi)</div>
+              <div class="card-src"></div>
+              <div style="font-size:clamp(15px,1.7vw,20px);font-weight:700;display:flex;align-items:baseline;gap:5px;margin-top:3px;">
+                <span id="val-inbound-total">&#8212;</span><span class="unit">kg</span>
+              </div>
+            </div>
+            <i data-lucide="trending-down" style="color:#4ade80;width:15px;flex-shrink:0;margin-top:3px;"></i>
+          </div>
+
+          <!-- Mini filter Inbound - 2 baris -->
+          <div class="io-filter">
+            <div class="io-filter-row1">
+              <span class="io-filter-label"><i data-lucide="calendar" style="width:9px;vertical-align:middle;"></i> Filter:</span>
+              <div style="display:flex;background:rgba(0,0,0,.2);border:1px solid var(--border-color);border-radius:5px;overflow:hidden;flex-shrink:0;">
+                <button class="fmode-btn active" style="padding:2px 6px;font-size:9px;" id="in-mode-harian" onclick="setIOMode('in','harian')">Harian</button>
+                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="in-mode-bulanan" onclick="setIOMode('in','bulanan')">Bulanan</button>
+                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="in-mode-tahunan" onclick="setIOMode('in','tahunan')">Tahunan</button>
+                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="in-mode-semua" onclick="setIOMode('in','semua')">Semua</button>
+              </div>
+              <span class="io-badge" id="in-badge">&#8212;</span>
+            </div>
+            <div class="io-filter-row2">
+              <div class="io-fsec" id="in-section-harian">
+                <input type="date" class="io-finput" id="in-date-from">
+                <span style="font-size:9px;color:var(--text-muted);">s/d</span>
+                <input type="date" class="io-finput" id="in-date-to">
+              </div>
+              <div class="io-fsec hidden" id="in-section-bulanan">
+                <div class="io-fsel-wrap">
+                  <select class="io-fsel" id="in-sel-bulan">
+                    <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+                    <option value="4">Apr</option><option value="5">Mei</option><option value="6">Jun</option>
+                    <option value="7">Jul</option><option value="8">Agu</option><option value="9">Sep</option>
+                    <option value="10">Okt</option><option value="11">Nov</option><option value="12">Des</option>
+                  </select>
+                </div>
+                <div class="io-fsel-wrap">
+                  <select class="io-fsel" id="in-sel-tahun"></select>
+                </div>
+              </div>
+              <div class="io-fsec hidden" id="in-section-tahunan">
+                <div class="io-fsel-wrap"><select class="io-fsel" id="in-sel-tahun-t"></select></div>
+              </div>
+              <div class="io-fsec hidden" id="in-section-semua"></div>
+              <div class="io-btn-group">
+                <button class="btn-io-apply" onclick="applyIOFilter('in')">Tampilkan</button>
+                <button class="btn-io-reset" onclick="resetIOFilter('in')">Reset</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="io-summary">
+            <div class="io-item">
+              <div class="io-label">Pipa PPR (Green+Grey)</div>
+              <div class="io-val" style="color:var(--ppr-green);" id="val-in-pipa">&#8212;</div>
+            </div>
+            <div class="io-item">
+              <div class="io-label">Fitting PPR (Green+Grey)</div>
+              <div class="io-val" style="color:var(--ppr-grey);" id="val-in-fitting">&#8212;</div>
+            </div>
+          </div>
+          <div class="lc-wrap">
+            <svg class="lc-svg" id="svg-in" viewBox="0 0 300 70" preserveAspectRatio="none">
+              <path id="area-in-pipa"    d="" fill="#16a34a" class="chart-area-fill"/>
+              <path id="area-in-fitting" d="" fill="#6b7280" class="chart-area-fill"/>
+              <path id="line-in-pipa"    d="" fill="none" stroke="#16a34a" stroke-width="2"/>
+              <path id="line-in-fitting" d="" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
+            </svg>
+          </div>
+          <div class="lc-dates" id="dates-inbound"></div>
+          <div class="lc-legend">
+            <div class="lc-leg"><span class="dot" style="background:var(--ppr-green)"></span>Pipa PPR</div>
+            <div class="lc-leg"><span class="dot" style="background:#9ca3af"></span>Fitting PPR</div>
+          </div>
+        </div>
+      </div><!-- col2 -->
+
+      <!-- KOLOM 3: Fast Moving -->
+      <div class="col3">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div style="font-size:12px;font-weight:600;">Item Fast Moving</div>
+              <div class="card-src">Top 5 Outbound Terbesar &middot; DASHBOARD_KIRIM &middot; Ikut Filter Outbound
+                <span id="group-hint-fm" style="color:var(--ppr-green);font-weight:600;"></span>
+              </div>
+            </div>
+            <i data-lucide="flame" style="color:#f97316;width:14px;flex-shrink:0;"></i>
+          </div>
+          <div class="fm-tabs">
+            <button class="fm-tab active" id="tab-pipa" onclick="switchFMTab('Pipa',this)">
+              <i data-lucide="database" style="width:11px;color:var(--ppr-green)"></i>Pipa PPR
+            </button>
+            <button class="fm-tab" id="tab-fitting" onclick="switchFMTab('Fitting',this)">
+              <i data-lucide="git-branch" style="width:11px"></i>Fitting PPR
+            </button>
+          </div>
+          <div class="fm-scroll">
+            <table class="fm-tbl" style="width:100%;">
+              <thead>
+                <tr>
+                  <th style="width:20px;">#</th>
+                  <th>Nama Item</th>
+                  <th style="text-align:right;width:90px;">Tonase (kg)</th>
+                </tr>
+              </thead>
+              <tbody id="fm-tbody">
+                <tr><td colspan="3" class="no-data">Memuat data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- col3 -->
+
+    </div><!-- dash-body -->
+  </div><!-- main-right -->
+</div><!-- app-shell -->
+
+<script>
+// ================================================================
+//  INIT
+// ================================================================
+lucide.createIcons();
+
+const NM_BULAN = ['','Januari','Februari','Maret','April','Mei','Juni',
+                  'Juli','Agustus','September','Oktober','November','Desember'];
+const today   = new Date();
+const curYear = today.getFullYear();
+
+// State filter STOCK
+let curMode  = 'harian';
+let curGroup = '';
+let fmData   = [];
+let fmTab    = 'Pipa';
+
+// State filter IO (Outbound / Inbound) ? TERPISAH dari stock
+let outMode  = 'harian';
+let inMode   = 'harian';  // default: awal bulan s/d hari ini
+
+// Init dropdown tahun untuk semua select tahun
+['sel-tahun-bulanan','sel-tahun-tahunan','out-sel-tahun','out-sel-tahun-t','in-sel-tahun','in-sel-tahun-t'].forEach(id => {
+  const s = document.getElementById(id);
+  if (!s) return;
+  for (let y = curYear+1; y >= curYear-5; y--) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    if (y === curYear) o.selected = true;
+    s.appendChild(o);
+  }
+});
+
+// Init default values
+document.getElementById('sel-bulan').value     = String(today.getMonth()+1);
+document.getElementById('out-sel-bulan').value = String(today.getMonth()+1);
+document.getElementById('in-sel-bulan').value  = String(today.getMonth()+1);
+
+const mm = `${curYear}-${String(today.getMonth()+1).padStart(2,'0')}`;
+document.getElementById('date-from').value    = today.toISOString().slice(0,10);
+document.getElementById('out-date-from').value = `${mm}-01`;
+document.getElementById('out-date-to').value   = today.toISOString().slice(0,10);
+document.getElementById('in-date-from').value  = `${mm}-01`;
+document.getElementById('in-date-to').value    = today.toISOString().slice(0,10);
+
+// ================================================================
+//  LOAD GROUP LIST ? isi <select> dropdown
+// ================================================================
+function loadGroupList() {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      const sel = document.getElementById('sel-group');
+      if (!res || !res.success || !res.groups.length) return;
+      res.groups.forEach(g => {
+        const o = document.createElement('option');
+        o.value = g; o.textContent = g;
+        sel.appendChild(o);
+      });
+    })
+    .withFailureHandler(function() {})
+    .getGroupList();
+}
+
+// ================================================================
+//  SELECT GROUP ? via dropdown
+// ================================================================
+function selectGroupDropdown(g) {
+  curGroup = g;
+  const badge = document.getElementById('group-active-badge');
+  if (g) {
+    badge.classList.remove('hidden');
+    document.getElementById('group-badge-text').textContent = g;
+  } else {
+    badge.classList.add('hidden');
+  }
+  const hint = g ? ' ? Group: ' + g : '';
+  ['group-hint-tonase','group-hint-stok','group-hint-fm'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = hint;
+  });
+  loadData();
+}
+
+// ================================================================
+//  SIDEBAR
+// ================================================================
+function toggleSidebar() { document.body.classList.toggle('sidebar-hidden'); }
+if (window.innerWidth <= 860) { document.body.classList.add('sidebar-hidden'); }
+// Peta nama menu -> file statis di repo GitHub Pages ini.
+// (dulu semua menu redirect ke URL Apps Script, sekarang cukup pindah file lokal)
+var PAGE_MAP = {
+  ''                : 'index.html',
+  'index'           : 'monitoring_stock.html',
+  'kanban'          : 'kanban.html',
+  'rekap'           : 'rekap_muatan.html',
+  'wh_control_tower': 'index.html',
+  'residance'       : 'residance_time.html'
+};
+function navTo(page) {
+  var target = PAGE_MAP[page || ''] || 'index.html';
+  // Tambah cache-buster supaya selalu ambil versi terbaru file HTML tujuan,
+  // bukan versi lama yang mungkin masih tersimpan di cache browser.
+  target += '?v=' + (window.SITE_VERSION||Date.now());
+  if (window.top !== window.self) { window.top.location.href = target; }
+  else { window.location.href = target; }
+}
+
+// ================================================================
+//  FILTER STOCK (tanggal utama)
+// ================================================================
+function setMode(mode) {
+  curMode = mode;
+  ['harian','bulanan','tahunan'].forEach(m => {
+    document.getElementById('mode-'+m).classList.toggle('active', m===mode);
+    document.getElementById('section-'+m).classList.toggle('hidden', m!==mode);
+  });
+}
+
+function buildParams() {
+  const p = { group: curGroup };
+  if (curMode === 'harian') {
+    p.dari   = document.getElementById('date-from').value;
+    p.sampai = document.getElementById('date-from').value;
+  } else if (curMode === 'bulanan') {
+    p.bulan = document.getElementById('sel-bulan').value;
+    p.tahun = document.getElementById('sel-tahun-bulanan').value;
+  } else {
+    p.tahun = document.getElementById('sel-tahun-tahunan').value;
+  }
+  return p;
+}
+
+function buildLabel() {
+  if (curMode === 'harian')
+    return fmtYMD(document.getElementById('date-from').value);
+  if (curMode === 'bulanan')
+    return NM_BULAN[+document.getElementById('sel-bulan').value] + ' ' + document.getElementById('sel-tahun-bulanan').value;
+  return 'Tahun ' + document.getElementById('sel-tahun-tahunan').value;
+}
+
+function fmtYMD(s) { const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
+
+function applyFilter() {
+  if (curMode === 'harian') {
+    const f = document.getElementById('date-from').value;
+    if (!f) { alert('Pilih tanggal.'); return; }
+  }
+  const lbl = buildLabel();
+  document.getElementById('badge-text').textContent   = lbl;
+  document.getElementById('periodeLabel').textContent = lbl;
+  loadData();
+}
+
+function resetFilter() {
+  setMode('harian');
+  const todayStr = today.toISOString().slice(0,10);
+  document.getElementById('date-from').value = todayStr;
+  // reset group dropdown
+  document.getElementById('sel-group').value = '';
+  selectGroupDropdown('');
+  const lbl = fmtYMD(todayStr);
+  document.getElementById('badge-text').textContent   = lbl;
+  document.getElementById('periodeLabel').textContent = lbl;
+  loadData();
+}
+
+// ================================================================
+//  FILTER IO (Outbound / Inbound) ? TERPISAH
+// ================================================================
+function setIOMode(which, mode) {
+  if (which === 'out') outMode = mode;
+  else inMode = mode;
+
+  ['harian','bulanan','tahunan','semua'].forEach(m => {
+    const btn = document.getElementById(which+'-mode-'+m);
+    const sec = document.getElementById(which+'-section-'+m);
+    if (btn) btn.classList.toggle('active', m===mode);
+    if (sec) sec.classList.toggle('hidden', m!==mode);
+  });
+}
+
+function buildIOParams(which) {
+  const mode = which === 'out' ? outMode : inMode;
+  const p = {};
+  if (mode === 'semua') {
+    p.semua = true;
+  } else if (mode === 'harian') {
+    p.dari   = document.getElementById(which+'-date-from').value;
+    p.sampai = document.getElementById(which+'-date-to').value;
+  } else if (mode === 'bulanan') {
+    p.bulan = document.getElementById(which+'-sel-bulan').value;
+    p.tahun = document.getElementById(which+'-sel-tahun').value;
+  } else {
+    p.tahun = document.getElementById(which+'-sel-tahun-t').value;
+  }
+  return p;
+}
+
+function buildIOLabel(which) {
+  const mode = which === 'out' ? outMode : inMode;
+  if (mode === 'semua') return 'Semua Data';
+  if (mode === 'harian') {
+    const f = document.getElementById(which+'-date-from').value;
+    const t = document.getElementById(which+'-date-to').value;
+    return f && t ? fmtYMD(f)+' \u2013 '+fmtYMD(t) : '...';
+  }
+  if (mode === 'bulanan') {
+    return NM_BULAN[+document.getElementById(which+'-sel-bulan').value]
+         + ' ' + document.getElementById(which+'-sel-tahun').value;
+  }
+  return 'Tahun ' + document.getElementById(which+'-sel-tahun-t').value;
+}
+
+function applyIOFilter(which) {
+  const lbl = buildIOLabel(which);
+  document.getElementById(which+'-badge').textContent = lbl;
+  loadIOData(which);
+}
+
+function resetIOFilter(which) {
+  setIOMode(which, 'harian');
+  const awalBulan = `${curYear}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
+  const todayStr  = today.toISOString().slice(0,10);
+  document.getElementById(which+'-date-from').value = awalBulan;
+  document.getElementById(which+'-date-to').value   = todayStr;
+  const lbl = fmtYMD(awalBulan) + ' ? ' + fmtYMD(todayStr);
+  document.getElementById(which+'-badge').textContent = lbl;
+  loadIOData(which);
+}
+
+// ================================================================
+//  LOAD DATA
+// ================================================================
+function loadData() {
+  showLoading(true); hideError();
+  google.script.run
+    .withSuccessHandler(function(data) {
+      showLoading(false);
+      if (!data || !data.success) { showError((data&&data.error)?data.error:'Terjadi kesalahan.'); return; }
+      renderStock(data);
+      renderFastMoving(data.fastMoving || []);
+    })
+    .withFailureHandler(function(err) {
+      showLoading(false);
+      showError('Koneksi gagal: '+(err.message||err));
+    })
+    .getDashboardData(curMode, buildParams());
+}
+
+function loadIOData(which) {
+  const p = buildIOParams(which);
+  const fn = which === 'out' ? 'getOutboundData' : 'getInboundData';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (!data || !data.success) return;
+      if (which === 'out') {
+        renderOutbound(data);
+        // Fast Moving ikut filter Outbound
+        renderFastMoving(data.fastMoving || []);
+      } else {
+        renderInbound(data);
+      }
+    })
+    .withFailureHandler(function(){})
+    [fn](p);
+}
+
+// Muat semua data
+function loadAll() {
+  loadData();
+  loadIOData('out');
+  loadIOData('in');
+}
+
+// ================================================================
+//  RENDER STOCK
+// ================================================================
+function renderStock(data) {
+  const st  = data.stock || {};
+  const ton  = st.tonase || {};
+  const stok = st.stok   || {};
+
+  set('val-global-tonase', fmt(st.globalTonase) + ' kg');
+  set('val-ton-pipa-green',    fmt(ton.pipaGreen)    + ' kg');
+  set('val-ton-pipa-grey',     fmt(ton.pipaGrey)     + ' kg');
+  set('val-ton-fitting-green', fmt(ton.fittingGreen) + ' kg');
+  set('val-ton-fitting-grey',  fmt(ton.fittingGrey)  + ' kg');
+  updateDonut('donut-tonase',
+    [ton.pipaGreen||0, ton.pipaGrey||0, ton.fittingGreen||0, ton.fittingGrey||0],
+    ['#16a34a','#4ade80','#6b7280','#9ca3af']);
+
+  set('val-stok-total',         fmt(stok.total));
+  set('val-stok-pipa-green',    fmt(stok.pipaGreen));
+  set('val-stok-pipa-grey',     fmt(stok.pipaGrey));
+  set('val-stok-fitting-green', fmt(stok.fittingGreen));
+  set('val-stok-fitting-grey',  fmt(stok.fittingGrey));
+  renderBar([stok.pipaGreen||0, stok.pipaGrey||0, stok.fittingGreen||0, stok.fittingGrey||0]);
+
+  // Update Kanban status
+  const tonPipa    = (ton.pipaGreen||0) + (ton.pipaGrey||0);
+  const tonFitting = (ton.fittingGreen||0) + (ton.fittingGrey||0);
+  updateKanban(tonPipa, tonFitting);
+  lucide.createIcons();
+}
+
+function renderOutbound(data) {
+  const out = data.outbound || data || {};
+  set('val-outbound-total', fmt(out.total)   + ' kg');
+  set('val-out-pipa',       fmt(out.pipa)    + ' kg');
+  set('val-out-fitting',    fmt(out.fitting) + ' kg');
+  renderLine('svg-out','line-out-pipa','area-out-pipa','line-out-fitting','area-out-fitting','dates-outbound', out.trend);
+}
+
+function renderInbound(data) {
+  const ib = data.inbound || data || {};
+  set('val-inbound-total', fmt(ib.total)   + ' kg');
+  set('val-in-pipa',       fmt(ib.pipa)    + ' kg');
+  set('val-in-fitting',    fmt(ib.fitting) + ' kg');
+  renderLine('svg-in','line-in-pipa','area-in-pipa','line-in-fitting','area-in-fitting','dates-inbound', ib.trend);
+}
+
+function renderFastMoving(arr) {
+  fmData = arr;
+  renderFM(fmTab);
+}
+
+// Render lama (kompatibel jika GS masih kirim outbound+inbound dalam getDashboardData)
+function render(data) {
+  renderStock(data);
+  if (data.outbound) renderOutbound(data);
+  if (data.inbound)  renderInbound(data);
+  renderFastMoving(data.fastMoving || []);
+}
+
+// ================================================================
+//  DONUT
+// ================================================================
+function updateDonut(id, vals, colors) {
+  const total = vals.reduce((a,b)=>a+b,0);
+  if (!total) return;
+  let pct=0;
+  const stops = vals.map((v,i)=>{
+    const s=pct; pct+=(v/total)*100;
+    return `${colors[i]} ${s.toFixed(1)}% ${pct.toFixed(1)}%`;
+  });
+  document.getElementById(id).style.background = `conic-gradient(${stops.join(',')})`;
+}
+
+// ================================================================
+//  BAR CHART
+// ================================================================
+function renderBar(vals) {
+  const colors=['#16a34a','#4ade80','#6b7280','#9ca3af'];
+  const labels=['PG','PGr','FG','FGr'];
+  const maxV=Math.max(...vals,1), H=36;
+  document.getElementById('bar-stok-chart').innerHTML = vals.map((v,i)=>
+    `<div class="bar-col">
+      <div class="bar-rect" style="height:${Math.max(3,Math.round(v/maxV*H))}px;background:${colors[i]};"></div>
+      <div class="bar-lbl">${labels[i]}</div>
+    </div>`
+  ).join('');
+}
+
+// ================================================================
+//  LINE CHART
+// ================================================================
+function renderLine(svgId,lpId,apId,lfId,afId,datesId,trend) {
+  const W=300,H=70;
+  const clr = id => document.getElementById(id).setAttribute('d','');
+  if (!trend||trend.length===0) {
+    [lpId,apId,lfId,afId].forEach(clr);
+    document.getElementById(datesId).innerHTML='<span style="color:var(--text-muted);font-size:8px;">Belum ada data</span>';
+    return;
+  }
+  const pts=trend.slice(-8), n=pts.length;
+  if (n<2) {
+    document.getElementById(lpId).setAttribute('d',`M 0 ${H/2} L ${W} ${H/2}`);
+    document.getElementById(lfId).setAttribute('d',`M 0 ${H*.7} L ${W} ${H*.7}`);
+    [apId,afId].forEach(clr);
+    document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${p.label}</span>`).join('');
+    return;
+  }
+  const maxP=Math.max(...pts.map(p=>p.pipa||0),1);
+  const maxF=Math.max(...pts.map(p=>p.fitting||0),1);
+  const xFn=i=>Math.round(i*(W/(n-1)));
+  const yP=i=>Math.round(H-((pts[i].pipa||0)/maxP)*H*.82)+5;
+  const yF=i=>Math.round(H-((pts[i].fitting||0)/maxF)*H*.82)+5;
+  const mkLine=yFn=>pts.map((p,i)=>(i===0?'M':'L')+xFn(i)+' '+yFn(i)).join(' ');
+  const mkArea=yFn=>{ const t=pts.map((p,i)=>(i===0?'M':'L')+xFn(i)+' '+yFn(i)).join(' '); return t+' L'+xFn(n-1)+' '+H+' L0 '+H+' Z'; };
+  document.getElementById(lpId).setAttribute('d',mkLine(yP));
+  document.getElementById(apId).setAttribute('d',mkArea(yP));
+  document.getElementById(lfId).setAttribute('d',mkLine(yF));
+  document.getElementById(afId).setAttribute('d',mkArea(yF));
+  document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${p.label}</span>`).join('');
+}
+
+// ================================================================
+//  FAST MOVING
+// ================================================================
+function switchFMTab(jenis,btn) {
+  fmTab=jenis;
+  document.querySelectorAll('.fm-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  renderFM(jenis);
+}
+function renderFM(jenis) {
+  const rows = fmData.filter(d => d.jenis === jenis).slice(0, 5);
+  const tbody = document.getElementById('fm-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="3" class="no-data">Tidak ada data fast moving untuk periode ini.</td></tr>`;
+    return;
+  }
+  const isGreen = d => String(d.kat || '').toLowerCase().includes('green');
+  tbody.innerHTML = rows.map((r, i) => {
+    const g   = isGreen(r);
+    const clr = g ? '#16a34a' : '#9ca3af';
+    const icon = r.jenis === 'Pipa' ? 'database' : 'git-branch';
+    const descDisplay = r.nama || r.kode;
+    return `<tr>
+      <td style="color:var(--text-muted);font-size:9px;padding-right:4px;">${i+1}</td>
+      <td>
+        <div class="prod-cell">
+          <div class="prod-icon ${g ? 'green' : 'grey'}">
+            <i data-lucide="${icon}" style="width:11px;color:${clr}"></i>
+          </div>
+          <div style="min-width:0;">
+            <div class="prod-name">${descDisplay}</div>
+            <div class="prod-code" style="font-family:monospace;">${r.kode}</div>
+          </div>
+        </div>
+      </td>
+      <td style="text-align:right;font-weight:600;white-space:nowrap;color:var(--accent-green);">${fmt(r.tonase)} <span style="font-size:8px;color:var(--text-muted);font-weight:400;">kg</span></td>
+    </tr>`;
+  }).join('');
+  lucide.createIcons();
+}
+
+// ================================================================
+//  HELPERS
+// ================================================================
+function set(id,val){ const e=document.getElementById(id); if(e) e.textContent=val; }
+function fmt(n){ return Number(n||0).toLocaleString('id-ID',{maximumFractionDigits:2}); }
+function showLoading(v){ document.getElementById('loadingOverlay').classList.toggle('show',v); }
+function showError(msg){ const b=document.getElementById('errorBanner'); b.classList.add('show'); document.getElementById('errorMsg').textContent=msg; }
+function hideError(){ document.getElementById('errorBanner').classList.remove('show'); }
+
+// ================================================================
+//  LIVE CLOCK
+// ================================================================
+(function tickClock() {
+  const HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  const BLN  = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  function update() {
+    const now = new Date();
+    const hh  = String(now.getHours()).padStart(2,'0');
+    const mm  = String(now.getMinutes()).padStart(2,'0');
+    const ss  = String(now.getSeconds()).padStart(2,'0');
+    const el1 = document.getElementById('clockTime');
+    const el2 = document.getElementById('clockDate');
+    if (el1) el1.textContent = `${hh}:${mm}:${ss}`;
+    if (el2) el2.textContent = `${HARI[now.getDay()]}, ${now.getDate()} ${BLN[now.getMonth()]} ${now.getFullYear()}`;
+  }
+  update();
+  setInterval(update, 1000);
+})();
+
+// ================================================================
+//  KANBAN STATUS UPDATE
+// ================================================================
+const KANBAN_PIPA    = 304530.14;
+const KANBAN_FITTING = 111870.96;
+
+function updateKanban(tonPipa, tonFitting) {
+  function setStatus(prefix, value, limit) {
+    const card   = document.getElementById('kanban-' + prefix);
+    const valEl  = document.getElementById('kanban-' + prefix + '-val');
+    const statEl = document.getElementById('kanban-' + prefix + '-status');
+    const infoEl = document.getElementById('kanban-' + prefix + '-info');
+    const notif  = document.getElementById('kanban-' + prefix + '-notif');
+    if (!card) return;
+
+    valEl.textContent = fmt(value) + ' kg';
+    const over = value > limit;
+    card.classList.toggle('aman',    !over);
+    card.classList.toggle('warning',  over);
+
+    const icon = card.querySelector('.kanban-icon i');
+    if (icon) {
+      icon.style.color = over ? '#ef4444' : '#10b981';
+    }
+    if (!over) {
+      statEl.textContent = 'AMAN';
+      infoEl.textContent = 'Stok dalam batas aman kanban tidak ada tindakan diperlukan';
+      if (notif) notif.style.display = 'none';
+    } else {
+      const selisih = value - limit;
+      statEl.textContent = '?? TIDAK AMAN';
+      infoEl.textContent = `Perhatian Planner: Stok saat ini melampaui batas kanban sebesar ${fmt(selisih)} kg. Mohon segera dilakukan evaluasi dan penyesuaian rencana produksi/pengiriman guna menghindari penumpukan stok di luar batas yang telah ditetapkan.`;
+      if (notif) notif.style.display = 'block';
+    }
+  }
+  setStatus('pipa',    tonPipa,    KANBAN_PIPA);
+  setStatus('fitting', tonFitting, KANBAN_FITTING);
+}
+
+// ================================================================
+//  AUTO LOAD
+// ================================================================
+window.addEventListener('load', () => {
+  // Set default IO dates: awal bulan s/d hari ini
+  const awalBulan = `${curYear}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
+  const todayStr  = today.toISOString().slice(0,10);
+  const lblIO = fmtYMD(awalBulan) + ' ? ' + fmtYMD(todayStr);
+
+  document.getElementById('out-date-from').value = awalBulan;
+  document.getElementById('out-date-to').value   = todayStr;
+  document.getElementById('out-badge').textContent = lblIO;
+
+  document.getElementById('in-date-from').value  = awalBulan;
+  document.getElementById('in-date-to').value    = todayStr;
+  document.getElementById('in-badge').textContent = lblIO;
+
+  resetFilter();    // juga memanggil loadData() - default harian hari ini
+  loadGroupList();
+  loadIOData('out');
+  loadIOData('in');
+});
+
+// ================================================================
+//  TEMA DARK / LIGHT
+// ================================================================
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('theme-light');
+  localStorage.setItem('pprTheme', isLight ? 'light' : 'dark');
+  const icon  = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if (icon)  icon.setAttribute('data-lucide', isLight ? 'moon' : 'sun');
+  if (label) label.textContent = isLight ? 'Dark' : 'Light';
+  lucide.createIcons();
+}
+
+// ================================================================
+//  FONT SIZE CONTROL
+// ================================================================
+var _fontStep = 0; // -3 to +5 steps of 10%
+var _fontSteps = [-30,-20,-10,0,10,20,30,40,50];
+var _fontLabels = ['70%','80%','90%','100%','110%','120%','130%','140%','150%'];
+function changeFontSize(dir) {
+  _fontStep = Math.max(0, Math.min(_fontSteps.length - 1, _fontStep + dir));
+  // default step index is 3 (100%)
+  var defaultIdx = 3;
+  var scale = (100 + _fontSteps[_fontStep]) / 100;
+  document.documentElement.style.setProperty('--font-scale', scale);
+  var label = document.getElementById('fontSizeLabel');
+  if (label) label.textContent = _fontLabels[_fontStep];
+  localStorage.setItem('pprFontStep', _fontStep);
+}
+
+// Restore setelan dari localStorage saat load
+(function initPrefs() {
+  // Tema
+  if (localStorage.getItem('pprTheme') === 'light') {
+    document.body.classList.add('theme-light');
+    window.addEventListener('load', function() {
+      var icon  = document.getElementById('themeIcon');
+      var label = document.getElementById('themeLabel');
+      if (icon)  icon.setAttribute('data-lucide', 'moon');
+      if (label) label.textContent = 'Dark';
+      lucide.createIcons();
+    });
+  }
+  // Font size
+  var savedStep = parseInt(localStorage.getItem('pprFontStep') || '3');
+  if (!isNaN(savedStep) && savedStep >= 0 && savedStep <= 8) {
+    _fontStep = savedStep;
+    var scale = (100 + _fontSteps[savedStep]) / 100;
+    document.documentElement.style.setProperty('--font-scale', scale);
+    window.addEventListener('load', function() {
+      var lbl = document.getElementById('fontSizeLabel');
+      if (lbl) lbl.textContent = _fontLabels[savedStep];
+    });
+  }
+})();
+</script>
+</body>
+</html>

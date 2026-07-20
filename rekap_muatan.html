@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720b"></script>
-<script src="./assets/js/api-shim.js?v=20260720b"></script>
-<script src="./assets/js/sw-register.js?v=20260720b"></script>
+<script src="./assets/js/config.js?v=20260720c"></script>
+<script src="./assets/js/api-shim.js?v=20260720c"></script>
+<script src="./assets/js/sw-register.js?v=20260720c"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -468,10 +468,10 @@ if (window.innerWidth <= 860) {
 // Peta nama menu -> file statis di repo GitHub Pages ini.
 var PAGE_MAP = {
   ''                : 'index.html',
-  'index'           : 'index.html',
+  'index'           : 'monitoring_stock.html',
   'kanban'          : 'kanban.html',
   'rekap'           : 'rekap_muatan.html',
-  'wh_control_tower': 'wh_control_tower.html',
+  'wh_control_tower': 'index.html',
   'residance'       : 'residance_time.html'
 };
 function navTo(pg){

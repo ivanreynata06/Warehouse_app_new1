@@ -2,7 +2,7 @@
 
 Repo ini adalah hasil pemisahan dashboard kamu:
 
-- **Frontend** (`index.html`, `kanban.html`, `rekap_muatan.html`, `wh_control_tower.html`)
+- **Frontend** (`index.html`, `kanban.html`, `rekap_muatan.html`, `monitoring_stock.html`)
   → di-hosting statis di **GitHub Pages**. Tidak ada lagi branding
   `script.google.com` / `googleusercontent.com`, karena halaman tidak
   lagi dibuka dari Apps Script.
@@ -13,16 +13,23 @@ Repo ini adalah hasil pemisahan dashboard kamu:
 ## Struktur folder
 
 ```
-index.html               <- Dashboard Pipa & Fitting PPR (menu utama)
+index.html               <- WH Control Tower (LANDING PAGE / menu utama saat buka link)
 kanban.html               <- Dashboard Kanban PPR
 rekap_muatan.html         <- Monitoring Tonase Persiapan
-wh_control_tower.html     <- WH Control Tower
+monitoring_stock.html     <- Dashboard Pipa & Fitting PPR (Monitoring Stock, Inbound & Outbound)
 residance_time.html       <- Loading Time Pengiriman
 assets/js/config.js        <- ISI URL WEB APP APPS SCRIPT DI SINI
 assets/js/api-shim.js      <- pengganti google.script.run, tidak perlu diubah
 assets/js/sw-register.js   <- pembersih Service Worker lama, tidak perlu diubah
 backend/kode.gs             <- kode Apps Script (backend), paste ke Apps Script editor
 ```
+
+> **Catatan:** `index.html` sekarang berisi **WH Control Tower** (bukan
+> lagi Monitoring Stock), supaya saat orang buka
+> `https://ivanreynata06.github.io/Warehouse_app_new1/` langsung
+> masuk ke Control Tower. Halaman Monitoring Stock yang dulu ada di
+> `index.html` sekarang pindah nama jadi `monitoring_stock.html`
+> (isinya sama persis, cuma nama file & posisinya yang berubah).
 
 ## Langkah deploy
 

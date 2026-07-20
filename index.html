@@ -1,1587 +1,1521 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720b"></script>
-<script src="./assets/js/api-shim.js?v=20260720b"></script>
-<script src="./assets/js/sw-register.js?v=20260720b"></script>
+<script src="./assets/js/config.js?v=20260720c"></script>
+<script src="./assets/js/api-shim.js?v=20260720c"></script>
+<script src="./assets/js/sw-register.js?v=20260720c"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
 
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard Pipa & Fitting PPR</title>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <style>
-    :root {
-      --bg-main:#0f0f1a; --bg-sidebar:#161622; --bg-card:#1c1c2a;
-      --text-main:#e8eaf0; --text-muted:#9da3b8;
-      --accent-green:#10b981; --accent-red:#ef4444;
-      --border-color:#2c2c42; --ppr-green:#22c55e; --ppr-grey:#8b93a8;
-      --sidebar-w:200px;
-      --font-scale:1;
-    }
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>RUCIKA — Warehouse Control Tower</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ================================================================
+   RUCIKA WAREHOUSE CONTROL TOWER
+   Brand: Rucika navy (#0d3b73) + signal cyan (#00aeef) — "dimana air
+   mengalir sampai jauh". Dark cockpit theme is the signature look;
+   light theme available for daytime office use.
+================================================================ */
+:root{
+  --rc-navy:      #0a2647;
+  --rc-navy2:     #0d3b73;
+  --rc-cyan:      #00b4e8;
+  --rc-cyan2:     #5be3ff;
 
-    /* ============================================================
-       FIX #1 ? Fullscreen responsif: gunakan vh/vw + clamp font
-       ============================================================ */
-    html,body{
-      height:100%; width:100%; overflow:hidden;
-      font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-      background:var(--bg-main); color:var(--text-main);
-      font-size:calc(clamp(11px,1.1vw,13px) * var(--font-scale,1));
-    }
+  --bg-page:    radial-gradient(1200px 700px at 12% -10%, #16345f 0%, transparent 55%),
+                radial-gradient(1000px 600px at 100% 0%, #0e2d55 0%, transparent 50%),
+                #070d1a;
+  --bg-page-solid:#070d1a;
+  --bg-card:    linear-gradient(180deg,#101a30 0%,#0c1526 100%);
+  --bg-card2:   #0d1830;
+  --bg-sunken:  #060c18;
+  --bg-header:  rgba(10,18,36,.88);
+  --bg-sidebar: linear-gradient(180deg,#081326 0%,#050c18 100%);
+  --border:     rgba(120,160,220,.12);
+  --border2:    rgba(120,160,220,.22);
+  --txt:        #eaf1fb;
+  --txt2:       #93a4c4;
+  --txt3:       #7c8db3;
+  --txt-inv:    #06101f;
+  --gauge-scale-txt: #97a7c9;
 
-    .app-shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
+  --green:  #22d3a5; --green-bg: rgba(34,211,165,.12);  --green-b: rgba(34,211,165,.35);
+  --blue:   #3b9dff; --blue-bg:  rgba(59,157,255,.12);  --blue-b:  rgba(59,157,255,.35);
+  --amber:  #ffb020; --amber-bg: rgba(255,176,32,.12);  --amber-b: rgba(255,176,32,.35);
+  --red:    #ff5470; --red-bg:   rgba(255,84,112,.12);  --red-b:   rgba(255,84,112,.35);
+  --purple: #a78bfa; --purple-bg:rgba(167,139,250,.12); --purple-b:rgba(167,139,250,.35);
+  --cyan:   #00d4ff; --cyan-bg:  rgba(0,212,255,.12);   --cyan-b:  rgba(0,212,255,.35);
+  --orange: #ff8a4c; --orange-bg:rgba(255,138,76,.12);  --orange-b:rgba(255,138,76,.35);
 
-    /* SIDEBAR */
-    .sidebar{
-      width:var(--sidebar-w);min-width:var(--sidebar-w);
-      background:var(--bg-sidebar);padding:12px 10px;
-      display:flex;flex-direction:column;gap:8px;
-      border-right:1px solid var(--border-color);flex-shrink:0;
-      transition:width .25s ease,min-width .25s ease,padding .25s ease;overflow:hidden;
-    }
-    body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
-    .logo{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;}
-    .logo-icon{background:var(--ppr-green);width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-    .sidebar-header{display:flex;align-items:center;justify-content:space-between;}
-    .btn-tog{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;}
-    .btn-tog:hover{background:rgba(255,255,255,.06);color:var(--text-main);}
-    .sec-title{color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:4px 4px 2px;white-space:nowrap;}
-    .mitem{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s;}
-    .mitem.active{background:rgba(22,163,74,.15);color:var(--ppr-green);font-weight:600;}
-    .mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--text-main);}
+  --sidebar-w: 218px;
+  --topbar-h:  60px;
+  --radius:    16px;
+  --radius-sm: 10px;
+  --font-mono: 'JetBrains Mono',monospace;
+  --font-disp: 'Outfit',sans-serif;
 
-    /* MAIN */
-    .main-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+  /* 3D elevation system */
+  --e1: 0 1px 0 rgba(255,255,255,.03) inset, 0 10px 24px -12px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.35);
+  --e2: 0 1px 0 rgba(255,255,255,.04) inset, 0 18px 40px -14px rgba(0,0,0,.65), 0 4px 10px rgba(0,0,0,.4);
+  --e-glow-cyan: 0 0 0 1px rgba(0,180,232,.25), 0 8px 30px -6px rgba(0,180,232,.35);
+  --e-glow-green:0 0 0 1px rgba(34,211,165,.25), 0 8px 30px -6px rgba(34,211,165,.3);
+  --e-glow-red:  0 0 0 1px rgba(255,84,112,.3), 0 8px 30px -6px rgba(255,84,112,.35);
+}
+[data-theme="light"]{
+  --bg-page: radial-gradient(1200px 700px at 10% -10%,#eaf4ff 0%,transparent 55%), #eef1f8;
+  --bg-page-solid:#eef1f8;
+  --bg-card:  linear-gradient(180deg,#ffffff 0%,#f9fbff 100%);
+  --bg-card2: #f2f5fb;
+  --bg-sunken:#eaeef7;
+  --bg-header:rgba(255,255,255,.9);
+  --bg-sidebar: linear-gradient(180deg,#0d1f3d 0%,#081326 100%);
+  --border:  #e2e7f2;
+  --border2: #d3d9ea;
+  --txt:  #101a30;
+  --txt2: #5a6785;
+  --txt3: #647089;
+  --txt-inv:#ffffff;
+  --gauge-scale-txt: #5c6785;
+  --e1: 0 1px 0 rgba(255,255,255,.7) inset, 0 10px 24px -14px rgba(20,30,60,.22), 0 2px 6px rgba(20,30,60,.08);
+  --e2: 0 1px 0 rgba(255,255,255,.7) inset, 0 18px 40px -16px rgba(20,30,60,.28), 0 4px 10px rgba(20,30,60,.1);
+}
 
-    /* NAVBAR */
-    .navbar{height:48px;background:var(--bg-sidebar);display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border-color);flex-shrink:0;}
-    .nav-left{display:flex;align-items:center;gap:8px;}
-    .btn-menu{background:none;border:1px solid var(--border-color);color:var(--text-main);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;}
-    .search-bar{position:relative;}
-    .search-bar input{width:180px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;padding:5px 8px 5px 28px;color:white;outline:none;font-size:11px;}
-    .search-bar .si{position:absolute;left:7px;top:50%;transform:translateY(-50%);color:var(--text-muted);}
-    .nav-right{display:flex;align-items:center;gap:10px;}
-    .nav-icon{background:none;border:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;}
-    .avatar{width:28px;height:28px;border-radius:50%;background:var(--ppr-green);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
+  background:var(--bg-page);color:var(--txt);font-size:12.5px;
+  transition:background .25s,color .25s;}
+::selection{background:var(--rc-cyan);color:#04101f;}
+.shell{display:flex;height:100vh;width:100vw;perspective:2200px;}
+body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;overflow:hidden;border:none;}
+body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
 
-    /* ============================================================
-       FILTER BAR ? Stock (tanggal+group)
-       ============================================================ */
-    .filter-bar{
-      background:var(--bg-sidebar);border-bottom:1px solid var(--border-color);
-      padding:5px 14px;display:flex;align-items:center;gap:7px;
-      flex-wrap:nowrap;flex-shrink:0;overflow-x:auto;
-    }
-    .filter-bar::-webkit-scrollbar{height:3px;}
-    .filter-bar::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
-    .flabel{font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:3px;white-space:nowrap;}
-    .fmode-group{display:flex;background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;overflow:hidden;}
-    .fmode-btn{background:none;border:none;color:var(--text-muted);padding:4px 10px;font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;}
-    .fmode-btn.active{background:var(--ppr-green);color:white;font-weight:600;}
-    .fmode-btn:not(.active):hover{background:rgba(255,255,255,.05);color:var(--text-main);}
-    .fsec{display:flex;align-items:center;gap:5px;}
-    .fsec.hidden{display:none;}
-    .fsel,.finput{
-      background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;
-      color:var(--text-main);padding:4px 20px 4px 7px;font-size:10px;
-      outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
-    }
-    .finput[type="date"]{color-scheme:dark;padding-right:7px;}
-    .fsel:focus,.finput:focus{border-color:var(--ppr-green);}
-    .fsel-wrap{position:relative;}
-    .fsel-wrap::after{content:'';position:absolute;right:6px;top:50%;transform:translateY(-50%);border:3px solid transparent;border-top-color:var(--text-muted);pointer-events:none;}
-    .fdiv{width:1px;height:16px;background:var(--border-color);flex-shrink:0;}
-    .btn-apply{background:var(--ppr-green);color:white;border:none;border-radius:6px;padding:4px 11px;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:3px;white-space:nowrap;}
-    .btn-apply:hover{background:#15803d;}
-    .btn-reset{background:none;color:var(--text-muted);border:1px solid var(--border-color);border-radius:6px;padding:4px 9px;font-size:10px;cursor:pointer;white-space:nowrap;}
-    .fbadge{display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,.12);color:var(--ppr-green);border:1px solid rgba(22,163,74,.3);border-radius:20px;padding:2px 8px;font-size:10px;white-space:nowrap;}
-    .fbadge-x{cursor:pointer;font-size:13px;opacity:.7;}
-    .fbadge-x:hover{opacity:1;}
+/* ================================================================ SIDEBAR */
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg-sidebar);
+  display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:relative;
+  box-shadow:6px 0 30px -10px rgba(0,0,0,.5);z-index:5;}
+.sidebar::before{content:'';position:absolute;top:0;right:0;bottom:0;width:1px;
+  background:linear-gradient(180deg,rgba(0,180,232,.4),rgba(0,180,232,0) 60%);}
+.sidebar::-webkit-scrollbar{width:3px;}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px;}
 
-    /* ============================================================
-       FIX #3 & #5 ? Group sebagai DROPDOWN bukan pill
-       ============================================================ */
-    .group-filter-wrap{display:flex;align-items:center;gap:8px;}
-    .group-label{font-size:10px;color:var(--text-muted);white-space:nowrap;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
-    /* Dropdown group ? styled sama dengan fsel */
-    #sel-group{
-      background:var(--bg-main);border:1px solid var(--border-color);border-radius:6px;
-      color:var(--text-main);padding:4px 26px 4px 8px;font-size:11px;
-      outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
-      min-width:120px;max-width:200px;
-    }
-    #sel-group:focus{border-color:var(--ppr-green);}
-    .group-dd-wrap{position:relative;}
-    .group-dd-wrap::after{content:'';position:absolute;right:8px;top:50%;transform:translateY(-50%);border:3px solid transparent;border-top-color:var(--text-muted);pointer-events:none;}
+.sb-logo{padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex;flex-direction:column;align-items:flex-start;gap:10px;position:relative;}
+.sb-logo img{width:118px;filter:drop-shadow(0 2px 8px rgba(0,180,232,.25));}
+.sb-tag{font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.4px;font-style:italic;}
+.sb-appname{font-family:var(--font-disp);font-size:11.5px;font-weight:700;color:#fff;
+  display:flex;align-items:center;gap:6px;}
+.sb-appname .dot3d{width:7px;height:7px;border-radius:50%;background:var(--rc-cyan);
+  box-shadow:0 0 0 3px rgba(0,180,232,.18),0 0 10px rgba(0,180,232,.9);animation:pulse3d 2.4s infinite;}
+@keyframes pulse3d{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.55;transform:scale(.75);}}
 
-    /* ============================================================
-       IO Filter - compact 2-row layout
-       ============================================================ */
-    .io-filter{display:flex;flex-direction:column;gap:3px;margin-top:5px;padding:5px 7px;background:rgba(255,255,255,.03);border-radius:6px;border:1px solid var(--border-color);}
-    .io-filter-row1{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0;}
-    .io-filter-row2{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0;}
-    .io-filter-label{font-size:9px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;}
-    .io-fsel,.io-finput{
-      background:var(--bg-main);border:1px solid var(--border-color);border-radius:5px;
-      color:var(--text-main);padding:3px 4px 3px 5px;font-size:9px;
-      outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
-    }
-    .io-finput[type="date"]{color-scheme:dark;min-width:88px;max-width:100px;}
-    .io-fsel-wrap{position:relative;}
-    .io-fsel-wrap::after{content:'';position:absolute;right:5px;top:50%;transform:translateY(-50%);border:2px solid transparent;border-top-color:var(--text-muted);pointer-events:none;}
-    .io-fsel:focus,.io-finput:focus{border-color:var(--ppr-green);}
-    .io-btn-group{display:flex;gap:3px;margin-left:auto;flex-shrink:0;}
-    .btn-io-apply{background:var(--ppr-green);color:white;border:none;border-radius:5px;padding:3px 8px;font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;}
-    .btn-io-apply:hover{background:#15803d;}
-    .btn-io-reset{background:rgba(255,255,255,.06);color:var(--text-muted);border:1px solid var(--border-color);border-radius:5px;padding:3px 8px;font-size:9px;cursor:pointer;white-space:nowrap;}
-    .btn-io-reset:hover{background:rgba(255,255,255,.1);color:var(--text-main);}
-    .io-fsec{display:flex;align-items:center;gap:3px;}
-    .io-fsec.hidden{display:none;}
-    .io-badge{display:inline-flex;align-items:center;background:rgba(22,163,74,.1);color:var(--ppr-green);border:1px solid rgba(22,163,74,.25);border-radius:10px;padding:1px 6px;font-size:9px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;margin-left:auto;}
+.sb-section{padding:16px 16px 6px;font-size:9px;font-weight:700;color:rgba(255,255,255,.28);
+  text-transform:uppercase;letter-spacing:1px;}
+.mitem{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:2px 8px;
+  border-radius:10px;color:rgba(255,255,255,.55);font-size:11px;cursor:pointer;
+  transition:all .18s cubic-bezier(.2,.8,.3,1);font-weight:500;white-space:nowrap;position:relative;}
+.mitem.active{background:linear-gradient(90deg,rgba(0,180,232,.22),rgba(0,180,232,.04));
+  color:#8fe8ff;box-shadow:var(--e1), inset 0 0 0 1px rgba(0,180,232,.25);}
+.mitem.active::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);
+  width:3px;height:16px;border-radius:3px;background:var(--rc-cyan);box-shadow:0 0 8px var(--rc-cyan);}
+.mitem:hover:not(.active){background:rgba(255,255,255,.06);color:rgba(255,255,255,.9);transform:translateX(2px);}
+.mitem svg{flex-shrink:0;opacity:.75;}
+.mitem.active svg{opacity:1;}
 
-    /* ============================================================
-       LOADING ? Logo Rucika dengan animasi gelombang air
-       ============================================================ */
-    .loading-overlay{position:fixed;inset:0;background:rgba(18,18,28,.85);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
-    .loading-overlay.show{display:flex;}
+.sb-footer{margin-top:auto;padding:14px 16px 18px;border-top:1px solid rgba(255,255,255,.06);}
+.sb-live{display:flex;align-items:center;gap:7px;font-size:9.5px;color:rgba(255,255,255,.4);}
+.sb-live .lv{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse3d 2s infinite;}
 
-    .rucika-logo-wrap{
-      position:relative;
-      width:200px;height:90px;
-      border-radius:45px;
-      background:linear-gradient(135deg,#1e5fae 0%,#2563eb 50%,#1e5fae 100%);
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      overflow:hidden;
-      box-shadow:0 8px 30px rgba(37,99,235,.4);
-      animation:logoFloat 2.4s ease-in-out infinite;
-    }
-    @keyframes logoFloat{
-      0%,100%{transform:translateY(0);}
-      50%{transform:translateY(-6px);}
-    }
-    .rucika-text{
-      font-family:'Segoe UI',Tahoma,sans-serif;
-      font-weight:800;font-size:24px;letter-spacing:1px;
-      color:#fff;z-index:2;
-      text-shadow:0 2px 6px rgba(0,0,0,.25);
-    }
-    .rucika-tagline{
-      font-family:'Brush Script MT',cursive,'Segoe UI',sans-serif;
-      font-style:italic;font-size:9px;color:#cfe8ff;
-      z-index:2;margin-top:1px;letter-spacing:.3px;
-    }
-    /* Gelombang air animasi di bagian bawah logo */
-    .wave-container{
-      position:absolute;left:0;right:0;bottom:0;height:26px;
-      overflow:hidden;z-index:1;
-    }
-    .wave{
-      position:absolute;bottom:0;left:0;
-      width:200%;height:100%;
-      background-repeat:repeat-x;
-      background-size:50% 100%;
-    }
-    .wave1{
-      background-image:radial-gradient(circle at 25px -5px,transparent 20px,#5ab4f0 21px);
-      background-size:50px 30px;
-      opacity:.55;
-      animation:waveMove 3.2s linear infinite;
-    }
-    .wave2{
-      background-image:radial-gradient(circle at 25px 0px,transparent 18px,#7cc8f5 19px);
-      background-size:40px 26px;
-      opacity:.4;
-      animation:waveMove 2.1s linear infinite reverse;
-    }
-    @keyframes waveMove{
-      0%{transform:translateX(0);}
-      100%{transform:translateX(-50%);}
-    }
+/* ================================================================ MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
 
-    /* Ripple/gelombang melingkar menyebar dari logo */
-    .ripple-ring{
-      position:absolute;border:2px solid rgba(91,180,240,.5);
-      border-radius:45px;
-      width:200px;height:90px;
-      animation:rippleOut 2.4s ease-out infinite;
-      pointer-events:none;
-    }
-    .ripple-ring.r2{ animation-delay:.8s; }
-    .ripple-ring.r3{ animation-delay:1.6s; }
-    @keyframes rippleOut{
-      0%{transform:scale(1);opacity:.6;}
-      100%{transform:scale(1.35);opacity:0;}
-    }
+.topbar{height:var(--topbar-h);background:var(--bg-header);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;flex-shrink:0;box-shadow:0 4px 20px rgba(0,0,0,.15);position:relative;z-index:4;}
+.tb-left{display:flex;align-items:center;gap:12px;}
+.tb-title{font-family:var(--font-disp);font-size:16px;font-weight:800;letter-spacing:.2px;
+  background:linear-gradient(90deg,var(--txt),var(--rc-cyan2));-webkit-background-clip:text;
+  background-clip:text;-webkit-text-fill-color:transparent;}
+.tb-badge{padding:3px 11px;border-radius:20px;font-size:9px;font-weight:700;
+  background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);
+  box-shadow:var(--e-glow-green);}
+.tb-right{display:flex;align-items:center;gap:9px;}
+.tb-clock{font-family:var(--font-mono);font-size:13.5px;font-weight:700;color:var(--rc-cyan2);
+  letter-spacing:.5px;text-shadow:0 0 12px rgba(0,180,232,.4);}
+.btn-icon{width:33px;height:33px;border-radius:9px;border:1px solid var(--border);
+  background:var(--bg-card2);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--txt2);transition:all .18s;box-shadow:var(--e1);}
+.btn-icon:hover{background:var(--bg-card);color:var(--txt);transform:translateY(-1px);}
+.btn-refresh{display:flex;align-items:center;gap:6px;padding:7px 15px;
+  background:linear-gradient(135deg,var(--rc-cyan),#0080b3);border:none;border-radius:9px;color:#04101f;
+  font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;
+  box-shadow:0 6px 18px -4px rgba(0,180,232,.55);transition:all .18s;}
+.btn-refresh:hover{transform:translateY(-1px);box-shadow:0 8px 22px -4px rgba(0,180,232,.7);}
+.btn-refresh:active{transform:translateY(0);}
+.btn-refresh.spin svg{animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.theme-toggle{display:flex;align-items:center;gap:5px;padding:6px 11px;
+  border-radius:9px;border:1px solid var(--border);background:var(--bg-card2);
+  cursor:pointer;font-size:10px;font-weight:600;color:var(--txt2);transition:all .18s;box-shadow:var(--e1);}
+.theme-toggle:hover{color:var(--txt);}
 
-    .loading-text{color:var(--text-muted);font-size:12px;letter-spacing:.3px;}
+.content{flex:1;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px;}
+.content::-webkit-scrollbar{width:6px;}
+.content::-webkit-scrollbar-track{background:transparent;}
+.content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px;}
 
-    /* ERROR */
-    .error-banner{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#fca5a5;padding:6px 14px;font-size:11px;display:none;align-items:center;gap:7px;flex-shrink:0;}
-    .error-banner.show{display:flex;}
+/* ================================================================ FILTER BAR */
+.filter-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:11px 18px;display:flex;align-items:center;gap:11px;flex-wrap:wrap;box-shadow:var(--e1);}
+.filter-group{display:flex;align-items:center;gap:7px;}
+.filter-lbl{font-size:10px;font-weight:600;color:var(--txt2);white-space:nowrap;}
+.fbtn{padding:5px 12px;border-radius:8px;font-size:9.5px;font-weight:700;cursor:pointer;
+  border:1px solid var(--border2);background:transparent;color:var(--txt2);
+  font-family:'Inter',sans-serif;transition:all .15s;}
+.fbtn.active{background:linear-gradient(135deg,var(--rc-cyan),#0080b3);border-color:transparent;color:#04101f;
+  box-shadow:0 4px 14px -3px rgba(0,180,232,.5);}
+.fbtn:hover:not(.active){background:var(--bg-card2);color:var(--txt);}
+.fsel{padding:6px 11px;border-radius:8px;font-size:10px;background:var(--bg-sunken);
+  border:1px solid var(--border2);color:var(--txt);font-family:'Inter',sans-serif;cursor:pointer;}
+.fsep{width:1px;height:22px;background:var(--border2);}
+.period-badge{padding:4px 13px;border-radius:20px;font-size:9.5px;font-weight:700;
+  background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-b);}
+.btn-apply{padding:6px 16px;border-radius:8px;font-size:10px;font-weight:700;
+  background:var(--rc-navy2);border:1px solid var(--border2);color:#fff;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:all .15s;}
+.btn-apply:hover{background:var(--rc-cyan);color:#04101f;}
 
-    /* ============================================================
-       FIX #1 ? BODY GRID: minmax(0,1fr) agar tidak overflow
-       ============================================================ */
-    .dash-body{
-      flex:1;overflow:hidden;padding:8px 12px;
-      display:grid;
-      grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);
-      grid-template-rows:auto 1fr;
-      gap:8px;min-height:0;
-    }
-    .dash-header{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
-    .dash-title{font-size:15px;font-weight:700;}
-    .dash-sub{color:var(--text-muted);font-size:10px;}
-    .dash-periode{color:var(--ppr-green);}
+/* ================================================================ NOTIFICATION STRIP */
+.notif-strip{display:flex;gap:9px;flex-wrap:wrap;}
+.notif-item{display:flex;align-items:center;gap:8px;padding:9px 13px;border-radius:11px;
+  font-size:10px;font-weight:500;border:1px solid;flex:1;min-width:200px;box-shadow:var(--e1);
+  background:var(--bg-card);}
+.notif-item.green{color:var(--green);border-color:var(--green-b);box-shadow:var(--e-glow-green);}
+.notif-item.amber{color:var(--amber);border-color:var(--amber-b);}
+.notif-item.red{color:var(--red);border-color:var(--red-b);box-shadow:var(--e-glow-red);}
+.notif-item.blue{color:var(--blue);border-color:var(--blue-b);}
+.notif-icon{font-size:15px;flex-shrink:0;filter:drop-shadow(0 0 4px currentColor);}
+.notif-text{flex:1;color:var(--txt2);}
+.notif-text strong{display:block;font-weight:700;margin-bottom:1px;color:var(--txt);}
 
-    /* CARDS */
-    .card{background:var(--bg-card);border-radius:9px;padding:10px 12px;border:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;min-height:0;}
-    .card-title{font-size:10px;color:var(--text-muted);margin-bottom:1px;}
-    .card-src{font-size:9px;color:var(--text-muted);margin-bottom:4px;}
-    .unit{font-size:10px;color:var(--text-muted);font-weight:400;}
+/* ================================================================ KPI STRIP */
+.kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:11px;}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:13px 15px;position:relative;overflow:hidden;box-shadow:var(--e1);
+  transition:transform .25s cubic-bezier(.2,.8,.3,1),box-shadow .25s;transform-style:preserve-3d;}
+.kpi-card:hover{transform:translateY(-3px) rotateX(2deg);box-shadow:var(--e2);}
+.kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0;
+  box-shadow:0 0 12px 0 currentColor;}
+.kpi-card.c-green::after{background:var(--green);color:var(--green);}
+.kpi-card.c-blue::after{background:var(--blue);color:var(--blue);}
+.kpi-card.c-amber::after{background:var(--amber);color:var(--amber);}
+.kpi-card.c-red::after{background:var(--red);color:var(--red);}
+.kpi-card.c-purple::after{background:var(--purple);color:var(--purple);}
+.kpi-card.c-cyan::after{background:var(--cyan);color:var(--cyan);}
+.kpi-card.c-orange::after{background:var(--orange);color:var(--orange);}
+.kpi-label{font-size:8.6px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--txt3);margin-bottom:7px;}
+.kpi-val{font-family:var(--font-disp);font-size:21px;font-weight:800;line-height:1;margin-bottom:5px;
+  letter-spacing:-.2px;}
+.kpi-val.c-green{color:var(--green);} .kpi-val.c-blue{color:var(--blue);} .kpi-val.c-amber{color:var(--amber);}
+.kpi-val.c-red{color:var(--red);} .kpi-val.c-purple{color:var(--purple);} .kpi-val.c-cyan{color:var(--cyan);}
+.kpi-val.c-orange{color:var(--orange);}
+.kpi-sub{font-size:8.6px;color:var(--txt3);}
+.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:8.8px;font-weight:700;
+  padding:2px 7px;border-radius:20px;margin-top:5px;}
+.kpi-delta.up{background:var(--green-bg);color:var(--green);}
+.kpi-delta.down{background:var(--red-bg);color:var(--red);}
+.kpi-delta.flat{background:var(--bg-card2);color:var(--txt3);}
+.kpi-icon-bg{position:absolute;right:9px;top:8px;opacity:.1;font-size:30px;pointer-events:none;transform:rotate(-6deg);}
 
-    /* TONASE GLOBAL */
-    .global-val{font-size:clamp(20px,2vw,26px);font-weight:800;display:flex;align-items:baseline;gap:5px;line-height:1.1;}
-    .global-sub{font-size:9px;color:var(--text-muted);margin-top:1px;margin-bottom:6px;}
+/* ================================================================ CARDS */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;box-shadow:var(--e1);transition:box-shadow .25s;}
+.card:hover{box-shadow:var(--e2);}
+.card-header{padding:13px 17px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.card-title{font-family:var(--font-disp);font-size:12.5px;font-weight:700;
+  display:flex;align-items:center;gap:7px;color:var(--txt);}
+.card-title-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 8px 1px currentColor;}
+.card-badge{padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;}
+.card-badge.green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);}
+.card-badge.blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-b);}
+.card-badge.amber{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-b);}
+.card-badge.red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-b);}
+.card-body{padding:15px 17px;}
 
-    /* GROUP BADGE header */
-    .group-active-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(22,163,74,.12);color:var(--ppr-green);border:1px solid rgba(22,163,74,.25);border-radius:5px;padding:2px 6px;font-size:9px;font-weight:600;margin-left:4px;vertical-align:middle;}
-    .group-active-badge.hidden{display:none;}
+/* ================================================================ SECTION DIVIDER */
+.sec-divider{display:flex;align-items:center;gap:10px;margin-top:4px;}
+.sec-divider-label{font-family:var(--font-disp);font-size:11px;font-weight:700;color:var(--rc-cyan2);
+  text-transform:uppercase;letter-spacing:1px;white-space:nowrap;display:flex;align-items:center;gap:7px;}
+.sec-divider-line{flex:1;height:1px;background:linear-gradient(90deg,var(--border2),transparent);}
 
-    /* DONUT */
-    .donut-row{display:flex;align-items:center;gap:10px;margin-top:5px;flex:1;min-height:0;}
-    .donut{width:clamp(56px,5.5vw,72px);height:clamp(56px,5.5vw,72px);border-radius:50%;position:relative;flex-shrink:0;}
-    .donut::after{
-      content:'';position:absolute;
-      width:68%;height:68%;
-      background:#242435;border-radius:50%;
-      top:50%;left:50%;transform:translate(-50%,-50%);
-    }
-    .legend{font-size:10px;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}
-    .leg-grp{font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
-    .leg-row{display:flex;justify-content:space-between;align-items:center;gap:3px;}
-    .leg-label{display:flex;align-items:center;gap:4px;color:var(--text-muted);font-size:10px;min-width:0;}
+/* ================================================================ GRIDS */
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:11px;}
+.grid-1-2{display:grid;grid-template-columns:1fr 2fr;gap:11px;}
+.grid-gauge{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:11px;}
 
-    /* FIX #2 ? angka tonase rincian drawing lebih besar & tebal */
-    .leg-val{font-weight:700;color:var(--text-main);font-size:clamp(12px,1.2vw,14px);white-space:nowrap;}
+/* ================================================================ CHARTS */
+.chart-wrap{position:relative;}
+.chart-wrap canvas{width:100%!important;}
+.h110 canvas{height:110px!important;} .h140 canvas{height:140px!important;}
+.h160 canvas{height:160px!important;} .h190 canvas{height:190px!important;}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--txt2);}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;box-shadow:0 0 6px currentColor;}
+.leg-sq{width:9px;height:9px;border-radius:3px;flex-shrink:0;box-shadow:0 0 6px currentColor;}
 
-    .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
-    .leg-div{border:none;border-top:1px solid var(--border-color);margin:3px 0;}
+/* ================================================================ STOCK */
+.stock-mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:11px;}
+.stock-mini{padding:10px 11px;border-radius:11px;background:var(--bg-card2);border:1px solid var(--border);
+  position:relative;overflow:hidden;}
+.stock-mini::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:currentColor;}
+.stock-mini-lbl{font-size:8.4px;color:var(--txt3);margin-bottom:3px;}
+.stock-mini-val{font-family:var(--font-disp);font-size:16px;font-weight:800;}
+.stock-mini-sub{font-size:7.8px;color:var(--txt3);margin-top:1px;}
 
-    /* STOCK TABLE */
-    .stok-tbl{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;}
-    .stok-tbl td{padding:3px 2px;border-bottom:1px solid rgba(255,255,255,.04);}
-    .stok-lbl{color:var(--text-muted);display:flex;align-items:center;gap:4px;}
-    .stok-v{font-weight:600;text-align:right;}
-    .stok-u{font-size:9px;color:var(--text-muted);text-align:right;}
+/* ================================================================ GAUGE (from kanban module) */
+.gauge-card{display:flex;flex-direction:column;align-items:center;}
+.gauge-cap{font-size:9px;color:var(--txt3);margin-bottom:2px;text-align:center;}
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;}
+.gauge-svg{width:100%;max-width:220px;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45));}
+.gauge-stats{display:flex;justify-content:space-around;width:100%;margin-top:2px;}
+.gauge-stat{text-align:center;}
+.gauge-stat-val{font-family:var(--font-disp);font-size:15px;font-weight:800;}
+.gauge-stat-lbl{font-size:8.4px;color:var(--txt3);margin-top:1px;}
+.status-pill{padding:3px 11px;border-radius:20px;font-size:9px;font-weight:800;letter-spacing:.3px;}
+.status-pill.aman{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);}
+.status-pill.waspada{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-b);}
+.status-pill.kritis{background:var(--red-bg);color:var(--red);border:1px solid var(--red-b);}
 
-    /* BAR CHART */
-    .bar-wrap{display:flex;align-items:flex-end;justify-content:space-around;height:40px;margin-top:5px;}
-    .bar-col{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;}
-    .bar-rect{width:18px;border-radius:3px;transition:height .4s ease;min-height:3px;}
-    .bar-lbl{font-size:8px;color:var(--text-muted);text-align:center;}
-    .bar-legend{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;}
-    .bar-leg-item{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--text-muted);}
+/* ================================================================ KANBAN LIST */
+.kanban-item{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.kanban-lbl{font-size:9px;color:var(--txt2);width:96px;flex-shrink:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;}
+.kanban-bar-bg{flex:1;height:8px;background:var(--bg-sunken);border-radius:10px;overflow:hidden;
+  border:1px solid var(--border);}
+.kanban-bar-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.2,.8,.3,1);
+  box-shadow:0 0 8px currentColor;}
+.kanban-val{font-family:var(--font-mono);font-size:8.5px;font-weight:700;width:38px;
+  text-align:right;flex-shrink:0;}
+.kanban-status{font-size:7.5px;font-weight:700;padding:2px 7px;border-radius:20px;flex-shrink:0;}
+.ks-aman{background:var(--green-bg);color:var(--green);}
+.ks-hampir{background:var(--amber-bg);color:var(--amber);}
+.ks-kritis{background:var(--red-bg);color:var(--red);}
 
-    /* OUTBOUND/INBOUND summary */
-    .io-summary{display:flex;gap:6px;margin-top:5px;}
-    .io-item{background:rgba(255,255,255,.04);border-radius:6px;padding:5px 8px;flex:1;}
-    .io-label{font-size:9px;color:var(--text-muted);margin-bottom:1px;}
-    .io-val{font-size:12px;font-weight:700;}
+/* ================================================================ PIC REKAP */
+.pic-row{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;}
+.pic-mini{background:var(--bg-card2);border:1px solid var(--border);border-radius:13px;
+  padding:12px 12px 10px;display:flex;flex-direction:column;gap:4px;transition:transform .2s;}
+.pic-mini:hover{transform:translateY(-2px);}
+.pic-mini-head{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.pic-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-disp);font-size:11px;font-weight:800;color:#04101f;flex-shrink:0;
+  box-shadow:0 4px 12px -2px currentColor;}
+.pic-name{font-family:var(--font-disp);font-size:11.5px;font-weight:700;}
+.pic-role{font-size:8px;color:var(--txt3);}
+.pic-stat{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;}
+.pic-stat-lbl{font-size:8.5px;color:var(--txt2);}
+.pic-stat-val{font-family:var(--font-mono);font-size:9.5px;font-weight:700;}
+.pic-bar-bg{height:5px;background:var(--bg-sunken);border-radius:10px;overflow:hidden;margin-top:3px;}
+.pic-bar-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.2,.8,.3,1);box-shadow:0 0 6px currentColor;}
+.pic-pct{font-size:8px;color:var(--txt3);text-align:right;margin-top:2px;}
 
-    /* LINE CHART */
-    .lc-wrap{flex:1;min-height:0;margin-top:5px;position:relative;}
-    .lc-svg{width:100%;height:100%;min-height:50px;display:block;}
-    .chart-area-fill{opacity:.1;}
-    .lc-dates{display:flex;justify-content:space-between;color:var(--text-muted);font-size:8px;margin-top:2px;}
-    .lc-legend{display:flex;gap:8px;margin-top:2px;}
-    .lc-leg{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--text-muted);}
+.global-target-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px;}
+.gt-card{padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card2);}
+.gt-label{font-size:8.6px;color:var(--txt3);margin-bottom:6px;font-weight:600;}
+.gt-bar-bg{height:11px;background:var(--bg-sunken);border-radius:10px;overflow:hidden;}
+.gt-bar-fill{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.2,.8,.3,1);box-shadow:0 0 10px currentColor;}
+.gt-nums{display:flex;justify-content:space-between;margin-top:5px;font-size:8.5px;color:var(--txt2);}
+.gt-pct{font-family:var(--font-disp);font-size:19px;font-weight:800;margin-top:3px;}
 
-    /* FAST MOVING */
-    .fm-tabs{display:flex;gap:5px;margin:5px 0 4px;}
-    .fm-tab{background:none;border:1px solid var(--border-color);color:var(--text-muted);padding:4px 10px;border-radius:5px;cursor:pointer;font-size:10px;transition:all .15s;display:flex;align-items:center;gap:4px;}
-    .fm-tab.active{border-color:var(--ppr-green);color:var(--ppr-green);background:rgba(22,163,74,.06);}
-    .fm-tbl{width:100%;border-collapse:collapse;font-size:10px;}
-    .fm-tbl th{color:var(--text-muted);font-weight:500;padding:3px 3px 5px;border-bottom:1px solid var(--border-color);font-size:9px;text-align:left;}
-    .fm-tbl td{padding:5px 3px;border-bottom:1px solid rgba(255,255,255,.03);}
-    .prod-cell{display:flex;align-items:flex-start;gap:6px;}
-    .prod-icon{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;}
-    .prod-icon.green{background:rgba(22,163,74,.15);}
-    .prod-icon.grey{background:rgba(107,114,128,.15);}
-    .prod-name{font-size:10px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;word-break:break-word;}
-    .prod-code{font-size:9px;color:var(--text-muted);}
-    .no-data{color:var(--text-muted);text-align:center;padding:14px 0;font-size:10px;}
+/* ================================================================ LOADING TIME */
+.lt-mini-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;}
+.lt-mini{padding:11px 12px;border-radius:12px;background:var(--bg-card2);border:1px solid var(--border);text-align:left;}
+.lt-mini-lbl{font-size:8.4px;color:var(--txt3);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;}
+.lt-mini-val{font-family:var(--font-disp);font-size:20px;font-weight:800;}
 
-    /* COL LAYOUT ? semua kolom flex column, isi ruang penuh */
-    .col1{display:flex;flex-direction:column;gap:7px;min-height:0;overflow:hidden;}
-    .col2{display:flex;flex-direction:column;gap:7px;min-height:0;overflow:hidden;}
-    .col3{display:flex;flex-direction:column;min-height:0;overflow:hidden;}
-    .col1 .card:last-child{flex:1;min-height:0;}
-    .col2 .card{flex:1;min-height:0;}
-    .col3 .card{flex:1;min-height:0;}
+/* ================================================================ LOADING OVERLAY */
+.loading-overlay{position:fixed;inset:0;background:rgba(6,10,20,.92);
+  display:flex;align-items:center;justify-content:center;z-index:999;
+  flex-direction:column;gap:12px;transition:opacity .3s;}
+[data-theme="light"] .loading-overlay{background:rgba(240,243,250,.94);}
+.spinner3d{width:44px;height:44px;position:relative;}
+.spinner3d::before,.spinner3d::after{content:'';position:absolute;inset:0;border-radius:50%;
+  border:3px solid transparent;border-top-color:var(--rc-cyan);animation:spin3d 1s linear infinite;}
+.spinner3d::after{border-top-color:var(--rc-cyan2);opacity:.5;animation-duration:1.4s;animation-direction:reverse;}
+@keyframes spin3d{to{transform:rotate(360deg);}}
+.loading-txt{font-size:11px;color:var(--txt2);font-weight:600;letter-spacing:.3px;}
 
-    .card-val-sm{font-size:clamp(15px,1.6vw,20px);font-weight:700;display:flex;align-items:baseline;gap:5px;}
+/* ================================================================ MISC */
+.pareto-note{font-size:9px;margin-top:8px;padding:7px 10px;
+  background:var(--amber-bg);border-radius:9px;border:1px solid var(--amber-b);color:var(--amber);
+  display:flex;align-items:center;gap:6px;}
+.hint-note{font-size:9px;color:var(--txt3);margin-bottom:8px;}
+.mini-icon{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:13px;box-shadow:var(--e1);}
+.kritis-list{display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto;}
+.kritis-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;
+  border-radius:9px;background:var(--bg-card2);border:1px solid var(--border);font-size:9.5px;}
+.kritis-row .kn{color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.kritis-row .kv{font-family:var(--font-mono);font-weight:700;flex-shrink:0;}
+@media (max-width:1400px){.kpi-strip{grid-template-columns:repeat(4,1fr);}.grid-gauge{grid-template-columns:1fr 1fr;}}
 
-    /* FM scroll */
-    .fm-scroll{overflow-y:auto;flex:1;min-height:0;}
-    .fm-scroll::-webkit-scrollbar{width:3px;}
-    .fm-scroll::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
-
-    /* LIVE CLOCK */
-    .live-clock{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;}
-    .clock-time{font-size:14px;font-weight:700;color:var(--text-main);letter-spacing:1px;font-variant-numeric:tabular-nums;}
-    .clock-date{font-size:9px;color:var(--text-muted);}
-
-    /* KANBAN STATUS BANNER */
-    .kanban-bar{
-      display:flex;gap:8px;padding:5px 14px;flex-shrink:0;
-      background:var(--bg-sidebar);border-bottom:1px solid var(--border-color);
-    }
-    .kanban-item{
-      flex:1;display:flex;align-items:center;gap:8px;
-      padding:6px 10px;border-radius:7px;border:1px solid;position:relative;overflow:hidden;
-    }
-    .kanban-item.aman{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3);}
-    .kanban-item.warning{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4);animation:kanban-pulse 2s ease-in-out infinite;}
-    @keyframes kanban-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.0);}50%{box-shadow:0 0 0 3px rgba(239,68,68,.15);}}
-    .kanban-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-    .kanban-item.aman .kanban-icon{background:rgba(16,185,129,.2);}
-    .kanban-item.warning .kanban-icon{background:rgba(239,68,68,.2);}
-    .kanban-label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;}
-    .kanban-val{font-size:11px;font-weight:700;}
-    .kanban-item.aman .kanban-val{color:#10b981;}
-    .kanban-item.warning .kanban-val{color:#ef4444;}
-    .kanban-status{font-size:9px;font-weight:600;padding:2px 7px;border-radius:10px;}
-    .kanban-item.aman .kanban-status{background:rgba(16,185,129,.15);color:#10b981;}
-    .kanban-item.warning .kanban-status{background:rgba(239,68,68,.15);color:#ef4444;}
-    .kanban-limit{font-size:8px;color:var(--text-muted);}
-    .kanban-info{font-size:9px;color:var(--text-muted);margin-top:1px;}
-    .kanban-item.warning .kanban-info{color:#fca5a5;}
-    .kanban-notif{position:absolute;top:4px;right:6px;font-size:8px;font-weight:700;
-      background:rgba(239,68,68,.2);color:#ef4444;border-radius:4px;padding:1px 5px;
-      border:1px solid rgba(239,68,68,.3);}
-
-    /* ============================================================
-       FONT SIZE CONTROL
-       ============================================================ */
-    .font-ctrl {
-      display:flex; align-items:center; gap:3px;
-      border:1px solid var(--border-color); border-radius:6px;
-      overflow:hidden; background:none;
-    }
-    .font-ctrl-btn {
-      background:none; border:none; color:var(--text-muted);
-      cursor:pointer; padding:3px 7px; font-size:11px;
-      font-weight:700; transition:all .15s; line-height:1;
-    }
-    .font-ctrl-btn:hover { background:rgba(34,197,94,.15); color:var(--ppr-green); }
-    .font-ctrl-label {
-      font-size:9px; color:var(--text-muted); padding:0 4px;
-      border-left:1px solid var(--border-color);
-      border-right:1px solid var(--border-color);
-      white-space:nowrap; line-height:1; display:flex; align-items:center;
-    }
-
-    /* ============================================================
-       TEMA TOGGLE BUTTON
-       ============================================================ */
-    .btn-theme {
-      background:none; border:1px solid var(--border-color);
-      color:var(--text-muted); cursor:pointer; padding:3px 9px;
-      border-radius:6px; display:flex; align-items:center; gap:5px;
-      font-size:10px; font-weight:600; white-space:nowrap; transition:all .2s;
-    }
-    .btn-theme:hover { background:rgba(34,197,94,.12); color:var(--ppr-green); border-color:var(--ppr-green); }
-
-    /* ============================================================
-       TEMA LIGHT MODE ? warna lebih kontras & terbaca
-       ============================================================ */
-    body.theme-light {
-      --bg-main:#eef0f5;
-      --bg-sidebar:#f8f9fb;
-      --bg-card:#ffffff;
-      --text-main:#1a1d2e;
-      --text-muted:#4a5270;
-      --border-color:#d0d5e8;
-      --ppr-green:#15803d;
-      --ppr-grey:#475569;
-    }
-    body.theme-light .app-shell { background:var(--bg-main); }
-    body.theme-light .sidebar { box-shadow:2px 0 8px rgba(0,0,0,.08); }
-    body.theme-light .card { box-shadow:0 1px 4px rgba(0,0,0,.07); }
-    body.theme-light .navbar { box-shadow:0 1px 4px rgba(0,0,0,.06); }
-    body.theme-light .donut::after { background:#ffffff; }
-    body.theme-light .search-bar input {
-      color:#1a1d2e; background:#ffffff;
-      border-color:#d0d5e8;
-    }
-    body.theme-light .fsel,
-    body.theme-light .finput,
-    body.theme-light .io-fsel,
-    body.theme-light .io-finput,
-    body.theme-light #sel-group {
-      color:#1a1d2e; background:#ffffff; border-color:#d0d5e8;
-    }
-    body.theme-light .finput[type="date"],
-    body.theme-light .io-finput[type="date"] { color-scheme:light; }
-    body.theme-light .fmode-btn:not(.active) { color:#4a5270; }
-    body.theme-light .fmode-btn:not(.active):hover { background:rgba(0,0,0,.06); color:#1a1d2e; }
-    body.theme-light .fmode-group { background:#f0f2f8; }
-    body.theme-light .btn-menu { color:#1a1d2e; border-color:#d0d5e8; }
-    body.theme-light .nav-icon { color:#4a5270; }
-    body.theme-light .nav-icon:hover { color:#1a1d2e; }
-    body.theme-light .mitem { color:#4a5270; }
-    body.theme-light .mitem:hover:not(.active) { background:rgba(0,0,0,.05); color:#1a1d2e; }
-    body.theme-light .sec-title { color:#6b7280; }
-    body.theme-light .io-item { background:rgba(0,0,0,.04); border:1px solid #d0d5e8; }
-    body.theme-light .io-label { color:#4a5270; }
-    body.theme-light .io-filter { background:rgba(0,0,0,.03); border-color:#d0d5e8; }
-    body.theme-light .stok-tbl td { border-bottom:1px solid #e8eaf0; }
-    body.theme-light .stok-lbl { color:#4a5270; }
-    body.theme-light .stok-u { color:#6b7280; }
-    body.theme-light .stok-v { color:#1a1d2e; }
-    body.theme-light .fm-tbl th { color:#4a5270; border-color:#d0d5e8; }
-    body.theme-light .fm-tbl td { border-bottom:1px solid #eef0f8; }
-    body.theme-light .prod-name { color:#1a1d2e; }
-    body.theme-light .prod-code { color:#6b7280; }
-    body.theme-light .bar-lbl { color:#6b7280; }
-    body.theme-light .bar-leg-item { color:#4a5270; }
-    body.theme-light .leg-label { color:#4a5270; }
-    body.theme-light .leg-val { color:#1a1d2e; }
-    body.theme-light .leg-grp { color:#6b7280; }
-    body.theme-light .lc-leg { color:#4a5270; }
-    body.theme-light .lc-dates { color:#6b7280; }
-    body.theme-light .card-title { color:#4a5270; }
-    body.theme-light .card-src { color:#6b7280; }
-    body.theme-light .unit { color:#4a5270; }
-    body.theme-light .global-sub { color:#4a5270; }
-    body.theme-light .dash-sub { color:#4a5270; }
-    body.theme-light .dash-title { color:#1a1d2e; }
-    body.theme-light .no-data { color:#6b7280; }
-    body.theme-light .kanban-item.aman { background:rgba(21,128,61,.07); border-color:rgba(21,128,61,.3); }
-    body.theme-light .kanban-item.aman .kanban-label { color:#15803d; }
-    body.theme-light .kanban-item.warning { background:rgba(220,38,38,.06); }
-    body.theme-light .kanban-status.aman { background:rgba(21,128,61,.12); color:#15803d; border-color:rgba(21,128,61,.3); }
-    body.theme-light .flabel { color:#4a5270; }
-    body.theme-light .fdiv { background:#d0d5e8; }
-    body.theme-light .fbadge { background:rgba(21,128,61,.08); color:#15803d; border-color:rgba(21,128,61,.3); }
-    body.theme-light .io-badge { background:rgba(21,128,61,.08); color:#15803d; }
-    body.theme-light .group-active-badge { background:rgba(21,128,61,.08); color:#15803d; }
-    body.theme-light .group-hint { color:#15803d; }
-    body.theme-light .loading-overlay { background:rgba(238,240,245,.9); }
-    body.theme-light .ripple-ring{ border-color:rgba(37,99,235,.4); }
-    body.theme-light .loading-text { color:#4a5270; }
-    body.theme-light .btn-io-reset { background:rgba(0,0,0,.04); color:#4a5270; }
-    body.theme-light .btn-io-reset:hover { background:rgba(0,0,0,.08); color:#1a1d2e; }
-    body.theme-light .font-ctrl { border-color:#d0d5e8; }
-    body.theme-light .font-ctrl-btn { color:#4a5270; }
-    body.theme-light .font-ctrl-btn:hover { background:rgba(21,128,61,.1); color:#15803d; }
-    body.theme-light .font-ctrl-label { color:#6b7280; border-color:#d0d5e8; }
-    body.theme-light .fm-tab { color:#4a5270; border-color:#d0d5e8; }
-    body.theme-light .fm-tab:hover { color:#1a1d2e; }
-    body.theme-light .leg-div { border-color:#d0d5e8; }
-    body.theme-light .io-filter-label { color:#4a5270; }
-    body.theme-light .group-label { color:#4a5270; }
-  /* ============================================================
-     MOBILE: halaman dulunya overflow:hidden total (desktop-only,
-     tidak bisa discroll di HP). Di layar sempit, izinkan scroll
-     normal + tumpuk kartu jadi 1 kolom + sidebar jadi overlay.
-     ============================================================ */
-  @media (max-width:860px){
-    html,body{ overflow:auto; height:auto; min-height:100%; }
-    .app-shell{ height:auto; min-height:100vh; overflow:visible; }
-    .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60;
-      box-shadow:10px 0 30px rgba(0,0,0,.45); }
-    .main-right{ overflow:visible; min-height:100vh; width:100%; }
-    .dash-body{
-      overflow:visible !important;
-      grid-template-columns:1fr !important;
-      grid-template-rows:auto !important;
-      height:auto;
-    }
-    .col1,.col2,.col3{ overflow:visible !important; min-height:auto !important; }
-    .card{ overflow:visible !important; min-height:auto !important; }
-    .fm-scroll{ max-height:260px; }
-  }
-  </style>
+/* ============================================================
+   MOBILE: grid rapat (7 kolom KPI, 2-3 kolom lainnya) terlalu
+   sempit di HP -> tumpuk jadi 1 kolom + sidebar jadi overlay.
+   ============================================================ */
+@media (max-width:860px){
+  .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60;
+    box-shadow:10px 0 30px rgba(0,0,0,.45); }
+  .kpi-strip{ grid-template-columns:repeat(2,1fr) !important; }
+  .grid-3,.grid-2,.grid-2-1,.grid-1-2,.grid-gauge{ grid-template-columns:1fr !important; }
+  .stock-mini-grid,.pic-row,.global-target-row,.lt-mini-strip{ grid-template-columns:repeat(2,1fr) !important; }
+}
+</style>
 </head>
 <body>
+<div class="shell">
 
-<div class="loading-overlay" id="loadingOverlay">
-  <div style="position:relative;display:flex;align-items:center;justify-content:center;">
-    <div class="ripple-ring"></div>
-    <div class="ripple-ring r2"></div>
-    <div class="ripple-ring r3"></div>
-    <div class="rucika-logo-wrap">
-      <span class="rucika-text">RUCIKA</span>
-      <span class="rucika-tagline">Dimana air mengalir sampai jauh</span>
-      <div class="wave-container">
-        <div class="wave wave1"></div>
-        <div class="wave wave2"></div>
-      </div>
+  <!-- ═══════════════════════════════════════════ SIDEBAR ═══════════════════════════════════════════ -->
+  <div class="sidebar">
+    <div class="sb-logo">
+      <img src="./assets/img/rucika-logo.png" alt="Rucika">
+      <div class="sb-appname"><span class="dot3d"></span>Control Tower</div>
+      <div class="sb-tag">Dimana air mengalir sampai jauh</div>
+      <button class="btn-tog" onclick="toggleSidebar()" title="Sembunyikan menu" style="position:absolute;top:10px;right:8px;background:none;border:none;color:var(--txt3);cursor:pointer;padding:4px;border-radius:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+    </div>
+    <div class="sb-section">Menu Utama</div>
+    <div class="mitem active" onclick="navTo('wh_control_tower')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      Control Tower
+    </div>
+    <div class="mitem" onclick="navTo('kanban')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3.34 19a10 10 0 1 1 17.32 0"/><path d="m12 14 4-4"/></svg>
+      Kanban Rak
+    </div>
+    <div class="mitem" onclick="navTo('residance')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      Residence Time
+    </div>
+    <div class="mitem" onclick="navTo('rekap')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 2v4M8 2v4M3 9h18"/><rect x="3" y="4" width="18" height="18" rx="2"/></svg>
+      Rekap Muatan
+    </div>
+    <div class="sb-section">Sistem</div>
+    <div class="mitem" onclick="clearApiCache();loadAll()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+      Refresh Data
+    </div>
+    <div class="sb-footer">
+      <div class="sb-live"><span class="lv"></span>Live · Terhubung ke Spreadsheet</div>
     </div>
   </div>
-  <div class="loading-text" id="loadingText">Memuat data...</div>
+
+  <!-- ═══════════════════════════════════════════ MAIN ═══════════════════════════════════════════ -->
+  <div class="main">
+    <div class="topbar">
+      <div class="tb-left">
+        <button class="btn-icon" id="btn-show-sidebar" title="Tampilkan menu" onclick="toggleSidebar()" style="display:none;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="tb-title">Warehouse Control Tower</span>
+        <span class="tb-badge" id="period-main-badge">—</span>
+      </div>
+      <div class="tb-right">
+        <span class="tb-clock" id="live-clock">00:00:00</span>
+        <button class="theme-toggle" onclick="toggleTheme()"><span id="theme-icon">☀️</span><span id="theme-lbl">Light</span></button>
+        <button class="btn-icon" title="Cetak / PDF" onclick="window.print()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+        </button>
+        <button class="btn-refresh" id="btn-refresh" onclick="clearApiCache();loadAll()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- FILTER BAR -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <button class="fbtn active" id="fbtn-bulanan" onclick="setGlobalMode('bulanan')">Bulanan</button>
+          <button class="fbtn" id="fbtn-tahunan" onclick="setGlobalMode('tahunan')">Tahunan</button>
+        </div>
+        <div class="fsep"></div>
+        <div class="filter-group" id="fg-bulan">
+          <span class="filter-lbl">Bulan:</span>
+          <select class="fsel" id="sel-bulan"></select>
+          <select class="fsel" id="sel-tahun"></select>
+        </div>
+        <div class="filter-group" id="fg-tahun" style="display:none;">
+          <span class="filter-lbl">Tahun:</span>
+          <select class="fsel" id="sel-tahun-t"></select>
+        </div>
+        <button class="btn-apply" onclick="loadAll()">Tampilkan</button>
+        <div class="fsep"></div>
+        <span class="period-badge" id="period-badge">—</span>
+        <div style="flex:1"></div>
+        <span style="font-size:9px;color:var(--txt3);">Update terakhir: <b id="last-update" style="color:var(--txt2)">—</b></span>
+      </div>
+
+      <!-- NOTIFICATION STRIP -->
+      <div class="notif-strip" id="notif-strip">
+        <div class="notif-item blue"><span class="notif-icon">ℹ️</span>
+          <div class="notif-text"><strong>Memuat data...</strong>Sedang mengambil data dari semua modul</div>
+        </div>
+      </div>
+
+      <!-- KPI STRIP -->
+      <div class="kpi-strip" id="kpi-strip">
+        <div class="kpi-card c-blue">
+          <div class="kpi-label">Stok Pipa</div>
+          <div class="kpi-val c-blue" id="kpi-stok-pipa">—</div>
+          <div class="kpi-sub">kg hari ini</div>
+          <div class="kpi-delta flat" id="kpi-stok-pipa-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">📦</div>
+        </div>
+        <div class="kpi-card c-green">
+          <div class="kpi-label">Stok Fitting</div>
+          <div class="kpi-val c-green" id="kpi-stok-fitting">—</div>
+          <div class="kpi-sub">kg hari ini</div>
+          <div class="kpi-delta flat" id="kpi-stok-fitting-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">🔩</div>
+        </div>
+        <div class="kpi-card c-amber">
+          <div class="kpi-label">Outbound (Pipa+Fit)</div>
+          <div class="kpi-val c-amber" id="kpi-out">—</div>
+          <div class="kpi-sub">kg periode ini</div>
+          <div class="kpi-delta flat" id="kpi-out-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">🚚</div>
+        </div>
+        <div class="kpi-card c-cyan">
+          <div class="kpi-label">Inbound (Pipa+Fit)</div>
+          <div class="kpi-val c-cyan" id="kpi-in">—</div>
+          <div class="kpi-sub">kg periode ini</div>
+          <div class="kpi-delta flat" id="kpi-in-delta">— vs bln lalu</div>
+          <div class="kpi-icon-bg">📥</div>
+        </div>
+        <div class="kpi-card c-purple">
+          <div class="kpi-label">Utilisasi Rak Pipa</div>
+          <div class="kpi-val c-purple" id="kpi-rak-pipa">—</div>
+          <div class="kpi-sub">dari 204 rak</div>
+          <div class="kpi-delta flat" id="kpi-rak-pipa-delta">—</div>
+          <div class="kpi-icon-bg">🏗️</div>
+        </div>
+        <div class="kpi-card c-orange">
+          <div class="kpi-label">Utilisasi Box Fitting</div>
+          <div class="kpi-val c-orange" id="kpi-rak-fit">—</div>
+          <div class="kpi-sub">dari 23.748 box</div>
+          <div class="kpi-delta flat" id="kpi-rak-fit-delta">—</div>
+          <div class="kpi-icon-bg">🧰</div>
+        </div>
+        <div class="kpi-card c-red">
+          <div class="kpi-label">Loading Time Avg</div>
+          <div class="kpi-val c-red" id="kpi-loading-avg">—</div>
+          <div class="kpi-sub">mnt/pengiriman bln ini</div>
+          <div class="kpi-delta flat" id="kpi-loading-delta">— pengiriman</div>
+          <div class="kpi-icon-bg">⏱️</div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 1: STOCK TONASE ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">📊 Stock Hari Ini &amp; Perkembangan Bulanan</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="grid-1-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--blue);color:var(--blue)"></div>Stock Tonase — Hari Ini</div>
+            <span class="card-badge blue" id="stock-badge">—</span>
+          </div>
+          <div class="card-body">
+            <div class="stock-mini-grid">
+              <div class="stock-mini" style="color:var(--green)"><div class="stock-mini-lbl">Pipa Kelen Green</div><div class="stock-mini-val" id="st-pipa-green">—</div><div class="stock-mini-sub">kg</div></div>
+              <div class="stock-mini" style="color:var(--txt2)"><div class="stock-mini-lbl">Pipa Kelen Grey</div><div class="stock-mini-val" id="st-pipa-grey">—</div><div class="stock-mini-sub">kg</div></div>
+              <div class="stock-mini" style="color:var(--cyan)"><div class="stock-mini-lbl">Fitting Kelen Green</div><div class="stock-mini-val" id="st-fit-green">—</div><div class="stock-mini-sub">kg</div></div>
+              <div class="stock-mini" style="color:var(--purple)"><div class="stock-mini-lbl">Fitting Kelen Grey</div><div class="stock-mini-val" id="st-fit-grey">—</div><div class="stock-mini-sub">kg</div></div>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 12px;border-radius:11px;background:linear-gradient(135deg,rgba(0,180,232,.12),rgba(0,180,232,.02));border:1px solid var(--cyan-b);">
+              <span style="font-size:9px;color:var(--txt3);">Total Stok Global</span>
+              <span style="font-family:var(--font-disp);font-size:18px;font-weight:800;color:var(--rc-cyan2);" id="st-total-global">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--rc-cyan2);color:var(--rc-cyan2)"></div>Perkembangan Stock Tonase — 6 Periode Terakhir</div>
+            <span class="card-badge blue" id="stock-trend-badge">kg</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h190"><canvas id="chart-stock-trend"></canvas></div>
+            <div class="legend">
+              <div class="leg-item"><div class="leg-sq" style="background:#3b9dff;color:#3b9dff"></div>Pipa</div>
+              <div class="leg-item"><div class="leg-sq" style="background:#22d3a5;color:#22d3a5"></div>Fitting</div>
+              <div class="leg-item"><div class="leg-dot" style="background:#5be3ff;color:#5be3ff"></div>Total Tonase</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 2: OUTBOUND VS INBOUND ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">🚚 Outbound vs Inbound — Perkembangan Bulanan</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--amber);color:var(--amber)"></div>Outbound vs Inbound — PIPA (kg)</div>
+            <span class="card-badge amber" id="io-pipa-badge">—</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h160"><canvas id="chart-io-pipa"></canvas></div>
+            <div class="legend" id="io-pipa-legend"></div>
+            <div class="pareto-note" id="io-pipa-notif" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--cyan);color:var(--cyan)"></div>Outbound vs Inbound — FITTING (kg)</div>
+            <span class="card-badge blue" id="io-fit-badge">—</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h160"><canvas id="chart-io-fitting"></canvas></div>
+            <div class="legend" id="io-fit-legend"></div>
+            <div class="pareto-note" id="io-fit-notif" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 3: KAPASITAS KANBAN / RAK ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">🏗️ Kapasitas Rak / Kanban — Hari Ini &amp; Tren Bulanan</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="grid-gauge">
+        <!-- GAUGE PIPA -->
+        <div class="card gauge-card">
+          <div class="card-header" style="width:100%;">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--purple);color:var(--purple)"></div>Utilisasi Rak Pipa</div>
+            <span class="status-pill aman" id="gauge-pipa-badge">—</span>
+          </div>
+          <div class="card-body" style="width:100%;">
+            <div class="gauge-cap" id="gauge-pipa-cap">Kapasitas Pipa PPR: 204 rak</div>
+            <div class="gauge-wrap">
+              <svg class="gauge-svg" viewBox="0 0 240 152" id="gaugeSvgPipa">
+                <defs>
+                  <linearGradient id="gGreenP" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22d3a5"/><stop offset="100%" stop-color="#86efd0"/></linearGradient>
+                  <linearGradient id="gAmberP" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ffb020"/><stop offset="100%" stop-color="#ffd580"/></linearGradient>
+                  <linearGradient id="gRedP" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ff5470"/><stop offset="100%" stop-color="#ff9fb1"/></linearGradient>
+                  <filter id="glow3dP"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="#000" stroke-width="16" stroke-linecap="round" opacity=".25" transform="translate(0,6)"/>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="rgba(120,140,180,.18)" stroke-width="16" stroke-linecap="round"/>
+                <path id="gaugeArcPipa" d="M 22 125 A 98 98 0 0 1 22 125" fill="none" stroke="url(#gGreenP)" stroke-width="16" stroke-linecap="round" filter="url(#glow3dP)"/>
+                <line id="needlePipa" x1="120" y1="125" x2="120" y2="35" stroke="var(--txt)" stroke-width="2.5" stroke-linecap="round" opacity=".9" style="transform-origin:120px 125px;transform:rotate(-90deg);transition:transform .9s cubic-bezier(.34,1.2,.64,1);"/>
+                <circle cx="120" cy="125" r="7" fill="var(--bg-card2)" stroke="var(--txt)" stroke-width="2.5"/>
+                <circle cx="120" cy="125" r="4" fill="#22d3a5" id="needleDotPipa"/>
+                <text x="16" y="138" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" text-anchor="middle">0%</text>
+                <text x="120" y="11" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" text-anchor="middle">50%</text>
+                <text x="224" y="138" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" text-anchor="middle">100%</text>
+                <text id="gaugePctPipa" x="120" y="108" fill="var(--txt)" font-size="24" font-weight="800" text-anchor="middle">0%</text>
+                <text x="120" y="147" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" font-weight="600" letter-spacing=".5" text-anchor="middle">UTILISASI</text>
+              </svg>
+            </div>
+            <div class="gauge-stats">
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--green)" id="gs-pakai-pipa">-</div><div class="gauge-stat-lbl">Terpakai</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--blue)" id="gs-sisa-pipa">-</div><div class="gauge-stat-lbl">Sisa</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--txt3)" id="gs-max-pipa">-</div><div class="gauge-stat-lbl">Maksimum</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GAUGE FITTING -->
+        <div class="card gauge-card">
+          <div class="card-header" style="width:100%;">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--cyan);color:var(--cyan)"></div>Utilisasi Box Fitting</div>
+            <span class="status-pill aman" id="gauge-fit-badge">—</span>
+          </div>
+          <div class="card-body" style="width:100%;">
+            <div class="gauge-cap" id="gauge-fit-cap">Kapasitas Fitting PPR: 23.748 box</div>
+            <div class="gauge-wrap">
+              <svg class="gauge-svg" viewBox="0 0 240 152" id="gaugeSvgFit">
+                <defs>
+                  <linearGradient id="gGreenF" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22d3a5"/><stop offset="100%" stop-color="#86efd0"/></linearGradient>
+                  <linearGradient id="gAmberF" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ffb020"/><stop offset="100%" stop-color="#ffd580"/></linearGradient>
+                  <linearGradient id="gRedF" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#ff5470"/><stop offset="100%" stop-color="#ff9fb1"/></linearGradient>
+                  <filter id="glow3dF"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="#000" stroke-width="16" stroke-linecap="round" opacity=".25" transform="translate(0,6)"/>
+                <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="rgba(120,140,180,.18)" stroke-width="16" stroke-linecap="round"/>
+                <path id="gaugeArcFit" d="M 22 125 A 98 98 0 0 1 22 125" fill="none" stroke="url(#gGreenF)" stroke-width="16" stroke-linecap="round" filter="url(#glow3dF)"/>
+                <line id="needleFit" x1="120" y1="125" x2="120" y2="35" stroke="var(--txt)" stroke-width="2.5" stroke-linecap="round" opacity=".9" style="transform-origin:120px 125px;transform:rotate(-90deg);transition:transform .9s cubic-bezier(.34,1.2,.64,1);"/>
+                <circle cx="120" cy="125" r="7" fill="var(--bg-card2)" stroke="var(--txt)" stroke-width="2.5"/>
+                <circle cx="120" cy="125" r="4" fill="#22d3a5" id="needleDotFit"/>
+                <text x="16" y="138" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" text-anchor="middle">0%</text>
+                <text x="120" y="11" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" text-anchor="middle">50%</text>
+                <text x="224" y="138" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" text-anchor="middle">100%</text>
+                <text id="gaugePctFit" x="120" y="108" fill="var(--txt)" font-size="24" font-weight="800" text-anchor="middle">0%</text>
+                <text x="120" y="147" fill="var(--gauge-scale-txt,#8b98b8)" font-size="9" font-weight="600" letter-spacing=".5" text-anchor="middle">UTILISASI</text>
+              </svg>
+            </div>
+            <div class="gauge-stats">
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--green)" id="gs-pakai-fit">-</div><div class="gauge-stat-lbl">Terpakai</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--blue)" id="gs-sisa-fit">-</div><div class="gauge-stat-lbl">Sisa</div></div>
+              <div class="gauge-stat"><div class="gauge-stat-val" style="color:var(--txt3)" id="gs-max-fit">-</div><div class="gauge-stat-lbl">Maksimum</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TREND + KRITIS LIST -->
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><div class="card-title-dot" style="background:var(--green);color:var(--green)"></div>Tren Penggunaan Rak/Box — Bulanan</div>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrap h140"><canvas id="chart-kanban-trend"></canvas></div>
+              <div class="legend">
+                <div class="leg-item"><div class="leg-sq" style="background:var(--purple);color:var(--purple)"></div>Pipa (Rak)</div>
+                <div class="leg-item"><div class="leg-sq" style="background:var(--cyan);color:var(--cyan)"></div>Fitting (Box)</div>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="flex:1;">
+            <div class="card-header">
+              <div class="card-title"><div class="card-title-dot" style="background:var(--red);color:var(--red)"></div>Item Status Kurang</div>
+              <span class="card-badge red" id="kritis-badge">0</span>
+            </div>
+            <div class="card-body">
+              <div class="kritis-list" id="kritis-list"><div style="color:var(--txt3);font-size:10px;text-align:center;padding:14px 0;">Memuat...</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 4: REKAP MUATAN PER PIC ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">👷 Rekap Muatan per PIC</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="card-title-dot" style="background:var(--orange);color:var(--orange)"></div>Persiapan Pipa &amp; Fitting per PIC — Pencapaian vs Target</div>
+          <span class="card-badge amber" id="rekap-badge">—</span>
+        </div>
+        <div class="card-body">
+          <div class="pic-row" id="pic-row"></div>
+          <div class="global-target-row" id="global-target">
+            <div class="gt-card">
+              <div class="gt-label">🔵 Global Pencapaian Pipa</div>
+              <div class="gt-bar-bg"><div class="gt-bar-fill" id="gt-pipa-bar" style="width:0%;background:var(--blue);color:var(--blue)"></div></div>
+              <div class="gt-nums"><span id="gt-pipa-actual">0 kg</span><span id="gt-pipa-target">— kg</span></div>
+              <div class="gt-pct" style="color:var(--blue)" id="gt-pipa-pct">0%</div>
+            </div>
+            <div class="gt-card">
+              <div class="gt-label">🟠 Global Pencapaian Fitting</div>
+              <div class="gt-bar-bg"><div class="gt-bar-fill" id="gt-fit-bar" style="width:0%;background:var(--orange);color:var(--orange)"></div></div>
+              <div class="gt-nums"><span id="gt-fit-actual">0 Bx</span><span id="gt-fit-target">— Bx</span></div>
+              <div class="gt-pct" style="color:var(--orange)" id="gt-fit-pct">0%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION 5: LOADING TIME / RESIDENCE TIME ═══════════ -->
+      <div class="sec-divider">
+        <span class="sec-divider-label">⏱️ Loading Time Pengiriman — Bulan Ini</span>
+        <div class="sec-divider-line"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--red);color:var(--red)"></div>Statistik Pengiriman Bulan Ini</div>
+          </div>
+          <div class="card-body">
+            <div class="lt-mini-strip">
+              <div class="lt-mini"><div class="lt-mini-lbl">Total SPM</div><div class="lt-mini-val" style="color:var(--blue)" id="lt-total">—</div></div>
+              <div class="lt-mini"><div class="lt-mini-lbl">Selesai Muat</div><div class="lt-mini-val" style="color:var(--green)" id="lt-selesai">—</div></div>
+              <div class="lt-mini"><div class="lt-mini-lbl">Batal Kirim</div><div class="lt-mini-val" style="color:var(--red)" id="lt-batal">—</div></div>
+            </div>
+            <div style="margin-top:12px;">
+              <div style="font-size:9px;color:var(--txt3);margin-bottom:5px;">Intensitas Pengiriman 7 Hari Terakhir</div>
+              <div class="chart-wrap h110"><canvas id="chart-lt-trend"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--amber);color:var(--amber)"></div>Distribusi Durasi Muat (Bulan Ini)</div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap h190"><canvas id="chart-lt-dist"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:6px;"></div>
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner3d"></div>
+  <div class="loading-txt" id="loading-txt">Memuat data...</div>
 </div>
 
-<div class="app-shell">
-
-  <!-- SIDEBAR -->
-  <div class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <div class="logo">
-        <img src="./assets/img/rucika-logo.png" alt="Rucika" style="height:22px;width:auto;object-fit:contain;">
-        <span>PPR Stock</span>
-      </div>
-      <button class="btn-tog" onclick="toggleSidebar()">
-        <i data-lucide="chevron-left" style="width:13px;"></i>
-      </button>
-    </div>
-    <div class="sec-title">Menu</div>
-    <div class="mitem" onclick="navTo('wh_control_tower')"><i data-lucide="layout-dashboard" style="width:13px;"></i><span>Dashboard WH Import</span></div>
-    <div class="mitem active"><i data-lucide="layout-dashboard" style="width:13px;"></i><span>Monitoring Stock, Inbound &amp; Outbound</span></div>
-    <div class="mitem" onclick="navTo('kanban')"><i data-lucide="layout-grid" style="width:13px;"></i><span>Monitoring Kanban</span></div>
-    <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:13px;"></i><span>Rekap Muatan</span></div>
-    <div class="mitem"><i data-lucide="clipboard-list" style="width:13px;"></i><span>Stock Opname</span></div>
-    <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:13px;"></i><span>Loading Time Pengiriman</span></div>
-  </div>
-
-  <!-- MAIN -->
-  <div class="main-right">
-
-    <!-- NAVBAR -->
-    <div class="navbar">
-      <div class="nav-left">
-        <button class="btn-menu" onclick="toggleSidebar()">
-          <i data-lucide="menu" style="width:14px;"></i>
-        </button>
-        <div class="search-bar">
-          <i data-lucide="search" class="si" style="width:11px;"></i>
-          <input type="text" placeholder="Cari item...">
-        </div>
-      </div>
-      <div class="nav-right">
-        <!-- LIVE CLOCK -->
-        <div class="live-clock" id="liveClock">
-          <div class="clock-time" id="clockTime">00:00:00</div>
-          <div class="clock-date" id="clockDate">?</div>
-        </div>
-        <div style="width:1px;height:24px;background:var(--border-color);margin:0 4px;"></div>
-        <button class="nav-icon" onclick="clearApiCache();loadData()" title="Refresh">
-          <i data-lucide="refresh-cw" style="width:15px;"></i>
-        </button>
-        <button class="nav-icon"><i data-lucide="bell" style="width:15px;"></i></button>
-        <!-- Font Size Control -->
-        <div class="font-ctrl" title="Ukuran Font">
-          <button class="font-ctrl-btn" onclick="changeFontSize(-1)" title="Perkecil font">A&#8722;</button>
-          <span class="font-ctrl-label" id="fontSizeLabel">100%</span>
-          <button class="font-ctrl-btn" onclick="changeFontSize(1)" title="Perbesar font">A+</button>
-        </div>
-        <!-- Tema -->
-        <button class="btn-theme" id="btnTheme" onclick="toggleTheme()" title="Ganti Tema">
-          <i data-lucide="sun" style="width:13px;" id="themeIcon"></i>
-          <span id="themeLabel">Light</span>
-        </button>
-        <div class="avatar">WH</div>
-      </div>
-    </div>
-
-    <!-- ERROR -->
-    <div class="error-banner" id="errorBanner">
-      <i data-lucide="alert-triangle" style="width:13px;flex-shrink:0;"></i>
-      <span id="errorMsg">Gagal memuat data.</span>
-    </div>
-
-    <!-- KANBAN STATUS BAR -->
-    <div class="kanban-bar" id="kanbanBar">
-      <!-- Pipa PPR -->
-      <div class="kanban-item aman" id="kanban-pipa">
-        <div class="kanban-icon">
-          <i data-lucide="database" style="width:14px;color:#10b981;"></i>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div class="kanban-label">Pipa PPR (Green + Grey)</div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span class="kanban-val" id="kanban-pipa-val">? kg</span>
-            <span class="kanban-status" id="kanban-pipa-status">AMAN</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:4px;margin-top:1px;">
-            <span class="kanban-limit">Batas Kanban: 304.530,14 kg</span>
-          </div>
-          <div class="kanban-info" id="kanban-pipa-info">Stok dalam batas aman kanban</div>
-        </div>
-        <div class="kanban-notif" id="kanban-pipa-notif" style="display:none;">? MELEBIHI KANBAN</div>
-      </div>
-      <!-- Fitting PPR -->
-      <div class="kanban-item aman" id="kanban-fitting">
-        <div class="kanban-icon">
-          <i data-lucide="git-branch" style="width:14px;color:#10b981;"></i>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div class="kanban-label">Fitting PPR (Green + Grey)</div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span class="kanban-val" id="kanban-fitting-val">? kg</span>
-            <span class="kanban-status" id="kanban-fitting-status">AMAN</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:1px;">
-            <span class="kanban-limit">Batas Kanban: 111.870,96 kg</span>
-          </div>
-          <div class="kanban-info" id="kanban-fitting-info">? Stok dalam batas aman kanban. U</div>
-        </div>
-        <div class="kanban-notif" id="kanban-fitting-notif" style="display:none;">??MELEBIHI KANBAN</div>
-      </div>
-    </div>
-
-    <!-- ============================================================
-         FILTER BAR ? STOCK (tanggal + group dropdown)
-         FIX #3/#5: group pakai <select> dropdown
-         ============================================================ -->
-    <div class="filter-bar">
-      <span class="flabel"><i data-lucide="calendar" style="width:10px;"></i>Stok:</span>
-      <div class="fmode-group">
-        <button class="fmode-btn" id="mode-harian" onclick="setMode('harian')">Harian</button>
-        <button class="fmode-btn active" id="mode-bulanan" onclick="setMode('bulanan')">Bulanan</button>
-        <button class="fmode-btn" id="mode-tahunan" onclick="setMode('tahunan')">Tahunan</button>
-      </div>
-      <div class="fdiv"></div>
-      <div class="fsec hidden" id="section-harian">
-        <span class="flabel">Tanggal</span>
-        <input type="date" class="finput" id="date-from">
-      </div>
-      <div class="fsec" id="section-bulanan">
-        <div class="fsel-wrap">
-          <select class="fsel" id="sel-bulan">
-            <option value="1">Januari</option><option value="2">Februari</option>
-            <option value="3">Maret</option><option value="4">April</option>
-            <option value="5">Mei</option><option value="6">Juni</option>
-            <option value="7">Juli</option><option value="8">Agustus</option>
-            <option value="9">September</option><option value="10">Oktober</option>
-            <option value="11">November</option><option value="12">Desember</option>
-          </select>
-        </div>
-        <div class="fsel-wrap">
-          <select class="fsel" id="sel-tahun-bulanan"></select>
-        </div>
-      </div>
-      <div class="fsec hidden" id="section-tahunan">
-        <div class="fsel-wrap">
-          <select class="fsel" id="sel-tahun-tahunan"></select>
-        </div>
-      </div>
-      <div class="fdiv"></div>
-      <!-- FIX #3/#5: Group dropdown -->
-      <span class="flabel"><i data-lucide="layers" style="width:10px;"></i>Group:</span>
-      <div class="group-dd-wrap">
-        <select id="sel-group" onchange="selectGroupDropdown(this.value)">
-          <option value="">Semua Group</option>
-          <!-- diisi dinamis oleh loadGroupList() -->
-        </select>
-      </div>
-      <div class="fdiv"></div>
-      <button class="btn-apply" onclick="applyFilter()">
-        <i data-lucide="search" style="width:9px;"></i> Tampilkan
-      </button>
-      <button class="btn-reset" onclick="resetFilter()">Reset</button>
-      <div class="fdiv"></div>
-      <div class="fbadge">
-        <i data-lucide="check-circle-2" style="width:9px;"></i>
-        <span id="badge-text">&#8212;</span>
-        <span class="fbadge-x" onclick="resetFilter()">&#215;</span>
-      </div>
-    </div>
-
-    <!-- DASHBOARD BODY -->
-    <div class="dash-body">
-
-      <!-- HEADER -->
-      <div class="dash-header">
-        <span class="dash-title">Dashboard Pipa &amp; Fitting PPR</span>
-        <span class="dash-sub">DASHBOARD WAREHOUSE &middot;
-          <span class="dash-periode" id="periodeLabel">&#8212;</span>
-        </span>
-        <span class="group-active-badge hidden" id="group-active-badge">
-          <i data-lucide="tag" style="width:8px;"></i>
-          <span id="group-badge-text">&#8212;</span>
-        </span>
-      </div>
-
-      <!-- KOLOM 1: Stock -->
-      <div class="col1">
-
-        <!-- Card Tonase GLOBAL -->
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div>
-              <div class="card-title">Total Tonase Stok
-                <span style="font-size:9px;color:var(--text-muted);font-style:italic;">&nbsp;</span>
-              </div>
-              <div class="global-sub"> </div>
-            </div>
-            <i data-lucide="weight" style="color:var(--ppr-green);width:14px;flex-shrink:0;"></i>
-          </div>
-          <div class="global-val">
-            <span id="val-global-tonase">&#8212;</span>
-            <span class="unit">kg</span>
-          </div>
-
-          <div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--border-color);">
-            <div style="font-size:9px;color:var(--text-muted);margin-bottom:4px;display:flex;align-items:center;gap:3px;">
-              <i data-lucide="filter" style="width:8px;"></i>
-              Rincian Drawing KELEN
-              <span id="group-hint-tonase" style="color:var(--ppr-green);font-weight:600;"></span>
-            </div>
-            <div class="donut-row">
-              <div class="donut" id="donut-tonase"
-                style="background:conic-gradient(var(--ppr-green) 0% 25%,#4ade80 25% 50%,var(--ppr-grey) 50% 75%,#9ca3af 75% 100%);"></div>
-              <div class="legend">
-                <div class="leg-grp">Pipa PPR</div>
-                <div class="leg-row">
-                  <div class="leg-label"><span class="dot" style="background:var(--ppr-green);"></span>Kelen Green</div>
-                  <div class="leg-val" id="val-ton-pipa-green">&#8212;</div>
-                </div>
-                <div class="leg-row">
-                  <div class="leg-label"><span class="dot" style="background:#4ade80;"></span>Kelen Grey</div>
-                  <div class="leg-val" id="val-ton-pipa-grey">&#8212;</div>
-                </div>
-                <hr class="leg-div">
-                <div class="leg-grp">Fitting PPR</div>
-                <div class="leg-row">
-                  <div class="leg-label"><span class="dot" style="background:var(--ppr-grey);"></span>Kelen Green</div>
-                  <div class="leg-val" id="val-ton-fitting-green">&#8212;</div>
-                </div>
-                <div class="leg-row">
-                  <div class="leg-label"><span class="dot" style="background:#9ca3af;"></span>Kelen Grey</div>
-                  <div class="leg-val" id="val-ton-fitting-grey">&#8212;</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card Stock Pcs -->
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1px;">
-            <div>
-              <div class="card-title">Total Stock Pipa &amp; Fitting PPR</div>
-              <div class="card-src">
-                <span id="group-hint-stok" style="color:var(--ppr-green);font-weight:600;"></span>
-              </div>
-            </div>
-          </div>
-          <div class="card-val-sm"><span id="val-stok-total">&#8212;</span><span class="unit">Pcs/Btg</span></div>
-          <div class="bar-wrap" id="bar-stok-chart"></div>
-          <div class="bar-legend">
-            <div class="bar-leg-item"><span class="dot" style="background:#16a34a"></span>Pipa Green</div>
-            <div class="bar-leg-item"><span class="dot" style="background:#4ade80"></span>Pipa Grey</div>
-            <div class="bar-leg-item"><span class="dot" style="background:#6b7280"></span>Fitting Green</div>
-            <div class="bar-leg-item"><span class="dot" style="background:#9ca3af"></span>Fitting Grey</div>
-          </div>
-          <table class="stok-tbl">
-            <tr><td><div class="stok-lbl"><span class="dot" style="background:#16a34a"></span>Pipa Kelen Green</div></td><td class="stok-v" id="val-stok-pipa-green">&#8212;</td><td class="stok-u">Btg</td></tr>
-            <tr><td><div class="stok-lbl"><span class="dot" style="background:#4ade80"></span>Pipa Kelen Grey</div></td><td class="stok-v" id="val-stok-pipa-grey">&#8212;</td><td class="stok-u">Btg</td></tr>
-            <tr><td><div class="stok-lbl"><span class="dot" style="background:#6b7280"></span>Fitting Kelen Green</div></td><td class="stok-v" id="val-stok-fitting-green">&#8212;</td><td class="stok-u">Pcs</td></tr>
-            <tr><td><div class="stok-lbl"><span class="dot" style="background:#9ca3af"></span>Fitting Kelen Grey</div></td><td class="stok-v" id="val-stok-fitting-grey">&#8212;</td><td class="stok-u">Pcs</td></tr>
-          </table>
-        </div>
-
-      </div><!-- col1 -->
-
-      <!-- KOLOM 2: Outbound + Inbound dengan filter terpisah -->
-      <div class="col2">
-
-        <!-- ============================================================
-             FIX #4 ? Outbound dengan filter tanggal sendiri
-             ============================================================ -->
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div>
-              <div class="card-title">Tonase Outbound (Pengiriman)</div>
-              <div class="card-src"></div>
-              <div style="font-size:clamp(15px,1.7vw,20px);font-weight:700;display:flex;align-items:baseline;gap:5px;margin-top:3px;">
-                <span id="val-outbound-total">&#8212;</span><span class="unit">kg</span>
-              </div>
-            </div>
-            <i data-lucide="trending-up" style="color:var(--ppr-green);width:15px;flex-shrink:0;margin-top:3px;"></i>
-          </div>
-
-          <!-- Mini filter Outbound - 2 baris -->
-          <div class="io-filter">
-            <div class="io-filter-row1">
-              <span class="io-filter-label"><i data-lucide="calendar" style="width:9px;vertical-align:middle;"></i> Filter:</span>
-              <div style="display:flex;background:rgba(0,0,0,.2);border:1px solid var(--border-color);border-radius:5px;overflow:hidden;flex-shrink:0;">
-                <button class="fmode-btn active" style="padding:2px 6px;font-size:9px;" id="out-mode-harian" onclick="setIOMode('out','harian')">Harian</button>
-                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="out-mode-bulanan" onclick="setIOMode('out','bulanan')">Bulanan</button>
-                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="out-mode-tahunan" onclick="setIOMode('out','tahunan')">Tahunan</button>
-                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="out-mode-semua" onclick="setIOMode('out','semua')">Semua</button>
-              </div>
-              <span class="io-badge" id="out-badge">&#8212;</span>
-            </div>
-            <div class="io-filter-row2">
-              <div class="io-fsec" id="out-section-harian">
-                <input type="date" class="io-finput" id="out-date-from">
-                <span style="font-size:9px;color:var(--text-muted);">s/d</span>
-                <input type="date" class="io-finput" id="out-date-to">
-              </div>
-              <div class="io-fsec hidden" id="out-section-bulanan">
-                <div class="io-fsel-wrap">
-                  <select class="io-fsel" id="out-sel-bulan">
-                    <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
-                    <option value="4">Apr</option><option value="5">Mei</option><option value="6">Jun</option>
-                    <option value="7">Jul</option><option value="8">Agu</option><option value="9">Sep</option>
-                    <option value="10">Okt</option><option value="11">Nov</option><option value="12">Des</option>
-                  </select>
-                </div>
-                <div class="io-fsel-wrap">
-                  <select class="io-fsel" id="out-sel-tahun"></select>
-                </div>
-              </div>
-              <div class="io-fsec hidden" id="out-section-tahunan">
-                <div class="io-fsel-wrap"><select class="io-fsel" id="out-sel-tahun-t"></select></div>
-              </div>
-              <div class="io-fsec hidden" id="out-section-semua"></div>
-              <div class="io-btn-group">
-                <button class="btn-io-apply" onclick="applyIOFilter('out')">Tampilkan</button>
-                <button class="btn-io-reset" onclick="resetIOFilter('out')">Reset</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="io-summary">
-            <div class="io-item">
-              <div class="io-label">Pipa PPR (Green+Grey)</div>
-              <div class="io-val" style="color:var(--ppr-green);" id="val-out-pipa">&#8212;</div>
-            </div>
-            <div class="io-item">
-              <div class="io-label">Fitting PPR (Green+Grey)</div>
-              <div class="io-val" style="color:var(--ppr-grey);" id="val-out-fitting">&#8212;</div>
-            </div>
-          </div>
-          <div class="lc-wrap">
-            <svg class="lc-svg" id="svg-out" viewBox="0 0 300 70" preserveAspectRatio="none">
-              <path id="area-out-pipa"    d="" fill="#16a34a" class="chart-area-fill"/>
-              <path id="area-out-fitting" d="" fill="#6b7280" class="chart-area-fill"/>
-              <path id="line-out-pipa"    d="" fill="none" stroke="#16a34a" stroke-width="2"/>
-              <path id="line-out-fitting" d="" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
-            </svg>
-          </div>
-          <div class="lc-dates" id="dates-outbound"></div>
-          <div class="lc-legend">
-            <div class="lc-leg"><span class="dot" style="background:var(--ppr-green)"></span>Pipa PPR</div>
-            <div class="lc-leg"><span class="dot" style="background:#9ca3af"></span>Fitting PPR</div>
-          </div>
-        </div>
-
-        <!-- ============================================================
-             FIX #4 ? Inbound dengan filter tanggal sendiri, default=semua
-             ============================================================ -->
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div>
-              <div class="card-title">Tonase Inbound (Produksi)</div>
-              <div class="card-src"></div>
-              <div style="font-size:clamp(15px,1.7vw,20px);font-weight:700;display:flex;align-items:baseline;gap:5px;margin-top:3px;">
-                <span id="val-inbound-total">&#8212;</span><span class="unit">kg</span>
-              </div>
-            </div>
-            <i data-lucide="trending-down" style="color:#4ade80;width:15px;flex-shrink:0;margin-top:3px;"></i>
-          </div>
-
-          <!-- Mini filter Inbound - 2 baris -->
-          <div class="io-filter">
-            <div class="io-filter-row1">
-              <span class="io-filter-label"><i data-lucide="calendar" style="width:9px;vertical-align:middle;"></i> Filter:</span>
-              <div style="display:flex;background:rgba(0,0,0,.2);border:1px solid var(--border-color);border-radius:5px;overflow:hidden;flex-shrink:0;">
-                <button class="fmode-btn active" style="padding:2px 6px;font-size:9px;" id="in-mode-harian" onclick="setIOMode('in','harian')">Harian</button>
-                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="in-mode-bulanan" onclick="setIOMode('in','bulanan')">Bulanan</button>
-                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="in-mode-tahunan" onclick="setIOMode('in','tahunan')">Tahunan</button>
-                <button class="fmode-btn" style="padding:2px 6px;font-size:9px;" id="in-mode-semua" onclick="setIOMode('in','semua')">Semua</button>
-              </div>
-              <span class="io-badge" id="in-badge">&#8212;</span>
-            </div>
-            <div class="io-filter-row2">
-              <div class="io-fsec" id="in-section-harian">
-                <input type="date" class="io-finput" id="in-date-from">
-                <span style="font-size:9px;color:var(--text-muted);">s/d</span>
-                <input type="date" class="io-finput" id="in-date-to">
-              </div>
-              <div class="io-fsec hidden" id="in-section-bulanan">
-                <div class="io-fsel-wrap">
-                  <select class="io-fsel" id="in-sel-bulan">
-                    <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
-                    <option value="4">Apr</option><option value="5">Mei</option><option value="6">Jun</option>
-                    <option value="7">Jul</option><option value="8">Agu</option><option value="9">Sep</option>
-                    <option value="10">Okt</option><option value="11">Nov</option><option value="12">Des</option>
-                  </select>
-                </div>
-                <div class="io-fsel-wrap">
-                  <select class="io-fsel" id="in-sel-tahun"></select>
-                </div>
-              </div>
-              <div class="io-fsec hidden" id="in-section-tahunan">
-                <div class="io-fsel-wrap"><select class="io-fsel" id="in-sel-tahun-t"></select></div>
-              </div>
-              <div class="io-fsec hidden" id="in-section-semua"></div>
-              <div class="io-btn-group">
-                <button class="btn-io-apply" onclick="applyIOFilter('in')">Tampilkan</button>
-                <button class="btn-io-reset" onclick="resetIOFilter('in')">Reset</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="io-summary">
-            <div class="io-item">
-              <div class="io-label">Pipa PPR (Green+Grey)</div>
-              <div class="io-val" style="color:var(--ppr-green);" id="val-in-pipa">&#8212;</div>
-            </div>
-            <div class="io-item">
-              <div class="io-label">Fitting PPR (Green+Grey)</div>
-              <div class="io-val" style="color:var(--ppr-grey);" id="val-in-fitting">&#8212;</div>
-            </div>
-          </div>
-          <div class="lc-wrap">
-            <svg class="lc-svg" id="svg-in" viewBox="0 0 300 70" preserveAspectRatio="none">
-              <path id="area-in-pipa"    d="" fill="#16a34a" class="chart-area-fill"/>
-              <path id="area-in-fitting" d="" fill="#6b7280" class="chart-area-fill"/>
-              <path id="line-in-pipa"    d="" fill="none" stroke="#16a34a" stroke-width="2"/>
-              <path id="line-in-fitting" d="" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
-            </svg>
-          </div>
-          <div class="lc-dates" id="dates-inbound"></div>
-          <div class="lc-legend">
-            <div class="lc-leg"><span class="dot" style="background:var(--ppr-green)"></span>Pipa PPR</div>
-            <div class="lc-leg"><span class="dot" style="background:#9ca3af"></span>Fitting PPR</div>
-          </div>
-        </div>
-      </div><!-- col2 -->
-
-      <!-- KOLOM 3: Fast Moving -->
-      <div class="col3">
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div>
-              <div style="font-size:12px;font-weight:600;">Item Fast Moving</div>
-              <div class="card-src">Top 5 Outbound Terbesar &middot; DASHBOARD_KIRIM &middot; Ikut Filter Outbound
-                <span id="group-hint-fm" style="color:var(--ppr-green);font-weight:600;"></span>
-              </div>
-            </div>
-            <i data-lucide="flame" style="color:#f97316;width:14px;flex-shrink:0;"></i>
-          </div>
-          <div class="fm-tabs">
-            <button class="fm-tab active" id="tab-pipa" onclick="switchFMTab('Pipa',this)">
-              <i data-lucide="database" style="width:11px;color:var(--ppr-green)"></i>Pipa PPR
-            </button>
-            <button class="fm-tab" id="tab-fitting" onclick="switchFMTab('Fitting',this)">
-              <i data-lucide="git-branch" style="width:11px"></i>Fitting PPR
-            </button>
-          </div>
-          <div class="fm-scroll">
-            <table class="fm-tbl" style="width:100%;">
-              <thead>
-                <tr>
-                  <th style="width:20px;">#</th>
-                  <th>Nama Item</th>
-                  <th style="text-align:right;width:90px;">Tonase (kg)</th>
-                </tr>
-              </thead>
-              <tbody id="fm-tbody">
-                <tr><td colspan="3" class="no-data">Memuat data...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div><!-- col3 -->
-
-    </div><!-- dash-body -->
-  </div><!-- main-right -->
-</div><!-- app-shell -->
-
 <script>
-// ================================================================
-//  INIT
-// ================================================================
-lucide.createIcons();
+/* ================================================================
+   CONFIG
+================================================================ */
+var PIC_LIST   = ['DONI','IMAN','SAEPUL','SULIS','WANG'];
+var PIC_COLORS = {DONI:'#3b9dff',IMAN:'#22d3a5',SAEPUL:'#ffb020',SULIS:'#a78bfa',WANG:'#ff8a4c'};
+var PIC_INIT   = {DONI:'DO',IMAN:'IM',SAEPUL:'SA',SULIS:'SU',WANG:'WA'};
+var TARGET_PIPA    = {DONI:94514.26,IMAN:94514.26,SAEPUL:11119.32,SULIS:11119.32,WANG:0};
+var TARGET_FITTING = {DONI:3511,IMAN:3511,SAEPUL:0,SULIS:0,WANG:5267};
+var HAS_PIPA    = {DONI:true,IMAN:true,SAEPUL:true,SULIS:true,WANG:false};
+var HAS_FITTING = {DONI:true,IMAN:true,SAEPUL:false,SULIS:false,WANG:true};
+var MAX_KANBAN_PIPA    = 204;
+var MAX_KANBAN_FITTING = 23748;
+var BNAMES  = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+var BNAMES3 = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
-const NM_BULAN = ['','Januari','Februari','Maret','April','Mei','Juni',
-                  'Juli','Agustus','September','Oktober','November','Desember'];
-const today   = new Date();
-const curYear = today.getFullYear();
+var globalMode = 'bulanan';
+var charts = {};
 
-// State filter STOCK
-let curMode  = 'harian';
-let curGroup = '';
-let fmData   = [];
-let fmTab    = 'Pipa';
-
-// State filter IO (Outbound / Inbound) ? TERPISAH dari stock
-let outMode  = 'harian';
-let inMode   = 'harian';  // default: awal bulan s/d hari ini
-
-// Init dropdown tahun untuk semua select tahun
-['sel-tahun-bulanan','sel-tahun-tahunan','out-sel-tahun','out-sel-tahun-t','in-sel-tahun','in-sel-tahun-t'].forEach(id => {
-  const s = document.getElementById(id);
-  if (!s) return;
-  for (let y = curYear+1; y >= curYear-5; y--) {
-    const o = document.createElement('option');
-    o.value = y; o.textContent = y;
-    if (y === curYear) o.selected = true;
-    s.appendChild(o);
-  }
-});
-
-// Init default values
-document.getElementById('sel-bulan').value     = String(today.getMonth()+1);
-document.getElementById('out-sel-bulan').value = String(today.getMonth()+1);
-document.getElementById('in-sel-bulan').value  = String(today.getMonth()+1);
-
-const mm = `${curYear}-${String(today.getMonth()+1).padStart(2,'0')}`;
-document.getElementById('date-from').value    = today.toISOString().slice(0,10);
-document.getElementById('out-date-from').value = `${mm}-01`;
-document.getElementById('out-date-to').value   = today.toISOString().slice(0,10);
-document.getElementById('in-date-from').value  = `${mm}-01`;
-document.getElementById('in-date-to').value    = today.toISOString().slice(0,10);
-
-// ================================================================
-//  LOAD GROUP LIST ? isi <select> dropdown
-// ================================================================
-function loadGroupList() {
-  google.script.run
-    .withSuccessHandler(function(res) {
-      const sel = document.getElementById('sel-group');
-      if (!res || !res.success || !res.groups.length) return;
-      res.groups.forEach(g => {
-        const o = document.createElement('option');
-        o.value = g; o.textContent = g;
-        sel.appendChild(o);
-      });
-    })
-    .withFailureHandler(function() {})
-    .getGroupList();
-}
-
-// ================================================================
-//  SELECT GROUP ? via dropdown
-// ================================================================
-function selectGroupDropdown(g) {
-  curGroup = g;
-  const badge = document.getElementById('group-active-badge');
-  if (g) {
-    badge.classList.remove('hidden');
-    document.getElementById('group-badge-text').textContent = g;
-  } else {
-    badge.classList.add('hidden');
-  }
-  const hint = g ? ' ? Group: ' + g : '';
-  ['group-hint-tonase','group-hint-stok','group-hint-fm'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.textContent = hint;
+/* ================================================================
+   INIT
+================================================================ */
+(function init(){
+  var now = new Date();
+  var bs=document.getElementById('sel-bulan');
+  BNAMES.forEach(function(b,i){var o=document.createElement('option');o.value=i+1;o.textContent=b;if(i===now.getMonth())o.selected=true;bs.appendChild(o);});
+  ['sel-tahun','sel-tahun-t'].forEach(function(id){
+    var ts=document.getElementById(id);
+    for(var y=now.getFullYear();y>=2023;y--){var o=document.createElement('option');o.value=y;o.textContent=y;if(y===now.getFullYear())o.selected=true;ts.appendChild(o);}
   });
-  loadData();
-}
+  var saved=localStorage.getItem('wct_theme')||'dark';
+  document.documentElement.setAttribute('data-theme',saved);
+  updateThemeBtn(saved);
+  if(localStorage.getItem('wct_sidebar_hidden')==='1' || window.innerWidth<=860) document.body.classList.add('sidebar-hidden');
+  setInterval(function(){var n=new Date();document.getElementById('live-clock').textContent=p2(n.getHours())+':'+p2(n.getMinutes())+':'+p2(n.getSeconds());},1000);
+  loadAll();
+})();
 
-// ================================================================
-//  SIDEBAR
-// ================================================================
-function toggleSidebar() { document.body.classList.toggle('sidebar-hidden'); }
-if (window.innerWidth <= 860) { document.body.classList.add('sidebar-hidden'); }
 // Peta nama menu -> file statis di repo GitHub Pages ini.
-// (dulu semua menu redirect ke URL Apps Script, sekarang cukup pindah file lokal)
 var PAGE_MAP = {
   ''                : 'index.html',
-  'index'           : 'index.html',
+  'index'           : 'monitoring_stock.html',
   'kanban'          : 'kanban.html',
   'rekap'           : 'rekap_muatan.html',
-  'wh_control_tower': 'wh_control_tower.html',
+  'wh_control_tower': 'index.html',
   'residance'       : 'residance_time.html'
 };
-function navTo(page) {
-  var target = PAGE_MAP[page || ''] || 'index.html';
-  // Tambah cache-buster supaya selalu ambil versi terbaru file HTML tujuan,
-  // bukan versi lama yang mungkin masih tersimpan di cache browser.
-  target += '?v=' + (window.SITE_VERSION||Date.now());
-  if (window.top !== window.self) { window.top.location.href = target; }
-  else { window.location.href = target; }
+function navTo(pg){
+  var t = PAGE_MAP[pg || ''] || 'index.html';
+  t += '?v=' + (window.SITE_VERSION||Date.now());
+  if(window.top!==window.self)window.top.location.href=t;else window.location.href=t;
+}
+function setGlobalMode(m){
+  globalMode=m;
+  document.getElementById('fbtn-bulanan').classList.toggle('active',m==='bulanan');
+  document.getElementById('fbtn-tahunan').classList.toggle('active',m==='tahunan');
+  document.getElementById('fg-bulan').style.display=m==='bulanan'?'flex':'none';
+  document.getElementById('fg-tahun').style.display=m==='tahunan'?'flex':'none';
+}
+function buildParams(){
+  if(globalMode==='bulanan') return {mode:'bulanan',bulan:document.getElementById('sel-bulan').value,tahun:document.getElementById('sel-tahun').value};
+  var t=document.getElementById('sel-tahun-t').value;
+  return {mode:'tahunan',bulan:'12',tahun:t};
+}
+function toggleSidebar(){
+  document.body.classList.toggle('sidebar-hidden');
+  localStorage.setItem('wct_sidebar_hidden', document.body.classList.contains('sidebar-hidden') ? '1' : '0');
+}
+function toggleTheme(){
+  var cur=document.documentElement.getAttribute('data-theme');
+  var next=cur==='light'?'dark':'light';
+  document.documentElement.setAttribute('data-theme',next);
+  localStorage.setItem('wct_theme',next);
+  updateThemeBtn(next);
+  setTimeout(renderAllCharts,50);
+}
+function updateThemeBtn(t){
+  document.getElementById('theme-icon').textContent=t==='light'?'🌙':'☀️';
+  document.getElementById('theme-lbl').textContent=t==='light'?'Dark':'Light';
+}
+function getLastNMonths(n,endBulan,endTahun){
+  var out=[];
+  var b=parseInt(endBulan,10), t=parseInt(endTahun,10);
+  for(var i=n-1;i>=0;i--){
+    var mm=b-i, yy=t;
+    while(mm<=0){mm+=12;yy-=1;}
+    out.push({bulan:mm,tahun:yy,label:BNAMES3[mm-1]+' '+String(yy).slice(2)});
+  }
+  return out;
 }
 
-// ================================================================
-//  FILTER STOCK (tanggal utama)
-// ================================================================
-function setMode(mode) {
-  curMode = mode;
-  ['harian','bulanan','tahunan'].forEach(m => {
-    document.getElementById('mode-'+m).classList.toggle('active', m===mode);
-    document.getElementById('section-'+m).classList.toggle('hidden', m!==mode);
-  });
-}
+/* ================================================================
+   LOAD ALL DATA
+================================================================ */
+var _dataStock=null, _dataIOOut=null, _dataIOIn=null, _dataKanban=null, _dataKanbanTrend=null, _dataRekap=null, _dataLT=null;
+var _stockTrend=[], _ioTrend=[];
+var _pending=0;
+var _months=[];
+var USE_DEMO = !(typeof google!=='undefined' && google.script && google.script.run);
 
-function buildParams() {
-  const p = { group: curGroup };
-  if (curMode === 'harian') {
-    p.dari   = document.getElementById('date-from').value;
-    p.sampai = document.getElementById('date-from').value;
-  } else if (curMode === 'bulanan') {
-    p.bulan = document.getElementById('sel-bulan').value;
-    p.tahun = document.getElementById('sel-tahun-bulanan').value;
+function loadAll(){
+  showLoading(true,'Menghubungkan ke spreadsheet...');
+  document.getElementById('btn-refresh').classList.add('spin');
+  var p=buildParams();
+  var lbl=globalMode==='bulanan'?(BNAMES3[parseInt(p.bulan||7,10)-1]+' '+p.tahun):'Tahun '+p.tahun;
+  setText('period-main-badge',lbl); setText('period-badge',lbl);
+  _months=getLastNMonths(6,p.bulan,p.tahun);
+  _pending=6;
+  _pendingIO=2;
+  _pendingKanban=2;
+
+  if(!USE_DEMO){
+    google.script.run.withSuccessHandler(function(d){_dataStock=d;checkDone('stock');}).withFailureHandler(function(){_dataStock=null;checkDone('stock');})
+      .getDashboardData('harian',{dari:todayStr(),sampai:todayStr()});
+    google.script.run.withSuccessHandler(function(d){_dataIOOut=d;checkDone('io');}).withFailureHandler(function(){_dataIOOut=null;checkDone('io');})
+      .getOutboundData({bulan:p.bulan,tahun:p.tahun});
+    google.script.run.withSuccessHandler(function(d){_dataIOIn=d;checkDone('io');}).withFailureHandler(function(){_dataIOIn=null;checkDone('io');})
+      .getInboundData({bulan:p.bulan,tahun:p.tahun});
+    // Snapshot HARI INI saja (mode harian) — supaya rak/box tidak terhitung dobel dari
+    // beberapa baris histori tanggal yang sama item dalam 1 bulan.
+    google.script.run.withSuccessHandler(function(d){_dataKanban=d;checkDone('kanban');}).withFailureHandler(function(){_dataKanban=null;checkDone('kanban');})
+      .getKanbanData('harian',{dari:todayStr(),sampai:todayStr()});
+    // Histori bulanan HANYA dipakai untuk grafik tren (field .trend/.trendFitting-nya
+    // dibangun dari seluruh histori sheet, independen dari filter di atas).
+    google.script.run.withSuccessHandler(function(d){_dataKanbanTrend=d;checkDone('kanban');}).withFailureHandler(function(){_dataKanbanTrend=null;checkDone('kanban');})
+      .getKanbanData('bulanan',{bulan:p.bulan,tahun:p.tahun});
+    google.script.run.withSuccessHandler(function(d){_dataRekap=d;checkDone('rekap');}).withFailureHandler(function(){_dataRekap=null;checkDone('rekap');})
+      .getRekapMuatanData({mode:'bulanan',bulan:p.bulan,tahun:p.tahun});
+    google.script.run.withSuccessHandler(function(d){_dataLT=d;checkDone('lt');}).withFailureHandler(function(){_dataLT=null;checkDone('lt');})
+      .getResidenceTimeData('bulan');
+    loadStockTrend(_months);
+    loadIOTrend(_months);
   } else {
-    p.tahun = document.getElementById('sel-tahun-tahunan').value;
-  }
-  return p;
-}
-
-function buildLabel() {
-  if (curMode === 'harian')
-    return fmtYMD(document.getElementById('date-from').value);
-  if (curMode === 'bulanan')
-    return NM_BULAN[+document.getElementById('sel-bulan').value] + ' ' + document.getElementById('sel-tahun-bulanan').value;
-  return 'Tahun ' + document.getElementById('sel-tahun-tahunan').value;
-}
-
-function fmtYMD(s) { const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
-
-function applyFilter() {
-  if (curMode === 'harian') {
-    const f = document.getElementById('date-from').value;
-    if (!f) { alert('Pilih tanggal.'); return; }
-  }
-  const lbl = buildLabel();
-  document.getElementById('badge-text').textContent   = lbl;
-  document.getElementById('periodeLabel').textContent = lbl;
-  loadData();
-}
-
-function resetFilter() {
-  setMode('harian');
-  const todayStr = today.toISOString().slice(0,10);
-  document.getElementById('date-from').value = todayStr;
-  // reset group dropdown
-  document.getElementById('sel-group').value = '';
-  selectGroupDropdown('');
-  const lbl = fmtYMD(todayStr);
-  document.getElementById('badge-text').textContent   = lbl;
-  document.getElementById('periodeLabel').textContent = lbl;
-  loadData();
-}
-
-// ================================================================
-//  FILTER IO (Outbound / Inbound) ? TERPISAH
-// ================================================================
-function setIOMode(which, mode) {
-  if (which === 'out') outMode = mode;
-  else inMode = mode;
-
-  ['harian','bulanan','tahunan','semua'].forEach(m => {
-    const btn = document.getElementById(which+'-mode-'+m);
-    const sec = document.getElementById(which+'-section-'+m);
-    if (btn) btn.classList.toggle('active', m===mode);
-    if (sec) sec.classList.toggle('hidden', m!==mode);
-  });
-}
-
-function buildIOParams(which) {
-  const mode = which === 'out' ? outMode : inMode;
-  const p = {};
-  if (mode === 'semua') {
-    p.semua = true;
-  } else if (mode === 'harian') {
-    p.dari   = document.getElementById(which+'-date-from').value;
-    p.sampai = document.getElementById(which+'-date-to').value;
-  } else if (mode === 'bulanan') {
-    p.bulan = document.getElementById(which+'-sel-bulan').value;
-    p.tahun = document.getElementById(which+'-sel-tahun').value;
-  } else {
-    p.tahun = document.getElementById(which+'-sel-tahun-t').value;
-  }
-  return p;
-}
-
-function buildIOLabel(which) {
-  const mode = which === 'out' ? outMode : inMode;
-  if (mode === 'semua') return 'Semua Data';
-  if (mode === 'harian') {
-    const f = document.getElementById(which+'-date-from').value;
-    const t = document.getElementById(which+'-date-to').value;
-    return f && t ? fmtYMD(f)+' \u2013 '+fmtYMD(t) : '...';
-  }
-  if (mode === 'bulanan') {
-    return NM_BULAN[+document.getElementById(which+'-sel-bulan').value]
-         + ' ' + document.getElementById(which+'-sel-tahun').value;
-  }
-  return 'Tahun ' + document.getElementById(which+'-sel-tahun-t').value;
-}
-
-function applyIOFilter(which) {
-  const lbl = buildIOLabel(which);
-  document.getElementById(which+'-badge').textContent = lbl;
-  loadIOData(which);
-}
-
-function resetIOFilter(which) {
-  setIOMode(which, 'harian');
-  const awalBulan = `${curYear}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
-  const todayStr  = today.toISOString().slice(0,10);
-  document.getElementById(which+'-date-from').value = awalBulan;
-  document.getElementById(which+'-date-to').value   = todayStr;
-  const lbl = fmtYMD(awalBulan) + ' ? ' + fmtYMD(todayStr);
-  document.getElementById(which+'-badge').textContent = lbl;
-  loadIOData(which);
-}
-
-// ================================================================
-//  LOAD DATA
-// ================================================================
-function loadData() {
-  showLoading(true); hideError();
-  google.script.run
-    .withSuccessHandler(function(data) {
+    setTimeout(function(){
+      _dataStock=demoStock();
+      _dataIOOut=demoIO('out'); _dataIOIn=demoIO('in');
+      _dataKanban=demoKanbanToday();
+      _dataKanbanTrend=demoKanbanTrend();
+      _dataRekap=demoRekap(p);
+      _dataLT=demoLT();
+      _stockTrend=demoStockTrend(_months);
+      _ioTrend=demoIOTrend(_months);
+      _pending=0; renderAll();
       showLoading(false);
-      if (!data || !data.success) { showError((data&&data.error)?data.error:'Terjadi kesalahan.'); return; }
-      renderStock(data);
-      renderFastMoving(data.fastMoving || []);
-    })
-    .withFailureHandler(function(err) {
-      showLoading(false);
-      showError('Koneksi gagal: '+(err.message||err));
-    })
-    .getDashboardData(curMode, buildParams());
-}
-
-function loadIOData(which) {
-  const p = buildIOParams(which);
-  const fn = which === 'out' ? 'getOutboundData' : 'getInboundData';
-  google.script.run
-    .withSuccessHandler(function(data) {
-      if (!data || !data.success) return;
-      if (which === 'out') {
-        renderOutbound(data);
-        // Fast Moving ikut filter Outbound
-        renderFastMoving(data.fastMoving || []);
-      } else {
-        renderInbound(data);
-      }
-    })
-    .withFailureHandler(function(){})
-    [fn](p);
-}
-
-// Muat semua data
-function loadAll() {
-  loadData();
-  loadIOData('out');
-  loadIOData('in');
-}
-
-// ================================================================
-//  RENDER STOCK
-// ================================================================
-function renderStock(data) {
-  const st  = data.stock || {};
-  const ton  = st.tonase || {};
-  const stok = st.stok   || {};
-
-  set('val-global-tonase', fmt(st.globalTonase) + ' kg');
-  set('val-ton-pipa-green',    fmt(ton.pipaGreen)    + ' kg');
-  set('val-ton-pipa-grey',     fmt(ton.pipaGrey)     + ' kg');
-  set('val-ton-fitting-green', fmt(ton.fittingGreen) + ' kg');
-  set('val-ton-fitting-grey',  fmt(ton.fittingGrey)  + ' kg');
-  updateDonut('donut-tonase',
-    [ton.pipaGreen||0, ton.pipaGrey||0, ton.fittingGreen||0, ton.fittingGrey||0],
-    ['#16a34a','#4ade80','#6b7280','#9ca3af']);
-
-  set('val-stok-total',         fmt(stok.total));
-  set('val-stok-pipa-green',    fmt(stok.pipaGreen));
-  set('val-stok-pipa-grey',     fmt(stok.pipaGrey));
-  set('val-stok-fitting-green', fmt(stok.fittingGreen));
-  set('val-stok-fitting-grey',  fmt(stok.fittingGrey));
-  renderBar([stok.pipaGreen||0, stok.pipaGrey||0, stok.fittingGreen||0, stok.fittingGrey||0]);
-
-  // Update Kanban status
-  const tonPipa    = (ton.pipaGreen||0) + (ton.pipaGrey||0);
-  const tonFitting = (ton.fittingGreen||0) + (ton.fittingGrey||0);
-  updateKanban(tonPipa, tonFitting);
-  lucide.createIcons();
-}
-
-function renderOutbound(data) {
-  const out = data.outbound || data || {};
-  set('val-outbound-total', fmt(out.total)   + ' kg');
-  set('val-out-pipa',       fmt(out.pipa)    + ' kg');
-  set('val-out-fitting',    fmt(out.fitting) + ' kg');
-  renderLine('svg-out','line-out-pipa','area-out-pipa','line-out-fitting','area-out-fitting','dates-outbound', out.trend);
-}
-
-function renderInbound(data) {
-  const ib = data.inbound || data || {};
-  set('val-inbound-total', fmt(ib.total)   + ' kg');
-  set('val-in-pipa',       fmt(ib.pipa)    + ' kg');
-  set('val-in-fitting',    fmt(ib.fitting) + ' kg');
-  renderLine('svg-in','line-in-pipa','area-in-pipa','line-in-fitting','area-in-fitting','dates-inbound', ib.trend);
-}
-
-function renderFastMoving(arr) {
-  fmData = arr;
-  renderFM(fmTab);
-}
-
-// Render lama (kompatibel jika GS masih kirim outbound+inbound dalam getDashboardData)
-function render(data) {
-  renderStock(data);
-  if (data.outbound) renderOutbound(data);
-  if (data.inbound)  renderInbound(data);
-  renderFastMoving(data.fastMoving || []);
-}
-
-// ================================================================
-//  DONUT
-// ================================================================
-function updateDonut(id, vals, colors) {
-  const total = vals.reduce((a,b)=>a+b,0);
-  if (!total) return;
-  let pct=0;
-  const stops = vals.map((v,i)=>{
-    const s=pct; pct+=(v/total)*100;
-    return `${colors[i]} ${s.toFixed(1)}% ${pct.toFixed(1)}%`;
-  });
-  document.getElementById(id).style.background = `conic-gradient(${stops.join(',')})`;
-}
-
-// ================================================================
-//  BAR CHART
-// ================================================================
-function renderBar(vals) {
-  const colors=['#16a34a','#4ade80','#6b7280','#9ca3af'];
-  const labels=['PG','PGr','FG','FGr'];
-  const maxV=Math.max(...vals,1), H=36;
-  document.getElementById('bar-stok-chart').innerHTML = vals.map((v,i)=>
-    `<div class="bar-col">
-      <div class="bar-rect" style="height:${Math.max(3,Math.round(v/maxV*H))}px;background:${colors[i]};"></div>
-      <div class="bar-lbl">${labels[i]}</div>
-    </div>`
-  ).join('');
-}
-
-// ================================================================
-//  LINE CHART
-// ================================================================
-function renderLine(svgId,lpId,apId,lfId,afId,datesId,trend) {
-  const W=300,H=70;
-  const clr = id => document.getElementById(id).setAttribute('d','');
-  if (!trend||trend.length===0) {
-    [lpId,apId,lfId,afId].forEach(clr);
-    document.getElementById(datesId).innerHTML='<span style="color:var(--text-muted);font-size:8px;">Belum ada data</span>';
-    return;
+      document.getElementById('btn-refresh').classList.remove('spin');
+      setText('last-update', p2(new Date().getHours())+':'+p2(new Date().getMinutes()));
+    },700);
   }
-  const pts=trend.slice(-8), n=pts.length;
-  if (n<2) {
-    document.getElementById(lpId).setAttribute('d',`M 0 ${H/2} L ${W} ${H/2}`);
-    document.getElementById(lfId).setAttribute('d',`M 0 ${H*.7} L ${W} ${H*.7}`);
-    [apId,afId].forEach(clr);
-    document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${p.label}</span>`).join('');
-    return;
-  }
-  const maxP=Math.max(...pts.map(p=>p.pipa||0),1);
-  const maxF=Math.max(...pts.map(p=>p.fitting||0),1);
-  const xFn=i=>Math.round(i*(W/(n-1)));
-  const yP=i=>Math.round(H-((pts[i].pipa||0)/maxP)*H*.82)+5;
-  const yF=i=>Math.round(H-((pts[i].fitting||0)/maxF)*H*.82)+5;
-  const mkLine=yFn=>pts.map((p,i)=>(i===0?'M':'L')+xFn(i)+' '+yFn(i)).join(' ');
-  const mkArea=yFn=>{ const t=pts.map((p,i)=>(i===0?'M':'L')+xFn(i)+' '+yFn(i)).join(' '); return t+' L'+xFn(n-1)+' '+H+' L0 '+H+' Z'; };
-  document.getElementById(lpId).setAttribute('d',mkLine(yP));
-  document.getElementById(apId).setAttribute('d',mkArea(yP));
-  document.getElementById(lfId).setAttribute('d',mkLine(yF));
-  document.getElementById(afId).setAttribute('d',mkArea(yF));
-  document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${p.label}</span>`).join('');
 }
 
-// ================================================================
-//  FAST MOVING
-// ================================================================
-function switchFMTab(jenis,btn) {
-  fmTab=jenis;
-  document.querySelectorAll('.fm-tab').forEach(t=>t.classList.remove('active'));
-  btn.classList.add('active');
-  renderFM(jenis);
-}
-function renderFM(jenis) {
-  const rows = fmData.filter(d => d.jenis === jenis).slice(0, 5);
-  const tbody = document.getElementById('fm-tbody');
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="3" class="no-data">Tidak ada data fast moving untuk periode ini.</td></tr>`;
-    return;
+// checkDone increments: 6 base completion-events (stock, io-pair, kanban-pair, rekap, lt)
+var _pendingIO=2;
+var _pendingKanban=2;
+function checkDone(key){
+  if(key==='io'){ _pendingIO--; if(_pendingIO>0) return; }
+  if(key==='kanban'){ _pendingKanban--; if(_pendingKanban>0) return; }
+  _pending--;
+  if(key==='stock') renderStock();
+  if(key==='io') renderIO();
+  if(key==='kanban') renderKanbanGauges();
+  if(key==='rekap') renderRekap();
+  if(key==='lt') renderLT();
+  if(_pending<=0){
+    renderAll();
+    showLoading(false);
+    document.getElementById('btn-refresh').classList.remove('spin');
+    setText('last-update', p2(new Date().getHours())+':'+p2(new Date().getMinutes()));
   }
-  const isGreen = d => String(d.kat || '').toLowerCase().includes('green');
-  tbody.innerHTML = rows.map((r, i) => {
-    const g   = isGreen(r);
-    const clr = g ? '#16a34a' : '#9ca3af';
-    const icon = r.jenis === 'Pipa' ? 'database' : 'git-branch';
-    const descDisplay = r.nama || r.kode;
-    return `<tr>
-      <td style="color:var(--text-muted);font-size:9px;padding-right:4px;">${i+1}</td>
-      <td>
-        <div class="prod-cell">
-          <div class="prod-icon ${g ? 'green' : 'grey'}">
-            <i data-lucide="${icon}" style="width:11px;color:${clr}"></i>
-          </div>
-          <div style="min-width:0;">
-            <div class="prod-name">${descDisplay}</div>
-            <div class="prod-code" style="font-family:monospace;">${r.kode}</div>
-          </div>
-        </div>
-      </td>
-      <td style="text-align:right;font-weight:600;white-space:nowrap;color:var(--accent-green);">${fmt(r.tonase)} <span style="font-size:8px;color:var(--text-muted);font-weight:400;">kg</span></td>
-    </tr>`;
+}
+
+function loadStockTrend(months){
+  _stockTrend=months.map(function(m){return {label:m.label,pipa:0,fitting:0,total:0,loaded:false};});
+  google.script.run.withSuccessHandler(function(resp){
+    if(!resp||!resp.success||!resp.results){
+      console.error('[loadStockTrend] gagal:', resp&&resp.error);
+      showChartError('chart-stock-trend', resp&&resp.error);
+      renderStockTrendChart();
+      return;
+    }
+    resp.results.forEach(function(d,idx){
+      var t=(d&&d.stock&&d.stock.tonase)||{pipaGreen:0,pipaGrey:0,fittingGreen:0,fittingGrey:0,total:0};
+      _stockTrend[idx].pipa=(t.pipaGreen||0)+(t.pipaGrey||0);
+      _stockTrend[idx].fitting=(t.fittingGreen||0)+(t.fittingGrey||0);
+      _stockTrend[idx].total=t.total||(_stockTrend[idx].pipa+_stockTrend[idx].fitting);
+      _stockTrend[idx].loaded=true;
+    });
+    renderStockTrendChart();
+  }).withFailureHandler(function(err){
+    console.error('[loadStockTrend] network error:', err);
+    showChartError('chart-stock-trend', err&&err.message);
+    renderStockTrendChart();
+  }).getStockTrendBatch(months.map(function(m){return {bulan:m.bulan,tahun:m.tahun};}));
+}
+// Tampilkan pesan error kecil di atas canvas chart kalau data gagal dimuat
+// (mis. backend/kode.gs belum di-deploy ulang setelah update) - supaya
+// kelihatan jelas, bukan diam-diam kosong tanpa penjelasan.
+function showChartError(canvasId,msg){
+  var c=document.getElementById(canvasId);
+  if(!c||!c.parentElement) return;
+  var wrap=c.parentElement;
+  var el=wrap.querySelector('.chart-err-msg');
+  if(!el){
+    el=document.createElement('div');
+    el.className='chart-err-msg';
+    el.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;font-size:10px;color:var(--red,#ef4444);background:rgba(239,68,68,.06);border-radius:8px;';
+    wrap.style.position='relative';
+    wrap.appendChild(el);
+  }
+  el.textContent='Gagal memuat grafik'+(msg?(': '+msg):'')+' — coba deploy ulang Apps Script (backend/kode.gs).';
+}
+
+function loadIOTrend(months){
+  _ioTrend=months.map(function(m){return {label:m.label,outPipa:0,inPipa:0,outFit:0,inFit:0};});
+  google.script.run.withSuccessHandler(function(resp){
+    if(!resp||!resp.success||!resp.results){
+      console.error('[loadIOTrend] gagal:', resp&&resp.error);
+      showChartError('chart-io-pipa', resp&&resp.error);
+      showChartError('chart-io-fitting', resp&&resp.error);
+      renderIOTrendCharts();
+      return;
+    }
+    resp.results.forEach(function(pair,idx){
+      var dOut=pair.out, dIn=pair.in;
+      _ioTrend[idx].outPipa=(dOut&&dOut.pipa)||0; _ioTrend[idx].outFit=(dOut&&dOut.fitting)||0;
+      _ioTrend[idx].inPipa=(dIn&&dIn.pipa)||0; _ioTrend[idx].inFit=(dIn&&dIn.fitting)||0;
+    });
+    renderIOTrendCharts();
+  }).withFailureHandler(function(err){
+    console.error('[loadIOTrend] network error:', err);
+    showChartError('chart-io-pipa', err&&err.message);
+    showChartError('chart-io-fitting', err&&err.message);
+    renderIOTrendCharts();
+  }).getIOTrendBatch(months.map(function(m){return {bulan:m.bulan,tahun:m.tahun};}));
+}
+
+/* ================================================================
+   RENDER — ORCHESTRATOR
+================================================================ */
+function renderAll(){
+  renderNotifs();
+  renderKPIStrip();
+  renderStock();
+  renderStockTrendChart();
+  renderIO();
+  renderIOTrendCharts();
+  renderKanbanGauges();
+  renderRekap();
+  renderLT();
+}
+function renderAllCharts(){
+  renderStockTrendChart(); renderIOTrendCharts(); renderKanbanTrendChart();
+  renderLTCharts();
+}
+
+/* ================================================================
+   RENDER — NOTIFICATIONS
+================================================================ */
+function renderNotifs(){
+  var strip=document.getElementById('notif-strip');
+  var notifs=[];
+  var outP=_dataIOOut?(_dataIOOut.pipa||0):0, inP=_dataIOIn?(_dataIOIn.pipa||0):0;
+  var outF=_dataIOOut?(_dataIOOut.fitting||0):0, inF=_dataIOIn?(_dataIOIn.fitting||0):0;
+  var totOut=outP+outF, totIn=inP+inF;
+  if(totIn>0){
+    var ratio=totOut/totIn;
+    if(ratio>1.2) notifs.push({type:'red',icon:'🔴',title:'Outbound melebihi Inbound!',msg:'Outbound '+fmt(totOut)+' kg melebihi Inbound '+fmt(totIn)+' kg — risiko kekosongan stok'});
+    else if(ratio<0.5) notifs.push({type:'amber',icon:'⚠️',title:'Inbound jauh melebihi Outbound',msg:'Kemungkinan penumpukan stok — Inbound '+fmt(totIn)+' kg vs Outbound '+fmt(totOut)+' kg'});
+    else notifs.push({type:'green',icon:'✅',title:'Inbound vs Outbound Seimbang',msg:'Rasio: '+Math.round(ratio*100)+'% | Stok terjaga dengan baik'});
+  }
+  if(_dataKanban&&_dataKanban.pipa){
+    var totalRak=_dataKanban.pipa.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
+    var pctRak=Math.round(totalRak/MAX_KANBAN_PIPA*100);
+    var kurang=_dataKanban.pipa.filter(function(r){return r.status==='KURANG';}).length;
+    if(pctRak>=90) notifs.push({type:'red',icon:'🚨',title:'Rak Pipa Kritis ('+pctRak+'%)',msg:'Kapasitas rak hampir penuh — perlu pengeluaran segera'});
+    else if(pctRak>=70) notifs.push({type:'amber',icon:'⚠️',title:'Rak Pipa Waspada ('+pctRak+'%)',msg:totalRak+' dari '+MAX_KANBAN_PIPA+' rak terpakai'});
+    if(kurang>0) notifs.push({type:'amber',icon:'📉',title:kurang+' Item Berstatus KURANG',msg:'Perlu perhatian pada stok kanban rak/box'});
+  }
+  if(_dataRekap&&_dataRekap.pics){
+    var totalPipa=_dataRekap.totalPipa||0;
+    var totalTarget=PIC_LIST.reduce(function(a,pc){return a+(TARGET_PIPA[pc]||0);},0);
+    var pct=totalTarget>0?Math.round(totalPipa/totalTarget*100):0;
+    if(pct<60) notifs.push({type:'amber',icon:'📦',title:'Persiapan Pipa '+pct+'% dari Target',msg:'Total '+fmt(totalPipa)+' kg dari target '+fmt(totalTarget)+' kg'});
+    else notifs.push({type:'blue',icon:'📦',title:'Persiapan Pipa On Track ('+pct+'%)',msg:'Total '+fmt(totalPipa)+' kg dari target '+fmt(totalTarget)+' kg'});
+  }
+  if(!notifs.length) notifs.push({type:'blue',icon:'✅',title:'Data berhasil dimuat',msg:'Semua modul aktif dan sinkron'});
+  strip.innerHTML=notifs.map(function(n){
+    return '<div class="notif-item '+n.type+'"><span class="notif-icon">'+n.icon+'</span><div class="notif-text"><strong>'+n.title+'</strong>'+n.msg+'</div></div>';
   }).join('');
-  lucide.createIcons();
 }
 
-// ================================================================
-//  HELPERS
-// ================================================================
-function set(id,val){ const e=document.getElementById(id); if(e) e.textContent=val; }
-function fmt(n){ return Number(n||0).toLocaleString('id-ID',{maximumFractionDigits:2}); }
-function showLoading(v){ document.getElementById('loadingOverlay').classList.toggle('show',v); }
-function showError(msg){ const b=document.getElementById('errorBanner'); b.classList.add('show'); document.getElementById('errorMsg').textContent=msg; }
-function hideError(){ document.getElementById('errorBanner').classList.remove('show'); }
-
-// ================================================================
-//  LIVE CLOCK
-// ================================================================
-(function tickClock() {
-  const HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-  const BLN  = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  function update() {
-    const now = new Date();
-    const hh  = String(now.getHours()).padStart(2,'0');
-    const mm  = String(now.getMinutes()).padStart(2,'0');
-    const ss  = String(now.getSeconds()).padStart(2,'0');
-    const el1 = document.getElementById('clockTime');
-    const el2 = document.getElementById('clockDate');
-    if (el1) el1.textContent = `${hh}:${mm}:${ss}`;
-    if (el2) el2.textContent = `${HARI[now.getDay()]}, ${now.getDate()} ${BLN[now.getMonth()]} ${now.getFullYear()}`;
+/* ================================================================
+   RENDER — KPI STRIP
+================================================================ */
+function trendDelta(arr,key){
+  if(!arr||arr.length<2) return null;
+  var last=arr[arr.length-1][key]||0, prev=arr[arr.length-2][key]||0;
+  if(prev===0) return null;
+  var pct=Math.round((last-prev)/prev*100);
+  return pct;
+}
+function setDelta(id,pct,suffix){
+  var el=document.getElementById(id); if(!el) return;
+  if(pct===null||pct===undefined||isNaN(pct)){ el.className='kpi-delta flat'; el.textContent='— vs bln lalu'; return; }
+  var dir=pct>0?'up':pct<0?'down':'flat';
+  var arrow=pct>0?'▲':pct<0?'▼':'—';
+  el.className='kpi-delta '+dir;
+  el.textContent=arrow+' '+Math.abs(pct)+'% '+(suffix||'vs bln lalu');
+}
+function renderKPIStrip(){
+  if(_dataStock&&_dataStock.stock){
+    var t=_dataStock.stock.tonase||{};
+    setText('kpi-stok-pipa', fmt((t.pipaGreen||0)+(t.pipaGrey||0)));
+    setText('kpi-stok-fitting', fmt((t.fittingGreen||0)+(t.fittingGrey||0)));
   }
-  update();
-  setInterval(update, 1000);
-})();
+  var outP=_dataIOOut?(_dataIOOut.pipa||0):0, outF=_dataIOOut?(_dataIOOut.fitting||0):0;
+  var inP=_dataIOIn?(_dataIOIn.pipa||0):0, inF=_dataIOIn?(_dataIOIn.fitting||0):0;
+  setText('kpi-out', fmt(outP+outF));
+  setText('kpi-in', fmt(inP+inF));
+  if(_dataKanban&&_dataKanban.pipa){
+    var totalRak=_dataKanban.pipa.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
+    setText('kpi-rak-pipa', Math.round(totalRak/MAX_KANBAN_PIPA*100)+'%');
+  }
+  if(_dataKanban&&_dataKanban.fitting){
+    var totalFit=_dataKanban.fitting.reduce(function(a,r){return a+(r.rakTerpakai||0);},0);
+    setText('kpi-rak-fit', Math.round(totalFit/MAX_KANBAN_FITTING*100)+'%');
+  }
+  if(_dataLT){
+    var s=computeLTStats(_dataLT);
+    setText('kpi-loading-avg', s.avgMin?fmtMin(s.avgMin):'—');
+    setDelta('kpi-loading-delta', null); document.getElementById('kpi-loading-delta').textContent=s.selesai+' selesai dari '+s.total;
+  }
+  // Deltas from monthly trend arrays
+  setDelta('kpi-stok-pipa-delta', trendDelta(_stockTrend,'pipa'));
+  setDelta('kpi-stok-fitting-delta', trendDelta(_stockTrend,'fitting'));
+  setDelta('kpi-out-delta', trendDelta(_ioTrend.map(function(r){return{v:(r.outPipa||0)+(r.outFit||0)};}),'v'));
+  setDelta('kpi-in-delta', trendDelta(_ioTrend.map(function(r){return{v:(r.inPipa||0)+(r.inFit||0)};}),'v'));
+  if(_dataKanbanTrend&&_dataKanbanTrend.trend&&_dataKanbanTrend.trend.length>1){
+    var d=trendDelta(_dataKanbanTrend.trend,'rakTerpakai'); setDelta('kpi-rak-pipa-delta',d);
+  }
+  if(_dataKanbanTrend&&_dataKanbanTrend.trendFitting&&_dataKanbanTrend.trendFitting.length>1){
+    var d2=trendDelta(_dataKanbanTrend.trendFitting,'rakTerpakai'); setDelta('kpi-rak-fit-delta',d2);
+  }
+}
 
-// ================================================================
-//  KANBAN STATUS UPDATE
-// ================================================================
-const KANBAN_PIPA    = 304530.14;
-const KANBAN_FITTING = 111870.96;
+/* ================================================================
+   RENDER — STOCK
+================================================================ */
+function renderStock(){
+  if(!_dataStock||!_dataStock.stock) return;
+  var t=_dataStock.stock.tonase||{};
+  var now=new Date();
+  setText('stock-badge', now.getDate()+' '+BNAMES3[now.getMonth()]+' '+now.getFullYear());
+  setText('st-pipa-green', fmt(t.pipaGreen||0));
+  setText('st-pipa-grey',  fmt(t.pipaGrey||0));
+  setText('st-fit-green',  fmt(t.fittingGreen||0));
+  setText('st-fit-grey',   fmt(t.fittingGrey||0));
+  setText('st-total-global', fmt(t.total||0)+' kg');
+}
+function renderStockTrendChart(){
+  if(!_stockTrend||!_stockTrend.length) return;
+  var labels=_stockTrend.map(function(r){return r.label;});
+  buildChart('chart-stock-trend','bar',{
+    labels:labels,
+    datasets:[
+      {type:'bar',label:'Pipa',data:_stockTrend.map(function(r){return r.pipa;}),backgroundColor:mkGrad('#3b9dff'),borderColor:'#3b9dff',borderWidth:1.5,borderRadius:6,order:3,barPercentage:.62},
+      {type:'bar',label:'Fitting',data:_stockTrend.map(function(r){return r.fitting;}),backgroundColor:mkGrad('#22d3a5'),borderColor:'#22d3a5',borderWidth:1.5,borderRadius:6,order:2,barPercentage:.62},
+      {type:'line',label:'Total Tonase',data:_stockTrend.map(function(r){return r.total;}),borderColor:'#5be3ff',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#5be3ff',pointBorderColor:'#04101f',tension:.35,fill:false,order:1}
+    ]
+  },{plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y)+' kg';}}}},
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
+}
 
-function updateKanban(tonPipa, tonFitting) {
-  function setStatus(prefix, value, limit) {
-    const card   = document.getElementById('kanban-' + prefix);
-    const valEl  = document.getElementById('kanban-' + prefix + '-val');
-    const statEl = document.getElementById('kanban-' + prefix + '-status');
-    const infoEl = document.getElementById('kanban-' + prefix + '-info');
-    const notif  = document.getElementById('kanban-' + prefix + '-notif');
-    if (!card) return;
+/* ================================================================
+   RENDER — IO (current period totals) + monthly trend charts
+================================================================ */
+function renderIO(){
+  var outP=_dataIOOut?(_dataIOOut.pipa||0):0, inP=_dataIOIn?(_dataIOIn.pipa||0):0;
+  var outF=_dataIOOut?(_dataIOOut.fitting||0):0, inF=_dataIOIn?(_dataIOIn.fitting||0):0;
+  setText('io-pipa-badge','Out: '+fmt(outP)+' | In: '+fmt(inP)+' kg');
+  setText('io-fit-badge','Out: '+fmt(outF)+' | In: '+fmt(inF)+' kg');
+  document.getElementById('io-pipa-legend').innerHTML='<div class="leg-item"><div class="leg-sq" style="background:#ffb020;color:#ffb020"></div>Outbound (Bar)</div><div class="leg-item"><div class="leg-dot" style="background:#00d4ff;color:#00d4ff"></div>Inbound (Garis)</div>';
+  document.getElementById('io-fit-legend').innerHTML='<div class="leg-item"><div class="leg-sq" style="background:#a78bfa;color:#a78bfa"></div>Outbound (Bar)</div><div class="leg-item"><div class="leg-dot" style="background:#22d3a5;color:#22d3a5"></div>Inbound (Garis)</div>';
+  var notifP=document.getElementById('io-pipa-notif');
+  if(outP>inP*1.15){notifP.style.display='flex';notifP.textContent='⚠️ Outbound Pipa ('+fmt(outP)+' kg) melebihi Inbound ('+fmt(inP)+' kg) — risiko kekosongan stok!';}
+  else notifP.style.display='none';
+  var notifF=document.getElementById('io-fit-notif');
+  if(outF>inF*1.15){notifF.style.display='flex';notifF.textContent='⚠️ Outbound Fitting ('+fmt(outF)+' kg) melebihi Inbound ('+fmt(inF)+' kg)!';}
+  else notifF.style.display='none';
+}
+function renderIOTrendCharts(){
+  if(!_ioTrend||!_ioTrend.length) return;
+  var labels=_ioTrend.map(function(r){return r.label;});
+  buildChart('chart-io-pipa','bar',{
+    labels:labels,
+    datasets:[
+      {type:'bar',label:'Outbound Pipa',data:_ioTrend.map(function(r){return r.outPipa;}),backgroundColor:mkGrad('#ffb020'),borderColor:'#ffb020',borderWidth:1.5,borderRadius:6,order:2,barPercentage:.6},
+      {type:'line',label:'Inbound Pipa',data:_ioTrend.map(function(r){return r.inPipa;}),borderColor:'#00d4ff',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#00d4ff',pointBorderColor:'#04101f',tension:.35,fill:false,order:1}
+    ]
+  },{plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y)+' kg';}}}},
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
+  buildChart('chart-io-fitting','bar',{
+    labels:labels,
+    datasets:[
+      {type:'bar',label:'Outbound Fitting',data:_ioTrend.map(function(r){return r.outFit;}),backgroundColor:mkGrad('#a78bfa'),borderColor:'#a78bfa',borderWidth:1.5,borderRadius:6,order:2,barPercentage:.6},
+      {type:'line',label:'Inbound Fitting',data:_ioTrend.map(function(r){return r.inFit;}),borderColor:'#22d3a5',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#22d3a5',pointBorderColor:'#04101f',tension:.35,fill:false,order:1}
+    ]
+  },{plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y)+' kg';}}}},
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
+}
 
-    valEl.textContent = fmt(value) + ' kg';
-    const over = value > limit;
-    card.classList.toggle('aman',    !over);
-    card.classList.toggle('warning',  over);
+/* ================================================================
+   RENDER — KANBAN GAUGES + TREND + KRITIS LIST
+================================================================ */
+function statusOf(pct){ return pct<70?'AMAN':pct<90?'WASPADA':'KRITIS'; }
+function animateGauge(prefix,pct,gradId,needleColor){
+  var cx=120, cy=125, r=98;
+  var sx=cx+r*Math.cos(Math.PI), sy=cy+r*Math.sin(Math.PI);
+  var ang=Math.PI+(pct/100)*Math.PI;
+  var ex=cx+r*Math.cos(ang), ey=cy+r*Math.sin(ang);
+  var d = pct<1 ? 'M '+sx+' '+sy+' A '+r+' '+r+' 0 0 1 '+(sx+0.01)+' '+sy
+                : 'M '+sx+' '+sy+' A '+r+' '+r+' 0 0 1 '+ex+' '+ey;
+  var arc=document.getElementById('gaugeArc'+prefix);
+  if(arc){ arc.setAttribute('d',d); arc.setAttribute('stroke','url(#'+gradId+')'); }
+  var needle=document.getElementById('needle'+prefix);
+  if(needle) needle.style.transform='rotate('+(-90+(pct/100)*180)+'deg)';
+  var dot=document.getElementById('needleDot'+prefix);
+  if(dot) dot.setAttribute('fill',needleColor);
+  setText('gaugePct'+prefix,pct+'%');
+}
+function renderGaugeBlock(prefix,items,maxCap,unit,capLabel){
+  var totalPakai=(items||[]).reduce(function(s,r){return s+(r.rakTerpakai||0);},0);
+  var sisa=Math.max(0,maxCap-totalPakai);
+  var pct=totalPakai>0?Math.min(100,Math.round(totalPakai/maxCap*100)):0;
+  var st=statusOf(pct);
+  var suf=prefix==='Pipa'?'P':'F';
+  var gradId=st==='AMAN'?'gGreen'+suf:st==='WASPADA'?'gAmber'+suf:'gRed'+suf;
+  var col=st==='AMAN'?'#22d3a5':st==='WASPADA'?'#ffb020':'#ff5470';
+  animateGauge(prefix,pct,gradId,col);
+  setText('gs-pakai-'+prefix.toLowerCase(),fmt(totalPakai));
+  setText('gs-sisa-'+prefix.toLowerCase(),fmt(sisa));
+  setText('gs-max-'+prefix.toLowerCase(),fmt(maxCap));
+  setText('gauge-'+prefix.toLowerCase()+'-cap',capLabel+': '+fmt(maxCap)+' '+unit);
+  var badge=document.getElementById('gauge-'+prefix.toLowerCase()+'-badge');
+  if(badge){ badge.textContent=st; badge.className='status-pill '+(st==='AMAN'?'aman':st==='WASPADA'?'waspada':'kritis'); }
+  return {totalPakai:totalPakai,sisa:sisa,pct:pct,status:st};
+}
+function renderKanbanGauges(){
+  if(!_dataKanban) return;
+  renderGaugeBlock('Pipa',_dataKanban.pipa||[],MAX_KANBAN_PIPA,'rak','Kapasitas Pipa PPR');
+  renderGaugeBlock('Fit',_dataKanban.fitting||[],MAX_KANBAN_FITTING,'box','Kapasitas Fitting PPR');
+  renderKanbanTrendChart();
+  renderKritisList();
+}
+function renderKanbanTrendChart(){
+  if(!_dataKanbanTrend) return;
+  var trendData=_dataKanbanTrend.trend||[], trendFit=_dataKanbanTrend.trendFitting||[];
+  var labSet={}; trendData.forEach(function(r){labSet[r.label]=1;}); trendFit.forEach(function(r){labSet[r.label]=1;});
+  var labels=Object.keys(labSet);
+  buildChart('chart-kanban-trend','bar',{
+    labels:labels,
+    datasets:[
+      {label:'Pipa (Rak)',data:labels.map(function(l){var r=trendData.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#a78bfa'),borderColor:'#a78bfa',borderWidth:1.5,borderRadius:6,barPercentage:.6},
+      {label:'Fitting (Box)',data:labels.map(function(l){var r=trendFit.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#00d4ff'),borderColor:'#00d4ff',borderWidth:1.5,borderRadius:6,barPercentage:.6}
+    ]
+  },{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y);}}}},
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
+}
+function renderKritisList(){
+  var all=[].concat((_dataKanban&&_dataKanban.pipa)||[],(_dataKanban&&_dataKanban.fitting)||[]);
+  var kurang=all.filter(function(r){return r.status==='KURANG';}).sort(function(a,b){return (a.selisih||0)-(b.selisih||0);});
+  setText('kritis-badge',kurang.length);
+  var cont=document.getElementById('kritis-list');
+  if(!kurang.length){ cont.innerHTML='<div style="color:var(--txt3);font-size:10px;text-align:center;padding:14px 0;">✅ Tidak ada item KURANG</div>'; return; }
+  cont.innerHTML=kurang.slice(0,10).map(function(r){
+    return '<div class="kritis-row"><span class="kn" title="'+escHtml(r.nama||'')+'">'+escHtml(r.nama||r.kode||'')+'</span><span class="kv" style="color:var(--red)">'+fmt(r.selisih||0)+'</span></div>';
+  }).join('');
+}
 
-    const icon = card.querySelector('.kanban-icon i');
-    if (icon) {
-      icon.style.color = over ? '#ef4444' : '#10b981';
+/* ================================================================
+   RENDER — REKAP MUATAN PER PIC
+================================================================ */
+function renderRekap(){
+  if(!_dataRekap||!_dataRekap.pics) return;
+  setText('rekap-badge',_dataRekap.periodeLabel||'—');
+  var pics=_dataRekap.pics;
+  var picRow=document.getElementById('pic-row');
+  picRow.innerHTML='';
+  PIC_LIST.forEach(function(pic){
+    var info=pics[pic]||{pipa:0,fitting:0};
+    var col=PIC_COLORS[pic];
+    var hp=HAS_PIPA[pic], hf=HAS_FITTING[pic];
+    var tp=TARGET_PIPA[pic], tf=TARGET_FITTING[pic];
+    var pctP=hp&&tp>0?Math.min(Math.round(info.pipa/tp*100),999):null;
+    var pctF=hf&&tf>0?Math.min(Math.round(info.fitting/tf*100),999):null;
+    var card=document.createElement('div');
+    card.className='pic-mini';
+    var statsHtml='';
+    if(hp){
+      statsHtml+='<div class="pic-stat"><span class="pic-stat-lbl">Pipa (kg)</span><span class="pic-stat-val" style="color:'+col+'">'+fmt(info.pipa)+'</span></div>'+
+        '<div class="pic-bar-bg"><div class="pic-bar-fill" id="pb-pipa-'+pic+'" style="width:0%;background:'+col+';color:'+col+'"></div></div>'+
+        '<div class="pic-pct">'+fmt(tp)+' kg | '+pctP+'%</div>';
     }
-    if (!over) {
-      statEl.textContent = 'AMAN';
-      infoEl.textContent = 'Stok dalam batas aman kanban tidak ada tindakan diperlukan';
-      if (notif) notif.style.display = 'none';
-    } else {
-      const selisih = value - limit;
-      statEl.textContent = '?? TIDAK AMAN';
-      infoEl.textContent = `Perhatian Planner: Stok saat ini melampaui batas kanban sebesar ${fmt(selisih)} kg. Mohon segera dilakukan evaluasi dan penyesuaian rencana produksi/pengiriman guna menghindari penumpukan stok di luar batas yang telah ditetapkan.`;
-      if (notif) notif.style.display = 'block';
+    if(hf){
+      statsHtml+='<div class="pic-stat" style="margin-top:4px;"><span class="pic-stat-lbl">Fitting (Bx)</span><span class="pic-stat-val" style="color:'+col+'">'+fmtInt(info.fitting)+'</span></div>'+
+        '<div class="pic-bar-bg"><div class="pic-bar-fill" id="pb-fit-'+pic+'" style="width:0%;background:'+col+';color:'+col+'"></div></div>'+
+        '<div class="pic-pct">'+fmtInt(tf)+' Bx | '+pctF+'%</div>';
     }
-  }
-  setStatus('pipa',    tonPipa,    KANBAN_PIPA);
-  setStatus('fitting', tonFitting, KANBAN_FITTING);
+    card.innerHTML=
+      '<div class="pic-mini-head">'+
+        '<div class="pic-av" style="background:'+col+';">'+PIC_INIT[pic]+'</div>'+
+        '<div><div class="pic-name" style="color:'+col+'">'+pic+'</div><div class="pic-role">'+(pic==='WANG'?'Fitting':'Persiapan')+'</div></div>'+
+      '</div>'+statsHtml;
+    picRow.appendChild(card);
+    setTimeout(function(){
+      if(pctP!==null){var b=document.getElementById('pb-pipa-'+pic);if(b)b.style.width=Math.min(pctP,100)+'%';}
+      if(pctF!==null){var b2=document.getElementById('pb-fit-'+pic);if(b2)b2.style.width=Math.min(pctF,100)+'%';}
+    },150);
+  });
+  var totPipa=_dataRekap.totalPipa||0, totFit=_dataRekap.totalFitting||0;
+  var tgtP=PIC_LIST.reduce(function(a,p){return a+(TARGET_PIPA[p]||0);},0);
+  var tgtF=PIC_LIST.reduce(function(a,p){return a+(TARGET_FITTING[p]||0);},0);
+  var gPP=tgtP>0?Math.min(Math.round(totPipa/tgtP*100),100):0;
+  var gPF=tgtF>0?Math.min(Math.round(totFit/tgtF*100),100):0;
+  setTimeout(function(){
+    var bp=document.getElementById('gt-pipa-bar'); if(bp) bp.style.width=gPP+'%';
+    var bf=document.getElementById('gt-fit-bar');  if(bf) bf.style.width=gPF+'%';
+  },200);
+  setText('gt-pipa-actual',fmt(totPipa)+' kg'); setText('gt-pipa-target',fmt(tgtP)+' kg'); setText('gt-pipa-pct',gPP+'%');
+  setText('gt-fit-actual',fmtInt(totFit)+' Bx'); setText('gt-fit-target',fmtInt(tgtF)+' Bx'); setText('gt-fit-pct',gPF+'%');
 }
 
-// ================================================================
-//  AUTO LOAD
-// ================================================================
-window.addEventListener('load', () => {
-  // Set default IO dates: awal bulan s/d hari ini
-  const awalBulan = `${curYear}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
-  const todayStr  = today.toISOString().slice(0,10);
-  const lblIO = fmtYMD(awalBulan) + ' ? ' + fmtYMD(todayStr);
-
-  document.getElementById('out-date-from').value = awalBulan;
-  document.getElementById('out-date-to').value   = todayStr;
-  document.getElementById('out-badge').textContent = lblIO;
-
-  document.getElementById('in-date-from').value  = awalBulan;
-  document.getElementById('in-date-to').value    = todayStr;
-  document.getElementById('in-badge').textContent = lblIO;
-
-  resetFilter();    // juga memanggil loadData() - default harian hari ini
-  loadGroupList();
-  loadIOData('out');
-  loadIOData('in');
-});
-
-// ================================================================
-//  TEMA DARK / LIGHT
-// ================================================================
-function toggleTheme() {
-  const isLight = document.body.classList.toggle('theme-light');
-  localStorage.setItem('pprTheme', isLight ? 'light' : 'dark');
-  const icon  = document.getElementById('themeIcon');
-  const label = document.getElementById('themeLabel');
-  if (icon)  icon.setAttribute('data-lucide', isLight ? 'moon' : 'sun');
-  if (label) label.textContent = isLight ? 'Dark' : 'Light';
-  lucide.createIcons();
+/* ================================================================
+   RENDER — LOADING TIME (computed from raw records — backend does
+   not pre-aggregate, so we derive total/selesai/batal/avg/distribusi
+   from monthRows client-side)
+================================================================ */
+function timeToMin(s){ if(!s) return null; var p=String(s).split(':'); if(p.length<2) return null; var h=parseInt(p[0],10), m=parseInt(p[1],10); if(isNaN(h)||isNaN(m)) return null; return h*60+m; }
+function computeLTStats(d){
+  var rows=(d&&d.monthRows)||[];
+  var total=rows.length, batal=0, selesai=0, durs=[];
+  rows.forEach(function(r){
+    if(r.isCancelled){ batal++; return; }
+    if(r.waktuMulai && r.waktuSelesai){
+      selesai++;
+      var a=timeToMin(r.waktuMulai), b=timeToMin(r.waktuSelesai);
+      if(a!==null&&b!==null){ var diff=b-a; if(diff<0) diff+=1440; if(diff>=0&&diff<720) durs.push(diff); }
+    }
+  });
+  var avgMin = durs.length ? Math.round(durs.reduce(function(a,b){return a+b;},0)/durs.length) : 0;
+  var dist=[0,0,0,0,0]; // <30 / 30-60 / 60-120 / 120-180 / >180
+  durs.forEach(function(m){
+    if(m<30) dist[0]++; else if(m<60) dist[1]++; else if(m<120) dist[2]++; else if(m<180) dist[3]++; else dist[4]++;
+  });
+  return {total:total,selesai:selesai,batal:batal,avgMin:avgMin,dist:dist};
+}
+function renderLT(){
+  if(!_dataLT) return;
+  var s=computeLTStats(_dataLT);
+  setText('lt-total',s.total); setText('lt-selesai',s.selesai); setText('lt-batal',s.batal);
+  renderLTCharts();
+}
+function renderLTCharts(){
+  if(!_dataLT) return;
+  var t7=_dataLT.trend7||[];
+  buildChart('chart-lt-trend','line',{
+    labels:t7.map(function(r){return r.label||'';}),
+    datasets:[{label:'Total SPM',data:t7.map(function(r){return r.total||0;}),
+      borderColor:'#ff5470',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#ff5470',pointBorderColor:'#04101f',
+      backgroundColor:mkGradV('#ff5470'),fill:true,tension:.35}]
+  },{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.parsed.y+' SPM';}}}},
+    scales:{x:{grid:{display:false}},y:{ticks:{stepSize:1}}}});
+  var s=computeLTStats(_dataLT);
+  var distLabels=['< 30 mnt','30-60 mnt','1-2 jam','2-3 jam','> 3 jam'];
+  var distColors=['#22d3a5','#3b9dff','#ffb020','#ff8a4c','#ff5470'];
+  buildChart('chart-lt-dist','doughnut',{
+    labels:distLabels,
+    datasets:[{data:s.dist,backgroundColor:distColors,borderWidth:2,borderColor:isDarkTheme()?'#0c1526':'#fff',hoverOffset:8}]
+  },{plugins:{legend:{position:'right',labels:{padding:9,boxWidth:9,boxHeight:9}},tooltip:{callbacks:{label:function(c){return ' '+c.label+': '+c.parsed+' kiriman';}}}},cutout:'62%'});
 }
 
-// ================================================================
-//  FONT SIZE CONTROL
-// ================================================================
-var _fontStep = 0; // -3 to +5 steps of 10%
-var _fontSteps = [-30,-20,-10,0,10,20,30,40,50];
-var _fontLabels = ['70%','80%','90%','100%','110%','120%','130%','140%','150%'];
-function changeFontSize(dir) {
-  _fontStep = Math.max(0, Math.min(_fontSteps.length - 1, _fontStep + dir));
-  // default step index is 3 (100%)
-  var defaultIdx = 3;
-  var scale = (100 + _fontSteps[_fontStep]) / 100;
-  document.documentElement.style.setProperty('--font-scale', scale);
-  var label = document.getElementById('fontSizeLabel');
-  if (label) label.textContent = _fontLabels[_fontStep];
-  localStorage.setItem('pprFontStep', _fontStep);
+/* ================================================================
+   CHART BUILDER — dark "control tower" theme, gradient 3D fills,
+   drop-shadow plugin for elevated bars/lines.
+================================================================ */
+function isDarkTheme(){ return document.documentElement.getAttribute('data-theme')!=='light'; }
+function mkGrad(hex){
+  return function(context){
+    var chart=context.chart; var area=chart.chartArea;
+    if(!area) return hex+'55';
+    var g=chart.ctx.createLinearGradient(0,area.bottom,0,area.top);
+    g.addColorStop(0,hexA(hex,.08)); g.addColorStop(1,hexA(hex,.85));
+    return g;
+  };
+}
+function mkGradV(hex){
+  return function(context){
+    var chart=context.chart; var area=chart.chartArea;
+    if(!area) return hex+'33';
+    var g=chart.ctx.createLinearGradient(0,area.top,0,area.bottom);
+    g.addColorStop(0,hexA(hex,.35)); g.addColorStop(1,hexA(hex,0));
+    return g;
+  };
+}
+function hexA(hex,a){
+  var r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+var shadow3dPlugin={
+  id:'shadow3d',
+  beforeDatasetsDraw:function(chart){
+    var ctx=chart.ctx; ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.35)'; ctx.shadowBlur=8; ctx.shadowOffsetY=4;
+  },
+  afterDatasetsDraw:function(chart){ chart.ctx.restore(); }
+};
+Chart.register(shadow3dPlugin);
+
+function buildChart(id,type,data,options){
+  var el=document.getElementById(id); if(!el) return;
+  if(charts[id]) charts[id].destroy();
+  var dark=isDarkTheme();
+  var gridCol = dark?'rgba(147,164,196,.08)':'rgba(20,30,60,.06)';
+  var tickCol = dark?'#93a4c4':'#5a6785';
+  var defaultOpts={
+    responsive:true, maintainAspectRatio:false, animation:{duration:750,easing:'easeOutQuart'},
+    plugins:{
+      legend:{labels:{font:{size:9.5,family:'Inter'},color:tickCol,usePointStyle:true,pointStyle:'circle'}},
+      tooltip:{backgroundColor:dark?'#101a30':'#fff',borderColor:dark?'rgba(120,160,220,.25)':'#e4e7f0',
+        borderWidth:1,titleColor:dark?'#eaf1fb':'#101a30',bodyColor:dark?'#93a4c4':'#5a6785',padding:10,
+        titleFont:{family:'Outfit',weight:'700'},bodyFont:{family:'Inter'},cornerRadius:8,displayColors:true}
+    },
+    scales:(type==='bar'||type==='line')?{
+      x:{grid:{display:false},border:{color:gridCol},ticks:{color:tickCol,font:{size:9}}},
+      y:{grid:{color:gridCol},border:{display:false},ticks:{color:tickCol,font:{size:9}}}
+    }:{}
+  };
+  function merge(a,b){var o=Object.assign({},a);Object.keys(b||{}).forEach(function(k){o[k]=a[k]&&typeof a[k]==='object'&&!Array.isArray(a[k])&&b[k]&&typeof b[k]==='object'?merge(a[k],b[k]):b[k];});return o;}
+  charts[id]=new Chart(el.getContext('2d'),{type:type,data:data,options:merge(defaultOpts,options||{})});
 }
 
-// Restore setelan dari localStorage saat load
-(function initPrefs() {
-  // Tema
-  if (localStorage.getItem('pprTheme') === 'light') {
-    document.body.classList.add('theme-light');
-    window.addEventListener('load', function() {
-      var icon  = document.getElementById('themeIcon');
-      var label = document.getElementById('themeLabel');
-      if (icon)  icon.setAttribute('data-lucide', 'moon');
-      if (label) label.textContent = 'Dark';
-      lucide.createIcons();
-    });
+/* ================================================================
+   DEMO DATA (used when previewed outside Google Apps Script)
+================================================================ */
+function demoStock(){
+  return{success:true,stock:{globalTonase:401461,tonase:{pipaGreen:282530.65,pipaGrey:7033.37,fittingGreen:70287.08,fittingGrey:24748.89,total:384600},
+    stok:{pipaGreen:158401,pipaGrey:231,fittingGreen:920085,fittingGrey:203649,total:1282366}}};
+}
+function demoIO(kind){
+  var pipa=Math.round(38000+Math.random()*22000), fitting=Math.round(9000+Math.random()*8000);
+  var trend=[]; for(var i=0;i<6;i++) trend.push({label:'D'+(i+1),pipa:Math.round(pipa/6),fitting:Math.round(fitting/6)});
+  return{success:true,total:pipa+fitting,pipa:pipa,fitting:fitting,trend:trend};
+}
+function demoStockTrend(months){
+  var base=340000;
+  return months.map(function(m,i){
+    var total=base+i*8000+Math.round(Math.random()*15000);
+    var pipa=Math.round(total*.76), fitting=total-pipa;
+    return {label:m.label,pipa:pipa,fitting:fitting,total:total};
+  });
+}
+function demoIOTrend(months){
+  return months.map(function(m){
+    return {label:m.label,
+      outPipa:Math.round(35000+Math.random()*25000), inPipa:Math.round(30000+Math.random()*25000),
+      outFit:Math.round(8000+Math.random()*9000),  inFit:Math.round(7000+Math.random()*9000)};
+  });
+}
+function demoKanbanToday(){
+  // Snapshot HARI INI — total rak/box harus proporsional terhadap kapasitas maksimum
+  // (204 rak Pipa, 23.748 box Fitting), meniru data real per item.
+  var pipa=[], fitting=[];
+  var namesP=['Pipa 20mm PN10','Pipa 25mm PN10','Pipa 32mm PN10','Pipa 40mm PN10','Pipa 50mm PN10','Pipa 63mm PN10','Pipa 75mm PN10','Pipa 90mm PN10','Pipa 110mm PN10','Pipa 125mm PN10'];
+  var namesF=['Elbow 90° 20mm','Tee 25mm Equal','Coupling 32mm','Reducer 40x25mm','Elbow 45° 50mm','Cap End 63mm','Flange Adaptor 75mm','Socket 20mm','Union 25mm','Ball Valve 32mm'];
+  var remainP=182;
+  namesP.forEach(function(n,i){
+    var isLast=i===namesP.length-1;
+    var rak=isLast?remainP:Math.max(1,Math.round(remainP/(namesP.length-i)*(0.6+Math.random()*0.8)));
+    rak=Math.min(rak,remainP); remainP-=rak;
+    pipa.push({kode:'PP'+(100+i),nama:n,stok:rak*40,rakTerpakai:rak,selisih:Math.round(rak*0.15),status:Math.random()>.85?'KURANG':'CUKUP'});
+  });
+  var remainF=16318;
+  namesF.forEach(function(n,i){
+    var isLast=i===namesF.length-1;
+    var box=isLast?remainF:Math.max(10,Math.round(remainF/(namesF.length-i)*(0.6+Math.random()*0.8)));
+    box=Math.min(box,remainF); remainF-=box;
+    fitting.push({kode:'FT'+(200+i),nama:n,stok:box*5,rakTerpakai:box,selisih:Math.round(box*0.15),status:Math.random()>.85?'KURANG':'CUKUP'});
+  });
+  return{success:true,pipa:pipa,fitting:fitting};
+}
+function demoKanbanTrend(){
+  var trend=[],trendFitting=[];
+  ['Feb 26','Mar 26','Apr 26','Mei 26','Jun 26','Jul 26'].forEach(function(m,i){
+    trend.push({label:m,rakTerpakai:Math.round(150+i*5+Math.random()*15)});
+    trendFitting.push({label:m,rakTerpakai:Math.round(13500+i*350+Math.random()*1200)});
+  });
+  return{success:true,trend:trend,trendFitting:trendFitting};
+}
+function demoRekap(p){
+  return{success:true,periodeLabel:BNAMES3[parseInt(p.bulan||7,10)-1]+' '+p.tahun,
+    totalPipa:51936,totalFitting:5394,
+    pics:{DONI:{pipa:21911,fitting:2978},IMAN:{pipa:21911,fitting:753},SAEPUL:{pipa:6818,fitting:0},SULIS:{pipa:1295,fitting:0},WANG:{pipa:0,fitting:1338}}};
+}
+function demoLT(){
+  var rows=[]; var now=new Date();
+  for(var i=0;i<70;i++){
+    var cancelled=Math.random()<0.06;
+    var mulaiH=7+Math.floor(Math.random()*10), mulaiM=Math.floor(Math.random()*60);
+    var durMin=20+Math.floor(Math.random()*200);
+    var endTot=mulaiH*60+mulaiM+durMin;
+    rows.push({isCancelled:cancelled,waktuMulai:!cancelled?p2(mulaiH)+':'+p2(mulaiM):'',waktuSelesai:!cancelled?p2(Math.floor(endTot/60)%24)+':'+p2(endTot%60):''});
   }
-  // Font size
-  var savedStep = parseInt(localStorage.getItem('pprFontStep') || '3');
-  if (!isNaN(savedStep) && savedStep >= 0 && savedStep <= 8) {
-    _fontStep = savedStep;
-    var scale = (100 + _fontSteps[savedStep]) / 100;
-    document.documentElement.style.setProperty('--font-scale', scale);
-    window.addEventListener('load', function() {
-      var lbl = document.getElementById('fontSizeLabel');
-      if (lbl) lbl.textContent = _fontLabels[savedStep];
-    });
-  }
-})();
+  var trend7=[]; var days=['10 Jul','11 Jul','12 Jul','13 Jul','14 Jul','15 Jul','16 Jul'];
+  days.forEach(function(d){ trend7.push({label:d,total:Math.round(Math.random()*7)}); });
+  return {success:true,monthRows:rows,trend7:trend7};
+}
+
+/* ================================================================
+   UTILS
+================================================================ */
+function setText(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
+function fmt(n){return Number(n||0).toLocaleString('id-ID',{maximumFractionDigits:2});}
+function fmtInt(n){return Math.round(Number(n||0)).toLocaleString('id-ID');}
+function fmtMin(m){var h=Math.floor(m/60),mn=Math.round(m%60);return h>0?h+'j '+mn+'m':mn+' mnt';}
+function p2(n){return n<10?'0'+n:String(n);}
+function todayStr(){var n=new Date();return n.getFullYear()+'-'+p2(n.getMonth()+1)+'-'+p2(n.getDate());}
+function escHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function showLoading(v,msg){
+  var ov=document.getElementById('loading-overlay');
+  ov.style.display=v?'flex':'none';
+  if(msg) setText('loading-txt',msg);
+}
 </script>
 </body>
 </html>
