@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720a"></script>
-<script src="./assets/js/api-shim.js?v=20260720a"></script>
-<script src="./assets/js/sw-register.js?v=20260720a"></script>
+<script src="./assets/js/config.js?v=20260720b"></script>
+<script src="./assets/js/api-shim.js?v=20260720b"></script>
+<script src="./assets/js/sw-register.js?v=20260720b"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -591,6 +591,27 @@
       background:rgba(34,197,94,.12);color:var(--ppr-green);
       border:1px solid rgba(34,197,94,.25);border-radius:5px;padding:2px 8px;font-size:10px;font-weight:600;}
 
+/* ============================================================
+   MOBILE: halaman dulunya overflow:hidden total (desktop-only,
+   tidak bisa discroll di HP). Di layar sempit, izinkan scroll
+   normal + tumpuk kartu jadi 1 kolom + sidebar jadi overlay.
+   ============================================================ */
+@media (max-width:860px){
+  html,body{ overflow:auto; height:auto; min-height:100%; }
+  .app-shell{ height:auto; min-height:100vh; overflow:visible; }
+  .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60;
+    box-shadow:10px 0 30px rgba(0,0,0,.45); }
+  .main-right{ overflow:visible; min-height:100vh; width:100%; }
+  .dash-body{
+    overflow:visible !important;
+    grid-template-columns:1fr !important;
+    grid-template-rows:auto !important;
+    height:auto;
+  }
+  .col1,.col2,.col3{ overflow:visible !important; min-height:auto !important; }
+  .card{ overflow:visible !important; min-height:auto !important; }
+}
+
 </style>
 <style>
 /* Inline SVG icon helper */
@@ -1098,6 +1119,7 @@ function navTo(page) {
   else { window.location.href = target; }
 }
 function toggleSidebar() { document.body.classList.toggle('sidebar-hidden'); }
+if (window.innerWidth <= 860) { document.body.classList.add('sidebar-hidden'); }
 
 // ============================================================
 // TEMA

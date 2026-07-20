@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720a"></script>
-<script src="./assets/js/api-shim.js?v=20260720a"></script>
-<script src="./assets/js/sw-register.js?v=20260720a"></script>
+<script src="./assets/js/config.js?v=20260720b"></script>
+<script src="./assets/js/api-shim.js?v=20260720b"></script>
+<script src="./assets/js/sw-register.js?v=20260720b"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -189,6 +189,20 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
   font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;color:#fff;
   text-shadow:0 2px 10px rgba(0,0,0,.8);}
 .photo-upload-saving{font-size:8.5px;color:var(--amber);margin-top:2px;}
+
+/* ============================================================
+   MOBILE: grid 5 kolom terlalu sempit di HP, tumpuk jadi lebih
+   sedikit kolom + sidebar jadi overlay supaya tidak makan tempat.
+   ============================================================ */
+@media (max-width:860px){
+  .shell{ height:auto; min-height:100vh; }
+  html,body{ overflow:auto; }
+  .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60;
+    box-shadow:10px 0 30px rgba(0,0,0,.45); }
+  .summary-strip{ grid-template-columns:repeat(2,1fr) !important; }
+  .pic-grid{ grid-template-columns:repeat(2,1fr) !important; }
+  .bottom-row{ grid-template-columns:1fr !important; }
+}
 </style>
 </head>
 <body>
@@ -444,6 +458,11 @@ function toggleSidebar(){
     if(chartTrend) chartTrend.resize();
     Object.values(picCharts).forEach(function(c){ if(c) c.resize(); });
   },270);
+}
+if (window.innerWidth <= 860) {
+  var _sbEl=document.getElementById('sidebar'), _btnEl=document.getElementById('toggle-btn');
+  if(_sbEl) _sbEl.classList.add('collapsed');
+  if(_btnEl) _btnEl.classList.add('collapsed');
 }
 
 // Peta nama menu -> file statis di repo GitHub Pages ini.

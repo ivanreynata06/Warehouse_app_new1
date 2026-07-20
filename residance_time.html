@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720a"></script>
-<script src="./assets/js/api-shim.js?v=20260720a"></script>
-<script src="./assets/js/sw-register.js?v=20260720a"></script>
+<script src="./assets/js/config.js?v=20260720b"></script>
+<script src="./assets/js/api-shim.js?v=20260720b"></script>
+<script src="./assets/js/sw-register.js?v=20260720b"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -782,6 +782,18 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:2px;}
+
+/* ============================================================
+   MOBILE: grid rapat (5 kolom KPI, 2-3 kolom baris) terlalu sempit
+   di HP -> tumpuk jadi 1 kolom + sidebar jadi overlay.
+   ============================================================ */
+@media (max-width:860px){
+  .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60;
+    box-shadow:10px 0 30px rgba(0,0,0,.45); }
+  .kpi-row{ grid-template-columns:repeat(2,1fr) !important; }
+  .row-a,.row-b,.row-c{ grid-template-columns:1fr !important; min-height:auto !important; }
+  .mini-stats{ grid-template-columns:1fr !important; }
+}
 </style>
 </head>
 <body>
@@ -1547,6 +1559,7 @@ function showToast(msg, type){
 //  SIDEBAR / THEME / FONT / TABS
 // ================================================================
 function toggleSidebar(){ document.body.classList.toggle('sidebar-hidden'); if(typeof lucide!=='undefined') lucide.createIcons(); }
+if (window.innerWidth <= 860) { document.body.classList.add('sidebar-hidden'); }
 var PAGE_MAP = {
   ''                : 'index.html',
   'index'           : 'index.html',

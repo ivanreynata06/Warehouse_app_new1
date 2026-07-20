@@ -2,9 +2,9 @@
 <html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720a"></script>
-<script src="./assets/js/api-shim.js?v=20260720a"></script>
-<script src="./assets/js/sw-register.js?v=20260720a"></script>
+<script src="./assets/js/config.js?v=20260720b"></script>
+<script src="./assets/js/api-shim.js?v=20260720b"></script>
+<script src="./assets/js/sw-register.js?v=20260720b"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -367,6 +367,18 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
 .kritis-row .kn{color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
 .kritis-row .kv{font-family:var(--font-mono);font-weight:700;flex-shrink:0;}
 @media (max-width:1400px){.kpi-strip{grid-template-columns:repeat(4,1fr);}.grid-gauge{grid-template-columns:1fr 1fr;}}
+
+/* ============================================================
+   MOBILE: grid rapat (7 kolom KPI, 2-3 kolom lainnya) terlalu
+   sempit di HP -> tumpuk jadi 1 kolom + sidebar jadi overlay.
+   ============================================================ */
+@media (max-width:860px){
+  .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60;
+    box-shadow:10px 0 30px rgba(0,0,0,.45); }
+  .kpi-strip{ grid-template-columns:repeat(2,1fr) !important; }
+  .grid-3,.grid-2,.grid-2-1,.grid-1-2,.grid-gauge{ grid-template-columns:1fr !important; }
+  .stock-mini-grid,.pic-row,.global-target-row,.lt-mini-strip{ grid-template-columns:repeat(2,1fr) !important; }
+}
 </style>
 </head>
 <body>
@@ -806,7 +818,7 @@ var charts = {};
   var saved=localStorage.getItem('wct_theme')||'dark';
   document.documentElement.setAttribute('data-theme',saved);
   updateThemeBtn(saved);
-  if(localStorage.getItem('wct_sidebar_hidden')==='1') document.body.classList.add('sidebar-hidden');
+  if(localStorage.getItem('wct_sidebar_hidden')==='1' || window.innerWidth<=860) document.body.classList.add('sidebar-hidden');
   setInterval(function(){var n=new Date();document.getElementById('live-clock').textContent=p2(n.getHours())+':'+p2(n.getMinutes())+':'+p2(n.getSeconds());},1000);
   loadAll();
 })();
