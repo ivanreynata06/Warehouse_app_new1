@@ -2,9 +2,9 @@
 <html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720d"></script>
-<script src="./assets/js/api-shim.js?v=20260720d"></script>
-<script src="./assets/js/sw-register.js?v=20260720d"></script>
+<script src="./assets/js/config.js?v=20260720e"></script>
+<script src="./assets/js/api-shim.js?v=20260720e"></script>
+<script src="./assets/js/sw-register.js?v=20260720e"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -964,12 +964,14 @@ function loadStockTrend(months){
       renderStockTrendChart();
       return;
     }
-    resp.results.forEach(function(d,idx){
+    // Dibangun ulang langsung dari resp.results (bukan ditulis ke index
+    // _stockTrend yang lama) supaya tidak crash walau _stockTrend sempat
+    // direset/berubah panjang oleh pemanggilan lain di antara request
+    // dikirim & responsnya kembali.
+    _stockTrend=resp.results.map(function(d,idx){
       var t=(d&&d.stock&&d.stock.tonase)||{pipaGreen:0,pipaGrey:0,fittingGreen:0,fittingGrey:0,total:0};
-      _stockTrend[idx].pipa=(t.pipaGreen||0)+(t.pipaGrey||0);
-      _stockTrend[idx].fitting=(t.fittingGreen||0)+(t.fittingGrey||0);
-      _stockTrend[idx].total=t.total||(_stockTrend[idx].pipa+_stockTrend[idx].fitting);
-      _stockTrend[idx].loaded=true;
+      var pipa=(t.pipaGreen||0)+(t.pipaGrey||0), fitting=(t.fittingGreen||0)+(t.fittingGrey||0);
+      return {label:(months[idx]&&months[idx].label)||'',pipa:pipa,fitting:fitting,total:t.total||(pipa+fitting),loaded:true};
     });
     renderStockTrendChart();
   }).withFailureHandler(function(err){
@@ -1006,10 +1008,15 @@ function loadIOTrend(months){
       renderIOTrendCharts();
       return;
     }
-    resp.results.forEach(function(pair,idx){
-      var dOut=pair.out, dIn=pair.in;
-      _ioTrend[idx].outPipa=(dOut&&dOut.pipa)||0; _ioTrend[idx].outFit=(dOut&&dOut.fitting)||0;
-      _ioTrend[idx].inPipa=(dIn&&dIn.pipa)||0; _ioTrend[idx].inFit=(dIn&&dIn.fitting)||0;
+    // Dibangun ulang langsung dari resp.results, bukan ditulis ke index
+    // array lama -> menghindari race condition 'Cannot set properties of undefined'.
+    _ioTrend=resp.results.map(function(pair,idx){
+      var dOut=pair&&pair.out, dIn=pair&&pair.in;
+      return {
+        label:(months[idx]&&months[idx].label)||'',
+        outPipa:(dOut&&dOut.pipa)||0, outFit:(dOut&&dOut.fitting)||0,
+        inPipa:(dIn&&dIn.pipa)||0, inFit:(dIn&&dIn.fitting)||0
+      };
     });
     renderIOTrendCharts();
   }).withFailureHandler(function(err){
