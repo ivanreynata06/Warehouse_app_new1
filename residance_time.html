@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720c"></script>
-<script src="./assets/js/api-shim.js?v=20260720c"></script>
-<script src="./assets/js/sw-register.js?v=20260720c"></script>
+<script src="./assets/js/config.js?v=20260720d"></script>
+<script src="./assets/js/api-shim.js?v=20260720d"></script>
+<script src="./assets/js/sw-register.js?v=20260720d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -1847,18 +1847,15 @@ function renderAllFromGS(gsData){
       if(p1.length===2&&p2.length===2){ var d=parseInt(p2[0])*60+parseInt(p2[1])-parseInt(p1[0])*60-parseInt(p1[1]); if(d>0) dur=d; }
     }
     // Prioritas status:
-    // 1. Jika waktuSelesai ada atau IkutFitting → SELESAI (tidak bisa di-override oleh batal)
-    // 2. Jika isCancelled dan belum selesai → BATAL
-    // 3. Lainnya normal
+    // 1. Jika isCancelled (kolom STATUS = "BATAL - ...") → BATAL, MUTLAK,
+    //    tidak bisa ketimpa oleh status terkirim/gagal/waktu apapun.
+    // 2. Jika waktuSelesai ada, IkutFitting, atau sudah dikonfirmasi
+    //    Terkirim/Gagal → SELESAI
+    // 3. Lainnya normal (on process / menunggu)
     var _isIkutFit=(r.waktuMulai==='Ikut Fitting');
-    // PENTING: kiriman yang sudah dikonfirmasi Terkirim/Gagal Kirim (via
-    // terkirimSet/gagalSet) dianggap SELESAI walau kolom waktuSelesai di
-    // sheet belum sempat diisi manual — kalau tidak, baris ini "hilang"
-    // dari semua kategori (bukan proses, bukan selesai, bukan menunggu)
-    // padahal tetap dihitung di Total, bikin jumlah kategori < Total.
     var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
     var _sudahSelesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit||_terkirimAtauGagal;
-    var status=_sudahSelesai?'selesai':(r.isCancelled?'batal':(r.waktuMulai?'on process':'menunggu'));
+    var status=r.isCancelled?'batal':(_sudahSelesai?'selesai':(r.waktuMulai?'on process':'menunggu'));
     return Object.assign({},r,{durasiMenit:dur,status:status});
   });
   // dayAll = rows utk filter per-hari (hari ini ATAU tanggal custom/kemarin)
@@ -1871,10 +1868,11 @@ function renderAllFromGS(gsData){
   //                  DITAMBAH pending yang sudah terkirim (ikut dihitung sebagai selesai)
   // dayDoneSheet: selesai = (ada waktuSelesai) ATAU (Ikut Fitting), tapi bukan batal yg belum selesai
   var dayDoneSheet=dayAll.filter(function(r){
+    if(r.isCancelled) return false; // BATAL tidak pernah dihitung selesai, prioritas mutlak
     var _ift=(r.waktuMulai==='Ikut Fitting');
     var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
     var _done=(r.waktuMulai&&r.waktuSelesai)||_ift||_terkirimAtauGagal;
-    return _done && !(r.isCancelled&&!_done);
+    return _done;
   });
   // Pending terkirim yang SPM-nya ada di hari ini (dayAll)
   var dayPendingTerkirim=pendingTerkirimSpms.filter(function(spm){
@@ -1908,11 +1906,11 @@ function renderAllFromGS(gsData){
   // Statistik bulan selalu pakai monthRows dari GS (bukan rows yang sudah difilter)
   var monthRows=gsData.monthRows||[];
   var monthDone=monthRows.filter(function(r){
+    if(r.isCancelled) return false; // BATAL tidak pernah dihitung selesai, prioritas mutlak
     var _isIkutFit=(r.waktuMulai==='Ikut Fitting');
     var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
     var _selesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit||_terkirimAtauGagal;
-    var _isCancelFinal=r.isCancelled&&!_selesai; // batal hanya jika belum selesai
-    return _selesai && !_isCancelFinal;
+    return _selesai;
   });
   var monthDur=monthDone.map(function(r){
     if(!r.waktuMulai||!r.waktuSelesai) return null;
@@ -1922,20 +1920,11 @@ function renderAllFromGS(gsData){
     return d>0?d:null;
   }).filter(function(d){ return d!=null; });
   var monthAvg=monthDur.length?Math.round(monthDur.reduce(function(a,b){return a+b;},0)/monthDur.length):null;
-  // Statistik Bulan Ini: "Batal Kirim" (gabungan data tersimpan di sheet +
-  // pembatalan sesi ini + localStorage sesi sebelumnya)
-  var monthCancelSet={};
-  monthRows.forEach(function(r){
-    var _sudahSelesai=(r.waktuMulai&&r.waktuSelesai)||(r.waktuMulai==='Ikut Fitting');
-    if(r.isCancelled && !_sudahSelesai) monthCancelSet[r.spm]=1;
-  });
-  cancelledList.forEach(function(c){ if(c.spm) monthCancelSet[c.spm]=1; });
-  // Tambah dari localStorage sesi sebelumnya
-  try{
-    var lsC=JSON.parse(localStorage.getItem('lt_cancelledList')||'[]');
-    lsC.forEach(function(c){ if(c.spm) monthCancelSet[c.spm]=1; });
-  }catch(e){}
-  var monthCancelled=Object.keys(monthCancelSet).length;
+  // Statistik Bulan Ini: "Batal Kirim" — dihitung LANGSUNG dari kolom STATUS
+  // di sheet (r.isCancelled), raw row count, konsisten dengan cara Total/
+  // Selesai/Proses/Belum-Muat dihitung (bukan dedup SPM / gabungan sumber
+  // lain yang bisa bikin angkanya berbeda dari yang ada di sheet).
+  var monthCancelled=monthRows.filter(function(r){ return r.isCancelled; }).length;
   var cityMap={},vehicleMap={};
   rows.forEach(function(r){
     if(r.agen) cityMap[r.agen]=(cityMap[r.agen]||0)+1;
