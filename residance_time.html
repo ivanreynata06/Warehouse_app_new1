@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260718c"></script>
-<script src="./assets/js/api-shim.js?v=20260718c"></script>
-<script src="./assets/js/sw-register.js?v=20260718c"></script>
+<script src="./assets/js/config.js?v=20260720a"></script>
+<script src="./assets/js/api-shim.js?v=20260720a"></script>
+<script src="./assets/js/sw-register.js?v=20260720a"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -805,7 +805,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="logo">
-        <div class="logo-icon"><i data-lucide="truck" style="color:white;width:12px;"></i></div>
+        <img src="./assets/img/rucika-logo.png" alt="Rucika" style="height:22px;width:auto;object-fit:contain;">
         <div>
           <div class="logo-name">Pengiriman</div>
           <div class="logo-sub">Loading Time</div>
@@ -1557,7 +1557,7 @@ var PAGE_MAP = {
 };
 function goTo(page){
   var target = PAGE_MAP[page || ''] || 'index.html';
-  target += '?_=' + Date.now();
+  target += '?v=' + (window.SITE_VERSION||Date.now());
   window.location.href = target;
 }
 function toggleTheme(){
@@ -1772,9 +1772,18 @@ function loadData(){
   google.script.run
     .withSuccessHandler(function(data){
       if(!data||data.success===false){ showToast('Data tidak tersedia','error'); setRefreshLoading(false); hideLoading(); return; }
-      allData=data; renderAllFromGS(data); setRefreshLoading(false); hideLoading();
-      // Tampilkan notif pending hanya saat pertama kali load
-      if(!_notifShown) setTimeout(function(){ checkAndShowNotif(data.todayRows||[]); }, 600);
+      try{
+        allData=data; renderAllFromGS(data);
+        // Tampilkan notif pending hanya saat pertama kali load
+        if(!_notifShown) setTimeout(function(){ checkAndShowNotif(data.todayRows||[]); }, 600);
+      }catch(renderErr){
+        console.error('[residance_time] renderAllFromGS error:', renderErr);
+        showToast('Terjadi kesalahan saat menampilkan data: '+(renderErr.message||renderErr),'error');
+      }finally{
+        // PENTING: harus selalu jalan walau render di atas error,
+        // supaya overlay loading tidak nyangkut selamanya.
+        setRefreshLoading(false); hideLoading();
+      }
     })
     .withFailureHandler(function(err){ showToast('Gagal memuat: '+(err.message||err),'error'); setRefreshLoading(false); hideLoading(); })
     .getResidenceTimeData(filterParam);
@@ -1829,7 +1838,13 @@ function renderAllFromGS(gsData){
     // 2. Jika isCancelled dan belum selesai → BATAL
     // 3. Lainnya normal
     var _isIkutFit=(r.waktuMulai==='Ikut Fitting');
-    var _sudahSelesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit;
+    // PENTING: kiriman yang sudah dikonfirmasi Terkirim/Gagal Kirim (via
+    // terkirimSet/gagalSet) dianggap SELESAI walau kolom waktuSelesai di
+    // sheet belum sempat diisi manual — kalau tidak, baris ini "hilang"
+    // dari semua kategori (bukan proses, bukan selesai, bukan menunggu)
+    // padahal tetap dihitung di Total, bikin jumlah kategori < Total.
+    var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
+    var _sudahSelesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit||_terkirimAtauGagal;
     var status=_sudahSelesai?'selesai':(r.isCancelled?'batal':(r.waktuMulai?'on process':'menunggu'));
     return Object.assign({},r,{durasiMenit:dur,status:status});
   });
@@ -1844,7 +1859,8 @@ function renderAllFromGS(gsData){
   // dayDoneSheet: selesai = (ada waktuSelesai) ATAU (Ikut Fitting), tapi bukan batal yg belum selesai
   var dayDoneSheet=dayAll.filter(function(r){
     var _ift=(r.waktuMulai==='Ikut Fitting');
-    var _done=(r.waktuMulai&&r.waktuSelesai)||_ift;
+    var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
+    var _done=(r.waktuMulai&&r.waktuSelesai)||_ift||_terkirimAtauGagal;
     return _done && !(r.isCancelled&&!_done);
   });
   // Pending terkirim yang SPM-nya ada di hari ini (dayAll)
@@ -1880,7 +1896,8 @@ function renderAllFromGS(gsData){
   var monthRows=gsData.monthRows||[];
   var monthDone=monthRows.filter(function(r){
     var _isIkutFit=(r.waktuMulai==='Ikut Fitting');
-    var _selesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit;
+    var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
+    var _selesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit||_terkirimAtauGagal;
     var _isCancelFinal=r.isCancelled&&!_selesai; // batal hanya jika belum selesai
     return _selesai && !_isCancelFinal;
   });

@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260718c"></script>
-<script src="./assets/js/api-shim.js?v=20260718c"></script>
-<script src="./assets/js/sw-register.js?v=20260718c"></script>
+<script src="./assets/js/config.js?v=20260720a"></script>
+<script src="./assets/js/api-shim.js?v=20260720a"></script>
+<script src="./assets/js/sw-register.js?v=20260720a"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -200,9 +200,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
 </button>
 <div class="sidebar" id="sidebar">
   <div class="logo">
-    <div class="logo-icon">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    </div>
+    <img src="./assets/img/rucika-logo.png" alt="Rucika" style="height:22px;width:auto;object-fit:contain;">
     <div><div class="logo-text">PPR Stock</div><div class="logo-sub">Tonase Persiapan</div></div>
   </div>
   <div class="sec-title">Menu</div>
@@ -459,7 +457,7 @@ var PAGE_MAP = {
 };
 function navTo(pg){
   var t = PAGE_MAP[pg || ''] || 'index.html';
-  t += '?_=' + Date.now();
+  t += '?v=' + (window.SITE_VERSION||Date.now());
   if(window.top!==window.self) window.top.location.href=t; else window.location.href=t;
 }
 

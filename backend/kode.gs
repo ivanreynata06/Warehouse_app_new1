@@ -27,6 +27,8 @@ var API_FUNCTIONS = {
   getRekapMuatanData      : getRekapMuatanData,
   getResidenceTimeData    : getResidenceTimeData,
   getPendingRows          : getPendingRows,
+  getStockTrendBatch      : getStockTrendBatch,
+  getIOTrendBatch         : getIOTrendBatch,
   setWaktuMulai           : setWaktuMulai,
   setWaktuSelesai         : setWaktuSelesai,
   setStatusBatal          : setStatusBatal,
@@ -45,7 +47,8 @@ var API_FUNCTIONS = {
 var CACHEABLE_ACTIONS = {
   getGroupList: true, getDashboardData: true, getOutboundData: true,
   getInboundData: true, getKanbanData: true, getRekapMuatanData: true,
-  getResidenceTimeData: true, getPendingRows: true, getPhotos: true
+  getResidenceTimeData: true, getPendingRows: true, getPhotos: true,
+  getStockTrendBatch: true, getIOTrendBatch: true
 };
 // TTL per fungsi (detik). Default 90s buat dashboard umum.
 // getPendingRows/getResidenceTimeData TTL pendek (15s) karena datanya
@@ -269,10 +272,11 @@ function getResidenceTimeData(filter) {
       var tgl    = tglRaw ? new Date(tglRaw) : null;
       if (tgl) tgl.setHours(0,0,0,0);
 
-      var statusRaw      = String(row[9] || '').trim(); // kolom J = STATUS (PENDING/BATAL/TERKIRIM)
+      var statusRaw      = String(row[9] || '').trim(); // kolom J = STATUS (PENDING/BATAL/TERKIRIM/GAGAL)
       var isBatal        = statusRaw.indexOf('BATAL') === 0 || statusRaw.toUpperCase().indexOf('BATAL') === 0;
       var isPendingSheet = statusRaw.indexOf('PENDING')  === 0;
       var isTerkirimSheet= statusRaw.indexOf('TERKIRIM') === 0;
+      var isGagalSheet   = statusRaw.indexOf('GAGAL') === 0;
 
       var rec = {
         rowIndex        : i + 1,
@@ -285,9 +289,12 @@ function getResidenceTimeData(filter) {
         waktuSelesai    : _fmtTime(row[8]),
         statusRaw       : statusRaw,
         statusBatal     : isBatal ? statusRaw : '',
+        statusTerkirim  : (isTerkirimSheet || isGagalSheet) ? statusRaw : '',
         isCancelled     : isBatal,
         isPendingSheet  : isPendingSheet,
-        isTerkirimSheet : isTerkirimSheet
+        isTerkirimSheet : isTerkirimSheet,
+        isTerkirim      : isTerkirimSheet,
+        isGagalKirim    : isGagalSheet
       };
 
       allRows.push(rec);
@@ -651,6 +658,46 @@ function getInboundData(params) {
 // ================================================================
 //  Ambil daftar Group unik dari kolom D DASHBOARD_STOCK
 // ================================================================
+// ================================================================
+//  BATCH untuk grafik tren N bulan (dipanggil dari wh_control_tower.html)
+//  ------------------------------------------------------------
+//  Sebelumnya frontend memanggil getDashboardData/getOutboundData/
+//  getInboundData SATU PER SATU untuk tiap bulan (6 bulan x sampai
+//  3 fungsi = belasan panggilan HTTP terpisah ke Apps Script tiap
+//  refresh -> ini penyebab utama refresh Control Tower lambat).
+//  Fungsi di bawah menggabungkan semuanya jadi SATU panggilan HTTP;
+//  logic penghitungannya tetap reuse fungsi asli yang sudah teruji,
+//  cuma dieksekusi berturut-turut di server (jauh lebih cepat
+//  daripada bolak-balik HTTP per bulan).
+// ================================================================
+function getStockTrendBatch(monthsList) {
+  try {
+    var out = [];
+    for (var i = 0; i < monthsList.length; i++) {
+      out.push(getDashboardData('bulanan', { bulan: monthsList[i].bulan, tahun: monthsList[i].tahun }));
+    }
+    return { success: true, results: out };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+function getIOTrendBatch(monthsList) {
+  try {
+    var out = [];
+    for (var i = 0; i < monthsList.length; i++) {
+      var m = monthsList[i];
+      out.push({
+        out: getOutboundData({ bulan: m.bulan, tahun: m.tahun }),
+        in : getInboundData({ bulan: m.bulan, tahun: m.tahun })
+      });
+    }
+    return { success: true, results: out };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 function getGroupList() {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
