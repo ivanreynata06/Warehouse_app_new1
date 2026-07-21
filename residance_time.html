@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260721a"></script>
-<script src="./assets/js/api-shim.js?v=20260721a"></script>
-<script src="./assets/js/sw-register.js?v=20260721a"></script>
+<script src="./assets/js/config.js?v=20260721b"></script>
+<script src="./assets/js/api-shim.js?v=20260721b"></script>
+<script src="./assets/js/sw-register.js?v=20260721b"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -2757,31 +2757,50 @@ function confirmCancel(){
   var reason=document.getElementById('inp-cancel-reason').value;
   var notes=document.getElementById('inp-cancel-notes').value.trim();
   // Find agen & rowIndex dari data yang sedang tampil (gabung semua sumber biar ketemu)
-  var agen='', tujuan='', rowIndex=null;
+  var agen='', rowIndex=null;
   if(allData){
     var rows=(allData.todayRows||[]).concat(allData.monthRows||[],allData.customRows||[],allData.allRows||[]);
     var found=rows.find(function(r){ return r.spm===spm; });
     if(found){ agen=found.agen||''; rowIndex=found.rowIndex||null; }
   }
-  cancelledList.push({spm:spm,agen:agen,tujuan:tujuan,reason:reason,notes:notes,time:formatTimeFull(new Date())});
-  saveCancelledToStorage();
-  closeModal('modal-cancel');
-  showToast('? SPM '+spm+' dibatalkan: '+reason,'warning');
-  renderCancelTab();
-  // refresh table to update status badges
-  if(allData) renderAllFromGS(allData);
-  else renderDemoData();
-  // Simpan permanen ke sheet (kolom J) supaya status Batal tidak hilang
-  // saat dashboard di-refresh oleh siapapun.
-  if(rowIndex && typeof google!=='undefined' && google.script){
-    google.script.run
-      .withSuccessHandler(function(res){
-        if(!res||!res.success) showToast('?? Batal tersimpan lokal saja, gagal sync sheet: '+(res&&res.error?res.error:''),'error');
-        else { clearApiCache(); loadData(); }
-      })
-      .withFailureHandler(function(err){ showToast('?? Gagal simpan batal ke sheet: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-      .setStatusBatal(rowIndex, reason, notes);
+
+  // PENTING: kalau baris/SPM ini tidak ketemu di data yang sedang di-load,
+  // JANGAN tampilkan "berhasil dibatalkan" — sebelumnya di sini fungsi diam-diam
+  // cuma nyimpen ke localStorage doang (kelihatan "Dibatalkan" di layar kamu
+  // sendiri), tapi TIDAK PERNAH benar-benar nulis ke kolom STATUS di sheet.
+  // Akibatnya orang lain / device lain tetap lihat status kosong.
+  if(!rowIndex){
+    showToast('❌ Gagal membatalkan SPM '+spm+': data baris tidak ditemukan. Coba klik Refresh dulu, lalu ulangi.','error');
+    return;
   }
+  if(typeof google==='undefined' || !google.script || !google.script.run){
+    showToast('❌ Gagal membatalkan SPM '+spm+': koneksi ke backend tidak tersedia. Coba muat ulang halaman.','error');
+    return;
+  }
+
+  closeModal('modal-cancel');
+  showToast('⏳ Menyimpan pembatalan SPM '+spm+'...','info');
+
+  // Simpan ke sheet kolom J DULU — baru kalau backend konfirmasi berhasil,
+  // update tampilan lokal (cancelledList). Ini mencegah "sukses palsu" di
+  // layar padahal sheet-nya sendiri gagal/belum ke-update.
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res||!res.success){
+        showToast('❌ Gagal simpan batal ke sheet: '+(res&&res.error?res.error:'tidak diketahui')+'. Coba lagi.','error');
+        return;
+      }
+      cancelledList.push({spm:spm,agen:agen,tujuan:'',reason:reason,notes:notes,time:formatTimeFull(new Date())});
+      saveCancelledToStorage();
+      showToast('✅ SPM '+spm+' berhasil dibatalkan: '+reason,'warning');
+      renderCancelTab();
+      clearApiCache();
+      loadData();
+    })
+    .withFailureHandler(function(err){
+      showToast('❌ Gagal simpan batal ke sheet: '+(err&&err.message?err.message:'cek koneksi')+'. Coba lagi.','error');
+    })
+    .setStatusBatal(rowIndex, reason, notes);
 }
 
 // ================================================================
