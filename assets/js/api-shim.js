@@ -111,15 +111,37 @@
 
           if (isFresh) return proxy; // cache masih segar, tidak perlu fetch lagi
 
-          callBackend(prop, args)
-            .then(function (data) {
-              writeCache(key, data);
-              if (successCb) successCb(data);
-            })
-            .catch(function (err) {
-              if (failureCb) failureCb(err);
-              else console.error('[api-shim] ' + prop + ' gagal:', err);
+          function fallbackToAppsScript() {
+            callBackend(prop, args)
+              .then(function (data) {
+                writeCache(key, data);
+                if (successCb) successCb(data);
+              })
+              .catch(function (err) {
+                if (failureCb) failureCb(err);
+                else console.error('[api-shim] ' + prop + ' gagal:', err);
+              });
+          }
+
+          // Coba Supabase dulu (kalau tersedia & ada snapshot yang cocok)
+          // — jauh lebih cepat daripada Apps Script. Kalau tidak
+          // ketemu/gagal, otomatis fallback ke Apps Script seperti biasa
+          // (tidak ada fitur yang hilang, cuma yang jarang dipakai lebih
+          // lambat sedikit).
+          var sb = global.__supabaseSnapshot;
+          var sbKey = sb ? sb.buildKey(prop, args) : null;
+          if (sbKey) {
+            sb.fetchSnapshot(sbKey).then(function (payload) {
+              if (payload) {
+                writeCache(key, payload);
+                if (successCb) successCb(payload);
+              } else {
+                fallbackToAppsScript();
+              }
             });
+          } else {
+            fallbackToAppsScript();
+          }
 
           return proxy;
         };

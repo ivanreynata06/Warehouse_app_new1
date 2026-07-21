@@ -26,4 +26,15 @@ window.APPS_CACHE_TTL_MS = 3 * 60 * 1000; // 3 menit
 // browser boleh pakai cache normal saat pindah-pindah menu (cepat).
 // Naikkan angka ini SETIAP kali ada file HTML/JS yang diupdate, supaya
 // semua pengguna otomatis dapat versi terbaru tanpa perlu hard refresh.
-window.SITE_VERSION = '20260721c';
+window.SITE_VERSION = '20260721d';
+
+// ------------------------------------------------------------
+// SUPABASE (opsional, buat percepat loading dashboard Stock/
+// Kanban/Rekap Muatan/Control Tower — Loading Time TETAP pakai
+// Apps Script langsung karena sifatnya real-time).
+// Aman dipublikasikan: anon key ini memang didesain untuk publik,
+// perlindungannya lewat Row Level Security (RLS) di sisi Supabase
+// (cuma boleh baca, tidak boleh ubah data).
+// ------------------------------------------------------------
+window.SUPABASE_URL = 'https://lfplllzsvpbgzcftcgmi.supabase.co';
+window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmcGxsbHpzdnBiZ3pjZnRjZ21pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTUyMTUsImV4cCI6MjEwMDE3MTIxNX0.ZvIuXS2DyWjws_nUaIhstE1MoyzLsjfXZyy4hwHnXlU';

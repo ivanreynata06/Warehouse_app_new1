@@ -84,6 +84,41 @@ halaman tujuan yang terbaru dari GitHub, bukan versi lama yang
 mungkin masih tersimpan di cache. Jadi pindah menu dijamin selalu
 dapat versi terbaru, tanpa perlu hard refresh.
 
+## Supabase (percepat loading dashboard harian)
+
+Repo ini terhubung ke Supabase untuk mempercepat loading 4 halaman
+(Control Tower, Monitoring Stock, Monitoring Kanban, Rekap Muatan).
+Loading Time TIDAK ikut — datanya real-time, tetap langsung ke Apps
+Script.
+
+**Cara kerja:**
+1. Sekali sehari, Apps Script (`syncAllToSupabase`, dijadwalkan via
+   `setupDailySyncTrigger`) menghitung data pakai fungsi yang sudah
+   ada (`getDashboardData`, `getKanbanData`, dst — TIDAK ditulis
+   ulang), lalu menyimpan hasilnya ke tabel `dashboard_snapshots` di
+   Supabase.
+2. Browser baca dari Supabase dulu (`assets/js/supabase-cache.js`) —
+   nyaris instan. Kalau kombinasi filter yang diminta belum
+   di-precompute (mis. bulan yang jarang dilihat, atau filter grup
+   spesifik), otomatis fallback ke Apps Script seperti biasa — tidak
+   ada fitur yang hilang.
+
+**File terkait:**
+- `supabase/schema.sql` — jalankan sekali di Supabase SQL Editor
+  untuk membuat tabel `dashboard_snapshots` + RLS policy.
+- `backend/kode.gs` — fungsi `syncAllToSupabase()` (dipanggil
+  otomatis 1x/hari) dan `setupDailySyncTrigger()` (jalankan MANUAL
+  1x saja untuk memasang jadwalnya).
+- `assets/js/config.js` — `SUPABASE_URL` & `SUPABASE_ANON_KEY`
+  (aman publik, dilindungi RLS read-only).
+- `assets/js/supabase-cache.js` — logika pencocokan & pengambilan
+  snapshot, dipakai otomatis oleh `api-shim.js`.
+
+**Setup di Apps Script** (Script Properties, BUKAN di kode/GitHub):
+- `SUPABASE_URL` = `https://lfplllzsvpbgzcftcgmi.supabase.co`
+- `SUPABASE_SERVICE_KEY` = service_role key (rahasia, dari Supabase
+  Settings → API — beda dari anon key yang ada di `config.js`)
+
 ## Kenapa refresh data kadang lama?
 
 Setiap kali dashboard di-refresh, beberapa fungsi backend dipanggil
