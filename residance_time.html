@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260721b"></script>
-<script src="./assets/js/api-shim.js?v=20260721b"></script>
-<script src="./assets/js/sw-register.js?v=20260721b"></script>
+<script src="./assets/js/config.js?v=20260721c"></script>
+<script src="./assets/js/api-shim.js?v=20260721c"></script>
+<script src="./assets/js/sw-register.js?v=20260721c"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -1830,6 +1830,15 @@ function renderAllFromGS(gsData){
     if(r.isCancelled && !_done && !cancelledList.some(function(c){ return c.spm===r.spm; })){
       var _reason=(r.statusBatal||'').replace('BATAL - ','').replace('BATAL','').split(' | ')[0].trim()||'Dibatalkan';
       cancelledList.push({spm:r.spm,agen:r.agen||'',tujuan:'',reason:_reason,notes:'',time:'',rowIndex:r.rowIndex});
+    }
+    // SELF-HEALING: kalau sheet bilang baris ini TIDAK batal (statusnya
+    // sudah lanjut normal - misalnya user klik Mulai lalu Selesai Muat),
+    // tapi SPM-nya masih "tersangkut" di cancelledList lokal (localStorage)
+    // dari percobaan pembatalan SEBELUMNYA yang gagal tersimpan ke sheet -
+    // hapus entri basi itu supaya tampilan ikut sheet yang jadi sumber
+    // kebenaran, bukan localStorage yang sudah tidak sinkron.
+    if(!r.isCancelled && cancelledList.some(function(c){ return c.spm===r.spm; })){
+      cancelledList=cancelledList.filter(function(c){ return c.spm!==r.spm; });
     }
   });
   // Simpan cancelledList (gabungan sheet+sesi) ke localStorage
