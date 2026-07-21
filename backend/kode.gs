@@ -303,6 +303,12 @@ function getResidenceTimeData(filter) {
         if (customDateKey && key === customDateKey) customRows.push(rec);
         if (customMonthKey && key.substring(0,7) === customMonthKey) customRows.push(rec);
         if (trend7Map[key] !== undefined) trend7Map[key].total++;
+      } else if (isBatal) {
+        // Baris BATAL yang kolom TANGGAL-nya belum sempat diisi di sheet
+        // tetap dihitung sebagai bagian bulan berjalan, supaya statistik
+        // "Batal Kirim" akurat sesuai kolom STATUS (tidak diam-diam
+        // hilang cuma karena tanggalnya kosong).
+        monthRows.push(rec);
       }
     }
 
