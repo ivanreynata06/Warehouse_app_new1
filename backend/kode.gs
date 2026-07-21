@@ -379,6 +379,10 @@ function setWaktuMulai(row, waktu) {
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
     sheet.getRange(row, 8).setValue(waktu);
+    // Bersihkan status BATAL/PENDING lama (kolom J) kalau ada — user
+    // secara eksplisit klik Mulai, artinya kiriman ini AKTIF lagi,
+    // status lama sudah tidak relevan dan harus tidak lagi menutupi.
+    _clearStaleCancelStatus(sheet, row);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -391,9 +395,21 @@ function setWaktuSelesai(row, waktu) {
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
     sheet.getRange(row, 9).setValue(waktu);
+    _clearStaleCancelStatus(sheet, row);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+}
+
+// Helper: hapus tulisan BATAL/PENDING lama di kolom J (STATUS) kalau ada.
+// Dipanggil dari setWaktuMulai/setWaktuSelesai/setIkutFittingRucika —
+// semua aksi yang menandakan kiriman ini sedang AKTIF diproses lagi,
+// jadi status batal/pending sebelumnya (kalau ada) sudah tidak berlaku.
+function _clearStaleCancelStatus(sheet, row) {
+  var cur = String(sheet.getRange(row, 10).getValue() || '').trim().toUpperCase();
+  if (cur.indexOf('BATAL') === 0 || cur.indexOf('PENDING') === 0) {
+    sheet.getRange(row, 10).setValue('');
   }
 }
 
@@ -434,6 +450,7 @@ function setIkutFittingRucika(row) {
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
     sheet.getRange(row, 8).setValue('Ikut Fitting');   // H = Waktu Mulai (marker)
     sheet.getRange(row, 9).setValue('Rucika');          // I = Waktu Selesai (marker)
+    _clearStaleCancelStatus(sheet, row);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
