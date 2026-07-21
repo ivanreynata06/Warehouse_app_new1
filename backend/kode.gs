@@ -1236,6 +1236,41 @@ function getRekapMuatanData(params) {
     picPipa['DONI'] = (picPipa['DONI']||0) + extraDI/2;
     picPipa['IMAN'] = (picPipa['IMAN']||0) + extraDI/2;
 
+    // ---- Distribusi "sisa" DONI+IMAN ke tren HARIAN ----
+    // DONI/IMAN tidak dicatat per baris tanggal seperti SAEPUL/SULIS,
+    // jadi tidak tahu porsi "sisa" itu terjadi di tanggal berapa saja.
+    // Supaya grafik tren tidak flat 0 untuk mereka (padahal totalnya
+    // bulanan sudah benar), porsi itu didistribusikan proporsional
+    // mengikuti pola kiriman pipa harian dari DASHBOARD_KIRIM — hari
+    // dengan kiriman lebih besar dapat porsi lebih besar juga. Ini
+    // TIDAK mengubah total bulanan (picPipa), cuma isi breakdown
+    // harian (pipaHarian) untuk keperluan chart.
+    if (extraDI > 0) {
+      var kirimHarian = {};
+      var shKirimHar = ss.getSheetByName(SH_KIRIM);
+      if (shKirimHar) {
+        var dkH = shKirimHar.getDataRange().getValues();
+        for (var h = 1; h < dkH.length; h++) {
+          var rowH = dkH[h];
+          var tglH = toDate(rowH[4]);
+          if (!tglH || !inRange(tglH, range)) continue;
+          var katH = getKategoriTransaksiV2(rowH[1], rowH[2], rowH[3]);
+          if (katH !== 'pipaGreen' && katH !== 'pipaGrey') continue;
+          var wH = parseFloat(rowH[5]) || 0;
+          var dkeyH = fmtD(tglH);
+          kirimHarian[dkeyH] = (kirimHarian[dkeyH] || 0) + wH;
+        }
+      }
+      var totalKirimHarianSum = Object.keys(kirimHarian).reduce(function(a, k) { return a + kirimHarian[k]; }, 0);
+      if (totalKirimHarianSum > 0) {
+        Object.keys(kirimHarian).forEach(function(dk) {
+          var portion = extraDI * (kirimHarian[dk] / totalKirimHarianSum); // gabungan DONI+IMAN hari itu
+          pipaHarian['DONI'][dk] = (pipaHarian['DONI'][dk] || 0) + portion / 2;
+          pipaHarian['IMAN'][dk] = (pipaHarian['IMAN'][dk] || 0) + portion / 2;
+        });
+      }
+    }
+
     // ---- Build trend labels (gabungan semua tanggal) ----
     var allDates={};
     PIC_LIST.forEach(function(p){
@@ -1508,6 +1543,14 @@ function syncAllToSupabase() {
   // Rekap Muatan bulan ini
   put('rekap:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
     return getRekapMuatanData({ mode: 'bulanan', bulan: bulanIni, tahun: tahunIni });
+  });
+
+  // Widget ringkasan "Loading Time Avg" di Control Tower (READ-ONLY,
+  // bukan halaman Loading Time interaktif yang tetap real-time) — aman
+  // di-precompute harian, ini yang sebelumnya bikin loading Control Tower
+  // lambat karena selalu fallback ke Apps Script sendirian.
+  put('residence_time:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getResidenceTimeData('bulan');
   });
 
   // Tren 6 bulan terakhir (buat grafik Control Tower)

@@ -62,6 +62,15 @@
       }
       if (fnName === 'getStockTrendBatch') return 'stock_trend:6mo';
       if (fnName === 'getIOTrendBatch') return 'io_trend:6mo';
+
+      // Widget ringkasan "Loading Time Avg" di Control Tower (read-only).
+      // CATATAN: file ini SENGAJA tidak dimuat di residance_time.html
+      // (halaman Loading Time interaktif), jadi tidak akan pernah
+      // mencegat panggilan real-time dari sana.
+      if (fnName === 'getResidenceTimeData' && args[0] === 'bulan') {
+        var now = new Date();
+        return 'residence_time:bulanan:' + now.getFullYear() + '-' + pad2(now.getMonth() + 1);
+      }
     } catch (e) { /* abaikan, treat sebagai tidak cocok */ }
     return null;
   }
