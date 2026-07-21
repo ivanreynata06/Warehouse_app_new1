@@ -1419,3 +1419,138 @@ function deletePhoto(pic) {
     return { success: false, error: err.message };
   }
 }
+
+// ================================================================
+//  SINKRONISASI KE SUPABASE (dijalankan 1x/hari lewat trigger)
+// ------------------------------------------------------------
+//  Menghitung data pakai fungsi yang SUDAH ADA (getDashboardData,
+//  getKanbanData, getRekapMuatanData, dst — tidak ditulis ulang,
+//  jadi hasilnya dijamin sama persis seperti yang biasa dikirim
+//  ke browser), lalu simpan ke tabel `dashboard_snapshots` di
+//  Supabase. Dashboard nanti baca dari Supabase dulu (cepat),
+//  fallback ke Apps Script kalau snapshot yang dicari belum ada.
+//
+//  SETUP (WAJIB sebelum dipakai):
+//  1. Jalankan supabase/schema.sql di SQL Editor Supabase.
+//  2. Di Apps Script: Project Settings -> Script Properties ->
+//     tambahkan 2 properti:
+//       SUPABASE_URL          = https://xxxxx.supabase.co
+//       SUPABASE_SERVICE_KEY  = (service_role key, BUKAN anon key —
+//                                 ambil dari Supabase: Settings > API)
+//     JANGAN taruh service_role key di kode / GitHub — service_role
+//     bisa bypass semua RLS, jadi harus rahasia. Script Properties
+//     aman karena tidak pernah ikut ter-commit ke Git.
+//  3. Jalankan fungsi `setupDailySyncTrigger()` SEKALI SAJA secara
+//     manual dari Apps Script editor (pilih fungsi ini di dropdown
+//     lalu klik Run) untuk memasang jadwal harian otomatis.
+//  4. (Opsional, buat tes pertama kali) jalankan `syncAllToSupabase()`
+//     manual sekali supaya snapshot langsung terisi, tidak perlu
+//     nunggu jadwal harian berikutnya.
+// ================================================================
+
+function setupDailySyncTrigger() {
+  // Hapus trigger lama dengan nama fungsi yang sama (biar tidak dobel)
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncAllToSupabase') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('syncAllToSupabase')
+    .timeBased()
+    .everyDays(1)
+    .atHour(0) // jam 00:xx (zona waktu project Apps Script)
+    .create();
+  Logger.log('Trigger harian syncAllToSupabase berhasil dipasang.');
+}
+
+function syncAllToSupabase() {
+  var log = [];
+  function put(key, payloadFn) {
+    try {
+      var payload = payloadFn();
+      _supabaseUpsertSnapshot(key, payload);
+      log.push('OK   ' + key);
+    } catch (err) {
+      log.push('GAGAL ' + key + ': ' + err.message);
+    }
+  }
+
+  var now = new Date();
+  var bulanIni = String(now.getMonth() + 1);
+  var tahunIni = String(now.getFullYear());
+  var todayStr = now.getFullYear() + '-' + _pad2(now.getMonth() + 1) + '-' + _pad2(now.getDate());
+
+  // Daftar umum
+  put('group_list', function () { return getGroupList(); });
+
+  // Stock dashboard (harian hari ini + bulanan bulan ini, group=semua)
+  put('stock:harian:' + todayStr, function () {
+    return getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' });
+  });
+  put('stock:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getDashboardData('bulanan', { bulan: bulanIni, tahun: tahunIni, group: '' });
+  });
+
+  // Outbound/Inbound bulan ini
+  put('outbound:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getOutboundData({ bulan: bulanIni, tahun: tahunIni });
+  });
+  put('inbound:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getInboundData({ bulan: bulanIni, tahun: tahunIni });
+  });
+
+  // Kanban (harian hari ini + bulanan bulan ini)
+  put('kanban:harian:' + todayStr, function () {
+    return getKanbanData('harian', { dari: todayStr, sampai: todayStr });
+  });
+  put('kanban:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni });
+  });
+
+  // Rekap Muatan bulan ini
+  put('rekap:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getRekapMuatanData({ mode: 'bulanan', bulan: bulanIni, tahun: tahunIni });
+  });
+
+  // Tren 6 bulan terakhir (buat grafik Control Tower)
+  var months6 = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months6.push({ bulan: String(d.getMonth() + 1), tahun: String(d.getFullYear()) });
+  }
+  put('stock_trend:6mo', function () { return getStockTrendBatch(months6); });
+  put('io_trend:6mo', function () { return getIOTrendBatch(months6); });
+
+  Logger.log(log.join('\n'));
+  return log;
+}
+
+// Simpan/timpa satu snapshot ke Supabase (upsert berdasarkan snapshot_key)
+function _supabaseUpsertSnapshot(key, payload) {
+  var props   = PropertiesService.getScriptProperties();
+  var baseUrl = props.getProperty('SUPABASE_URL');
+  var svcKey  = props.getProperty('SUPABASE_SERVICE_KEY');
+  if (!baseUrl || !svcKey) {
+    throw new Error('SUPABASE_URL / SUPABASE_SERVICE_KEY belum di-set di Script Properties');
+  }
+
+  var url = baseUrl.replace(/\/$/, '') + '/rest/v1/dashboard_snapshots?on_conflict=snapshot_key';
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      apikey: svcKey,
+      Authorization: 'Bearer ' + svcKey,
+      Prefer: 'resolution=merge-duplicates'
+    },
+    payload: JSON.stringify([{
+      snapshot_key: key,
+      payload: payload,
+      updated_at: new Date().toISOString()
+    }]),
+    muteHttpExceptions: true
+  });
+
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error('Supabase upsert gagal (' + code + '): ' + res.getContentText());
+  }
+}
