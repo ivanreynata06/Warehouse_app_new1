@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260720e"></script>
-<script src="./assets/js/api-shim.js?v=20260720e"></script>
-<script src="./assets/js/sw-register.js?v=20260720e"></script>
+<script src="./assets/js/config.js?v=20260721a"></script>
+<script src="./assets/js/api-shim.js?v=20260721a"></script>
+<script src="./assets/js/sw-register.js?v=20260721a"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -2287,7 +2287,7 @@ function confirmTerkirim(){
     var found=allRws.find(function(r){return r.spm===spm;});
     if(found&&found.rowIndex&&typeof google!=='undefined'&&google.script){
       google.script.run
-        .withSuccessHandler(function(res){if(res&&res.success)loadData();})
+        .withSuccessHandler(function(res){if(res&&res.success){ clearApiCache(); loadData(); }})
         .withFailureHandler(function(){})
         .setStatusTerkirim(found.rowIndex,'TERKIRIM'+(waktu?' - '+waktu:'')+(catatan?' | '+catatan:''));
     }
@@ -2320,7 +2320,7 @@ function confirmGagal(){
     var found=allRws.find(function(r){return r.spm===spm;});
     if(found&&found.rowIndex&&typeof google!=='undefined'&&google.script){
       google.script.run
-        .withSuccessHandler(function(res){if(res&&res.success)loadData();})
+        .withSuccessHandler(function(res){if(res&&res.success){ clearApiCache(); loadData(); }})
         .withFailureHandler(function(){})
         .setStatusTerkirim(found.rowIndex,'GAGAL - '+alasan+(ket?' | '+ket:''));
     }
@@ -2777,7 +2777,7 @@ function confirmCancel(){
     google.script.run
       .withSuccessHandler(function(res){
         if(!res||!res.success) showToast('?? Batal tersimpan lokal saja, gagal sync sheet: '+(res&&res.error?res.error:''),'error');
-        else loadData();
+        else { clearApiCache(); loadData(); }
       })
       .withFailureHandler(function(err){ showToast('?? Gagal simpan batal ke sheet: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
       .setStatusBatal(rowIndex, reason, notes);
@@ -3001,7 +3001,7 @@ function markIkutFitting(rowIndex, spm){
       .withSuccessHandler(function(res){
         if(res && res.success){
           showToast('? SPM '+spm+' ditandai Selesai (Ikut Fitting Rucika)','success');
-          loadData();
+          clearApiCache(); loadData();
         } else {
           showToast('?? Gagal simpan: '+(res&&res.error?res.error:'tidak diketahui'),'error');
         }
@@ -3056,7 +3056,7 @@ function submitFitting(){
       .withSuccessHandler(function(res){
         if(res && res.success){
           showToast('? SPM '+spm+' ditandai Selesai (Ikut Fitting Rucika)','success');
-          loadData();
+          clearApiCache(); loadData();
         } else {
           showToast('?? Gagal simpan: '+(res&&res.error?res.error:'tidak diketahui'),'error');
         }
@@ -3084,7 +3084,7 @@ function finishLoad(spm){
         showToast('? Selesai! SPM '+spm+' - '+formatDurMin(dur),'success');
         // Update data lokal segera supaya badge langsung berubah
         _markRowSelesaiLokal(spm, formatTimeHHMM(endTime));
-        loadData();
+        clearApiCache(); loadData();
       })
       .withFailureHandler(function(){ delete activeLoads[spm]; renderActiveLoads(); showToast('? Selesai (lokal)','info'); })
       .setWaktuSelesai(load.row,formatTimeHHMM(endTime));
@@ -3113,7 +3113,7 @@ function finishRow(rowIndex, spm){
         showToast('? Selesai! SPM '+spm+' ditandai selesai muat','success');
         if(activeLoads[spm]){ delete activeLoads[spm]; renderActiveLoads(); }
         _markRowSelesaiLokal(spm, formatTimeHHMM(endTime));
-        loadData();
+        clearApiCache(); loadData();
       })
       .withFailureHandler(function(err){
         showToast('Gagal menyimpan: '+(err&&err.message?err.message:'cek koneksi'),'error');

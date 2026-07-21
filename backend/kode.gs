@@ -44,20 +44,18 @@ var API_FUNCTIONS = {
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
 // detik. TIDAK termasuk fungsi yang mengubah data (set*/save*/delete*)
 // — itu harus selalu jalan langsung, tidak boleh kena cache.
+// CATATAN: getResidenceTimeData & getPendingRows SENGAJA TIDAK di-cache
+// (dulu sempat di-cache 15 detik, tapi halaman Loading Time sangat
+// interaktif - begitu user melakukan aksi seperti Batal/Terkirim,
+// mereka langsung reload data, dan kalau masih kena cache lama hasil
+// aksinya tidak langsung kelihatan / "tidak auto generate").
 var CACHEABLE_ACTIONS = {
   getGroupList: true, getDashboardData: true, getOutboundData: true,
   getInboundData: true, getKanbanData: true, getRekapMuatanData: true,
-  getResidenceTimeData: true, getPendingRows: true, getPhotos: true,
-  getStockTrendBatch: true, getIOTrendBatch: true
+  getPhotos: true, getStockTrendBatch: true, getIOTrendBatch: true
 };
 // TTL per fungsi (detik). Default 90s buat dashboard umum.
-// getPendingRows/getResidenceTimeData TTL pendek (15s) karena datanya
-// dipakai di alur "tandai terkirim/batal" — jangan sampai basi lama
-// setelah user baru saja mengubah status.
-var CACHE_TTL_OVERRIDE = {
-  getPendingRows: 15,
-  getResidenceTimeData: 15
-};
+var CACHE_TTL_OVERRIDE = {};
 var CACHE_TTL_DEFAULT = 90;
 
 function doGet(e) {
