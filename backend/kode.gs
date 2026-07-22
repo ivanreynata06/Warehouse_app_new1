@@ -1501,6 +1501,10 @@ function syncAllToSupabase() {
   function put(key, payloadFn) {
     try {
       var payload = payloadFn();
+      if (payload && payload.success === false) {
+        log.push('SKIP ' + key + ' (hasil gagal: ' + payload.error + ')');
+        return;
+      }
       _supabaseUpsertSnapshot(key, payload);
       log.push('OK   ' + key);
     } catch (err) {

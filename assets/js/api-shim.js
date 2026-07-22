@@ -132,7 +132,12 @@
           var sbKey = sb ? sb.buildKey(prop, args) : null;
           if (sbKey) {
             sb.fetchSnapshot(sbKey).then(function (payload) {
-              if (payload) {
+              // PENTING: kalau snapshot yang tersimpan di Supabase ternyata
+              // hasil GAGAL (mis. sync harian sempat error saat menghitung),
+              // jangan dipakai — payload {success:false} tetap "truthy" tapi
+              // tidak punya data sungguhan. Perlakukan sama seperti snapshot
+              // tidak ditemukan -> fallback ke Apps Script.
+              if (payload && payload.success !== false) {
                 writeCache(key, payload);
                 if (successCb) successCb(payload);
               } else {

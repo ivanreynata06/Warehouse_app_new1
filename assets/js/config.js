@@ -26,7 +26,7 @@ window.APPS_CACHE_TTL_MS = 3 * 60 * 1000; // 3 menit
 // browser boleh pakai cache normal saat pindah-pindah menu (cepat).
 // Naikkan angka ini SETIAP kali ada file HTML/JS yang diupdate, supaya
 // semua pengguna otomatis dapat versi terbaru tanpa perlu hard refresh.
-window.SITE_VERSION = '20260721e';
+window.SITE_VERSION = '20260722a';
 
 // ------------------------------------------------------------
 // SUPABASE (opsional, buat percepat loading dashboard Stock/
