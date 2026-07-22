@@ -38,7 +38,16 @@ var API_FUNCTIONS = {
   clearStatusPending      : clearStatusPending,
   savePhoto               : savePhoto,
   getPhotos               : getPhotos,
-  deletePhoto             : deletePhoto
+  deletePhoto             : deletePhoto,
+  // Modul Lembur & FTE
+  getKaryawanList         : getKaryawanList,
+  saveLembur              : saveLembur,
+  getLemburList           : getLemburList,
+  deleteLembur            : deleteLembur,
+  saveAbsensi             : saveAbsensi,
+  getAbsensiList          : getAbsensiList,
+  deleteAbsensi           : deleteAbsensi,
+  getAbsensiFTEData       : getAbsensiFTEData
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -1625,4 +1634,323 @@ function _supabaseUpsertSnapshot(key, payload) {
   if (code < 200 || code >= 300) {
     throw new Error('Supabase upsert gagal (' + code + '): ' + res.getContentText());
   }
+}
+
+// ================================================================
+//  MODUL LEMBUR & FTE (Full Time Equivalent)
+// ------------------------------------------------------------
+//  SETUP (WAJIB sebelum dipakai, jalankan SEKALI SAJA):
+//  Di Apps Script editor, pilih fungsi `setupLemburSheets` dari
+//  dropdown -> klik Run. Ini akan membuat 4 sheet baru otomatis:
+//    KARYAWAN_LEMBUR  - data master 7 karyawan + jam kerja masing2
+//    LEMBUR_LOG       - catatan tiap input lembur
+//    ABSENSI_LOG      - catatan Cuti Dokter / Cuti Tahunan / Mangkir
+//    HARI_LIBUR       - daftar tanggal merah (isi manual per tahun)
+//
+//  ATURAN FTE (dari rekap manual OPR_W4 yang sudah dipakai selama ini):
+//    FTE Lembur = Total Jam Lembur KARYAWAN INTERNAL / 173
+//    Total FTE  = Jumlah Karyawan Internal + FTE Lembur
+//    Over Time% = FTE Lembur / Jumlah Karyawan Internal x 100 (target <6%)
+//  FTE HANYA dihitung untuk karyawan INTERNAL. OS (Ivan/Doni/Iman)
+//  tidak dihitung FTE-nya, cuma direkap jam lemburnya saja.
+//
+//  Cuti Dokter, Cuti Tahunan, Mangkir, Minggu & tanggal merah TIDAK
+//  dihitung sebagai hari kerja wajib (tidak mempengaruhi FTE/lembur).
+// ================================================================
+var SH_KARYAWAN_LEMBUR = 'KARYAWAN_LEMBUR';
+var SH_LEMBUR_LOG      = 'LEMBUR_LOG';
+var SH_ABSENSI_LOG     = 'ABSENSI_LOG';
+var SH_HARI_LIBUR      = 'HARI_LIBUR';
+
+var FTE_STANDAR_JAM_BULAN = 173; // standar jam kerja/bulan, sama untuk semua kategori
+
+// Data master 7 karyawan (dipakai buat auto-isi sheet KARYAWAN_LEMBUR
+// kalau masih kosong). Jam sudah NET (weekday karyawan biasa 8-1=7,
+// TL 9-1=8, OS Doni/Iman 14:00-22:00 -1j=7 & Minggu 6-1=5, Ivan sama
+// seperti karyawan biasa tapi berstatus OS).
+var KARYAWAN_SEED = [
+  // [kode, nama, kategori, jabatan, jamWeekday, jamSabtu, jamMinggu]
+  ['2158807',     'DODI KARUNIA FAUZI',     'Internal', 'Team Leader', 8, 0, 0],
+  ['2106619',     'SANDY TYAS LEO SAPUTRA', 'Internal', 'Staff',       7, 6, 0],
+  ['2155807',     'SULISTYO',               'Internal', 'Staff',       7, 6, 0],
+  ['2168311',     'WANG SUTRISNO',          'Internal', 'Staff',       7, 6, 0],
+  ['2165310',     'SAEPUL GANNI',           'Internal', 'Staff',       7, 6, 0],
+  ['PEG21101254', 'Doni Mulya Y',           'OS',       'Staff',       7, 0, 5],
+  ['PEG21101272', 'Ivan Reynata',           'OS',       'Staff',       8, 6, 0],
+  ['PEG25112073', 'Iman Abdul Rahman',      'OS',       'Staff',       7, 0, 5]
+];
+
+function setupLemburSheets() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var msgs = [];
+
+  var shK = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+  if (!shK) {
+    shK = ss.insertSheet(SH_KARYAWAN_LEMBUR);
+    shK.getRange(1, 1, 1, 8).setValues([['Kode', 'Nama', 'Kategori', 'Jabatan', 'JamWeekday', 'JamSabtu', 'JamMinggu', 'Aktif']]);
+    shK.getRange(2, 1, KARYAWAN_SEED.length, 7).setValues(KARYAWAN_SEED);
+    shK.getRange(2, 8, KARYAWAN_SEED.length, 1).setValue(true);
+    shK.setFrozenRows(1);
+    msgs.push('Sheet KARYAWAN_LEMBUR dibuat + diisi 8 baris data master.');
+  } else {
+    msgs.push('Sheet KARYAWAN_LEMBUR sudah ada, dilewati.');
+  }
+
+  var shL = ss.getSheetByName(SH_LEMBUR_LOG);
+  if (!shL) {
+    shL = ss.insertSheet(SH_LEMBUR_LOG);
+    shL.getRange(1, 1, 1, 9).setValues([['Timestamp', 'Tanggal', 'Kode', 'Nama', 'JamMulai', 'JamSelesai', 'TotalJamLembur', 'Keterangan', 'InputOleh']]);
+    shL.setFrozenRows(1);
+    msgs.push('Sheet LEMBUR_LOG dibuat.');
+  } else {
+    msgs.push('Sheet LEMBUR_LOG sudah ada, dilewati.');
+  }
+
+  var shA = ss.getSheetByName(SH_ABSENSI_LOG);
+  if (!shA) {
+    shA = ss.insertSheet(SH_ABSENSI_LOG);
+    shA.getRange(1, 1, 1, 7).setValues([['Timestamp', 'Tanggal', 'Kode', 'Nama', 'Status', 'Keterangan', 'InputOleh']]);
+    shA.setFrozenRows(1);
+    msgs.push('Sheet ABSENSI_LOG dibuat.');
+  } else {
+    msgs.push('Sheet ABSENSI_LOG sudah ada, dilewati.');
+  }
+
+  var shH = ss.getSheetByName(SH_HARI_LIBUR);
+  if (!shH) {
+    shH = ss.insertSheet(SH_HARI_LIBUR);
+    shH.getRange(1, 1, 1, 2).setValues([['Tanggal', 'Keterangan']]);
+    shH.setFrozenRows(1);
+    msgs.push('Sheet HARI_LIBUR dibuat (KOSONG - isi manual tanggal merah tahun ini).');
+  } else {
+    msgs.push('Sheet HARI_LIBUR sudah ada, dilewati.');
+  }
+
+  Logger.log(msgs.join('\n'));
+  return { success: true, message: msgs.join(' | ') };
+}
+
+function getKaryawanList() {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+    if (!sh) return { success: false, error: 'Sheet KARYAWAN_LEMBUR belum ada. Jalankan setupLemburSheets() dulu di Apps Script editor.' };
+    var data = sh.getDataRange().getValues();
+    var out = [];
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (!r[0]) continue;
+      out.push({
+        kode: String(r[0]), nama: String(r[1]), kategori: String(r[2]), jabatan: String(r[3]),
+        jamWeekday: Number(r[4]) || 0, jamSabtu: Number(r[5]) || 0, jamMinggu: Number(r[6]) || 0,
+        aktif: r[7] === true || String(r[7]).toUpperCase() === 'TRUE'
+      });
+    }
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function _timeStrToMinutes(t) {
+  if (!t) return null;
+  var p = String(t).split(':');
+  if (p.length !== 2) return null;
+  var h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function saveLembur(data) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet LEMBUR_LOG belum ada. Jalankan setupLemburSheets() dulu.' };
+
+    var m1 = _timeStrToMinutes(data.jamMulai);
+    var m2 = _timeStrToMinutes(data.jamSelesai);
+    if (m1 == null || m2 == null) return { success: false, error: 'Format jam tidak valid (harus HH:MM)' };
+    var durMin = m2 - m1;
+    if (durMin <= 0) durMin += 24 * 60; // lembur lewat tengah malam
+    var durJam = durMin / 60;
+    // Sesuai catatan di formulir SPL: lembur di atas 4 jam yang melewati
+    // waktu istirahat otomatis kepotong 1 jam.
+    if (durJam > 4) durJam -= 1;
+    durJam = Math.round(durJam * 100) / 100;
+
+    sh.appendRow([
+      new Date(), data.tanggal, data.kode, data.nama || '',
+      data.jamMulai, data.jamSelesai, durJam,
+      data.keterangan || '', data.inputOleh || ''
+    ]);
+    return { success: true, totalJam: durJam };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function getLemburList(filter) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet LEMBUR_LOG belum ada.' };
+    var data = sh.getDataRange().getValues();
+    var out = [];
+    var bulan = filter && filter.bulan, tahun = filter && filter.tahun;
+    var kodeFilter = filter && filter.kode;
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (!r[1]) continue;
+      var tgl = new Date(r[1]);
+      if (bulan && tahun) {
+        if ((tgl.getMonth() + 1) != Number(bulan) || tgl.getFullYear() != Number(tahun)) continue;
+      }
+      if (kodeFilter && String(r[2]) !== String(kodeFilter)) continue;
+      out.push({
+        rowIndex: i + 1, tanggal: _fmtYMD(tgl), kode: String(r[2]), nama: String(r[3]),
+        jamMulai: String(r[4]), jamSelesai: String(r[5]), totalJam: Number(r[6]) || 0,
+        keterangan: String(r[7] || ''), inputOleh: String(r[8] || '')
+      });
+    }
+    out.sort(function (a, b) { return a.tanggal < b.tanggal ? 1 : -1; });
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function deleteLembur(rowIndex) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet tidak ditemukan' };
+    sh.deleteRow(rowIndex);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function saveAbsensi(data) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_ABSENSI_LOG);
+    if (!sh) return { success: false, error: 'Sheet ABSENSI_LOG belum ada. Jalankan setupLemburSheets() dulu.' };
+    sh.appendRow([new Date(), data.tanggal, data.kode, data.nama || '', data.status, data.keterangan || '', data.inputOleh || '']);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function getAbsensiList(filter) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_ABSENSI_LOG);
+    if (!sh) return { success: false, error: 'Sheet ABSENSI_LOG belum ada.' };
+    var data = sh.getDataRange().getValues();
+    var out = [];
+    var bulan = filter && filter.bulan, tahun = filter && filter.tahun;
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (!r[1]) continue;
+      var tgl = new Date(r[1]);
+      if (bulan && tahun) {
+        if ((tgl.getMonth() + 1) != Number(bulan) || tgl.getFullYear() != Number(tahun)) continue;
+      }
+      out.push({ rowIndex: i + 1, tanggal: _fmtYMD(tgl), kode: String(r[2]), nama: String(r[3]), status: String(r[4]), keterangan: String(r[5] || '') });
+    }
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function deleteAbsensi(rowIndex) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_ABSENSI_LOG);
+    if (!sh) return { success: false, error: 'Sheet tidak ditemukan' };
+    sh.deleteRow(rowIndex);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function _getHariLiburSet() {
+  var out = {};
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_HARI_LIBUR);
+    if (!sh) return out;
+    var data = sh.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (!r[0]) continue;
+      var d = new Date(r[0]);
+      if (isNaN(d.getTime())) continue;
+      out[_fmtYMD(d)] = r[1] || 'Libur Nasional';
+    }
+  } catch (e) { /* sheet belum ada -> anggap tidak ada tanggal merah */ }
+  return out;
+}
+
+// ---- FUNGSI UTAMA: rekap FTE (internal) + rekap lembur OS sebulan ----
+function getAbsensiFTEData(bulan, tahun) {
+  try {
+    bulan = Number(bulan); tahun = Number(tahun);
+
+    var karyawanRes = getKaryawanList();
+    if (!karyawanRes.success) return karyawanRes;
+    var karyawan = karyawanRes.data.filter(function (k) { return k.aktif; });
+
+    var lemburRes = getLemburList({ bulan: bulan, tahun: tahun });
+    var lembur = lemburRes.success ? lemburRes.data : [];
+
+    var absensiRes = getAbsensiList({ bulan: bulan, tahun: tahun });
+    var absensi = absensiRes.success ? absensiRes.data : [];
+
+    var hariLibur = _getHariLiburSet();
+    var hariLiburBulanIni = Object.keys(hariLibur).filter(function (dk) {
+      var d = new Date(dk); return (d.getMonth() + 1) === bulan && d.getFullYear() === tahun;
+    }).map(function (dk) { return { tanggal: dk, keterangan: hariLibur[dk] }; });
+
+    var perOrang = karyawan.map(function (k) {
+      var totalLembur = lembur.filter(function (l) { return l.kode === k.kode; })
+        .reduce(function (a, l) { return a + l.totalJam; }, 0);
+      totalLembur = Math.round(totalLembur * 100) / 100;
+
+      var absensiOrang = absensi.filter(function (a) { return a.kode === k.kode; });
+      var cutiDokter  = absensiOrang.filter(function (a) { return a.status === 'CutiDokter'; }).length;
+      var cutiTahunan = absensiOrang.filter(function (a) { return a.status === 'CutiTahunan'; }).length;
+      var mangkir     = absensiOrang.filter(function (a) { return a.status === 'Mangkir'; }).length;
+
+      var isInternal = k.kategori === 'Internal';
+      return {
+        kode: k.kode, nama: k.nama, kategori: k.kategori, jabatan: k.jabatan,
+        totalJamLembur: totalLembur,
+        cutiDokter: cutiDokter, cutiTahunan: cutiTahunan, mangkir: mangkir,
+        fteLembur:   isInternal ? Math.round((totalLembur / FTE_STANDAR_JAM_BULAN) * 10000) / 10000 : null,
+        overtimePct: isInternal ? Math.round((totalLembur / FTE_STANDAR_JAM_BULAN) * 10000) / 100 : null
+      };
+    });
+
+    var internalList = perOrang.filter(function (p) { return p.kategori === 'Internal'; });
+    var jumlahKaryawan = internalList.length;
+    var totalJamLemburInternal = Math.round(internalList.reduce(function (a, p) { return a + p.totalJamLembur; }, 0) * 100) / 100;
+    var fteLemburTotal = jumlahKaryawan > 0 ? Math.round((totalJamLemburInternal / FTE_STANDAR_JAM_BULAN) * 10000) / 10000 : 0;
+    var totalFTE = Math.round((jumlahKaryawan + fteLemburTotal) * 10000) / 10000;
+    var overtimePctTotal = jumlahKaryawan > 0 ? Math.round((fteLemburTotal / jumlahKaryawan) * 10000) / 100 : 0;
+
+    var osList = perOrang.filter(function (p) { return p.kategori === 'OS'; });
+    var totalJamLemburOS = Math.round(osList.reduce(function (a, p) { return a + p.totalJamLembur; }, 0) * 100) / 100;
+
+    return {
+      success: true,
+      bulan: bulan, tahun: tahun,
+      target: { overtimePctMax: 6 },
+      internal: {
+        jumlahKaryawan: jumlahKaryawan,
+        totalJamLembur: totalJamLemburInternal,
+        fteLembur: fteLemburTotal,
+        totalFTE: totalFTE,
+        overtimePct: overtimePctTotal,
+        tercapai: overtimePctTotal <= 6,
+        perOrang: internalList
+      },
+      os: {
+        jumlahOS: osList.length,
+        totalJamLembur: totalJamLemburOS,
+        perOrang: osList
+      },
+      hariLiburBulanIni: hariLiburBulanIni
+    };
+  } catch (err) { return { success: false, error: err.message }; }
 }
