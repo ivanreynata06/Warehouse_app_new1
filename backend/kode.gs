@@ -1499,16 +1499,20 @@ function setupDailySyncTrigger() {
 function syncAllToSupabase() {
   var log = [];
   function put(key, payloadFn) {
+    Logger.log('... menghitung ' + key);
     try {
       var payload = payloadFn();
       if (payload && payload.success === false) {
         log.push('SKIP ' + key + ' (hasil gagal: ' + payload.error + ')');
+        Logger.log('SKIP ' + key + ': ' + payload.error);
         return;
       }
       _supabaseUpsertSnapshot(key, payload);
       log.push('OK   ' + key);
+      Logger.log('OK   ' + key);
     } catch (err) {
       log.push('GAGAL ' + key + ': ' + err.message);
+      Logger.log('GAGAL ' + key + ': ' + err.message);
     }
   }
 
@@ -1520,19 +1524,49 @@ function syncAllToSupabase() {
   // Daftar umum
   put('group_list', function () { return getGroupList(); });
 
-  // Stock dashboard (harian hari ini + bulanan bulan ini, group=semua)
+  // ---- Tren 6 bulan terakhir DULUAN (dipakai juga buat data "bulan ini",
+  // supaya tidak dihitung 2x — sebelumnya stock/outbound/inbound bulanan
+  // dihitung ULANG padahal bulan ini sudah termasuk di tren 6 bulan.
+  // Ini yang bikin sync lama & berisiko kena limit waktu eksekusi. ----
+  var months6 = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months6.push({ bulan: String(d.getMonth() + 1), tahun: String(d.getFullYear()) });
+  }
+  var stockTrendResult = null, ioTrendResult = null;
+  put('stock_trend:6mo', function () {
+    stockTrendResult = getStockTrendBatch(months6);
+    return stockTrendResult;
+  });
+  put('io_trend:6mo', function () {
+    ioTrendResult = getIOTrendBatch(months6);
+    return ioTrendResult;
+  });
+
+  // Stock dashboard bulanan bulan ini — ambil dari hasil tren 6 bulan
+  // (index terakhir = bulan ini), tidak dihitung ulang.
+  put('stock:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    if (stockTrendResult && stockTrendResult.success && stockTrendResult.results) {
+      return stockTrendResult.results[stockTrendResult.results.length - 1];
+    }
+    return getDashboardData('bulanan', { bulan: bulanIni, tahun: tahunIni, group: '' }); // fallback kalau tren gagal
+  });
+  // Stock harian hari ini — TETAP dihitung sendiri (tren cuma bulanan, tidak ada versi harian)
   put('stock:harian:' + todayStr, function () {
     return getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' });
   });
-  put('stock:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
-    return getDashboardData('bulanan', { bulan: bulanIni, tahun: tahunIni, group: '' });
-  });
 
-  // Outbound/Inbound bulan ini
+  // Outbound/Inbound bulan ini — ambil dari hasil tren 6 bulan juga
   put('outbound:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) {
+      return ioTrendResult.results[ioTrendResult.results.length - 1].out;
+    }
     return getOutboundData({ bulan: bulanIni, tahun: tahunIni });
   });
   put('inbound:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) {
+      return ioTrendResult.results[ioTrendResult.results.length - 1].in;
+    }
     return getInboundData({ bulan: bulanIni, tahun: tahunIni });
   });
 
@@ -1556,15 +1590,6 @@ function syncAllToSupabase() {
   put('residence_time:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
     return getResidenceTimeData('bulan');
   });
-
-  // Tren 6 bulan terakhir (buat grafik Control Tower)
-  var months6 = [];
-  for (var i = 5; i >= 0; i--) {
-    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months6.push({ bulan: String(d.getMonth() + 1), tahun: String(d.getFullYear()) });
-  }
-  put('stock_trend:6mo', function () { return getStockTrendBatch(months6); });
-  put('io_trend:6mo', function () { return getIOTrendBatch(months6); });
 
   Logger.log(log.join('\n'));
   return log;
