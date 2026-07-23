@@ -2,10 +2,10 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260722a"></script>
-<script src="./assets/js/supabase-cache.js?v=20260722a"></script>
-<script src="./assets/js/api-shim.js?v=20260722a"></script>
-<script src="./assets/js/sw-register.js?v=20260722a"></script>
+<script src="./assets/js/config.js?v=20260722b"></script>
+<script src="./assets/js/supabase-cache.js?v=20260722b"></script>
+<script src="./assets/js/api-shim.js?v=20260722b"></script>
+<script src="./assets/js/sw-register.js?v=20260722b"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -55,9 +55,24 @@
     .sec-title{color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:4px 4px 2px;white-space:nowrap;}
     .mitem{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s;}
     .mitem.active{background:rgba(22,163,74,.15);color:var(--ppr-green);font-weight:600;}
+    .mgroup{display:flex;flex-direction:column;}
+    .mgroup-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:600;}
+    .mgroup-hdr:hover{background:rgba(255,255,255,.05);color:var(--text-main);}
+    .mgroup-hdr-left{display:flex;align-items:center;gap:8px;}
+    .mgroup-hdr svg.chev{transition:transform .2s;flex-shrink:0;width:11px;}
+    .mgroup.open .mgroup-hdr svg.chev{transform:rotate(90deg);}
+    .mgroup-hdr.active-parent{color:#d4af37;}
+    .mgroup-body{display:none;flex-direction:column;gap:2px;padding-left:16px;margin-top:2px;}
+    .mgroup.open .mgroup-body{display:flex;}
     .mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--text-main);}
-
-    /* MAIN */
+    .mgroup-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:600;}
+    .mgroup-hdr:hover{background:rgba(255,255,255,.05);color:var(--text-main);}
+    .mgroup-hdr-left{display:flex;align-items:center;gap:8px;}
+    .mgroup-hdr svg.chev{transition:transform .2s;width:11px;flex-shrink:0;}
+    .mgroup.open .mgroup-hdr svg.chev{transform:rotate(90deg);}
+    .mgroup-hdr.active-parent{color:#d4af37;}
+    .mgroup-body{display:none;flex-direction:column;gap:2px;padding-left:16px;margin-top:2px;}
+    .mgroup.open .mgroup-body{display:flex;}
     .main-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
 
     /* NAVBAR */
@@ -669,6 +684,16 @@
   <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:13px;"></i><span>Rekap Muatan</span></div>
   <div class="mitem"><i data-lucide="clipboard-list" style="width:13px;"></i><span>Stock Opname</span></div>
   <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:13px;"></i><span>Loading Time Pengiriman</span></div>
+  <div class="mgroup open">
+    <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
+      <div class="mgroup-hdr-left"><i data-lucide="repeat" style="width:13px;"></i><span>Transaksi</span></div>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+    </div>
+    <div class="mgroup-body">
+      <div class="mitem" onclick="navTo('input_lembur')"><i data-lucide="clock" style="width:12px;"></i><span>Input Lembur</span></div>
+      <div class="mitem" onclick="navTo('fte_dashboard')"><i data-lucide="bar-chart-3" style="width:12px;"></i><span>Monitoring FTE</span></div>
+    </div>
+  </div>
 </div>
 
 <!-- MAIN -->
@@ -1112,7 +1137,9 @@ var PAGE_MAP = {
   'kanban'          : 'kanban.html',
   'rekap'           : 'rekap_muatan.html',
   'wh_control_tower': 'index.html',
-  'residance'       : 'residance_time.html'
+  'residance'       : 'residance_time.html',
+  'input_lembur'    : 'input_lembur.html',
+  'fte_dashboard'   : 'fte_dashboard.html'
 };
 function navTo(page) {
   var target = PAGE_MAP[page || ''] || 'index.html';

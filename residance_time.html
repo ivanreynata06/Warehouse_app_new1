@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260722a"></script>
-<script src="./assets/js/api-shim.js?v=20260722a"></script>
-<script src="./assets/js/sw-register.js?v=20260722a"></script>
+<script src="./assets/js/config.js?v=20260722b"></script>
+<script src="./assets/js/api-shim.js?v=20260722b"></script>
+<script src="./assets/js/sw-register.js?v=20260722b"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -61,6 +61,15 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .sec-title{color:var(--text-muted);font-size:8px;font-family:var(--font-body);text-transform:uppercase;letter-spacing:1.2px;padding:6px 6px 2px;white-space:nowrap;font-weight:600;}
 .mitem{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:7px;color:var(--text-muted);font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:500;}
 .mitem.active{background:rgba(59,130,246,.15);color:var(--accent-blue);}
+.mgroup{display:flex;flex-direction:column;}
+.mgroup-hdr{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:6px 8px;border-radius:7px;color:var(--text-muted);font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:600;}
+.mgroup-hdr:hover{background:rgba(255,255,255,.05);color:var(--text-main);}
+.mgroup-hdr-left{display:flex;align-items:center;gap:7px;}
+.mgroup-hdr svg.chev{transition:transform .2s;flex-shrink:0;width:11px;}
+.mgroup.open .mgroup-hdr svg.chev{transform:rotate(90deg);}
+.mgroup-hdr.active-parent{color:#d4af37;}
+.mgroup-body{display:none;flex-direction:column;gap:2px;padding-left:15px;margin-top:2px;}
+.mgroup.open .mgroup-body{display:flex;}
 .mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--text-main);}
 .sidebar-divider{height:1px;background:var(--border-color);margin:3px 0;}
 .filter-pills{display:flex;flex-direction:column;gap:2px;padding:0 2px;}
@@ -832,6 +841,16 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
     <div class="mitem" onclick="goTo('kanban')"><i data-lucide="layout-grid" style="width:12px;flex-shrink:0;"></i><span>Monitoring Kanban</span></div>
     <div class="mitem" onclick="goTo('rekap')"><i data-lucide="truck" style="width:12px;flex-shrink:0;"></i><span>Rekap Muatan</span></div>
     <div class="mitem active"><i data-lucide="timer" style="width:12px;flex-shrink:0;"></i><span>Loading Time</span></div>
+    <div class="mgroup open">
+      <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
+        <div class="mgroup-hdr-left"><i data-lucide="repeat" style="width:12px;flex-shrink:0;"></i><span>Transaksi</span></div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+      <div class="mgroup-body">
+        <div class="mitem" onclick="goTo('input_lembur')"><i data-lucide="clock" style="width:11px;flex-shrink:0;"></i><span>Input Lembur</span></div>
+        <div class="mitem" onclick="goTo('fte_dashboard')"><i data-lucide="bar-chart-3" style="width:11px;flex-shrink:0;"></i><span>Monitoring FTE</span></div>
+      </div>
+    </div>
     <div class="sidebar-divider"></div>
     <div class="sec-title">Filter Periode</div>
     <div class="filter-pills">
@@ -1566,7 +1585,9 @@ var PAGE_MAP = {
   'kanban'          : 'kanban.html',
   'rekap'           : 'rekap_muatan.html',
   'wh_control_tower': 'index.html',
-  'residance'       : 'residance_time.html'
+  'residance'       : 'residance_time.html',
+  'input_lembur'    : 'input_lembur.html',
+  'fte_dashboard'   : 'fte_dashboard.html'
 };
 function goTo(page){
   var target = PAGE_MAP[page || ''] || 'index.html';

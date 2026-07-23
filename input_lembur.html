@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
+<script src="./assets/js/config.js?v=20260722b"></script>
+<script src="./assets/js/api-shim.js?v=20260722b"></script>
+<script src="./assets/js/sw-register.js?v=20260722b"></script>
+<!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Input Lembur — Transaksi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest" defer></script>
+<style>
+:root {
+  --bg-main:#0f0f1a; --bg-sidebar:#161622; --bg-card:#1c1c2a; --bg-card-hover:#202033;
+  --text-main:#e8eaf0; --text-muted:#9da3b8;
+  --accent-blue:#3b82f6; --accent-orange:#f59e0b; --accent-green:#10b981;
+  --accent-red:#ef4444; --accent-purple:#8b5cf6; --accent-cyan:#06b6d4;
+  --accent-amber:#f59e0b; --accent-yellow:#eab308;
+  --accent-gold:#d4af37; --accent-gold2:#f4d675;
+  --border-color:#2c2c42; --ppr-green:#22c55e;
+  --sidebar-w:200px; --font-scale:1;
+  --font-display:'Outfit',sans-serif; --font-body:'Inter',sans-serif; --font-mono:'JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;width:100%;overflow:hidden;font-family:var(--font-body);background:var(--bg-main);color:var(--text-main);font-size:calc(clamp(10px,0.95vw,12px)*var(--font-scale));-webkit-font-smoothing:antialiased;}
+.app-shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
+
+/* LOADING OVERLAY */
+.loading-overlay{position:fixed;inset:0;background:rgba(13,13,25,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;backdrop-filter:blur(4px);}
+.loading-overlay.show{display:flex;}
+.rucika-logo-wrap{position:relative;width:200px;height:90px;border-radius:45px;background:linear-gradient(135deg,#1e5fae,#2563eb 50%,#1e5fae);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 8px 30px rgba(37,99,235,.4);animation:logoFloat 2.4s ease-in-out infinite;}
+@keyframes logoFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.rucika-text{font-family:var(--font-display);font-weight:800;font-size:24px;letter-spacing:1px;color:#fff;z-index:2;}
+.rucika-tagline{font-family:var(--font-body);font-style:italic;font-size:9px;color:#cfe8ff;z-index:2;margin-top:1px;}
+.loading-text{color:var(--text-muted);font-size:12px;}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg-sidebar);padding:12px 8px;display:flex;flex-direction:column;gap:4px;border-right:1px solid var(--border-color);flex-shrink:0;transition:width .25s ease,min-width .25s ease,padding .25s ease;overflow:hidden;}
+body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
+.sidebar-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+.logo{display:flex;align-items:center;gap:8px;overflow:hidden;}
+.logo img{height:22px;width:auto;object-fit:contain;flex-shrink:0;}
+.logo-name{font-family:var(--font-display);font-size:12px;font-weight:700;white-space:nowrap;}
+.logo-sub{font-size:8px;color:var(--text-muted);white-space:nowrap;margin-top:-1px;}
+.btn-tog{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;transition:all .15s;}
+.btn-tog:hover{background:rgba(255,255,255,.06);color:var(--text-main);}
+.sec-title{color:var(--text-muted);font-size:8px;font-family:var(--font-body);text-transform:uppercase;letter-spacing:1.2px;padding:6px 6px 2px;white-space:nowrap;font-weight:600;}
+.mitem{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:7px;color:var(--text-muted);font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:500;}
+.mitem.active{background:rgba(59,130,246,.15);color:var(--accent-blue);}
+.mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--text-main);}
+.sidebar-divider{height:1px;background:var(--border-color);margin:3px 0;}
+/* Dropdown Transaksi */
+.mgroup{display:flex;flex-direction:column;}
+.mgroup-hdr{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:6px 8px;border-radius:7px;color:var(--text-muted);font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:600;}
+.mgroup-hdr:hover{background:rgba(255,255,255,.05);color:var(--text-main);}
+.mgroup-hdr-left{display:flex;align-items:center;gap:7px;}
+.mgroup-hdr svg.chev{transition:transform .2s;width:11px;}
+.mgroup.open .mgroup-hdr svg.chev{transform:rotate(90deg);}
+.mgroup-body{display:none;flex-direction:column;gap:2px;padding-left:19px;margin-top:2px;}
+.mgroup.open .mgroup-body{display:flex;}
+.mgroup-hdr.active-parent{color:var(--accent-gold);}
+
+/* MAIN */
+.main-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+/* NAVBAR */
+.navbar{height:46px;background:var(--bg-sidebar);display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border-color);flex-shrink:0;}
+.nav-left{display:flex;align-items:center;gap:8px;}
+.btn-menu{background:none;border:1px solid var(--border-color);color:var(--text-main);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;transition:all .15s;}
+.btn-menu:hover{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.4);color:var(--accent-blue);}
+.nav-title{font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--text-main);}
+.nav-sub{font-size:8px;color:var(--text-muted);margin-top:1px;}
+.nav-right{display:flex;align-items:center;gap:8px;}
+.nav-divider{width:1px;height:20px;background:var(--border-color);}
+.live-clock{text-align:right;}
+.clock-time{font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--accent-blue);}
+.clock-date{font-size:8px;color:var(--text-muted);text-align:right;}
+.nav-icon{background:none;border:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;padding:4px;border-radius:6px;transition:all .15s;}
+.nav-icon:hover{background:rgba(59,130,246,.1);color:var(--accent-blue);}
+.btn-theme{background:none;border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;padding:3px 8px;border-radius:6px;display:flex;align-items:center;gap:4px;font-size:9px;font-weight:600;transition:all .2s;}
+.btn-theme:hover{background:rgba(59,130,246,.1);color:var(--accent-blue);border-color:rgba(59,130,246,.4);}
+
+/* CONTENT WRAP */
+.content-wrap{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px;}
+.content-wrap::-webkit-scrollbar{width:5px;} .content-wrap::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
+
+/* PAGE HEADER */
+.page-header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;}
+.page-header-left{display:flex;align-items:center;gap:10px;}
+.page-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,rgba(212,175,55,.28),rgba(212,175,55,.08));border:1px solid rgba(212,175,55,.35);display:flex;align-items:center;justify-content:center;color:var(--accent-gold);flex-shrink:0;}
+.page-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--text-main);}
+.page-sub{font-size:9.5px;color:var(--text-muted);margin-top:1px;}
+
+/* KPI CARDS */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;flex-shrink:0;}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:11px 13px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;cursor:default;}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.32);}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;border-radius:10px 10px 0 0;}
+.kpi-card.c-gold::before{background:linear-gradient(90deg,var(--accent-gold),var(--accent-gold2));}
+.kpi-card.c-blue::before{background:linear-gradient(90deg,var(--accent-blue),#60a5fa);}
+.kpi-card.c-green::before{background:linear-gradient(90deg,var(--accent-green),#34d399);}
+.kpi-card.c-purple::before{background:linear-gradient(90deg,var(--accent-purple),#a78bfa);}
+.kpi-label{font-size:8.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;font-weight:600;display:flex;align-items:center;gap:5px;}
+.kpi-val{font-family:var(--font-display);font-size:22px;font-weight:700;line-height:1;margin-bottom:3px;letter-spacing:-.5px;}
+.kpi-val.c-gold{color:var(--accent-gold2);}
+.kpi-val.c-blue{color:var(--accent-blue);}
+.kpi-val.c-green{color:var(--accent-green);}
+.kpi-val.c-purple{color:var(--accent-purple);}
+.kpi-sub{font-size:9px;color:var(--text-muted);}
+
+/* CARD BASE */
+.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:13px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.card-title{font-family:var(--font-display);font-size:11px;font-weight:700;color:var(--text-main);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;}
+.card-badge{font-size:8px;padding:2px 7px;border-radius:20px;font-weight:600;}
+.badge-gold{background:rgba(212,175,55,.15);color:var(--accent-gold2);border:1px solid rgba(212,175,55,.3);}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--accent-blue);border:1px solid rgba(59,130,246,.25);}
+
+/* TABS */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border-color);flex-shrink:0;margin-bottom:8px;}
+.tab-btn{padding:8px 14px;font-size:10.5px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+.tab-btn.active{color:var(--accent-gold2);border-bottom-color:var(--accent-gold);}
+.tab-btn:hover:not(.active){color:var(--text-main);}
+.tab-panel{display:none;}
+.tab-panel.active{display:flex;flex-direction:column;gap:12px;}
+
+/* MAIN GRID */
+.grid-2{display:grid;grid-template-columns:1fr 1.5fr;gap:12px;flex:1;min-height:0;}
+
+/* FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.form-field{display:flex;flex-direction:column;gap:5px;}
+.form-field.span2{grid-column:1/-1;}
+.form-field label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600;display:flex;align-items:center;gap:5px;}
+.form-field input,.form-field select,.form-field textarea{background:var(--bg-main);border:1px solid var(--border-color);border-radius:8px;padding:8px 11px;color:var(--text-main);font-family:var(--font-body);font-size:11.5px;outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}
+.form-field input:focus,.form-field select:focus,.form-field textarea:focus{border-color:var(--accent-gold);box-shadow:0 0 0 3px rgba(212,175,55,.12);}
+.form-field select{cursor:pointer;}
+.form-field textarea{resize:none;height:56px;}
+.form-hint{font-size:8.5px;color:var(--text-muted);}
+
+/* Preview durasi lembur - signature element halaman ini */
+.durasi-preview{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,rgba(212,175,55,.1),rgba(212,175,55,.02));border:1px solid rgba(212,175,55,.25);border-radius:10px;padding:12px 16px;}
+.durasi-ring{position:relative;width:56px;height:56px;flex-shrink:0;}
+.durasi-ring svg{transform:rotate(-90deg);}
+.durasi-ring circle{fill:none;stroke-width:5;}
+.durasi-ring .bg{stroke:rgba(255,255,255,.08);}
+.durasi-ring .fg{stroke:var(--accent-gold);stroke-linecap:round;transition:stroke-dashoffset .5s cubic-bezier(.34,1.4,.64,1);}
+.durasi-ring-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--accent-gold2);}
+.durasi-info{flex:1;}
+.durasi-val{font-family:var(--font-display);font-size:19px;font-weight:700;color:var(--accent-gold2);line-height:1.1;}
+.durasi-lbl{font-size:9px;color:var(--text-muted);margin-top:2px;}
+.durasi-note{font-size:8.5px;color:var(--text-muted);margin-top:4px;display:flex;align-items:center;gap:4px;}
+.durasi-note.libur{color:var(--accent-red);}
+
+.btn-primary{background:linear-gradient(135deg,var(--accent-gold),#b8912a);border:none;color:#1a1305;cursor:pointer;padding:10px 18px;border-radius:9px;font-family:var(--font-body);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .2s;letter-spacing:.2px;}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(212,175,55,.35);}
+.btn-primary:active{transform:translateY(0);}
+.btn-secondary{background:none;border:1px solid var(--border-color);color:var(--text-main);cursor:pointer;padding:9px 16px;border-radius:9px;font-family:var(--font-body);font-size:10.5px;font-weight:600;display:flex;align-items:center;gap:6px;transition:all .15s;}
+.btn-secondary:hover{border-color:var(--accent-blue);color:var(--accent-blue);}
+
+/* TABLE */
+.table-wrap{flex:1;overflow-y:auto;min-height:0;}
+.table-wrap::-webkit-scrollbar{width:4px;} .table-wrap::-webkit-scrollbar-thumb{background:var(--border-color);}
+table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
+.data-table thead th{position:sticky;top:0;background:var(--bg-card);text-align:left;padding:7px 8px;color:var(--text-muted);font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid var(--border-color);z-index:1;}
+.data-table tbody td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);}
+.data-table tbody tr{transition:background .12s;}
+.data-table tbody tr:hover{background:rgba(255,255,255,.025);}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:600;}
+.chip-internal{background:rgba(59,130,246,.13);color:var(--accent-blue);}
+.chip-os{background:rgba(139,92,246,.13);color:var(--accent-purple);}
+.chip-libur{background:rgba(239,68,68,.13);color:var(--accent-red);}
+.chip-cutidokter{background:rgba(6,182,212,.13);color:var(--accent-cyan);}
+.chip-cutitahunan{background:rgba(16,185,129,.13);color:var(--accent-green);}
+.chip-mangkir{background:rgba(239,68,68,.13);color:var(--accent-red);}
+.btn-del{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;border-radius:6px;display:flex;transition:all .15s;}
+.btn-del:hover{background:rgba(239,68,68,.13);color:var(--accent-red);}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:30px 10px;color:var(--text-muted);text-align:center;}
+.empty-state svg{opacity:.3;}
+.empty-state-title{font-size:11px;font-weight:600;color:var(--text-main);}
+.empty-state-sub{font-size:9.5px;}
+
+/* TOAST */
+.toast{position:fixed;bottom:18px;right:18px;background:#1a1a28;border:1px solid var(--border-color);border-radius:9px;padding:9px 15px;font-size:10.5px;z-index:2000;animation:slideUp .3s ease;display:flex;align-items:center;gap:7px;box-shadow:0 8px 28px rgba(0,0,0,.5);}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.toast-success{border-left:3px solid var(--accent-green);}
+.toast-info{border-left:3px solid var(--accent-blue);}
+.toast-error{border-left:3px solid var(--accent-red);}
+.toast-warning{border-left:3px solid var(--accent-gold);}
+
+/* LIGHT THEME */
+body.theme-light{--bg-main:#eef1f8;--bg-sidebar:#ffffff;--bg-card:#ffffff;--bg-card-hover:#f6f8fc;--text-main:#101a30;--text-muted:#5a6785;--border-color:#dfe4ee;}
+body.theme-light .loading-overlay{background:rgba(238,240,245,.92);}
+body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
+
+@media (max-width:860px){
+  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:60;box-shadow:10px 0 30px rgba(0,0,0,.45);}
+  .kpi-row{grid-template-columns:repeat(2,1fr);}
+  .grid-2{grid-template-columns:1fr;}
+  .form-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="rucika-logo-wrap">
+    <span class="rucika-text">RUCIKA</span>
+    <span class="rucika-tagline">Dimana air mengalir sampai jauh</span>
+  </div>
+  <div class="loading-text" id="loading-txt">Memuat data...</div>
+</div>
+
+<div class="app-shell">
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <img src="./assets/img/rucika-logo.png" alt="Rucika">
+        <div>
+          <div class="logo-name">Transaksi</div>
+          <div class="logo-sub">Input Lembur</div>
+        </div>
+      </div>
+      <button class="btn-tog" onclick="toggleSidebar()"><i data-lucide="chevron-left" style="width:12px;"></i></button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sec-title">Menu Utama</div>
+    <div class="mitem" onclick="navTo('wh_control_tower')"><i data-lucide="layout-dashboard" style="width:12px;flex-shrink:0;"></i><span>Dashboard WH Import</span></div>
+    <div class="mitem" onclick="navTo('index')"><i data-lucide="package" style="width:12px;flex-shrink:0;"></i><span>Monitoring Stock, Inbound &amp; Outbound</span></div>
+    <div class="mitem" onclick="navTo('kanban')"><i data-lucide="layout-grid" style="width:12px;flex-shrink:0;"></i><span>Monitoring Kanban</span></div>
+    <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:12px;flex-shrink:0;"></i><span>Rekap Muatan</span></div>
+    <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:12px;flex-shrink:0;"></i><span>Loading Time Pengiriman</span></div>
+    <div class="sidebar-divider"></div>
+    <div class="mgroup open">
+      <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
+        <div class="mgroup-hdr-left"><i data-lucide="repeat" style="width:12px;flex-shrink:0;"></i><span>Transaksi</span></div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+      <div class="mgroup-body">
+        <div class="mitem active"><i data-lucide="clock" style="width:11px;flex-shrink:0;"></i><span>Input Lembur</span></div>
+        <div class="mitem" onclick="navTo('fte_dashboard')"><i data-lucide="bar-chart-3" style="width:11px;flex-shrink:0;"></i><span>Monitoring FTE</span></div>
+      </div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sec-title">Sistem</div>
+    <div class="mitem" onclick="clearApiCache();loadAll()"><i data-lucide="refresh-cw" style="width:12px;flex-shrink:0;"></i><span>Refresh Data</span></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main-right">
+    <div class="navbar">
+      <div class="nav-left">
+        <button class="btn-menu" onclick="toggleSidebar()"><i data-lucide="menu" style="width:13px;"></i></button>
+        <div>
+          <div class="nav-title">Input Lembur</div>
+          <div class="nav-sub">Transaksi</div>
+        </div>
+      </div>
+      <div class="nav-right">
+        <div class="live-clock">
+          <div class="clock-time" id="live-clock">00:00:00</div>
+          <div class="clock-date" id="live-date">-</div>
+        </div>
+        <div class="nav-divider"></div>
+        <button class="nav-icon" onclick="clearApiCache();loadAll()" title="Refresh"><i data-lucide="refresh-cw" style="width:13px;"></i></button>
+        <button class="btn-theme" id="theme-btn" onclick="toggleTheme()"><i data-lucide="moon" style="width:11px;" id="theme-icon"></i><span id="theme-label">Dark</span></button>
+      </div>
+    </div>
+
+    <div class="content-wrap">
+      <div class="page-header">
+        <div class="page-header-left">
+          <div class="page-icon"><i data-lucide="clock" style="width:17px;"></i></div>
+          <div>
+            <div class="page-title">Input Lembur &amp; Ketidakhadiran</div>
+            <div class="page-sub">Catat jam lembur harian dan ketidakhadiran (Cuti Dokter / Cuti Tahunan / Mangkir)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI RINGKAS BULAN INI -->
+      <div class="kpi-row">
+        <div class="kpi-card c-gold">
+          <div class="kpi-label"><i data-lucide="hourglass" style="width:10px;"></i>Total Lembur Bulan Ini</div>
+          <div class="kpi-val c-gold" id="kpi-total-lembur">—</div>
+          <div class="kpi-sub">jam (semua karyawan)</div>
+        </div>
+        <div class="kpi-card c-blue">
+          <div class="kpi-label"><i data-lucide="users" style="width:10px;"></i>Internal</div>
+          <div class="kpi-val c-blue" id="kpi-lembur-internal">—</div>
+          <div class="kpi-sub">jam lembur internal</div>
+        </div>
+        <div class="kpi-card c-purple">
+          <div class="kpi-label"><i data-lucide="briefcase" style="width:10px;"></i>Outsourcing</div>
+          <div class="kpi-val c-purple" id="kpi-lembur-os">—</div>
+          <div class="kpi-sub">jam lembur OS</div>
+        </div>
+        <div class="kpi-card c-green">
+          <div class="kpi-label"><i data-lucide="calendar-check" style="width:10px;"></i>Entri Bulan Ini</div>
+          <div class="kpi-val c-green" id="kpi-jumlah-entri">—</div>
+          <div class="kpi-sub">catatan lembur tersimpan</div>
+        </div>
+      </div>
+
+      <!-- TABS -->
+      <div class="tabs">
+        <div class="tab-btn active" data-tab="lembur" onclick="switchTab('lembur')"><i data-lucide="clock" style="width:12px;"></i>Input Lembur</div>
+        <div class="tab-btn" data-tab="absensi" onclick="switchTab('absensi')"><i data-lucide="user-x" style="width:12px;"></i>Catat Ketidakhadiran</div>
+      </div>
+
+      <!-- TAB: INPUT LEMBUR -->
+      <div class="tab-panel active" id="panel-lembur">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-hdr"><div class="card-title"><i data-lucide="pencil-line" style="width:12px;"></i>Form Lembur</div></div>
+            <div class="form-grid">
+              <div class="form-field span2">
+                <label>Karyawan</label>
+                <select id="lm-karyawan" onchange="onKaryawanChange()">
+                  <option value="">— Pilih karyawan —</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Tanggal</label>
+                <input type="date" id="lm-tanggal" onchange="updateDurasiPreview()">
+              </div>
+              <div class="form-field"></div>
+              <div class="form-field">
+                <label>Jam Mulai</label>
+                <input type="time" id="lm-mulai" onchange="updateDurasiPreview()">
+              </div>
+              <div class="form-field">
+                <label>Jam Selesai</label>
+                <input type="time" id="lm-selesai" onchange="updateDurasiPreview()">
+              </div>
+              <div class="form-field span2">
+                <label>Keterangan (opsional)</label>
+                <textarea id="lm-ket" placeholder="mis. Bongkar muat kiriman mendadak"></textarea>
+              </div>
+            </div>
+
+            <div class="durasi-preview" id="durasi-preview" style="display:none;">
+              <div class="durasi-ring">
+                <svg width="56" height="56" viewBox="0 0 56 56">
+                  <circle class="bg" cx="28" cy="28" r="24"></circle>
+                  <circle class="fg" id="durasi-ring-fg" cx="28" cy="28" r="24" stroke-dasharray="150.8" stroke-dashoffset="150.8"></circle>
+                </svg>
+                <div class="durasi-ring-label" id="durasi-ring-label">0j</div>
+              </div>
+              <div class="durasi-info">
+                <div class="durasi-val" id="durasi-val">0 jam</div>
+                <div class="durasi-lbl">Total jam lembur tercatat</div>
+                <div class="durasi-note" id="durasi-note" style="display:none;"><i data-lucide="info" style="width:10px;"></i><span></span></div>
+              </div>
+            </div>
+
+            <button class="btn-primary" onclick="submitLembur()" id="btn-submit-lembur">
+              <i data-lucide="save" style="width:13px;"></i>Simpan Lembur
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-hdr">
+              <div class="card-title"><i data-lucide="list" style="width:12px;"></i>Riwayat Lembur Bulan Ini</div>
+              <span class="card-badge badge-gold" id="badge-riwayat-lembur">0 entri</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Tanggal</th><th>Nama</th><th>Jam</th><th>Total</th><th>Ket.</th><th></th></tr></thead>
+                <tbody id="tbody-lembur"></tbody>
+              </table>
+              <div class="empty-state" id="empty-lembur" style="display:none;">
+                <i data-lucide="inbox" style="width:32px;"></i>
+                <div class="empty-state-title">Belum ada catatan lembur</div>
+                <div class="empty-state-sub">Isi form di kiri untuk mulai mencatat</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: KETIDAKHADIRAN -->
+      <div class="tab-panel" id="panel-absensi">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-hdr"><div class="card-title"><i data-lucide="pencil-line" style="width:12px;"></i>Form Ketidakhadiran</div></div>
+            <div class="form-grid">
+              <div class="form-field span2">
+                <label>Karyawan</label>
+                <select id="ab-karyawan">
+                  <option value="">— Pilih karyawan —</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Tanggal</label>
+                <input type="date" id="ab-tanggal">
+              </div>
+              <div class="form-field">
+                <label>Status</label>
+                <select id="ab-status">
+                  <option value="CutiDokter">Cuti Dokter</option>
+                  <option value="CutiTahunan">Cuti Tahunan</option>
+                  <option value="Mangkir">Mangkir</option>
+                </select>
+              </div>
+              <div class="form-field span2">
+                <label>Keterangan (opsional)</label>
+                <textarea id="ab-ket" placeholder="mis. Surat dokter terlampir"></textarea>
+              </div>
+            </div>
+            <div class="form-hint"><i data-lucide="info" style="width:9px;display:inline;"></i> Cuti Dokter, Cuti Tahunan, dan Mangkir tidak dihitung sebagai hari kerja wajib dalam perhitungan FTE.</div>
+            <button class="btn-primary" onclick="submitAbsensi()" id="btn-submit-absensi">
+              <i data-lucide="save" style="width:13px;"></i>Simpan Ketidakhadiran
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-hdr">
+              <div class="card-title"><i data-lucide="list" style="width:12px;"></i>Riwayat Ketidakhadiran Bulan Ini</div>
+              <span class="card-badge badge-blue" id="badge-riwayat-absensi">0 entri</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Tanggal</th><th>Nama</th><th>Status</th><th>Ket.</th><th></th></tr></thead>
+                <tbody id="tbody-absensi"></tbody>
+              </table>
+              <div class="empty-state" id="empty-absensi" style="display:none;">
+                <i data-lucide="inbox" style="width:32px;"></i>
+                <div class="empty-state-title">Belum ada catatan</div>
+                <div class="empty-state-sub">Isi form di kiri untuk mulai mencatat</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+//  STATE
+// ================================================================
+var karyawanList = [];
+var lemburList = [];
+var absensiList = [];
+var _now = new Date();
+var curBulan = _now.getMonth()+1, curTahun = _now.getFullYear();
+
+var PAGE_MAP = {
+  ''                : 'index.html',
+  'index'           : 'monitoring_stock.html',
+  'kanban'          : 'kanban.html',
+  'rekap'           : 'rekap_muatan.html',
+  'wh_control_tower': 'index.html',
+  'residance'       : 'residance_time.html',
+  'input_lembur'    : 'input_lembur.html',
+  'fte_dashboard'   : 'fte_dashboard.html'
+};
+function navTo(page){
+  var t = PAGE_MAP[page || ''] || 'index.html';
+  t += '?v=' + (window.SITE_VERSION||Date.now());
+  window.location.href = t;
+}
+function toggleSidebar(){
+  document.body.classList.toggle('sidebar-hidden');
+  localStorage.setItem('lembur_sidebar_hidden', document.body.classList.contains('sidebar-hidden') ? '1':'0');
+}
+if (window.innerWidth <= 860 || localStorage.getItem('lembur_sidebar_hidden')==='1') {
+  document.body.classList.add('sidebar-hidden');
+}
+
+function toggleTheme(){
+  var isLight = document.body.classList.toggle('theme-light');
+  localStorage.setItem('lembur_theme', isLight?'light':'dark');
+  updateThemeBtn(isLight);
+}
+function updateThemeBtn(isLight){
+  document.getElementById('theme-icon').setAttribute('data-lucide', isLight?'sun':'moon');
+  document.getElementById('theme-label').textContent = isLight?'Light':'Dark';
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+(function(){
+  var saved = localStorage.getItem('lembur_theme');
+  if(saved==='light'){ document.body.classList.add('theme-light'); }
+})();
+
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.tab===name); });
+  document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+function showToast(msg, type){
+  var t = document.createElement('div');
+  t.className = 'toast toast-'+(type||'info');
+  var icon = type==='success'?'check-circle':type==='error'?'x-circle':type==='warning'?'alert-triangle':'info';
+  t.innerHTML = '<i data-lucide="'+icon+'" style="width:13px;"></i><span>'+msg+'</span>';
+  document.body.appendChild(t);
+  if(typeof lucide!=='undefined') lucide.createIcons();
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ t.remove(); },300); }, 3200);
+}
+
+function showLoading(v, txt){
+  document.getElementById('loading-overlay').classList.toggle('show', !!v);
+  if(txt) document.getElementById('loading-txt').textContent = txt;
+}
+
+function p2(n){ n=parseInt(n,10); return n<10?'0'+n:''+n; }
+function todayStr(){ var n=new Date(); return n.getFullYear()+'-'+p2(n.getMonth()+1)+'-'+p2(n.getDate()); }
+
+// ================================================================
+//  LOAD DATA
+// ================================================================
+function loadAll(){
+  showLoading(true, 'Memuat data karyawan...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ showToast('Gagal memuat data karyawan: '+(res&&res.error?res.error:''),'error'); showLoading(false); return; }
+      karyawanList = res.data || [];
+      populateKaryawanSelects();
+      loadLemburAbsensi();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal memuat data karyawan: '+(err&&err.message?err.message:'cek koneksi'),'error'); showLoading(false); })
+    .getKaryawanList();
+}
+
+function populateKaryawanSelects(){
+  ['lm-karyawan','ab-karyawan'].forEach(function(id){
+    var sel = document.getElementById(id);
+    sel.innerHTML = '<option value="">— Pilih karyawan —</option>';
+    var internalGroup = document.createElement('optgroup'); internalGroup.label = 'Internal';
+    var osGroup = document.createElement('optgroup'); osGroup.label = 'Outsourcing (OS)';
+    karyawanList.forEach(function(k){
+      var opt = document.createElement('option');
+      opt.value = k.kode; opt.textContent = k.nama + (k.jabatan==='Team Leader' ? ' (TL)' : '');
+      if(k.kategori==='Internal') internalGroup.appendChild(opt); else osGroup.appendChild(opt);
+    });
+    sel.appendChild(internalGroup); sel.appendChild(osGroup);
+  });
+}
+
+function loadLemburAbsensi(){
+  var pending = 2;
+  function done(){ pending--; if(pending<=0){ showLoading(false); renderKPI(); renderTabelLembur(); renderTabelAbsensi(); } }
+
+  google.script.run
+    .withSuccessHandler(function(res){ lemburList = (res&&res.success)?res.data:[]; done(); })
+    .withFailureHandler(function(){ lemburList=[]; done(); })
+    .getLemburList({bulan:curBulan, tahun:curTahun});
+
+  google.script.run
+    .withSuccessHandler(function(res){ absensiList = (res&&res.success)?res.data:[]; done(); })
+    .withFailureHandler(function(){ absensiList=[]; done(); })
+    .getAbsensiList({bulan:curBulan, tahun:curTahun});
+}
+
+function renderKPI(){
+  var totalJam = lemburList.reduce(function(a,l){ return a+l.totalJam; },0);
+  var kodeInternal = {}; karyawanList.filter(function(k){return k.kategori==='Internal';}).forEach(function(k){ kodeInternal[k.kode]=1; });
+  var jamInternal = lemburList.filter(function(l){ return kodeInternal[l.kode]; }).reduce(function(a,l){ return a+l.totalJam; },0);
+  var jamOS = totalJam - jamInternal;
+  document.getElementById('kpi-total-lembur').textContent = totalJam.toLocaleString('id-ID',{maximumFractionDigits:1}) + 'j';
+  document.getElementById('kpi-lembur-internal').textContent = jamInternal.toLocaleString('id-ID',{maximumFractionDigits:1}) + 'j';
+  document.getElementById('kpi-lembur-os').textContent = jamOS.toLocaleString('id-ID',{maximumFractionDigits:1}) + 'j';
+  document.getElementById('kpi-jumlah-entri').textContent = lemburList.length;
+}
+
+function renderTabelLembur(){
+  var tb = document.getElementById('tbody-lembur');
+  document.getElementById('badge-riwayat-lembur').textContent = lemburList.length + ' entri';
+  if(!lemburList.length){ tb.innerHTML=''; document.getElementById('empty-lembur').style.display='flex'; return; }
+  document.getElementById('empty-lembur').style.display='none';
+  tb.innerHTML = lemburList.map(function(l){
+    var kat = (karyawanList.find(function(k){return k.kode===l.kode;})||{}).kategori || '';
+    var chip = kat==='Internal' ? '<span class="chip chip-internal">Internal</span>' : '<span class="chip chip-os">OS</span>';
+    var liburTag = l.isHariLibur ? ' <span class="chip chip-libur" title="'+(l.hariLiburLabel||'')+'">Tgl Merah</span>' : '';
+    return '<tr>'+
+      '<td>'+fmtTglShort(l.tanggal)+'</td>'+
+      '<td>'+l.nama+' '+chip+liburTag+'</td>'+
+      '<td style="font-family:var(--font-mono);font-size:9.5px;">'+l.jamMulai+'\u2013'+l.jamSelesai+'</td>'+
+      '<td style="font-weight:700;color:var(--accent-gold2);">'+l.totalJam+'j</td>'+
+      '<td style="color:var(--text-muted);font-size:9.5px;">'+(l.keterangan||'\u2014')+'</td>'+
+      '<td><button class="btn-del" onclick="hapusLembur('+l.rowIndex+')" title="Hapus"><i data-lucide="trash-2" style="width:12px;"></i></button></td>'+
+    '</tr>';
+  }).join('');
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+
+function renderTabelAbsensi(){
+  var tb = document.getElementById('tbody-absensi');
+  document.getElementById('badge-riwayat-absensi').textContent = absensiList.length + ' entri';
+  if(!absensiList.length){ tb.innerHTML=''; document.getElementById('empty-absensi').style.display='flex'; return; }
+  document.getElementById('empty-absensi').style.display='none';
+  var statusLabel = {CutiDokter:'Cuti Dokter', CutiTahunan:'Cuti Tahunan', Mangkir:'Mangkir'};
+  var statusChip = {CutiDokter:'chip-cutidokter', CutiTahunan:'chip-cutitahunan', Mangkir:'chip-mangkir'};
+  tb.innerHTML = absensiList.map(function(a){
+    return '<tr>'+
+      '<td>'+fmtTglShort(a.tanggal)+'</td>'+
+      '<td>'+a.nama+'</td>'+
+      '<td><span class="chip '+(statusChip[a.status]||'')+'">'+(statusLabel[a.status]||a.status)+'</span></td>'+
+      '<td style="color:var(--text-muted);font-size:9.5px;">'+(a.keterangan||'\u2014')+'</td>'+
+      '<td><button class="btn-del" onclick="hapusAbsensi('+a.rowIndex+')" title="Hapus"><i data-lucide="trash-2" style="width:12px;"></i></button></td>'+
+    '</tr>';
+  }).join('');
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+
+function fmtTglShort(ymd){
+  var p = ymd.split('-'); var bulanNama=['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return p[2]+' '+bulanNama[parseInt(p[1],10)];
+}
+
+// ================================================================
+//  FORM: INPUT LEMBUR
+// ================================================================
+function onKaryawanChange(){ updateDurasiPreview(); }
+
+function updateDurasiPreview(){
+  var m1 = document.getElementById('lm-mulai').value;
+  var m2 = document.getElementById('lm-selesai').value;
+  var tgl = document.getElementById('lm-tanggal').value;
+  var box = document.getElementById('durasi-preview');
+  if(!m1 || !m2){ box.style.display='none'; return; }
+
+  var p1=m1.split(':'), p2_=m2.split(':');
+  var min1=parseInt(p1[0],10)*60+parseInt(p1[1],10), min2=parseInt(p2_[0],10)*60+parseInt(p2_[1],10);
+  var dur = min2-min1; if(dur<=0) dur+=24*60;
+  var jam = dur/60;
+  var potongInfo = false;
+  if(jam>4){ jam-=1; potongInfo=true; }
+  jam = Math.round(jam*100)/100;
+
+  box.style.display='flex';
+  document.getElementById('durasi-val').textContent = jam + ' jam';
+  document.getElementById('durasi-ring-label').textContent = jam+'j';
+  var circumference = 150.8;
+  var pct = Math.min(jam/12, 1); // skala visual maks 12 jam
+  var offset = circumference * (1-pct);
+  document.getElementById('durasi-ring-fg').style.strokeDashoffset = offset;
+
+  var note = document.getElementById('durasi-note');
+  var isLibur = false;
+  if(tgl){
+    var d = new Date(tgl+'T00:00:00');
+    if(d.getDay()===0) isLibur = true; // Minggu (indikasi visual saja, backend/kalender yg final)
+  }
+  if(isLibur){
+    note.style.display='flex'; note.className='durasi-note libur';
+    note.querySelector('span').textContent = 'Tanggal ini hari Minggu \u2014 seluruh jam dihitung lembur.';
+  } else if(potongInfo){
+    note.style.display='flex'; note.className='durasi-note';
+    note.querySelector('span').textContent = 'Lembur >4 jam, otomatis dipotong 1 jam istirahat.';
+  } else {
+    note.style.display='none';
+  }
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+
+function submitLembur(){
+  var kode = document.getElementById('lm-karyawan').value;
+  var tanggal = document.getElementById('lm-tanggal').value;
+  var mulai = document.getElementById('lm-mulai').value;
+  var selesai = document.getElementById('lm-selesai').value;
+  var ket = document.getElementById('lm-ket').value.trim();
+
+  if(!kode){ showToast('Pilih karyawan dulu','error'); return; }
+  if(!tanggal){ showToast('Isi tanggal dulu','error'); return; }
+  if(!mulai || !selesai){ showToast('Isi jam mulai dan selesai','error'); return; }
+
+  var k = karyawanList.find(function(x){ return x.kode===kode; });
+  var btn = document.getElementById('btn-submit-lembur');
+  btn.disabled = true; btn.style.opacity='.6';
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled=false; btn.style.opacity='1';
+      if(!res || !res.success){ showToast('Gagal simpan: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
+      showToast('Lembur '+(k?k.nama:'')+' ('+res.totalJam+' jam) tersimpan','success');
+      document.getElementById('lm-mulai').value=''; document.getElementById('lm-selesai').value='';
+      document.getElementById('lm-ket').value='';
+      document.getElementById('durasi-preview').style.display='none';
+      clearApiCache(); loadLemburAbsensi();
+    })
+    .withFailureHandler(function(err){
+      btn.disabled=false; btn.style.opacity='1';
+      showToast('Gagal simpan: '+(err&&err.message?err.message:'cek koneksi'),'error');
+    })
+    .saveLembur({ tanggal: tanggal, kode: kode, nama: k?k.nama:'', jamMulai: mulai, jamSelesai: selesai, keterangan: ket, inputOleh: '' });
+}
+
+function hapusLembur(rowIndex){
+  if(!confirm('Hapus catatan lembur ini?')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ showToast('Gagal hapus: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Catatan dihapus','success');
+      clearApiCache(); loadLemburAbsensi();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal hapus: '+(err&&err.message?err.message:''),'error'); })
+    .deleteLembur(rowIndex);
+}
+
+// ================================================================
+//  FORM: ABSENSI / KETIDAKHADIRAN
+// ================================================================
+function submitAbsensi(){
+  var kode = document.getElementById('ab-karyawan').value;
+  var tanggal = document.getElementById('ab-tanggal').value;
+  var status = document.getElementById('ab-status').value;
+  var ket = document.getElementById('ab-ket').value.trim();
+
+  if(!kode){ showToast('Pilih karyawan dulu','error'); return; }
+  if(!tanggal){ showToast('Isi tanggal dulu','error'); return; }
+
+  var k = karyawanList.find(function(x){ return x.kode===kode; });
+  var btn = document.getElementById('btn-submit-absensi');
+  btn.disabled = true; btn.style.opacity='.6';
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled=false; btn.style.opacity='1';
+      if(!res || !res.success){ showToast('Gagal simpan: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
+      showToast('Ketidakhadiran '+(k?k.nama:'')+' tersimpan','success');
+      document.getElementById('ab-ket').value='';
+      clearApiCache(); loadLemburAbsensi();
+    })
+    .withFailureHandler(function(err){
+      btn.disabled=false; btn.style.opacity='1';
+      showToast('Gagal simpan: '+(err&&err.message?err.message:'cek koneksi'),'error');
+    })
+    .saveAbsensi({ tanggal: tanggal, kode: kode, nama: k?k.nama:'', status: status, keterangan: ket, inputOleh: '' });
+}
+
+function hapusAbsensi(rowIndex){
+  if(!confirm('Hapus catatan ini?')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ showToast('Gagal hapus: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Catatan dihapus','success');
+      clearApiCache(); loadLemburAbsensi();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal hapus: '+(err&&err.message?err.message:''),'error'); })
+    .deleteAbsensi(rowIndex);
+}
+
+// ================================================================
+//  INIT
+// ================================================================
+document.getElementById('lm-tanggal').value = todayStr();
+document.getElementById('ab-tanggal').value = todayStr();
+
+setInterval(function(){
+  var n=new Date();
+  document.getElementById('live-clock').textContent = p2(n.getHours())+':'+p2(n.getMinutes())+':'+p2(n.getSeconds());
+  var hari=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  var bln=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  document.getElementById('live-date').textContent = hari[n.getDay()]+', '+n.getDate()+' '+bln[n.getMonth()]+' '+n.getFullYear();
+},1000);
+
+if(typeof lucide!=='undefined') lucide.createIcons();
+loadAll();
+</script>
+</body>
+</html>
