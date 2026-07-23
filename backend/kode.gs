@@ -1665,9 +1665,8 @@ var SH_HARI_LIBUR      = 'HARI_LIBUR';
 var FTE_STANDAR_JAM_BULAN = 173; // standar jam kerja/bulan, sama untuk semua kategori
 
 // Data master 7 karyawan (dipakai buat auto-isi sheet KARYAWAN_LEMBUR
-// kalau masih kosong). Jam sudah NET (weekday karyawan biasa 8-1=7,
-// TL 9-1=8, OS Doni/Iman 14:00-22:00 -1j=7 & Minggu 6-1=5, Ivan sama
-// seperti karyawan biasa tapi berstatus OS).
+// kalau masih kosong). Jam sudah NET (weekday karyawan biasa & Ivan
+// 8-1=7, TL 9-1=8, OS Doni/Iman weekday 14:00-22:00 -1j=7 & Minggu 6-1=5).
 var KARYAWAN_SEED = [
   // [kode, nama, kategori, jabatan, jamWeekday, jamSabtu, jamMinggu]
   ['2158807',     'DODI KARUNIA FAUZI',     'Internal', 'Team Leader', 8, 0, 0],
@@ -1676,7 +1675,7 @@ var KARYAWAN_SEED = [
   ['2168311',     'WANG SUTRISNO',          'Internal', 'Staff',       7, 6, 0],
   ['2165310',     'SAEPUL GANNI',           'Internal', 'Staff',       7, 6, 0],
   ['PEG21101254', 'Doni Mulya Y',           'OS',       'Staff',       7, 0, 5],
-  ['PEG21101272', 'Ivan Reynata',           'OS',       'Staff',       8, 6, 0],
+  ['PEG21101272', 'Ivan Reynata',           'OS',       'Staff',       7, 6, 0],
   ['PEG25112073', 'Iman Abdul Rahman',      'OS',       'Staff',       7, 0, 5]
 ];
 
@@ -1721,7 +1720,7 @@ function setupLemburSheets() {
     shH = ss.insertSheet(SH_HARI_LIBUR);
     shH.getRange(1, 1, 1, 2).setValues([['Tanggal', 'Keterangan']]);
     shH.setFrozenRows(1);
-    msgs.push('Sheet HARI_LIBUR dibuat (KOSONG - isi manual tanggal merah tahun ini).');
+    msgs.push('Sheet HARI_LIBUR dibuat (OPSIONAL - tanggal merah nasional sudah otomatis dari kalender Google, sheet ini cuma buat tambahan libur khusus perusahaan kalau perlu).');
   } else {
     msgs.push('Sheet HARI_LIBUR sudah ada, dilewati.');
   }
@@ -1794,6 +1793,7 @@ function getLemburList(filter) {
     var out = [];
     var bulan = filter && filter.bulan, tahun = filter && filter.tahun;
     var kodeFilter = filter && filter.kode;
+    var hariLibur = (bulan && tahun) ? _getHariLiburSet(Number(bulan), Number(tahun)) : {};
     for (var i = 1; i < data.length; i++) {
       var r = data[i];
       if (!r[1]) continue;
@@ -1802,10 +1802,14 @@ function getLemburList(filter) {
         if ((tgl.getMonth() + 1) != Number(bulan) || tgl.getFullYear() != Number(tahun)) continue;
       }
       if (kodeFilter && String(r[2]) !== String(kodeFilter)) continue;
+      var dk = _fmtYMD(tgl);
       out.push({
-        rowIndex: i + 1, tanggal: _fmtYMD(tgl), kode: String(r[2]), nama: String(r[3]),
+        rowIndex: i + 1, tanggal: dk, kode: String(r[2]), nama: String(r[3]),
         jamMulai: String(r[4]), jamSelesai: String(r[5]), totalJam: Number(r[6]) || 0,
-        keterangan: String(r[7] || ''), inputOleh: String(r[8] || '')
+        keterangan: String(r[7] || ''), inputOleh: String(r[8] || ''),
+        isMinggu: tgl.getDay() === 0,
+        isHariLibur: !!hariLibur[dk],
+        hariLiburLabel: hariLibur[dk] || ''
       });
     }
     out.sort(function (a, b) { return a.tanggal < b.tanggal ? 1 : -1; });
@@ -1864,21 +1868,50 @@ function deleteAbsensi(rowIndex) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
-function _getHariLiburSet() {
+// Tanggal merah diambil OTOMATIS dari kalender resmi Google "Hari Libur
+// Nasional Indonesia" (dikelola Google, selalu update tiap tahun tanpa
+// perlu isi manual). Sheet HARI_LIBUR tetap ada sebagai tambahan OPSIONAL
+// kalau mau menandai libur khusus perusahaan (cuti bersama internal, dst)
+// yang tidak ada di kalender nasional.
+var KALENDER_LIBUR_ID = 'id.indonesian#holiday@group.v.calendar.google.com';
+
+function _getHariLiburSet(bulan, tahun) {
   var out = {};
+
+  // 1) Otomatis dari kalender nasional Indonesia
+  try {
+    var cal = CalendarApp.getCalendarById(KALENDER_LIBUR_ID);
+    if (cal) {
+      var awal  = new Date(tahun, bulan - 1, 1);
+      var akhir = new Date(tahun, bulan, 1); // awal bulan berikutnya (exclusive)
+      var events = cal.getEvents(awal, akhir);
+      events.forEach(function (ev) {
+        var dk = _fmtYMD(ev.getStartTime());
+        out[dk] = ev.getTitle() || 'Libur Nasional';
+      });
+    }
+  } catch (e) {
+    // Kalender publik tidak bisa diakses (jarang terjadi) -> lanjut,
+    // minimal Minggu tetap dianggap libur di logic lain.
+  }
+
+  // 2) Tambahan manual (opsional) dari sheet HARI_LIBUR, kalau ada isinya
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sh = ss.getSheetByName(SH_HARI_LIBUR);
-    if (!sh) return out;
-    var data = sh.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      var r = data[i];
-      if (!r[0]) continue;
-      var d = new Date(r[0]);
-      if (isNaN(d.getTime())) continue;
-      out[_fmtYMD(d)] = r[1] || 'Libur Nasional';
+    if (sh) {
+      var data = sh.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        var r = data[i];
+        if (!r[0]) continue;
+        var d = new Date(r[0]);
+        if (isNaN(d.getTime())) continue;
+        if ((d.getMonth() + 1) !== bulan || d.getFullYear() !== tahun) continue;
+        out[_fmtYMD(d)] = r[1] || 'Libur (tambahan manual)';
+      }
     }
-  } catch (e) { /* sheet belum ada -> anggap tidak ada tanggal merah */ }
+  } catch (e) { /* sheet belum ada -> lewati, tidak masalah */ }
+
   return out;
 }
 
@@ -1897,10 +1930,10 @@ function getAbsensiFTEData(bulan, tahun) {
     var absensiRes = getAbsensiList({ bulan: bulan, tahun: tahun });
     var absensi = absensiRes.success ? absensiRes.data : [];
 
-    var hariLibur = _getHariLiburSet();
-    var hariLiburBulanIni = Object.keys(hariLibur).filter(function (dk) {
-      var d = new Date(dk); return (d.getMonth() + 1) === bulan && d.getFullYear() === tahun;
-    }).map(function (dk) { return { tanggal: dk, keterangan: hariLibur[dk] }; });
+    var hariLibur = _getHariLiburSet(bulan, tahun);
+    var hariLiburBulanIni = Object.keys(hariLibur).map(function (dk) {
+      return { tanggal: dk, keterangan: hariLibur[dk] };
+    }).sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
 
     var perOrang = karyawan.map(function (k) {
       var totalLembur = lembur.filter(function (l) { return l.kode === k.kode; })
