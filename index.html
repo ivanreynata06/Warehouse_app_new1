@@ -1289,11 +1289,32 @@ function renderKanbanTrendChart(){
   buildChart('chart-kanban-trend','bar',{
     labels:labels,
     datasets:[
-      {label:'Pipa (Rak)',data:labels.map(function(l){var r=trendData.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#a78bfa'),borderColor:'#a78bfa',borderWidth:1.5,borderRadius:6,barPercentage:.6},
-      {label:'Fitting (Box)',data:labels.map(function(l){var r=trendFit.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#00d4ff'),borderColor:'#00d4ff',borderWidth:1.5,borderRadius:6,barPercentage:.6}
+      {label:'Pipa (Rak)',data:labels.map(function(l){var r=trendData.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#a78bfa'),borderColor:'#a78bfa',borderWidth:1.5,borderRadius:6,barPercentage:.6,yAxisID:'yPipa'},
+      {label:'Fitting (Box)',data:labels.map(function(l){var r=trendFit.find(function(x){return x.label===l;});return r?r.rakTerpakai:0;}),backgroundColor:mkGrad('#00d4ff'),borderColor:'#00d4ff',borderWidth:1.5,borderRadius:6,barPercentage:.6,yAxisID:'yFitting'}
     ]
   },{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+c.dataset.label+': '+fmt(c.parsed.y);}}}},
-    scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return fmt(v);}}}}});
+    // Dua sumbu Y terpisah (Pipa di kiri, Fitting di kanan), masing-masing
+    // diwarnai sesuai warna batangnya. Ini sengaja dipisah karena satuan
+    // Pipa (rak, biasanya puluhan-ratusan) jauh lebih kecil dari Fitting
+    // (box, bisa ratusan ribu) -- kalau digabung 1 sumbu, batang Pipa jadi
+    // nyaris tidak terlihat walau datanya sebenarnya ada.
+    scales:{
+      x:{grid:{display:false}},
+      yPipa:{
+        position:'left',
+        grid:{color:'rgba(167,139,250,.12)'},
+        border:{color:'#a78bfa'},
+        ticks:{color:'#a78bfa',callback:function(v){return fmt(v);}},
+        title:{display:true,text:'Pipa (Rak)',color:'#a78bfa',font:{size:9,weight:'600'}}
+      },
+      yFitting:{
+        position:'right',
+        grid:{drawOnChartArea:false},
+        border:{color:'#00d4ff'},
+        ticks:{color:'#00d4ff',callback:function(v){return fmt(v);}},
+        title:{display:true,text:'Fitting (Box)',color:'#00d4ff',font:{size:9,weight:'600'}}
+      }
+    }});
 }
 function renderKritisList(){
   var all=[].concat((_dataKanban&&_dataKanban.pipa)||[],(_dataKanban&&_dataKanban.fitting)||[]);
