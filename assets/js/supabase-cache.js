@@ -26,8 +26,26 @@
 
   function pad2(n) { n = parseInt(n, 10); return n < 10 ? '0' + n : '' + n; }
 
+  // Tanggal hari ini dalam format YYYY-MM-DD (dipakai untuk mendeteksi
+  // permintaan "harian" yang menunjuk ke HARI INI).
+  function todayYMD() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+
   // Bangun snapshot_key dari nama fungsi + argumennya. Return null kalau
   // kombinasi ini tidak termasuk yang di-precompute (biar fallback normal).
+  //
+  // CATATAN PENTING soal mode "harian" utk HARI INI:
+  // syncAllToSupabase() di Apps Script cuma jalan 1x/hari jam 00:xx, jadi
+  // snapshot "harian hari ini" yang tersimpan di Supabase itu dihitung
+  // dari data jam 00:xx dini hari -- SEBELUM user sempat update data di
+  // siang/sore hari. Kalau snapshot basi ini tetap dipakai, kanban/stock
+  // harian akan terus tampil kosong/lama walau spreadsheet sudah di-update.
+  // Solusi: khusus utk tanggal = HARI INI, sengaja return null (skip
+  // Supabase) supaya SELALU fallback ke Apps Script (data live/real-time).
+  // Harian utk tanggal-tanggal LAMPAU (sudah final, tidak berubah lagi)
+  // tetap boleh pakai snapshot Supabase yang cepat.
   function buildKey(fnName, args) {
     try {
       if (fnName === 'getGroupList') return 'group_list';
@@ -35,7 +53,10 @@
       if (fnName === 'getDashboardData') {
         var mode = args[0], p = args[1] || {};
         if (p.group) return null; // filter grup spesifik -> tidak di-precompute
-        if (mode === 'harian' && p.dari && p.sampai === p.dari) return 'stock:harian:' + p.dari;
+        if (mode === 'harian' && p.dari && p.sampai === p.dari) {
+          if (p.dari === todayYMD()) return null; // hari ini -> selalu live
+          return 'stock:harian:' + p.dari;
+        }
         if (mode === 'bulanan' && p.bulan && p.tahun) return 'stock:bulanan:' + p.tahun + '-' + pad2(p.bulan);
         return null;
       }
@@ -51,7 +72,10 @@
       }
       if (fnName === 'getKanbanData') {
         var kmode = args[0], kp = args[1] || {};
-        if (kmode === 'harian' && kp.dari && kp.sampai === kp.dari) return 'kanban:harian:' + kp.dari;
+        if (kmode === 'harian' && kp.dari && kp.sampai === kp.dari) {
+          if (kp.dari === todayYMD()) return null; // hari ini -> selalu live
+          return 'kanban:harian:' + kp.dari;
+        }
         if (kmode === 'bulanan' && kp.bulan && kp.tahun) return 'kanban:bulanan:' + kp.tahun + '-' + pad2(kp.bulan);
         return null;
       }
