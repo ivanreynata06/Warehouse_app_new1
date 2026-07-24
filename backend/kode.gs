@@ -1664,13 +1664,12 @@ var SH_HARI_LIBUR      = 'HARI_LIBUR';
 
 var FTE_STANDAR_JAM_BULAN = 173; // standar jam kerja/bulan, sama untuk semua kategori
 
-// Data master 7 karyawan (dipakai buat auto-isi sheet KARYAWAN_LEMBUR
+// Data master 6 karyawan (dipakai buat auto-isi sheet KARYAWAN_LEMBUR
 // kalau masih kosong). Jam sudah NET (weekday karyawan biasa & Ivan
 // 8-1=7, TL 9-1=8, OS Doni/Iman weekday 14:00-22:00 -1j=7 & Minggu 6-1=5).
 var KARYAWAN_SEED = [
   // [kode, nama, kategori, jabatan, jamWeekday, jamSabtu, jamMinggu]
-  ['2158807',     'DODI KARUNIA FAUZI',     'Internal', 'Team Leader', 8, 0, 0],
-  ['2106619',     'SANDY TYAS LEO SAPUTRA', 'Internal', 'Staff',       7, 6, 0],
+  ['2106619',     'SANDY TYAS LEO SAPUTRA', 'Internal', 'Team Leader', 8, 0, 0],
   ['2155807',     'SULISTYO',               'Internal', 'Staff',       7, 6, 0],
   ['2168311',     'WANG SUTRISNO',          'Internal', 'Staff',       7, 6, 0],
   ['2165310',     'SAEPUL GANNI',           'Internal', 'Staff',       7, 6, 0],
