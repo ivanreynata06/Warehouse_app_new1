@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
+<script src="./assets/js/config.js?v=20260722c"></script>
+<script src="./assets/js/api-shim.js?v=20260722c"></script>
+<script src="./assets/js/sw-register.js?v=20260722c"></script>
+<!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitoring FTE — Transaksi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@latest" defer></script>
+<style>
+:root {
+  --bg-main:#0f0f1a; --bg-sidebar:#161622; --bg-card:#1c1c2a; --bg-card-hover:#202033;
+  --text-main:#e8eaf0; --text-muted:#9da3b8;
+  --accent-blue:#3b82f6; --accent-orange:#f59e0b; --accent-green:#10b981;
+  --accent-red:#ef4444; --accent-purple:#8b5cf6; --accent-cyan:#06b6d4;
+  --accent-amber:#f59e0b; --accent-yellow:#eab308;
+  --accent-gold:#d4af37; --accent-gold2:#f4d675;
+  --border-color:#2c2c42; --ppr-green:#22c55e;
+  --sidebar-w:200px; --font-scale:1;
+  --font-display:'Outfit',sans-serif; --font-body:'Inter',sans-serif; --font-mono:'JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;width:100%;overflow:hidden;font-family:var(--font-body);background:var(--bg-main);color:var(--text-main);font-size:calc(clamp(10px,0.95vw,12px)*var(--font-scale));-webkit-font-smoothing:antialiased;}
+.app-shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
+
+.loading-overlay{position:fixed;inset:0;background:rgba(13,13,25,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;backdrop-filter:blur(4px);}
+.loading-overlay.show{display:flex;}
+.rucika-logo-wrap{position:relative;width:200px;height:90px;border-radius:45px;background:linear-gradient(135deg,#1e5fae,#2563eb 50%,#1e5fae);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 8px 30px rgba(37,99,235,.4);animation:logoFloat 2.4s ease-in-out infinite;}
+@keyframes logoFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.rucika-text{font-family:var(--font-display);font-weight:800;font-size:24px;letter-spacing:1px;color:#fff;z-index:2;}
+.rucika-tagline{font-family:var(--font-body);font-style:italic;font-size:9px;color:#cfe8ff;z-index:2;margin-top:1px;}
+.loading-text{color:var(--text-muted);font-size:12px;}
+
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg-sidebar);padding:12px 8px;display:flex;flex-direction:column;gap:4px;border-right:1px solid var(--border-color);flex-shrink:0;transition:width .25s ease,min-width .25s ease,padding .25s ease;overflow:hidden;}
+body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
+.sidebar-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+.logo{display:flex;align-items:center;gap:8px;overflow:hidden;}
+.logo img{height:22px;width:auto;object-fit:contain;flex-shrink:0;}
+.logo-name{font-family:var(--font-display);font-size:12px;font-weight:700;white-space:nowrap;}
+.logo-sub{font-size:8px;color:var(--text-muted);white-space:nowrap;margin-top:-1px;}
+.btn-tog{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;transition:all .15s;}
+.btn-tog:hover{background:rgba(255,255,255,.06);color:var(--text-main);}
+.sec-title{color:var(--text-muted);font-size:8px;font-family:var(--font-body);text-transform:uppercase;letter-spacing:1.2px;padding:6px 6px 2px;white-space:nowrap;font-weight:600;}
+.mitem{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:7px;color:var(--text-muted);font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:500;}
+.mitem.active{background:rgba(59,130,246,.15);color:var(--accent-blue);}
+.mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--text-main);}
+.sidebar-divider{height:1px;background:var(--border-color);margin:3px 0;}
+.mgroup{display:flex;flex-direction:column;}
+.mgroup-hdr{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:6px 8px;border-radius:7px;color:var(--text-muted);font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:600;}
+.mgroup-hdr:hover{background:rgba(255,255,255,.05);color:var(--text-main);}
+.mgroup-hdr-left{display:flex;align-items:center;gap:7px;}
+.mgroup-hdr svg.chev{transition:transform .2s;width:11px;}
+.mgroup.open .mgroup-hdr svg.chev{transform:rotate(90deg);}
+.mgroup-body{display:none;flex-direction:column;gap:2px;padding-left:19px;margin-top:2px;}
+.mgroup.open .mgroup-body{display:flex;}
+.mgroup-hdr.active-parent{color:var(--accent-gold);}
+
+.main-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+.navbar{height:46px;background:var(--bg-sidebar);display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border-color);flex-shrink:0;flex-wrap:wrap;gap:6px;}
+.nav-left{display:flex;align-items:center;gap:8px;}
+.btn-menu{background:none;border:1px solid var(--border-color);color:var(--text-main);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;transition:all .15s;}
+.btn-menu:hover{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.4);color:var(--accent-blue);}
+.nav-title{font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--text-main);}
+.nav-sub{font-size:8px;color:var(--text-muted);margin-top:1px;}
+.nav-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.nav-divider{width:1px;height:20px;background:var(--border-color);}
+.live-clock{text-align:right;}
+.clock-time{font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--accent-blue);}
+.clock-date{font-size:8px;color:var(--text-muted);text-align:right;}
+.nav-icon{background:none;border:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;padding:4px;border-radius:6px;transition:all .15s;}
+.nav-icon:hover{background:rgba(59,130,246,.1);color:var(--accent-blue);}
+.btn-theme{background:none;border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;padding:3px 8px;border-radius:6px;display:flex;align-items:center;gap:4px;font-size:9px;font-weight:600;transition:all .2s;}
+.btn-theme:hover{background:rgba(59,130,246,.1);color:var(--accent-blue);border-color:rgba(59,130,246,.4);}
+.periode-select{display:flex;align-items:center;gap:5px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:7px;padding:3px 5px;}
+.periode-select select{background:none;border:none;color:var(--text-main);font-size:10px;font-family:var(--font-body);outline:none;cursor:pointer;padding:2px 4px;}
+
+.content-wrap{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:10px;}
+.content-wrap::-webkit-scrollbar{width:5px;} .content-wrap::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
+
+.page-header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;}
+.page-header-left{display:flex;align-items:center;gap:10px;}
+.page-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,rgba(212,175,55,.28),rgba(212,175,55,.08));border:1px solid rgba(212,175,55,.35);display:flex;align-items:center;justify-content:center;color:var(--accent-gold);flex-shrink:0;}
+.page-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--text-main);}
+.page-sub{font-size:9.5px;color:var(--text-muted);margin-top:1px;}
+
+.hero-row{display:grid;grid-template-columns:280px 1fr;gap:12px;flex-shrink:0;}
+.hero-gauge-card{background:linear-gradient(160deg,#1c1c2a,#161620);border:1px solid rgba(212,175,55,.25);border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;overflow:hidden;}
+.hero-gauge-card::before{content:'';position:absolute;top:-40%;left:-20%;width:180%;height:180%;background:radial-gradient(circle,rgba(212,175,55,.08),transparent 60%);pointer-events:none;}
+.hero-gauge-label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;display:flex;align-items:center;gap:5px;z-index:1;}
+.hero-gauge-svg{width:100%;max-width:210px;z-index:1;}
+.hero-gauge-status{display:flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:9.5px;font-weight:700;z-index:1;}
+.status-tercapai{background:rgba(16,185,129,.15);color:var(--accent-green);border:1px solid rgba(16,185,129,.3);}
+.status-belum{background:rgba(239,68,68,.15);color:var(--accent-red);border:1px solid rgba(239,68,68,.3);}
+.hero-gauge-note{font-size:8.5px;color:var(--text-muted);text-align:center;z-index:1;}
+
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:11px 13px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.32);}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;border-radius:10px 10px 0 0;}
+.kpi-card.c-gold::before{background:linear-gradient(90deg,var(--accent-gold),var(--accent-gold2));}
+.kpi-card.c-blue::before{background:linear-gradient(90deg,var(--accent-blue),#60a5fa);}
+.kpi-card.c-green::before{background:linear-gradient(90deg,var(--accent-green),#34d399);}
+.kpi-card.c-purple::before{background:linear-gradient(90deg,var(--accent-purple),#a78bfa);}
+.kpi-label{font-size:8.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;font-weight:600;display:flex;align-items:center;gap:5px;}
+.kpi-val{font-family:var(--font-display);font-size:21px;font-weight:700;line-height:1;margin-bottom:3px;letter-spacing:-.5px;}
+.kpi-val.c-gold{color:var(--accent-gold2);}
+.kpi-val.c-blue{color:var(--accent-blue);}
+.kpi-val.c-green{color:var(--accent-green);}
+.kpi-val.c-purple{color:var(--accent-purple);}
+.kpi-sub{font-size:9px;color:var(--text-muted);}
+
+.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:13px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:6px;}
+.card-title{font-family:var(--font-display);font-size:11px;font-weight:700;color:var(--text-main);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;}
+.card-badge{font-size:8px;padding:2px 7px;border-radius:20px;font-weight:600;}
+.badge-gold{background:rgba(212,175,55,.15);color:var(--accent-gold2);border:1px solid rgba(212,175,55,.3);}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--accent-blue);border:1px solid rgba(59,130,246,.25);}
+.badge-purple{background:rgba(139,92,246,.15);color:var(--accent-purple);border:1px solid rgba(139,92,246,.25);}
+
+.grid-2c{display:grid;grid-template-columns:1.4fr 1fr;gap:12px;}
+.chart-wrap{position:relative;height:170px;}
+
+table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
+.data-table thead th{position:sticky;top:0;background:var(--bg-card);text-align:left;padding:7px 8px;color:var(--text-muted);font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid var(--border-color);z-index:1;}
+.data-table tbody td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);}
+.data-table tbody tr:hover{background:rgba(255,255,255,.025);}
+.table-wrap{max-height:230px;overflow-y:auto;}
+.table-wrap::-webkit-scrollbar{width:4px;} .table-wrap::-webkit-scrollbar-thumb{background:var(--border-color);}
+.name-cell{display:flex;align-items:center;gap:7px;}
+.avatar-mini{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--accent-blue),#60a5fa);display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700;color:#fff;flex-shrink:0;}
+.avatar-mini.os{background:linear-gradient(135deg,var(--accent-purple),#a78bfa);}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:8.5px;font-weight:600;}
+.chip-ok{background:rgba(16,185,129,.13);color:var(--accent-green);}
+.chip-warn{background:rgba(239,68,68,.13);color:var(--accent-red);}
+.mini-bar-track{width:100%;height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-top:3px;}
+.mini-bar-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.34,1.4,.64,1);}
+
+.btn-export{background:linear-gradient(135deg,var(--accent-purple),#7c3aed);border:none;color:#fff;cursor:pointer;padding:6px 12px;border-radius:8px;font-family:var(--font-body);font-size:9px;font-weight:700;display:flex;align-items:center;gap:5px;transition:all .2s;}
+.btn-export:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(139,92,246,.35);}
+.btn-refresh-kpi{background:linear-gradient(135deg,var(--accent-gold),#b8912a);border:none;color:#1a1305;cursor:pointer;padding:6px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;display:flex;align-items:center;gap:6px;transition:all .2s;}
+.btn-refresh-kpi:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(212,175,55,.3);}
+
+.holiday-strip{display:flex;flex-wrap:wrap;gap:6px;}
+.holiday-chip{display:flex;align-items:center;gap:5px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:4px 10px;font-size:9px;color:var(--text-main);}
+.holiday-chip .date{font-family:var(--font-mono);color:var(--accent-red);font-weight:600;}
+
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px 10px;color:var(--text-muted);text-align:center;}
+.empty-state svg{opacity:.3;}
+.empty-state-sub{font-size:9.5px;}
+
+.toast{position:fixed;bottom:18px;right:18px;background:#1a1a28;border:1px solid var(--border-color);border-radius:9px;padding:9px 15px;font-size:10.5px;z-index:2000;animation:slideUp .3s ease;display:flex;align-items:center;gap:7px;box-shadow:0 8px 28px rgba(0,0,0,.5);}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.toast-success{border-left:3px solid var(--accent-green);}
+.toast-info{border-left:3px solid var(--accent-blue);}
+.toast-error{border-left:3px solid var(--accent-red);}
+
+body.theme-light{--bg-main:#eef1f8;--bg-sidebar:#ffffff;--bg-card:#ffffff;--bg-card-hover:#f6f8fc;--text-main:#101a30;--text-muted:#5a6785;--border-color:#dfe4ee;}
+body.theme-light .hero-gauge-card{background:linear-gradient(160deg,#ffffff,#f8f6ee);}
+body.theme-light .loading-overlay{background:rgba(238,240,245,.92);}
+body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
+
+@media (max-width:860px){
+  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:60;box-shadow:10px 0 30px rgba(0,0,0,.45);}
+  .hero-row{grid-template-columns:1fr;}
+  .kpi-row{grid-template-columns:repeat(2,1fr);}
+  .grid-2c{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="rucika-logo-wrap">
+    <span class="rucika-text">RUCIKA</span>
+    <span class="rucika-tagline">Dimana air mengalir sampai jauh</span>
+  </div>
+  <div class="loading-text" id="loading-txt">Memuat data FTE...</div>
+</div>
+
+<div class="app-shell">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <img src="./assets/img/rucika-logo.png" alt="Rucika">
+        <div>
+          <div class="logo-name">Transaksi</div>
+          <div class="logo-sub">Monitoring FTE</div>
+        </div>
+      </div>
+      <button class="btn-tog" onclick="toggleSidebar()"><i data-lucide="chevron-left" style="width:12px;"></i></button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sec-title">Menu Utama</div>
+    <div class="mitem" onclick="navTo('wh_control_tower')"><i data-lucide="layout-dashboard" style="width:12px;flex-shrink:0;"></i><span>Dashboard WH Import</span></div>
+    <div class="mitem" onclick="navTo('index')"><i data-lucide="package" style="width:12px;flex-shrink:0;"></i><span>Monitoring Stock, Inbound &amp; Outbound</span></div>
+    <div class="mitem" onclick="navTo('kanban')"><i data-lucide="layout-grid" style="width:12px;flex-shrink:0;"></i><span>Monitoring Kanban</span></div>
+    <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:12px;flex-shrink:0;"></i><span>Rekap Muatan</span></div>
+    <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:12px;flex-shrink:0;"></i><span>Loading Time Pengiriman</span></div>
+    <div class="sidebar-divider"></div>
+    <div class="mgroup open">
+      <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
+        <div class="mgroup-hdr-left"><i data-lucide="repeat" style="width:12px;flex-shrink:0;"></i><span>Transaksi</span></div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+      <div class="mgroup-body">
+        <div class="mitem" onclick="navTo('input_lembur')"><i data-lucide="clock" style="width:11px;flex-shrink:0;"></i><span>Input Lembur</span></div>
+        <div class="mitem active"><i data-lucide="bar-chart-3" style="width:11px;flex-shrink:0;"></i><span>Monitoring FTE</span></div>
+      </div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sec-title">Sistem</div>
+    <div class="mitem" onclick="clearApiCache();loadAll()"><i data-lucide="refresh-cw" style="width:12px;flex-shrink:0;"></i><span>Refresh Data</span></div>
+  </div>
+
+  <div class="main-right">
+    <div class="navbar">
+      <div class="nav-left">
+        <button class="btn-menu" onclick="toggleSidebar()"><i data-lucide="menu" style="width:13px;"></i></button>
+        <div>
+          <div class="nav-title">Monitoring FTE</div>
+          <div class="nav-sub">Transaksi</div>
+        </div>
+      </div>
+      <div class="nav-right">
+        <div class="periode-select">
+          <i data-lucide="calendar" style="width:11px;color:var(--text-muted);"></i>
+          <select id="sel-bulan" onchange="onPeriodeChange()"></select>
+          <select id="sel-tahun" onchange="onPeriodeChange()"></select>
+        </div>
+        <div class="nav-divider"></div>
+        <div class="live-clock">
+          <div class="clock-time" id="live-clock">00:00:00</div>
+          <div class="clock-date" id="live-date">-</div>
+        </div>
+        <div class="nav-divider"></div>
+        <button class="nav-icon" onclick="clearApiCache();loadAll()" title="Refresh"><i data-lucide="refresh-cw" style="width:13px;"></i></button>
+        <button class="btn-theme" id="theme-btn" onclick="toggleTheme()"><i data-lucide="moon" style="width:11px;" id="theme-icon"></i><span id="theme-label">Dark</span></button>
+      </div>
+    </div>
+
+    <div class="content-wrap">
+      <div class="page-header">
+        <div class="page-header-left">
+          <div class="page-icon"><i data-lucide="award" style="width:17px;"></i></div>
+          <div>
+            <div class="page-title">Monitoring Absensi &amp; FTE</div>
+            <div class="page-sub" id="page-sub">Full Time Equivalent karyawan internal &amp; rekap lembur outsourcing</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-row">
+        <div class="hero-gauge-card">
+          <div class="hero-gauge-label"><i data-lucide="target" style="width:10px;"></i>Overtime % vs Target</div>
+          <svg class="hero-gauge-svg" viewBox="0 0 240 152">
+            <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="rgba(120,140,180,.15)" stroke-width="16" stroke-linecap="round"/>
+            <path id="hero-gauge-arc" d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="url(#gaugeGrad)" stroke-width="16" stroke-linecap="round" stroke-dasharray="308" stroke-dashoffset="308" style="transition:stroke-dashoffset 1s cubic-bezier(.34,1.2,.64,1);"/>
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#22c55e"/>
+                <stop offset="60%" stop-color="#d4af37"/>
+                <stop offset="100%" stop-color="#ef4444"/>
+              </linearGradient>
+            </defs>
+            <line id="hero-needle" x1="120" y1="125" x2="120" y2="35" stroke="var(--text-main)" stroke-width="2.5" stroke-linecap="round" opacity=".9" style="transform-origin:120px 125px;transform:rotate(-90deg);transition:transform .9s cubic-bezier(.34,1.2,.64,1);"/>
+            <circle cx="120" cy="125" r="7" fill="var(--bg-card)" stroke="var(--text-main)" stroke-width="2.5"/>
+            <text x="120" y="108" fill="var(--text-main)" font-size="26" font-weight="800" text-anchor="middle" id="hero-gauge-pct">0%</text>
+            <text x="16" y="138" fill="var(--text-muted)" font-size="9" text-anchor="middle">0%</text>
+            <text x="120" y="11" fill="var(--text-muted)" font-size="9" text-anchor="middle">6% (target)</text>
+            <text x="224" y="138" fill="var(--text-muted)" font-size="9" text-anchor="middle">12%</text>
+          </svg>
+          <div class="hero-gauge-status status-tercapai" id="hero-status"><i data-lucide="check-circle" style="width:11px;"></i><span>Memuat...</span></div>
+          <div class="hero-gauge-note">Target Over Time Karyawan &lt; 6% (standar 173 jam/bulan)</div>
+        </div>
+
+        <div class="kpi-row">
+          <div class="kpi-card c-gold">
+            <div class="kpi-label"><i data-lucide="users" style="width:10px;"></i>Jumlah Karyawan</div>
+            <div class="kpi-val c-gold" id="kpi-jumlah">—</div>
+            <div class="kpi-sub">internal (FTE dihitung)</div>
+          </div>
+          <div class="kpi-card c-blue">
+            <div class="kpi-label"><i data-lucide="hourglass" style="width:10px;"></i>Total Jam Lembur</div>
+            <div class="kpi-val c-blue" id="kpi-jamlembur">—</div>
+            <div class="kpi-sub">jam bulan ini</div>
+          </div>
+          <div class="kpi-card c-purple">
+            <div class="kpi-label"><i data-lucide="user-plus" style="width:10px;"></i>FTE Lembur</div>
+            <div class="kpi-val c-purple" id="kpi-ftelembur">—</div>
+            <div class="kpi-sub">setara tambahan tenaga kerja</div>
+          </div>
+          <div class="kpi-card c-green">
+            <div class="kpi-label"><i data-lucide="trending-up" style="width:10px;"></i>Total FTE</div>
+            <div class="kpi-val c-green" id="kpi-totalfte">—</div>
+            <div class="kpi-sub">Karyawan + FTE Lembur</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2c">
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title"><i data-lucide="line-chart" style="width:12px;"></i>Tren Over Time % — 6 Bulan Terakhir</div>
+            <span class="card-badge badge-gold">Target &lt; 6%</span>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-ot-trend"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title"><i data-lucide="calendar-x" style="width:12px;"></i>Tanggal Merah Bulan Ini</div>
+          </div>
+          <div class="holiday-strip" id="holiday-strip"></div>
+          <div class="empty-state" id="empty-holiday" style="display:none;">
+            <i data-lucide="calendar-check" style="width:24px;"></i>
+            <div class="empty-state-sub">Tidak ada tanggal merah bulan ini</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2c">
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title"><i data-lucide="users" style="width:12px;"></i>Rincian FTE per Karyawan Internal</div>
+            <span class="card-badge badge-gold" id="badge-internal">0 orang</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Karyawan</th><th>Jam Lembur</th><th>FTE Lembur</th><th>OT %</th><th>Status</th></tr></thead>
+              <tbody id="tbody-internal"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title"><i data-lucide="briefcase" style="width:12px;"></i>Rekap Lembur Outsourcing</div>
+            <span class="card-badge badge-purple" id="badge-os">0 orang</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Karyawan</th><th>Jam Lembur</th><th></th></tr></thead>
+              <tbody id="tbody-os"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var karyawanList = [];
+var fteData = null;
+var chartOT = null;
+var _now = new Date();
+var curBulan = _now.getMonth()+1, curTahun = _now.getFullYear();
+
+var PAGE_MAP = {
+  ''                : 'index.html',
+  'index'           : 'monitoring_stock.html',
+  'kanban'          : 'kanban.html',
+  'rekap'           : 'rekap_muatan.html',
+  'wh_control_tower': 'index.html',
+  'residance'       : 'residance_time.html',
+  'input_lembur'    : 'input_lembur.html',
+  'fte_dashboard'   : 'fte_dashboard.html'
+};
+function navTo(page){
+  var t = PAGE_MAP[page || ''] || 'index.html';
+  t += '?v=' + (window.SITE_VERSION||Date.now());
+  window.location.href = t;
+}
+function toggleSidebar(){
+  document.body.classList.toggle('sidebar-hidden');
+  localStorage.setItem('lembur_sidebar_hidden', document.body.classList.contains('sidebar-hidden') ? '1':'0');
+}
+if (window.innerWidth <= 860 || localStorage.getItem('lembur_sidebar_hidden')==='1') {
+  document.body.classList.add('sidebar-hidden');
+}
+function toggleTheme(){
+  var isLight = document.body.classList.toggle('theme-light');
+  localStorage.setItem('lembur_theme', isLight?'light':'dark');
+  updateThemeBtn(isLight);
+  setTimeout(function(){ if(chartOT) chartOT.destroy(); loadTrendChart(); }, 60);
+}
+function updateThemeBtn(isLight){
+  document.getElementById('theme-icon').setAttribute('data-lucide', isLight?'sun':'moon');
+  document.getElementById('theme-label').textContent = isLight?'Light':'Dark';
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+(function(){ if(localStorage.getItem('lembur_theme')==='light'){ document.body.classList.add('theme-light'); } })();
+
+function showToast(msg, type){
+  var t = document.createElement('div');
+  t.className = 'toast toast-'+(type||'info');
+  var icon = type==='success'?'check-circle':type==='error'?'x-circle':'info';
+  t.innerHTML = '<i data-lucide="'+icon+'" style="width:13px;"></i><span>'+msg+'</span>';
+  document.body.appendChild(t);
+  if(typeof lucide!=='undefined') lucide.createIcons();
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ t.remove(); },300); }, 3200);
+}
+function showLoading(v, txt){
+  document.getElementById('loading-overlay').classList.toggle('show', !!v);
+  if(txt) document.getElementById('loading-txt').textContent = txt;
+}
+function p2(n){ n=parseInt(n,10); return n<10?'0'+n:''+n; }
+
+var NM=['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+(function initPeriode(){
+  var selB = document.getElementById('sel-bulan'), selT = document.getElementById('sel-tahun');
+  for(var m=1;m<=12;m++){ var o=document.createElement('option'); o.value=m; o.textContent=NM[m]; if(m===curBulan) o.selected=true; selB.appendChild(o); }
+  for(var y=curTahun-2;y<=curTahun+1;y++){ var oy=document.createElement('option'); oy.value=y; oy.textContent=y; if(y===curTahun) oy.selected=true; selT.appendChild(oy); }
+})();
+function onPeriodeChange(){
+  curBulan = +document.getElementById('sel-bulan').value;
+  curTahun = +document.getElementById('sel-tahun').value;
+  clearApiCache();
+  loadAll();
+}
+
+function loadAll(){
+  showLoading(true, 'Menghitung FTE & rekap lembur...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ showToast('Gagal memuat: '+(res&&res.error?res.error:''),'error'); showLoading(false); return; }
+      fteData = res;
+      renderAll();
+      showLoading(false);
+    })
+    .withFailureHandler(function(err){ showToast('Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'),'error'); showLoading(false); })
+    .getAbsensiFTEData(curBulan, curTahun);
+}
+
+function renderAll(){
+  document.getElementById('page-sub').textContent = 'Full Time Equivalent karyawan internal & rekap lembur outsourcing \u2014 '+NM[curBulan]+' '+curTahun;
+  renderHeroGauge();
+  renderKPI();
+  renderTabelInternal();
+  renderTabelOS();
+  renderHoliday();
+  loadTrendChart();
+}
+
+function renderHeroGauge(){
+  var d = fteData.internal;
+  var pct = d.overtimePct || 0;
+  var pctClamped = Math.min(pct, 12);
+  var frac = pctClamped/12;
+  document.getElementById('hero-gauge-pct').textContent = pct.toLocaleString('id-ID',{maximumFractionDigits:2})+'%';
+
+  var arc = document.getElementById('hero-gauge-arc');
+  var totalLen = 308;
+  arc.style.strokeDashoffset = totalLen - (totalLen*frac);
+
+  var needle = document.getElementById('hero-needle');
+  var angle = -90 + (frac*180);
+  needle.style.transform = 'rotate('+angle+'deg)';
+
+  var statusEl = document.getElementById('hero-status');
+  if(d.tercapai){
+    statusEl.className = 'hero-gauge-status status-tercapai';
+    statusEl.innerHTML = '<i data-lucide="check-circle" style="width:11px;"></i><span>Target Tercapai</span>';
+  } else {
+    statusEl.className = 'hero-gauge-status status-belum';
+    statusEl.innerHTML = '<i data-lucide="alert-triangle" style="width:11px;"></i><span>Melebihi Target</span>';
+  }
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+
+function renderKPI(){
+  var d = fteData.internal;
+  document.getElementById('kpi-jumlah').textContent = d.jumlahKaryawan;
+  document.getElementById('kpi-jamlembur').textContent = d.totalJamLembur.toLocaleString('id-ID',{maximumFractionDigits:1})+'j';
+  document.getElementById('kpi-ftelembur').textContent = d.fteLembur.toLocaleString('id-ID',{maximumFractionDigits:3});
+  document.getElementById('kpi-totalfte').textContent = d.totalFTE.toLocaleString('id-ID',{maximumFractionDigits:3});
+}
+
+function initials(nama){
+  return (nama||'').split(' ').filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();
+}
+
+function renderTabelInternal(){
+  var list = fteData.internal.perOrang || [];
+  document.getElementById('badge-internal').textContent = list.length + ' orang';
+  var tb = document.getElementById('tbody-internal');
+  if(!list.length){ tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;">Belum ada data lembur bulan ini</td></tr>'; return; }
+  tb.innerHTML = list.map(function(p){
+    var pct = p.overtimePct||0;
+    var ok = pct<=6;
+    var barColor = ok ? 'var(--accent-green)' : 'var(--accent-red)';
+    return '<tr>'+
+      '<td><div class="name-cell"><div class="avatar-mini">'+initials(p.nama)+'</div><div>'+p.nama+(p.jabatan==='Team Leader'?' <span style="color:var(--accent-gold2);font-size:8.5px;">(TL)</span>':'')+'</div></div></td>'+
+      '<td style="font-weight:600;">'+p.totalJamLembur+'j</td>'+
+      '<td style="font-family:var(--font-mono);">'+p.fteLembur+'</td>'+
+      '<td><div>'+pct.toLocaleString('id-ID',{maximumFractionDigits:2})+'%</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:'+Math.min(pct/12*100,100)+'%;background:'+barColor+';"></div></div></td>'+
+      '<td><span class="chip '+(ok?'chip-ok':'chip-warn')+'">'+(ok?'Aman':'Tinggi')+'</span></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function renderTabelOS(){
+  var list = fteData.os.perOrang || [];
+  document.getElementById('badge-os').textContent = list.length + ' orang';
+  var tb = document.getElementById('tbody-os');
+  if(!list.length){ tb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px;">Belum ada data lembur bulan ini</td></tr>'; return; }
+  tb.innerHTML = list.map(function(p){
+    return '<tr>'+
+      '<td><div class="name-cell"><div class="avatar-mini os">'+initials(p.nama)+'</div><div>'+p.nama+'</div></div></td>'+
+      '<td style="font-weight:600;">'+p.totalJamLembur+'j</td>'+
+      '<td><button class="btn-export" onclick="exportSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Export ke Formulir SPL"><i data-lucide="file-down" style="width:11px;"></i>SPL</button></td>'+
+    '</tr>';
+  }).join('');
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+
+function renderHoliday(){
+  var list = fteData.hariLiburBulanIni || [];
+  var strip = document.getElementById('holiday-strip');
+  if(!list.length){ strip.innerHTML=''; document.getElementById('empty-holiday').style.display='flex'; return; }
+  document.getElementById('empty-holiday').style.display='none';
+  strip.innerHTML = list.map(function(h){
+    var p = h.tanggal.split('-');
+    return '<div class="holiday-chip"><i data-lucide="calendar" style="width:10px;color:var(--accent-red);"></i><span class="date">'+p[2]+'/'+p[1]+'</span><span>'+h.keterangan+'</span></div>';
+  }).join('');
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+
+function loadTrendChart(){
+  var months = [];
+  for(var i=5;i>=0;i--){
+    var d = new Date(curTahun, curBulan-1-i, 1);
+    months.push({bulan:d.getMonth()+1, tahun:d.getFullYear(), label:NM[d.getMonth()+1].substring(0,3)+' '+String(d.getFullYear()).slice(2)});
+  }
+  var results = [];
+  var pending = months.length;
+  months.forEach(function(m, idx){
+    google.script.run
+      .withSuccessHandler(function(res){
+        results[idx] = (res&&res.success)? res.internal.overtimePct : null;
+        pending--; if(pending<=0) renderChart(months, results);
+      })
+      .withFailureHandler(function(){ results[idx]=null; pending--; if(pending<=0) renderChart(months, results); })
+      .getAbsensiFTEData(m.bulan, m.tahun);
+  });
+}
+
+function renderChart(months, results){
+  if(!months || !results) return;
+  var ctx = document.getElementById('chart-ot-trend');
+  if(!ctx) return;
+  var isDark = !document.body.classList.contains('theme-light');
+  var gridCol = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  var tickCol = isDark ? '#9da3b8' : '#5a6785';
+
+  if(chartOT) chartOT.destroy();
+  chartOT = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: months.map(function(m){return m.label;}),
+      datasets:[
+        {
+          label:'Over Time %', data: results, borderColor:'#d4af37', backgroundColor:'rgba(212,175,55,.12)',
+          borderWidth:2.5, fill:true, tension:.35, pointRadius:3, pointBackgroundColor:'#d4af37'
+        },
+        {
+          label:'Target', data: months.map(function(){return 6;}), borderColor:'#ef4444', borderDash:[5,4],
+          borderWidth:1.5, pointRadius:0, fill:false
+        }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:tickCol, font:{size:9}, boxWidth:10 } } },
+      scales:{
+        x:{ grid:{color:gridCol}, ticks:{color:tickCol, font:{size:8.5}} },
+        y:{ grid:{color:gridCol}, ticks:{color:tickCol, font:{size:8.5}, callback:function(v){return v+'%';}}, beginAtZero:true }
+      }
+    }
+  });
+}
+
+function exportSPL(kode, nama){
+  showToast('Fitur export SPL untuk '+nama+' sedang disiapkan (Tahap 4)','info');
+}
+
+setInterval(function(){
+  var n=new Date();
+  document.getElementById('live-clock').textContent = p2(n.getHours())+':'+p2(n.getMinutes())+':'+p2(n.getSeconds());
+  var hari=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  document.getElementById('live-date').textContent = hari[n.getDay()]+', '+n.getDate()+' '+NM[n.getMonth()+1]+' '+n.getFullYear();
+},1000);
+
+if(typeof lucide!=='undefined') lucide.createIcons();
+loadAll();
+</script>
+</body>
+</html>
