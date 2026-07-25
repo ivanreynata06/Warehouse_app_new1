@@ -47,7 +47,8 @@ var API_FUNCTIONS = {
   saveAbsensi             : saveAbsensi,
   getAbsensiList          : getAbsensiList,
   deleteAbsensi           : deleteAbsensi,
-  getAbsensiFTEData       : getAbsensiFTEData
+  getAbsensiFTEData       : getAbsensiFTEData,
+  exportSPL               : exportSPL
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -1985,4 +1986,124 @@ function getAbsensiFTEData(bulan, tahun) {
       hariLiburBulanIni: hariLiburBulanIni
     };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  EXPORT FORMULIR SPL (Surat Perintah Lembur) — khusus karyawan OS
+// ------------------------------------------------------------
+//  Membuat dokumen Word (.docx) berisi rekap lembur 1 karyawan OS
+//  untuk 1 bulan, mengikuti field-field yang sama dengan formulir
+//  "FORMULIR OVER TIME PT SWAKARYA INSAN MANDIRI" (SPL_SIM.docx):
+//  Tanggal, Nama, SIMID, Waktu Awal/Akhir, Total Jam Lembur,
+//  Keterangan, kolom Paraf (Karyawan/Leader/Sect Head/Dept Head),
+//  serta catatan aturan lembur & area tanda tangan Disetujui/
+//  Mengetahui — supaya tinggal diprint dan ditandatangani manual.
+//
+//  Dokumen dibuat sementara di Google Drive (folder Apps Script),
+//  langsung dikonversi ke .docx (base64) untuk diunduh browser,
+//  lalu file sementaranya dihapus (masuk trash Drive).
+// ================================================================
+function exportSPL(kode, bulan, tahun) {
+  var tmpDocId = null;
+  try {
+    var karyawanRes = getKaryawanList();
+    if (!karyawanRes.success) return karyawanRes;
+    var k = karyawanRes.data.find(function (x) { return x.kode === kode; });
+    if (!k) return { success: false, error: 'Karyawan dengan kode ' + kode + ' tidak ditemukan' };
+
+    bulan = Number(bulan); tahun = Number(tahun);
+    var bulanNamaArr = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
+    var bulanNama = bulanNamaArr[bulan];
+
+    var lemburRes = getLemburList({ kode: kode, bulan: bulan, tahun: tahun });
+    var lemburList = lemburRes.success ? lemburRes.data : [];
+    lemburList.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
+    var totalJamLembur = Math.round(lemburList.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
+
+    // ---- Bangun dokumen ----
+    var doc = DocumentApp.create('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
+    tmpDocId = doc.getId();
+    var body = doc.getBody();
+    body.setMarginTop(30).setMarginBottom(30).setMarginLeft(40).setMarginRight(40);
+    body.setPageWidth(841.68).setPageHeight(595.32); // A4 landscape (poin), muat tabel lebar
+
+    var title = body.appendParagraph('FORMULIR OVER TIME PT SWAKARYA INSAN MANDIRI');
+    title.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+    title.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    title.editAsText().setBold(true).setItalic(true).setUnderline(true).setFontSize(12);
+
+    body.appendParagraph('');
+    body.appendParagraph('JOB : ').editAsText().setBold(true).setFontSize(9);
+    body.appendParagraph('BAGIAN : Outsourcing (PT Swakarya Insan Mandiri)').editAsText().setBold(true).setFontSize(9);
+    body.appendParagraph('DEPARTMENT : Warehouse').editAsText().setBold(true).setFontSize(9);
+    body.appendParagraph('PERIODE/ BULAN : ' + tahun + '/' + bulanNama).editAsText().setBold(true).setFontSize(9);
+    body.appendParagraph('');
+
+    var headerRow = ['TANGGAL', 'NAMA', 'SIMID', 'WAKTU AWAL', 'WAKTU AKHIR', 'TOTAL JAM LEMBUR',
+      'PARAF\nKARYAWAN', 'PARAF\nLEADER', 'PARAF\nSECT HEAD', 'PARAF\nDEPT HEAD', 'KETERANGAN'];
+    var rowsData = [headerRow];
+    var jumlahBarisMin = 10;
+    var totalBaris = Math.max(lemburList.length, jumlahBarisMin);
+    for (var i = 0; i < totalBaris; i++) {
+      if (i < lemburList.length) {
+        var l = lemburList[i];
+        var p = l.tanggal.split('-');
+        rowsData.push([p[2] + '/' + p[1] + '/' + p[0], k.nama, k.kode, l.jamMulai, l.jamSelesai,
+          String(l.totalJam), '', '', '', '', l.keterangan || '']);
+      } else {
+        rowsData.push(['', '', '', '', '', '', '', '', '', '', '']);
+      }
+    }
+    var table = body.appendTable(rowsData);
+    var headerTableRow = table.getRow(0);
+    for (var c = 0; c < headerTableRow.getNumCells(); c++) {
+      var hc = headerTableRow.getCell(c);
+      hc.setBackgroundColor('#e5e5e5');
+      hc.editAsText().setBold(true).setFontSize(7.5);
+    }
+    for (var r = 1; r < table.getNumRows(); r++) {
+      for (var c2 = 0; c2 < table.getRow(r).getNumCells(); c2++) {
+        table.getRow(r).getCell(c2).editAsText().setFontSize(8);
+      }
+    }
+
+    body.appendParagraph('');
+    var totalPar = body.appendParagraph('Total Jam Lembur Bulan Ini: ' + totalJamLembur + ' jam');
+    totalPar.editAsText().setBold(true).setFontSize(9);
+
+    body.appendParagraph('');
+    var noteTitle = body.appendParagraph('Catatan:');
+    noteTitle.editAsText().setBold(true).setFontSize(8.5);
+    var notes = [
+      '1. Karyawan yang hari kerjanya 6 hari dalam seminggu, lembur di atas 4 jam melewati waktu istirahat otomatis dipotong 1 jam waktu istirahat.',
+      '2. Waktu istirahat selama bekerja: Shift 1 12:00 s/d 13:00, Shift 2 18:00 s/d 19:00, Shift 3 03:00 s/d 04:00.',
+      '3. Penulisan keterangan pada formulir lembur harus jelas sesuai yang diperintahkan oleh user.',
+      '4. Surat perintah lembur wajib di-approve sampai Department Head (DH).'
+    ];
+    notes.forEach(function (n) { body.appendParagraph(n).editAsText().setFontSize(8); });
+
+    body.appendParagraph('');
+    var sigTable = body.appendTable([
+      ['Dibuat oleh', 'Disetujui (Leader)', 'Mengetahui (Sect Head)', 'Mengetahui (Dept Head)'],
+      ['', '', '', '']
+    ]);
+    for (var sc = 0; sc < 4; sc++) {
+      sigTable.getRow(0).getCell(sc).editAsText().setBold(true).setFontSize(8.5);
+      sigTable.getRow(1).getCell(sc).setPaddingTop(40); // ruang tanda tangan
+    }
+
+    doc.saveAndClose();
+
+    var docxBlob = DriveApp.getFileById(tmpDocId).getAs(MimeType.MICROSOFT_WORD);
+    var base64 = Utilities.base64Encode(docxBlob.getBytes());
+    var filename = 'SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun + '.docx';
+
+    DriveApp.getFileById(tmpDocId).setTrashed(true); // bersihkan file sementara
+
+    return { success: true, filename: filename, base64: base64, totalJamLembur: totalJamLembur, jumlahEntri: lemburList.length };
+  } catch (err) {
+    // Kalau sempat bikin dokumen sementara tapi lalu gagal, tetap coba bersihkan
+    if (tmpDocId) { try { DriveApp.getFileById(tmpDocId).setTrashed(true); } catch (e2) {} }
+    return { success: false, error: err.message };
+  }
 }

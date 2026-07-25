@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/config.js?v=20260722c"></script>
-<script src="./assets/js/api-shim.js?v=20260722c"></script>
-<script src="./assets/js/sw-register.js?v=20260722c"></script>
+<script src="./assets/js/config.js?v=20260722d"></script>
+<script src="./assets/js/api-shim.js?v=20260722d"></script>
+<script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -589,7 +589,28 @@ function renderChart(months, results){
 }
 
 function exportSPL(kode, nama){
-  showToast('Fitur export SPL untuk '+nama+' sedang disiapkan (Tahap 4)','info');
+  showToast('Menyiapkan formulir SPL untuk '+nama+'...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ showToast('Gagal export SPL: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
+      try {
+        var byteChars = atob(res.base64);
+        var byteNumbers = new Array(byteChars.length);
+        for (var i=0;i<byteChars.length;i++) byteNumbers[i] = byteChars.charCodeAt(i);
+        var byteArray = new Uint8Array(byteNumbers);
+        var blob = new Blob([byteArray], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = res.filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+        showToast('Formulir SPL '+nama+' terunduh ('+res.totalJamLembur+' jam, '+res.jumlahEntri+' entri)','success');
+      } catch(e) {
+        showToast('Gagal memproses file hasil export: '+e.message,'error');
+      }
+    })
+    .withFailureHandler(function(err){ showToast('Gagal export SPL: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .exportSPL(kode, curBulan, curTahun);
 }
 
 setInterval(function(){
