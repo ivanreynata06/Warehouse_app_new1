@@ -684,6 +684,15 @@ function submitLembur(){
       btn.disabled=false; btn.style.opacity='1';
       if(!res || !res.success){ showToast('Gagal simpan: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
       showToast('Lembur '+(k?k.nama:'')+' ('+res.totalJam+' jam) tersimpan','success');
+      if(res.isInternal){
+        setTimeout(function(){
+          if(res.waNotifSent){
+            showToast('Notifikasi WA terkirim ke Pak Sandy untuk approval','success');
+          } else {
+            showToast('Lembur tersimpan, tapi notifikasi WA ke Pak Sandy gagal terkirim (cek token Fonnte)','warning');
+          }
+        }, 600);
+      }
       document.getElementById('lm-mulai').value=''; document.getElementById('lm-selesai').value='';
       document.getElementById('lm-ket').value='';
       document.getElementById('durasi-preview').style.display='none';

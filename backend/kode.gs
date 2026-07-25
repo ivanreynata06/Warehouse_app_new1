@@ -1784,6 +1784,8 @@ function saveLembur(data) {
     // Dibungkus try/catch sendiri supaya kalau WA gagal terkirim (token
     // belum diisi, kuota habis, dsb), penyimpanan lembur TETAP dianggap
     // sukses -- approval notif cuma bonus, bukan syarat simpan data.
+    var waNotifSent = false;
+    var isInternal  = false;
     try {
       var shKar = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
       var kategori = '';
@@ -1793,14 +1795,15 @@ function saveLembur(data) {
           if (String(dk[ik][0]) === String(data.kode)) { kategori = String(dk[ik][2] || ''); break; }
         }
       }
-      if (kategori === 'Internal') {
-        sendWaNotifLembur(data.nama || data.kode, data.tanggal, data.jamMulai, data.jamSelesai, durJam, data.keterangan || '-');
+      isInternal = (kategori === 'Internal');
+      if (isInternal) {
+        waNotifSent = sendWaNotifLembur(data.nama || data.kode, data.tanggal, data.jamMulai, data.jamSelesai, durJam, data.keterangan || '-');
       }
     } catch (notifErr) {
       Logger.log('Gagal kirim notif WA lembur: ' + notifErr.message);
     }
 
-    return { success: true, totalJam: durJam };
+    return { success: true, totalJam: durJam, waNotifSent: waNotifSent, isInternal: isInternal };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -1812,6 +1815,10 @@ function saveLembur(data) {
 //   Project Settings (ikon gerigi) -> Script Properties -> tambahkan:
 //     FONNTE_TOKEN       = token API dari dashboard Fonnte (menu Device)
 //     FONNTE_APPROVER_WA = nomor WA approver, format 628xxxxxxxxxx
+//
+//  Return: true kalau berhasil terkirim (Fonnte balas status:true),
+//  false kalau gagal/dilewati (biar frontend tahu apakah perlu kasih
+//  tahu user "notif WA terkirim" atau tidak).
 // ================================================================
 function sendWaNotifLembur(nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
   var props   = PropertiesService.getScriptProperties();
@@ -1819,7 +1826,7 @@ function sendWaNotifLembur(nama, tanggal, jamMulai, jamSelesai, durJam, keterang
   var target  = props.getProperty('FONNTE_APPROVER_WA');
   if (!token || !target) {
     Logger.log('FONNTE_TOKEN / FONNTE_APPROVER_WA belum diisi di Script Properties -- notif WA dilewati.');
-    return;
+    return false;
   }
 
   var pesan =
@@ -1830,13 +1837,21 @@ function sendWaNotifLembur(nama, tanggal, jamMulai, jamSelesai, durJam, keterang
     'Keterangan : ' + keterangan + '\n\n' +
     'Mohon segera di-*APPROVE* pada aplikasi *DBC Portal*. \uD83D\uDE4F';
 
-  var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
-    method: 'post',
-    headers: { Authorization: token },
-    payload: { target: target, message: pesan, countryCode: '62' },
-    muteHttpExceptions: true
-  });
-  Logger.log('Fonnte response: ' + res.getContentText());
+  try {
+    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+      method: 'post',
+      headers: { Authorization: token },
+      payload: { target: target, message: pesan, countryCode: '62' },
+      muteHttpExceptions: true
+    });
+    var body = res.getContentText();
+    Logger.log('Fonnte response: ' + body);
+    var parsed = JSON.parse(body);
+    return parsed && parsed.status === true;
+  } catch (waErr) {
+    Logger.log('Fonnte fetch error: ' + waErr.message);
+    return false;
+  }
 }
 
 function getLemburList(filter) {
