@@ -2982,7 +2982,7 @@ function renderPendingOptions(){
   var sel=document.getElementById('inp-pending');
   if(!pendingRowsData.length){ sel.innerHTML='<option value="">Tidak ada agen menunggu muat</option>'; return; }
   sel.innerHTML='<option value="">- Pilih Agen -</option>'+
-    pendingRowsData.map(function(r,idx){ return '<option value="'+idx+'">'+escHtml(r.agen)+' ? SPM '+escHtml(r.spm)+'</option>'; }).join('');
+    pendingRowsData.map(function(r,idx){ return '<option value="'+idx+'">'+escHtml(r.agen)+' \xb7 SPM '+escHtml(r.spm)+'</option>'; }).join('');
 }
 
 function resetAddModal(){
