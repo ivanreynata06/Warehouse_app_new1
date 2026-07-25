@@ -271,8 +271,15 @@ function getResidenceTimeData(filter) {
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
-      // Baca SPM dari kolom E (index 4 = kolom ke-5)
-      var spm = String(row[4] || '').trim();
+      // Baca SPM: bisa tercatat di salah satu dari 3 kolom kategori produk
+      // -- C=Rucika, D=Lem/Lonyx, E=PPR/Sitech -- tergantung jenis kiriman.
+      // SEBELUMNYA cuma baca kolom E, jadi kiriman Rucika/Lem-Lonyx (termasuk
+      // yang ditandai "Ikut Fitting Rucika", SPM-nya ada di kolom C) hilang
+      // total dari rekap karena kolom E-nya memang kosong.
+      var spmRucika = String(row[2] || '').trim(); // C = Rucika
+      var spmLem    = String(row[3] || '').trim(); // D = Lem/Lonyx
+      var spmPpr    = String(row[4] || '').trim(); // E = PPR/Sitech
+      var spm = spmPpr || spmRucika || spmLem;
       if (!spm) continue;
 
       var tglRaw = row[0];
@@ -353,7 +360,9 @@ function getPendingRows() {
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
-      var spm        = String(row[4] || '').trim();   // E = PPR/SITECH (No. SPM)
+      // Sama seperti getResidenceTimeData: SPM bisa ada di kolom C (Rucika),
+      // D (Lem/Lonyx), atau E (PPR/Sitech) tergantung jenis kirimannya.
+      var spm        = String(row[4] || '').trim() || String(row[2] || '').trim() || String(row[3] || '').trim();
       var agen       = String(row[1] || '').trim();   // B = Nama Agen
       var nopol      = String(row[5] || '').trim();   // F = Nopol
       var waktuMulai = row[7];                          // H = Waktu Mulai
