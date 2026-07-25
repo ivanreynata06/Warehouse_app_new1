@@ -1797,7 +1797,7 @@ function saveLembur(data) {
       }
       isInternal = (kategori === 'Internal');
       if (isInternal) {
-        waNotifSent = sendWaNotifLembur(data.nama || data.kode, data.tanggal, data.jamMulai, data.jamSelesai, durJam, data.keterangan || '-');
+        waNotifSent = sendWaNotifLembur(data.kode, data.nama || data.kode, data.tanggal, data.jamMulai, data.jamSelesai, durJam, data.keterangan || '-');
       }
     } catch (notifErr) {
       Logger.log('Gagal kirim notif WA lembur: ' + notifErr.message);
@@ -1811,21 +1811,40 @@ function saveLembur(data) {
 //  Kirim notifikasi WhatsApp (via Fonnte) ke approver ketika ada
 //  input lembur karyawan INTERNAL baru, supaya segera di-approve.
 //
+//  Setiap karyawan Internal punya nomor WA + device Fonnte SENDIRI
+//  (bukan nomor pribadi admin), supaya laporan terkirim "atas nama"
+//  karyawan yang bersangkutan, bukan numpang nomor orang lain.
+//
 //  SETUP (sekali saja, di Apps Script editor):
 //   Project Settings (ikon gerigi) -> Script Properties -> tambahkan:
-//     FONNTE_TOKEN       = token API dari dashboard Fonnte (menu Device)
-//     FONNTE_APPROVER_WA = nomor WA approver, format 628xxxxxxxxxx
+//
+//     FONNTE_APPROVER_WA   = nomor WA approver (Pak Sandy), format 628xxxxxxxxxx
+//                            -- ini TUJUAN, sama untuk semua karyawan
+//
+//     FONNTE_TOKEN_<KODE>  = token device Fonnte milik nomor WA karyawan
+//                            tsb (KODE = kolom "Kode" di sheet KARYAWAN_LEMBUR)
+//                            -- ini PENGIRIM, beda-beda per karyawan
+//
+//   Contoh berdasarkan data karyawan saat ini:
+//     FONNTE_TOKEN_2168311  -> token device WA milik WANG SUTRISNO
+//     FONNTE_TOKEN_2165310  -> token device WA milik SAEPUL GANNI
+//     FONNTE_TOKEN_2155807  -> token device WA milik SULISTYO
+//
+//   FONNTE_TOKEN (tanpa akhiran kode) bersifat OPSIONAL, dipakai
+//   sebagai fallback kalau suatu kode belum punya token sendiri
+//   (misalnya karyawan baru yang device WA-nya belum disetup).
 //
 //  Return: true kalau berhasil terkirim (Fonnte balas status:true),
 //  false kalau gagal/dilewati (biar frontend tahu apakah perlu kasih
 //  tahu user "notif WA terkirim" atau tidak).
 // ================================================================
-function sendWaNotifLembur(nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
+function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
   var props   = PropertiesService.getScriptProperties();
-  var token   = props.getProperty('FONNTE_TOKEN');
   var target  = props.getProperty('FONNTE_APPROVER_WA');
+  // Token pengirim: coba punya karyawan ybs dulu, baru fallback ke token umum.
+  var token   = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
   if (!token || !target) {
-    Logger.log('FONNTE_TOKEN / FONNTE_APPROVER_WA belum diisi di Script Properties -- notif WA dilewati.');
+    Logger.log('Token Fonnte untuk kode "'+kode+'" atau FONNTE_APPROVER_WA belum diisi -- notif WA dilewati.');
     return false;
   }
 
