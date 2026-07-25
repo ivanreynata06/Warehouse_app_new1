@@ -1895,7 +1895,7 @@ function getLemburList(filter) {
       var dk = _fmtYMD(tgl);
       out.push({
         rowIndex: i + 1, tanggal: dk, kode: String(r[2]), nama: String(r[3]),
-        jamMulai: String(r[4]), jamSelesai: String(r[5]), totalJam: Number(r[6]) || 0,
+        jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
         keterangan: String(r[7] || ''), inputOleh: String(r[8] || ''),
         isMinggu: tgl.getDay() === 0,
         isHariLibur: !!hariLibur[dk],
