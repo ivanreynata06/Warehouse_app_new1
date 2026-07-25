@@ -2185,7 +2185,22 @@ function exportSPL(kode, bulan, tahun) {
 
     doc.saveAndClose();
 
-    var docxBlob = DriveApp.getFileById(tmpDocId).getAs(MimeType.MICROSOFT_WORD);
+    // ---- Konversi ke .docx ----
+    // CATATAN: DriveApp.getFileById(id).getAs(MimeType.MICROSOFT_WORD) TIDAK
+    // didukung untuk file Google Docs native (error "Converting from
+    // application/vnd.google-apps.document ... is not supported"). Ini
+    // limitasi bawaan Apps Script, bukan soal izin. Solusinya: panggil
+    // langsung endpoint export Drive API v3 pakai UrlFetchApp.
+    var exportMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    var exportUrl = 'https://www.googleapis.com/drive/v3/files/' + tmpDocId + '/export?mimeType=' + encodeURIComponent(exportMime);
+    var exportResp = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    });
+    if (exportResp.getResponseCode() !== 200) {
+      throw new Error('Gagal export ke docx (HTTP ' + exportResp.getResponseCode() + '): ' + exportResp.getContentText());
+    }
+    var docxBlob = exportResp.getBlob();
     var base64 = Utilities.base64Encode(docxBlob.getBytes());
     var filename = 'SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun + '.docx';
 
