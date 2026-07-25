@@ -1851,6 +1851,7 @@ function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, ke
   var pesan =
     '*PENGAJUAN LEMBUR BARU*\n\n' +
     'Nama       : ' + nama + '\n' +
+    'NIK        : ' + kode + '\n' +
     'Tanggal    : ' + tanggal + '\n' +
     'Jam        : ' + jamMulai + ' - ' + jamSelesai + ' (' + durJam + ' jam)\n' +
     'Keterangan : ' + keterangan + '\n\n' +
