@@ -1854,7 +1854,7 @@ function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, ke
     'Tanggal    : ' + tanggal + '\n' +
     'Jam        : ' + jamMulai + ' - ' + jamSelesai + ' (' + durJam + ' jam)\n' +
     'Keterangan : ' + keterangan + '\n\n' +
-    'Mohon segera di-*APPROVE* pada aplikasi *DBC Portal*. \uD83D\uDE4F';
+    'Mohon Segera di input di aplikasi Sunfish, terimakasih';
 
   try {
     var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
