@@ -1780,8 +1780,99 @@ function saveLembur(data) {
       data.jamMulai, data.jamSelesai, durJam,
       data.keterangan || '', data.inputOleh || ''
     ]);
-    return { success: true, totalJam: durJam };
+
+    // ---- Notifikasi WhatsApp ke approver (khusus karyawan INTERNAL) ----
+    // Dibungkus try/catch sendiri supaya kalau WA gagal terkirim (token
+    // belum diisi, kuota habis, dsb), penyimpanan lembur TETAP dianggap
+    // sukses -- approval notif cuma bonus, bukan syarat simpan data.
+    var waNotifSent = false;
+    var isInternal  = false;
+    try {
+      var shKar = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+      var kategori = '';
+      if (shKar) {
+        var dk = shKar.getDataRange().getValues();
+        for (var ik = 1; ik < dk.length; ik++) {
+          if (String(dk[ik][0]) === String(data.kode)) { kategori = String(dk[ik][2] || ''); break; }
+        }
+      }
+      isInternal = (kategori === 'Internal');
+      if (isInternal) {
+        waNotifSent = sendWaNotifLembur(data.kode, data.nama || data.kode, data.tanggal, data.jamMulai, data.jamSelesai, durJam, data.keterangan || '-');
+      }
+    } catch (notifErr) {
+      Logger.log('Gagal kirim notif WA lembur: ' + notifErr.message);
+    }
+
+    return { success: true, totalJam: durJam, waNotifSent: waNotifSent, isInternal: isInternal };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  Kirim notifikasi WhatsApp (via Fonnte) ke approver ketika ada
+//  input lembur karyawan INTERNAL baru, supaya segera di-approve.
+//
+//  Setiap karyawan Internal punya nomor WA + device Fonnte SENDIRI
+//  (bukan nomor pribadi admin), supaya laporan terkirim "atas nama"
+//  karyawan yang bersangkutan, bukan numpang nomor orang lain.
+//
+//  SETUP (sekali saja, di Apps Script editor):
+//   Project Settings (ikon gerigi) -> Script Properties -> tambahkan:
+//
+//     FONNTE_APPROVER_WA   = nomor WA approver (Pak Sandy), format 628xxxxxxxxxx
+//                            -- ini TUJUAN, sama untuk semua karyawan
+//
+//     FONNTE_TOKEN_<KODE>  = token device Fonnte milik nomor WA karyawan
+//                            tsb (KODE = kolom "Kode" di sheet KARYAWAN_LEMBUR)
+//                            -- ini PENGIRIM, beda-beda per karyawan
+//
+//   Contoh berdasarkan data karyawan saat ini:
+//     FONNTE_TOKEN_2168311  -> token device WA milik WANG SUTRISNO
+//     FONNTE_TOKEN_2165310  -> token device WA milik SAEPUL GANNI
+//     FONNTE_TOKEN_2155807  -> token device WA milik SULISTYO
+//
+//   FONNTE_TOKEN (tanpa akhiran kode) bersifat OPSIONAL, dipakai
+//   sebagai fallback kalau suatu kode belum punya token sendiri
+//   (misalnya karyawan baru yang device WA-nya belum disetup).
+//
+//  Return: true kalau berhasil terkirim (Fonnte balas status:true),
+//  false kalau gagal/dilewati (biar frontend tahu apakah perlu kasih
+//  tahu user "notif WA terkirim" atau tidak).
+// ================================================================
+function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
+  var props   = PropertiesService.getScriptProperties();
+  var target  = props.getProperty('FONNTE_APPROVER_WA');
+  // Token pengirim: coba punya karyawan ybs dulu, baru fallback ke token umum.
+  var token   = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
+  if (!token || !target) {
+    Logger.log('Token Fonnte untuk kode "'+kode+'" atau FONNTE_APPROVER_WA belum diisi -- notif WA dilewati.');
+    return false;
+  }
+
+  var pesan =
+    '*PENGAJUAN LEMBUR BARU*\n\n' +
+    'Nama       : ' + nama + '\n' +
+    'NIK        : ' + kode + '\n' +
+    'Tanggal    : ' + tanggal + '\n' +
+    'Jam        : ' + jamMulai + ' - ' + jamSelesai + ' (' + durJam + ' jam)\n' +
+    'Keterangan : ' + keterangan + '\n\n' +
+    'Mohon Segera di input di aplikasi Sunfish, terimakasih';
+
+  try {
+    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+      method: 'post',
+      headers: { Authorization: token },
+      payload: { target: target, message: pesan, countryCode: '62' },
+      muteHttpExceptions: true
+    });
+    var body = res.getContentText();
+    Logger.log('Fonnte response: ' + body);
+    var parsed = JSON.parse(body);
+    return parsed && parsed.status === true;
+  } catch (waErr) {
+    Logger.log('Fonnte fetch error: ' + waErr.message);
+    return false;
+  }
 }
 
 function getLemburList(filter) {
@@ -1805,7 +1896,7 @@ function getLemburList(filter) {
       var dk = _fmtYMD(tgl);
       out.push({
         rowIndex: i + 1, tanggal: dk, kode: String(r[2]), nama: String(r[3]),
-        jamMulai: String(r[4]), jamSelesai: String(r[5]), totalJam: Number(r[6]) || 0,
+        jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
         keterangan: String(r[7] || ''), inputOleh: String(r[8] || ''),
         isMinggu: tgl.getDay() === 0,
         isHariLibur: !!hariLibur[dk],

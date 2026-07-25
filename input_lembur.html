@@ -5,6 +5,8 @@
 <script src="./assets/js/config.js?v=20260722d"></script>
 <script src="./assets/js/api-shim.js?v=20260722d"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
+<!-- SheetJS: dipakai untuk fitur Export Excel rekap lembur -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -12,6 +14,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Input Lembur — Transaksi</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0b1020">
+<link rel="icon" href="./assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest" defer></script>
@@ -117,6 +123,10 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 /* CARD BASE */
 .card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:13px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;}
 .card-hdr{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.btn-export-sm{background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;cursor:pointer;
+  padding:5px 10px;border-radius:7px;font-family:'Inter',sans-serif;font-size:9px;font-weight:700;
+  display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;}
+.btn-export-sm:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(34,197,94,.35);}
 .card-title{font-family:var(--font-display);font-size:11px;font-weight:700;color:var(--text-main);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;}
 .card-badge{font-size:8px;padding:2px 7px;border-radius:20px;font-weight:600;}
 .badge-gold{background:rgba(212,175,55,.15);color:var(--accent-gold2);border:1px solid rgba(212,175,55,.3);}
@@ -369,7 +379,12 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <div class="card">
             <div class="card-hdr">
               <div class="card-title"><i data-lucide="list" style="width:12px;"></i>Riwayat Lembur Bulan Ini</div>
-              <span class="card-badge badge-gold" id="badge-riwayat-lembur">0 entri</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="card-badge badge-gold" id="badge-riwayat-lembur">0 entri</span>
+                <button class="btn-export-sm" onclick="exportLemburExcel()" title="Export rekap lembur (Internal &amp; OS) ke Excel">
+                  <i data-lucide="file-spreadsheet" style="width:11px;"></i>Export Excel
+                </button>
+              </div>
             </div>
             <div class="table-wrap">
               <table class="data-table">
@@ -619,6 +634,48 @@ function fmtTglShort(ymd){
 }
 
 // ================================================================
+//  EXPORT EXCEL — Rekap Lembur bulan berjalan (Internal & OS sekaligus)
+// ================================================================
+function exportLemburExcel(){
+  if(typeof XLSX==='undefined'){ showToast('Library Excel gagal dimuat, coba refresh halaman','error'); return; }
+  if(!lemburList || !lemburList.length){ showToast('Tidak ada data lembur bulan ini untuk diexport','error'); return; }
+
+  var bulanNamaFull=['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  function fmtTglFull(ymd){ var p=ymd.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+  var rows = lemburList.map(function(l){
+    var k = karyawanList.find(function(x){ return x.kode===l.kode; }) || {};
+    return {
+      'Tanggal'     : fmtTglFull(l.tanggal),
+      'NIK'         : l.kode,
+      'Nama'        : l.nama,
+      'Kategori'    : k.kategori || '',
+      'Jabatan'     : k.jabatan || '',
+      'Jam Mulai'   : l.jamMulai,
+      'Jam Selesai' : l.jamSelesai,
+      'Total Jam'   : l.totalJam,
+      'Keterangan'  : l.keterangan || '',
+      'Tanggal Merah' : l.isHariLibur ? (l.hariLiburLabel || 'Ya') : ''
+    };
+  });
+  // Urutkan tanggal lama->baru biar enak dibaca di Excel (beda dari tampilan tabel yg baru->lama)
+  rows.reverse();
+
+  var ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:9}, {wch:12}, {wch:22}, {wch:10}, {wch:12},
+    {wch:9}, {wch:9}, {wch:9}, {wch:28}, {wch:14}
+  ];
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Rekap Lembur');
+
+  var namaBulan = bulanNamaFull[curBulan] || curBulan;
+  var fname = 'Rekap_Lembur_'+namaBulan+'_'+curTahun+'.xlsx';
+  XLSX.writeFile(wb, fname);
+  showToast('Excel rekap lembur ('+rows.length+' entri) berhasil didownload','success');
+}
+
+// ================================================================
 //  FORM: INPUT LEMBUR
 // ================================================================
 function onKaryawanChange(){ updateDurasiPreview(); }
@@ -684,6 +741,15 @@ function submitLembur(){
       btn.disabled=false; btn.style.opacity='1';
       if(!res || !res.success){ showToast('Gagal simpan: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
       showToast('Lembur '+(k?k.nama:'')+' ('+res.totalJam+' jam) tersimpan','success');
+      if(res.isInternal){
+        setTimeout(function(){
+          if(res.waNotifSent){
+            showToast('Notifikasi WA terkirim ke Pak Sandy untuk approval','success');
+          } else {
+            showToast('Lembur tersimpan, tapi notifikasi WA ke Pak Sandy gagal terkirim (cek token Fonnte)','warning');
+          }
+        }, 600);
+      }
       document.getElementById('lm-mulai').value=''; document.getElementById('lm-selesai').value='';
       document.getElementById('lm-ket').value='';
       document.getElementById('durasi-preview').style.display='none';

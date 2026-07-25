@@ -129,8 +129,8 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
 .pic-name{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;line-height:1.2;}
 .pic-role{font-size:9px;color:var(--txt2);margin-top:1px;}
 .pic-upload-btn{margin-left:auto;background:none;border:1px dashed var(--border2);border-radius:5px;
-  padding:4px 7px;color:var(--txt3);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;
-  transition:all .15s;white-space:nowrap;flex-shrink:0;}
+  padding:5px 6px;color:var(--txt3);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;
+  transition:all .15s;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;}
 .pic-upload-btn:hover{border-color:var(--green);color:var(--green);}
 .pic-stats{padding:8px 12px;display:flex;flex-direction:column;gap:5px;}
 .pic-stat-row{display:flex;justify-content:space-between;align-items:center;gap:4px;}
@@ -650,7 +650,9 @@ function renderPicCards(d){
           '<div class="pic-name" style="color:'+col+'">'+pic+'</div>'+
           '<div class="pic-role">'+(pic==='WANG'?'PIC Fitting':'PIC Persiapan Muatan')+'</div>'+
         '</div>'+
-        '<buttonclass="pic-upload-btn" data-pic="'+pic+'" onclick="event.stopPropagation();triggerUpload(this)" title="Upload foto">??</button>'+
+        '<button class="pic-upload-btn" data-pic="'+pic+'" onclick="event.stopPropagation();triggerUpload(this)" title="Upload foto">'+
+          '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'+
+        '</button>'+
           '<span class="photo-upload-saving" id="photo-saving-'+pic+'" style="display:none;"></span>'+
         '</div>'+
         '</div>'+
