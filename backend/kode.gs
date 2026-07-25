@@ -1779,8 +1779,64 @@ function saveLembur(data) {
       data.jamMulai, data.jamSelesai, durJam,
       data.keterangan || '', data.inputOleh || ''
     ]);
+
+    // ---- Notifikasi WhatsApp ke approver (khusus karyawan INTERNAL) ----
+    // Dibungkus try/catch sendiri supaya kalau WA gagal terkirim (token
+    // belum diisi, kuota habis, dsb), penyimpanan lembur TETAP dianggap
+    // sukses -- approval notif cuma bonus, bukan syarat simpan data.
+    try {
+      var shKar = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+      var kategori = '';
+      if (shKar) {
+        var dk = shKar.getDataRange().getValues();
+        for (var ik = 1; ik < dk.length; ik++) {
+          if (String(dk[ik][0]) === String(data.kode)) { kategori = String(dk[ik][2] || ''); break; }
+        }
+      }
+      if (kategori === 'Internal') {
+        sendWaNotifLembur(data.nama || data.kode, data.tanggal, data.jamMulai, data.jamSelesai, durJam, data.keterangan || '-');
+      }
+    } catch (notifErr) {
+      Logger.log('Gagal kirim notif WA lembur: ' + notifErr.message);
+    }
+
     return { success: true, totalJam: durJam };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  Kirim notifikasi WhatsApp (via Fonnte) ke approver ketika ada
+//  input lembur karyawan INTERNAL baru, supaya segera di-approve.
+//
+//  SETUP (sekali saja, di Apps Script editor):
+//   Project Settings (ikon gerigi) -> Script Properties -> tambahkan:
+//     FONNTE_TOKEN       = token API dari dashboard Fonnte (menu Device)
+//     FONNTE_APPROVER_WA = nomor WA approver, format 628xxxxxxxxxx
+// ================================================================
+function sendWaNotifLembur(nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
+  var props   = PropertiesService.getScriptProperties();
+  var token   = props.getProperty('FONNTE_TOKEN');
+  var target  = props.getProperty('FONNTE_APPROVER_WA');
+  if (!token || !target) {
+    Logger.log('FONNTE_TOKEN / FONNTE_APPROVER_WA belum diisi di Script Properties -- notif WA dilewati.');
+    return;
+  }
+
+  var pesan =
+    '*PENGAJUAN LEMBUR BARU*\n\n' +
+    'Nama       : ' + nama + '\n' +
+    'Tanggal    : ' + tanggal + '\n' +
+    'Jam        : ' + jamMulai + ' - ' + jamSelesai + ' (' + durJam + ' jam)\n' +
+    'Keterangan : ' + keterangan + '\n\n' +
+    'Mohon segera di-*APPROVE* pada aplikasi *DBC Portal*. \uD83D\uDE4F';
+
+  var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+    method: 'post',
+    headers: { Authorization: token },
+    payload: { target: target, message: pesan, countryCode: '62' },
+    muteHttpExceptions: true
+  });
+  Logger.log('Fonnte response: ' + res.getContentText());
 }
 
 function getLemburList(filter) {
