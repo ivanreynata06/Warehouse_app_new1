@@ -2094,9 +2094,37 @@ function getAbsensiFTEData(bulan, tahun) {
 //  langsung dikonversi ke .docx (base64) untuk diunduh browser,
 //  lalu file sementaranya dihapus (masuk trash Drive).
 // ================================================================
+// ================================================================
+//  EXPORT FORMULIR SPL (Surat Perintah Lembur) — khusus karyawan OS
+// ------------------------------------------------------------
+//  Memakai TEMPLATE ASLI (SPL_SIM.docx yang sudah diupload ke Google
+//  Drive & disisipi penanda {{...}}) supaya hasil export FORMATNYA
+//  IDENTIK dengan file asli (logo, tabel, semua) — bukan dibuat ulang
+//  dari nol. Apps Script cuma menyalin template itu lalu mengganti
+//  penanda dengan data sungguhan (find-and-replace), lalu konversi
+//  hasilnya ke .docx.
+//
+//  SETUP (WAJIB sebelum dipakai):
+//  1. Download file template (SPL_SIM_template.docx) yang saya
+//     siapkan, lalu upload ke Google Drive kamu.
+//  2. Klik kanan file itu di Drive -> "Buka dengan" -> "Google Dokumen"
+//     (supaya otomatis punya versi Google Docs, dibutuhkan untuk
+//     find-and-replace lewat Apps Script).
+//  3. Buka Google Doc hasil konversi itu, lihat URL-nya:
+//       https://docs.google.com/document/d/XXXXXXXXXXXXX/edit
+//     bagian XXXXXXXXXXXXX itu File ID-nya.
+//  4. Di Apps Script: Project Settings -> Script Properties ->
+//     tambahkan properti SPL_TEMPLATE_DOC_ID = (File ID dari langkah 3)
+// ================================================================
 function exportSPL(kode, bulan, tahun) {
   var tmpDocId = null;
   try {
+    var props = PropertiesService.getScriptProperties();
+    var templateDocId = props.getProperty('SPL_TEMPLATE_DOC_ID');
+    if (!templateDocId) {
+      return { success: false, error: 'SPL_TEMPLATE_DOC_ID belum di-set di Script Properties. Lihat instruksi setup di komentar fungsi exportSPL.' };
+    }
+
     var karyawanRes = getKaryawanList();
     if (!karyawanRes.success) return karyawanRes;
     var k = karyawanRes.data.find(function (x) { return x.kode === kode; });
@@ -2111,89 +2139,62 @@ function exportSPL(kode, bulan, tahun) {
     lemburList.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
     var totalJamLembur = Math.round(lemburList.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
 
-    // ---- Bangun dokumen ----
-    var doc = DocumentApp.create('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
-    tmpDocId = doc.getId();
+    // Salin template (bukan edit file aslinya), lalu isi datanya di salinan itu
+    var copyFile = DriveApp.getFileById(templateDocId).makeCopy('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
+    tmpDocId = copyFile.getId();
+    var doc = DocumentApp.openById(tmpDocId);
     var body = doc.getBody();
-    body.setMarginTop(30).setMarginBottom(30).setMarginLeft(40).setMarginRight(40);
-    body.setPageWidth(841.68).setPageHeight(595.32); // A4 landscape (poin), muat tabel lebar
 
-    var title = body.appendParagraph('FORMULIR OVER TIME PT SWAKARYA INSAN MANDIRI');
-    title.setHeading(DocumentApp.ParagraphHeading.NORMAL);
-    title.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-    title.editAsText().setBold(true).setItalic(true).setUnderline(true).setFontSize(12);
+    body.replaceText('\\{\\{JOB\\}\\}', 'Staff Warehouse (OS)');
+    body.replaceText('\\{\\{BAGIAN\\}\\}', 'Outsourcing - PT Swakarya Insan Mandiri');
+    body.replaceText('\\{\\{PERIODE\\}\\}', tahun + '/' + bulanNama);
 
-    body.appendParagraph('');
-    body.appendParagraph('JOB : ').editAsText().setBold(true).setFontSize(9);
-    body.appendParagraph('BAGIAN : Outsourcing (PT Swakarya Insan Mandiri)').editAsText().setBold(true).setFontSize(9);
-    body.appendParagraph('DEPARTMENT : Warehouse').editAsText().setBold(true).setFontSize(9);
-    body.appendParagraph('PERIODE/ BULAN : ' + tahun + '/' + bulanNama).editAsText().setBold(true).setFontSize(9);
-    body.appendParagraph('');
-
-    var headerRow = ['TANGGAL', 'NAMA', 'SIMID', 'WAKTU AWAL', 'WAKTU AKHIR', 'TOTAL JAM LEMBUR',
-      'PARAF\nKARYAWAN', 'PARAF\nLEADER', 'PARAF\nSECT HEAD', 'PARAF\nDEPT HEAD', 'KETERANGAN'];
-    var rowsData = [headerRow];
-    var jumlahBarisMin = 10;
-    var totalBaris = Math.max(lemburList.length, jumlahBarisMin);
-    for (var i = 0; i < totalBaris; i++) {
+    var MAX_ROWS = 8; // sesuai jumlah baris data di template
+    for (var i = 0; i < MAX_ROWS; i++) {
+      var n = i + 1;
+      var vTgl = '', vNama = '', vSimid = '', vAwal = '', vAkhir = '', vTotal = '', vKet = '';
       if (i < lemburList.length) {
         var l = lemburList[i];
         var p = l.tanggal.split('-');
-        rowsData.push([p[2] + '/' + p[1] + '/' + p[0], k.nama, k.kode, l.jamMulai, l.jamSelesai,
-          String(l.totalJam), '', '', '', '', l.keterangan || '']);
-      } else {
-        rowsData.push(['', '', '', '', '', '', '', '', '', '', '']);
+        vTgl = p[2] + '/' + p[1] + '/' + p[0];
+        vNama = k.nama; vSimid = k.kode;
+        vAwal = l.jamMulai; vAkhir = l.jamSelesai;
+        vTotal = String(l.totalJam); vKet = l.keterangan || '';
       }
-    }
-    var table = body.appendTable(rowsData);
-    var headerTableRow = table.getRow(0);
-    for (var c = 0; c < headerTableRow.getNumCells(); c++) {
-      var hc = headerTableRow.getCell(c);
-      hc.setBackgroundColor('#e5e5e5');
-      hc.editAsText().setBold(true).setFontSize(7.5);
-    }
-    for (var r = 1; r < table.getNumRows(); r++) {
-      for (var c2 = 0; c2 < table.getRow(r).getNumCells(); c2++) {
-        table.getRow(r).getCell(c2).editAsText().setFontSize(8);
-      }
-    }
-
-    body.appendParagraph('');
-    var totalPar = body.appendParagraph('Total Jam Lembur Bulan Ini: ' + totalJamLembur + ' jam');
-    totalPar.editAsText().setBold(true).setFontSize(9);
-
-    body.appendParagraph('');
-    var noteTitle = body.appendParagraph('Catatan:');
-    noteTitle.editAsText().setBold(true).setFontSize(8.5);
-    var notes = [
-      '1. Karyawan yang hari kerjanya 6 hari dalam seminggu, lembur di atas 4 jam melewati waktu istirahat otomatis dipotong 1 jam waktu istirahat.',
-      '2. Waktu istirahat selama bekerja: Shift 1 12:00 s/d 13:00, Shift 2 18:00 s/d 19:00, Shift 3 03:00 s/d 04:00.',
-      '3. Penulisan keterangan pada formulir lembur harus jelas sesuai yang diperintahkan oleh user.',
-      '4. Surat perintah lembur wajib di-approve sampai Department Head (DH).'
-    ];
-    notes.forEach(function (n) { body.appendParagraph(n).editAsText().setFontSize(8); });
-
-    body.appendParagraph('');
-    var sigTable = body.appendTable([
-      ['Dibuat oleh', 'Disetujui (Leader)', 'Mengetahui (Sect Head)', 'Mengetahui (Dept Head)'],
-      ['', '', '', '']
-    ]);
-    for (var sc = 0; sc < 4; sc++) {
-      sigTable.getRow(0).getCell(sc).editAsText().setBold(true).setFontSize(8.5);
-      sigTable.getRow(1).getCell(sc).setPaddingTop(40); // ruang tanda tangan
+      body.replaceText('\\{\\{TGL' + n + '\\}\\}', vTgl);
+      body.replaceText('\\{\\{NAMA' + n + '\\}\\}', vNama);
+      body.replaceText('\\{\\{SIMID' + n + '\\}\\}', vSimid);
+      body.replaceText('\\{\\{AWAL' + n + '\\}\\}', vAwal);
+      body.replaceText('\\{\\{AKHIR' + n + '\\}\\}', vAkhir);
+      body.replaceText('\\{\\{TOTAL' + n + '\\}\\}', vTotal);
+      body.replaceText('\\{\\{KET' + n + '\\}\\}', vKet);
     }
 
     doc.saveAndClose();
 
-    var docxBlob = DriveApp.getFileById(tmpDocId).getAs(MimeType.MICROSOFT_WORD);
+    // ---- Konversi ke .docx ----
+    // CATATAN: DriveApp.getFileById(id).getAs(MimeType.MICROSOFT_WORD) TIDAK
+    // didukung untuk file Google Docs native (error "Converting from
+    // application/vnd.google-apps.document ... is not supported"). Ini
+    // limitasi bawaan Apps Script, bukan soal izin. Solusinya: panggil
+    // langsung endpoint export Drive API v3 pakai UrlFetchApp.
+    var exportMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    var exportUrl = 'https://www.googleapis.com/drive/v3/files/' + tmpDocId + '/export?mimeType=' + encodeURIComponent(exportMime);
+    var exportResp = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    });
+    if (exportResp.getResponseCode() !== 200) {
+      throw new Error('Gagal export ke docx (HTTP ' + exportResp.getResponseCode() + '): ' + exportResp.getContentText());
+    }
+    var docxBlob = exportResp.getBlob();
     var base64 = Utilities.base64Encode(docxBlob.getBytes());
     var filename = 'SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun + '.docx';
 
-    DriveApp.getFileById(tmpDocId).setTrashed(true); // bersihkan file sementara
+    DriveApp.getFileById(tmpDocId).setTrashed(true); // bersihkan salinan sementara
 
     return { success: true, filename: filename, base64: base64, totalJamLembur: totalJamLembur, jumlahEntri: lemburList.length };
   } catch (err) {
-    // Kalau sempat bikin dokumen sementara tapi lalu gagal, tetap coba bersihkan
     if (tmpDocId) { try { DriveApp.getFileById(tmpDocId).setTrashed(true); } catch (e2) {} }
     return { success: false, error: err.message };
   }
