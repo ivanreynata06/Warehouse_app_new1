@@ -46,6 +46,17 @@
   // Supabase) supaya SELALU fallback ke Apps Script (data live/real-time).
   // Harian utk tanggal-tanggal LAMPAU (sudah final, tidak berubah lagi)
   // tetap boleh pakai snapshot Supabase yang cepat.
+  // Cek apakah bulan/tahun yang diminta = bulan YANG SEDANG BERJALAN.
+  // Data bulan berjalan masih terus berubah (kiriman/muatan baru tiap hari),
+  // jadi TIDAK aman dipakaikan snapshot Supabase yang cuma di-generate 1x
+  // di tengah malam -- bisa beda jauh dari angka live begitu ada input baru
+  // di hari yang sama. Bulan yang SUDAH LEWAT aman di-cache karena datanya
+  // sudah final/tidak berubah lagi.
+  function isCurrentYM(bulan, tahun) {
+    var d = new Date();
+    return String(parseInt(bulan,10)) === String(d.getMonth()+1) && String(parseInt(tahun,10)) === String(d.getFullYear());
+  }
+
   function buildKey(fnName, args) {
     try {
       if (fnName === 'getGroupList') return 'group_list';
@@ -57,17 +68,26 @@
           if (p.dari === todayYMD()) return null; // hari ini -> selalu live
           return 'stock:harian:' + p.dari;
         }
-        if (mode === 'bulanan' && p.bulan && p.tahun) return 'stock:bulanan:' + p.tahun + '-' + pad2(p.bulan);
+        if (mode === 'bulanan' && p.bulan && p.tahun) {
+          if (isCurrentYM(p.bulan, p.tahun)) return null; // bulan berjalan -> selalu live
+          return 'stock:bulanan:' + p.tahun + '-' + pad2(p.bulan);
+        }
         return null;
       }
       if (fnName === 'getOutboundData') {
         var po = args[0] || {};
-        if (po.bulan && po.tahun) return 'outbound:bulanan:' + po.tahun + '-' + pad2(po.bulan);
+        if (po.bulan && po.tahun) {
+          if (isCurrentYM(po.bulan, po.tahun)) return null; // bulan berjalan -> selalu live
+          return 'outbound:bulanan:' + po.tahun + '-' + pad2(po.bulan);
+        }
         return null;
       }
       if (fnName === 'getInboundData') {
         var pi = args[0] || {};
-        if (pi.bulan && pi.tahun) return 'inbound:bulanan:' + pi.tahun + '-' + pad2(pi.bulan);
+        if (pi.bulan && pi.tahun) {
+          if (isCurrentYM(pi.bulan, pi.tahun)) return null; // bulan berjalan -> selalu live
+          return 'inbound:bulanan:' + pi.tahun + '-' + pad2(pi.bulan);
+        }
         return null;
       }
       if (fnName === 'getKanbanData') {
@@ -76,12 +96,18 @@
           if (kp.dari === todayYMD()) return null; // hari ini -> selalu live
           return 'kanban:harian:' + kp.dari;
         }
-        if (kmode === 'bulanan' && kp.bulan && kp.tahun) return 'kanban:bulanan:' + kp.tahun + '-' + pad2(kp.bulan);
+        if (kmode === 'bulanan' && kp.bulan && kp.tahun) {
+          if (isCurrentYM(kp.bulan, kp.tahun)) return null; // bulan berjalan -> selalu live
+          return 'kanban:bulanan:' + kp.tahun + '-' + pad2(kp.bulan);
+        }
         return null;
       }
       if (fnName === 'getRekapMuatanData') {
         var rp = args[0] || {};
-        if (rp.mode === 'bulanan' && rp.bulan && rp.tahun) return 'rekap:bulanan:' + rp.tahun + '-' + pad2(rp.bulan);
+        if (rp.mode === 'bulanan' && rp.bulan && rp.tahun) {
+          if (isCurrentYM(rp.bulan, rp.tahun)) return null; // bulan berjalan -> selalu live
+          return 'rekap:bulanan:' + rp.tahun + '-' + pad2(rp.bulan);
+        }
         return null;
       }
       if (fnName === 'getStockTrendBatch') return 'stock_trend:6mo';
