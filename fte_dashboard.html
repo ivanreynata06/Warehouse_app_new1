@@ -150,6 +150,9 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .mini-bar-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.34,1.4,.64,1);}
 
 .btn-export{background:linear-gradient(135deg,var(--accent-purple),#7c3aed);border:none;color:#fff;cursor:pointer;padding:6px 12px;border-radius:8px;font-family:var(--font-body);font-size:9px;font-weight:700;display:flex;align-items:center;gap:5px;transition:all .2s;}
+.btn-preview{background:linear-gradient(135deg,#0891b2,#0e7490);border:none;color:#fff;cursor:pointer;padding:6px 12px;border-radius:8px;font-family:var(--font-body);font-size:9px;font-weight:700;display:flex;align-items:center;gap:5px;transition:all .2s;}
+.btn-preview:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(8,145,178,.35);}
+.btn-export-group{display:flex;gap:5px;}
 .btn-export:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(139,92,246,.35);}
 .btn-refresh-kpi{background:linear-gradient(135deg,var(--accent-gold),#b8912a);border:none;color:#1a1305;cursor:pointer;padding:6px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;display:flex;align-items:center;gap:6px;transition:all .2s;}
 .btn-refresh-kpi:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(212,175,55,.3);}
@@ -520,7 +523,10 @@ function renderTabelOS(){
     return '<tr>'+
       '<td><div class="name-cell"><div class="avatar-mini os">'+initials(p.nama)+'</div><div>'+p.nama+'</div></div></td>'+
       '<td style="font-weight:600;">'+p.totalJamLembur+'j</td>'+
-      '<td><button class="btn-export" onclick="exportSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Export ke Formulir SPL"><i data-lucide="file-down" style="width:11px;"></i>SPL</button></td>'+
+      '<td><div class="btn-export-group">'+
+        '<button class="btn-preview" onclick="previewSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Preview & Print"><i data-lucide="printer" style="width:11px;"></i>Print</button>'+
+        '<button class="btn-export" onclick="exportSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Export ke Formulir SPL"><i data-lucide="file-down" style="width:11px;"></i>SPL</button>'+
+      '</div></td>'+
     '</tr>';
   }).join('');
   if(typeof lucide!=='undefined') lucide.createIcons();
@@ -590,6 +596,31 @@ function renderChart(months, results){
       }
     }
   });
+}
+
+function previewSPL(kode, nama){
+  showToast('Menyiapkan preview SPL untuk '+nama+'...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ showToast('Gagal preview SPL: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
+      try {
+        var byteChars = atob(res.base64);
+        var byteNumbers = new Array(byteChars.length);
+        for (var i=0;i<byteChars.length;i++) byteNumbers[i] = byteChars.charCodeAt(i);
+        var byteArray = new Uint8Array(byteNumbers);
+        var blob = new Blob([byteArray], {type:'application/pdf'});
+        var url = URL.createObjectURL(blob);
+        // Buka di tab baru -> browser tampilkan PDF viewer bawaan lengkap
+        // dengan tombol Print, tanpa perlu UI preview custom.
+        window.open(url, '_blank');
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+        showToast('Preview SPL '+nama+' siap ('+res.totalJamLembur+' jam, '+res.jumlahEntri+' entri) — klik ikon print di tab baru','success');
+      } catch(e) {
+        showToast('Gagal memproses preview: '+e.message,'error');
+      }
+    })
+    .withFailureHandler(function(err){ showToast('Gagal preview SPL: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .previewSPL(kode, curBulan, curTahun);
 }
 
 function exportSPL(kode, nama){

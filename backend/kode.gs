@@ -48,7 +48,8 @@ var API_FUNCTIONS = {
   getAbsensiList          : getAbsensiList,
   deleteAbsensi           : deleteAbsensi,
   getAbsensiFTEData       : getAbsensiFTEData,
-  exportSPL               : exportSPL
+  exportSPL               : exportSPL,
+  previewSPL              : previewSPL
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -2116,101 +2117,151 @@ function getAbsensiFTEData(bulan, tahun) {
 //  4. Di Apps Script: Project Settings -> Script Properties ->
 //     tambahkan properti SPL_TEMPLATE_DOC_ID = (File ID dari langkah 3)
 // ================================================================
+// ================================================================
+//  Job & Bagian per karyawan OS untuk formulir SPL.
+//  Default dipakai kalau kode karyawan tidak ada di peta ini.
+// ================================================================
+var SPL_JOB_BAGIAN_MAP = {
+  'PEG21101254': { job: 'Warehouse Technician I', bagian: 'Warehouse Fitting Import' }, // Doni Mulya Y
+  'PEG25112073': { job: 'Warehouse Technician I', bagian: 'Warehouse Fitting Import' }, // Iman Abdul Rahman
+  'PEG22111246': { job: 'Admin WH Fitting',       bagian: 'Warehouse Fitting Import' }  // Ivan Reynata
+};
+var SPL_JOB_BAGIAN_DEFAULT = { job: 'Staff Warehouse (OS)', bagian: 'Outsourcing - PT Swakarya Insan Mandiri' };
+
+// ================================================================
+//  Helper bersama: bikin salinan template SPL yang sudah terisi data
+//  lembur karyawan (dipakai oleh exportSPL & previewSPL supaya tidak
+//  duplikat logic). Return { tmpDocId, k, bulanNama, totalJamLembur,
+//  jumlahEntri }. HARUS di-cleanup (setTrashed) oleh pemanggil setelah
+//  selesai export/convert.
+// ================================================================
+function _buildSPLDocument(kode, bulan, tahun) {
+  var props = PropertiesService.getScriptProperties();
+  var templateDocId = props.getProperty('SPL_TEMPLATE_DOC_ID');
+  if (!templateDocId) throw new Error('SPL_TEMPLATE_DOC_ID belum di-set di Script Properties.');
+
+  var karyawanRes = getKaryawanList();
+  if (!karyawanRes.success) throw new Error(karyawanRes.error);
+  var k = karyawanRes.data.find(function (x) { return x.kode === kode; });
+  if (!k) throw new Error('Karyawan dengan kode ' + kode + ' tidak ditemukan');
+
+  bulan = Number(bulan); tahun = Number(tahun);
+  var bulanNamaArr = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
+  var bulanNama = bulanNamaArr[bulan];
+
+  var lemburRes = getLemburList({ kode: kode, bulan: bulan, tahun: tahun });
+  var lemburList = lemburRes.success ? lemburRes.data : [];
+  lemburList.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
+  var totalJamLembur = Math.round(lemburList.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
+
+  var jb = SPL_JOB_BAGIAN_MAP[k.kode] || SPL_JOB_BAGIAN_DEFAULT;
+
+  // Salin template (bukan edit file aslinya), lalu isi datanya di salinan itu
+  var copyFile = DriveApp.getFileById(templateDocId).makeCopy('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
+  var tmpDocId = copyFile.getId();
+
+  // Kadang Google belum selesai "menyiapkan" file hasil makeCopy() saat
+  // langsung dibuka lewat DocumentApp.openById() -> muncul error race
+  // condition "Dokumen ini tidak dapat diakses, coba lagi nanti". Jadi
+  // kasih jeda singkat + retry beberapa kali sebelum benar-benar menyerah.
+  var doc = null;
+  var lastOpenErr = null;
+  for (var attempt = 0; attempt < 4 && !doc; attempt++) {
+    if (attempt > 0) Utilities.sleep(1000 * attempt); // 1s, 2s, 3s
+    try {
+      doc = DocumentApp.openById(tmpDocId);
+    } catch (openErr) {
+      lastOpenErr = openErr;
+    }
+  }
+  if (!doc) throw new Error('Gagal membuka salinan dokumen setelah beberapa percobaan: ' + (lastOpenErr ? lastOpenErr.message : ''));
+
+  var body = doc.getBody();
+
+  body.replaceText('\\{\\{JOB\\}\\}', jb.job);
+  body.replaceText('\\{\\{BAGIAN\\}\\}', jb.bagian);
+  body.replaceText('\\{\\{PERIODE\\}\\}', tahun + '/' + bulanNama);
+
+  var MAX_ROWS = 8; // sesuai jumlah baris data di template
+  for (var i = 0; i < MAX_ROWS; i++) {
+    var n = i + 1;
+    var vTgl = '', vNama = '', vSimid = '', vAwal = '', vAkhir = '', vTotal = '', vKet = '';
+    if (i < lemburList.length) {
+      var l = lemburList[i];
+      var p = l.tanggal.split('-');
+      vTgl = p[2] + '/' + p[1] + '/' + p[0];
+      vNama = k.nama; vSimid = k.kode;
+      vAwal = l.jamMulai; vAkhir = l.jamSelesai;
+      vTotal = String(l.totalJam); vKet = l.keterangan || '';
+    }
+    body.replaceText('\\{\\{TGL' + n + '\\}\\}', vTgl);
+    body.replaceText('\\{\\{NAMA' + n + '\\}\\}', vNama);
+    body.replaceText('\\{\\{SIMID' + n + '\\}\\}', vSimid);
+    body.replaceText('\\{\\{AWAL' + n + '\\}\\}', vAwal);
+    body.replaceText('\\{\\{AKHIR' + n + '\\}\\}', vAkhir);
+    body.replaceText('\\{\\{TOTAL' + n + '\\}\\}', vTotal);
+    body.replaceText('\\{\\{KET' + n + '\\}\\}', vKet);
+  }
+
+  doc.saveAndClose();
+  Utilities.sleep(500); // jaga-jaga race condition serupa sebelum export
+
+  return { tmpDocId: tmpDocId, k: k, bulanNama: bulanNama, totalJamLembur: totalJamLembur, jumlahEntri: lemburList.length };
+}
+
+// Konversi Google Doc -> Blob format tertentu lewat Drive API v3 export
+// (DriveApp.getAs() tidak didukung utk konversi native Google Docs).
+function _exportDocAs(tmpDocId, mimeType) {
+  var exportUrl = 'https://www.googleapis.com/drive/v3/files/' + tmpDocId + '/export?mimeType=' + encodeURIComponent(mimeType);
+  var resp = UrlFetchApp.fetch(exportUrl, {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) {
+    throw new Error('Gagal export (HTTP ' + resp.getResponseCode() + '): ' + resp.getContentText());
+  }
+  return resp.getBlob();
+}
+
 function exportSPL(kode, bulan, tahun) {
   var tmpDocId = null;
   try {
-    var props = PropertiesService.getScriptProperties();
-    var templateDocId = props.getProperty('SPL_TEMPLATE_DOC_ID');
-    if (!templateDocId) {
-      return { success: false, error: 'SPL_TEMPLATE_DOC_ID belum di-set di Script Properties. Lihat instruksi setup di komentar fungsi exportSPL.' };
-    }
+    var built = _buildSPLDocument(kode, bulan, tahun);
+    tmpDocId = built.tmpDocId;
 
-    var karyawanRes = getKaryawanList();
-    if (!karyawanRes.success) return karyawanRes;
-    var k = karyawanRes.data.find(function (x) { return x.kode === kode; });
-    if (!k) return { success: false, error: 'Karyawan dengan kode ' + kode + ' tidak ditemukan' };
-
-    bulan = Number(bulan); tahun = Number(tahun);
-    var bulanNamaArr = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
-    var bulanNama = bulanNamaArr[bulan];
-
-    var lemburRes = getLemburList({ kode: kode, bulan: bulan, tahun: tahun });
-    var lemburList = lemburRes.success ? lemburRes.data : [];
-    lemburList.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
-    var totalJamLembur = Math.round(lemburList.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
-
-    // Salin template (bukan edit file aslinya), lalu isi datanya di salinan itu
-    var copyFile = DriveApp.getFileById(templateDocId).makeCopy('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
-    tmpDocId = copyFile.getId();
-
-    // Kadang Google belum selesai "menyiapkan" file hasil makeCopy() saat
-    // langsung dibuka lewat DocumentApp.openById() -> muncul error race
-    // condition "Dokumen ini tidak dapat diakses, coba lagi nanti". Jadi
-    // kasih jeda singkat + retry beberapa kali sebelum benar-benar menyerah.
-    var doc = null;
-    var lastOpenErr = null;
-    for (var attempt = 0; attempt < 4 && !doc; attempt++) {
-      if (attempt > 0) Utilities.sleep(1000 * attempt); // 1s, 2s, 3s
-      try {
-        doc = DocumentApp.openById(tmpDocId);
-      } catch (openErr) {
-        lastOpenErr = openErr;
-      }
-    }
-    if (!doc) throw new Error('Gagal membuka salinan dokumen setelah beberapa percobaan: ' + (lastOpenErr ? lastOpenErr.message : ''));
-
-    var body = doc.getBody();
-
-    body.replaceText('\\{\\{JOB\\}\\}', 'Staff Warehouse (OS)');
-    body.replaceText('\\{\\{BAGIAN\\}\\}', 'Outsourcing - PT Swakarya Insan Mandiri');
-    body.replaceText('\\{\\{PERIODE\\}\\}', tahun + '/' + bulanNama);
-
-    var MAX_ROWS = 8; // sesuai jumlah baris data di template
-    for (var i = 0; i < MAX_ROWS; i++) {
-      var n = i + 1;
-      var vTgl = '', vNama = '', vSimid = '', vAwal = '', vAkhir = '', vTotal = '', vKet = '';
-      if (i < lemburList.length) {
-        var l = lemburList[i];
-        var p = l.tanggal.split('-');
-        vTgl = p[2] + '/' + p[1] + '/' + p[0];
-        vNama = k.nama; vSimid = k.kode;
-        vAwal = l.jamMulai; vAkhir = l.jamSelesai;
-        vTotal = String(l.totalJam); vKet = l.keterangan || '';
-      }
-      body.replaceText('\\{\\{TGL' + n + '\\}\\}', vTgl);
-      body.replaceText('\\{\\{NAMA' + n + '\\}\\}', vNama);
-      body.replaceText('\\{\\{SIMID' + n + '\\}\\}', vSimid);
-      body.replaceText('\\{\\{AWAL' + n + '\\}\\}', vAwal);
-      body.replaceText('\\{\\{AKHIR' + n + '\\}\\}', vAkhir);
-      body.replaceText('\\{\\{TOTAL' + n + '\\}\\}', vTotal);
-      body.replaceText('\\{\\{KET' + n + '\\}\\}', vKet);
-    }
-
-    doc.saveAndClose();
-    Utilities.sleep(500); // jaga-jaga race condition serupa sebelum export
-
-    // ---- Konversi ke .docx ----
-    // CATATAN: DriveApp.getFileById(id).getAs(MimeType.MICROSOFT_WORD) TIDAK
-    // didukung untuk file Google Docs native (error "Converting from
-    // application/vnd.google-apps.document ... is not supported"). Ini
-    // limitasi bawaan Apps Script, bukan soal izin. Solusinya: panggil
-    // langsung endpoint export Drive API v3 pakai UrlFetchApp.
-    var exportMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    var exportUrl = 'https://www.googleapis.com/drive/v3/files/' + tmpDocId + '/export?mimeType=' + encodeURIComponent(exportMime);
-    var exportResp = UrlFetchApp.fetch(exportUrl, {
-      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-      muteHttpExceptions: true
-    });
-    if (exportResp.getResponseCode() !== 200) {
-      throw new Error('Gagal export ke docx (HTTP ' + exportResp.getResponseCode() + '): ' + exportResp.getContentText());
-    }
-    var docxBlob = exportResp.getBlob();
+    var docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    var docxBlob = _exportDocAs(tmpDocId, docxMime);
     var base64 = Utilities.base64Encode(docxBlob.getBytes());
-    var filename = 'SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun + '.docx';
+    var filename = 'SPL_' + built.k.nama.replace(/\s+/g, '_') + '_' + built.bulanNama + tahun + '.docx';
 
     DriveApp.getFileById(tmpDocId).setTrashed(true); // bersihkan salinan sementara
 
-    return { success: true, filename: filename, base64: base64, totalJamLembur: totalJamLembur, jumlahEntri: lemburList.length };
+    return { success: true, filename: filename, base64: base64, totalJamLembur: built.totalJamLembur, jumlahEntri: built.jumlahEntri };
+  } catch (err) {
+    if (tmpDocId) { try { DriveApp.getFileById(tmpDocId).setTrashed(true); } catch (e2) {} }
+    return { success: false, error: err.message };
+  }
+}
+
+// ================================================================
+//  Preview & Print SPL — bikin PDF (bukan docx), supaya bisa dibuka
+//  langsung di tab baru browser dan pakai tombol Print bawaan browser
+//  (PDF native didukung <iframe>/tab, sedangkan docx tidak bisa
+//  di-preview langsung di browser tanpa app tambahan).
+// ================================================================
+function previewSPL(kode, bulan, tahun) {
+  var tmpDocId = null;
+  try {
+    var built = _buildSPLDocument(kode, bulan, tahun);
+    tmpDocId = built.tmpDocId;
+
+    var pdfBlob = _exportDocAs(tmpDocId, 'application/pdf');
+    var base64 = Utilities.base64Encode(pdfBlob.getBytes());
+    var filename = 'SPL_' + built.k.nama.replace(/\s+/g, '_') + '_' + built.bulanNama + tahun + '.pdf';
+
+    DriveApp.getFileById(tmpDocId).setTrashed(true); // bersihkan salinan sementara
+
+    return { success: true, filename: filename, base64: base64, totalJamLembur: built.totalJamLembur, jumlahEntri: built.jumlahEntri };
   } catch (err) {
     if (tmpDocId) { try { DriveApp.getFileById(tmpDocId).setTrashed(true); } catch (e2) {} }
     return { success: false, error: err.message };
