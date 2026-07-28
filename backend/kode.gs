@@ -2142,7 +2142,23 @@ function exportSPL(kode, bulan, tahun) {
     // Salin template (bukan edit file aslinya), lalu isi datanya di salinan itu
     var copyFile = DriveApp.getFileById(templateDocId).makeCopy('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
     tmpDocId = copyFile.getId();
-    var doc = DocumentApp.openById(tmpDocId);
+
+    // Kadang Google belum selesai "menyiapkan" file hasil makeCopy() saat
+    // langsung dibuka lewat DocumentApp.openById() -> muncul error race
+    // condition "Dokumen ini tidak dapat diakses, coba lagi nanti". Jadi
+    // kasih jeda singkat + retry beberapa kali sebelum benar-benar menyerah.
+    var doc = null;
+    var lastOpenErr = null;
+    for (var attempt = 0; attempt < 4 && !doc; attempt++) {
+      if (attempt > 0) Utilities.sleep(1000 * attempt); // 1s, 2s, 3s
+      try {
+        doc = DocumentApp.openById(tmpDocId);
+      } catch (openErr) {
+        lastOpenErr = openErr;
+      }
+    }
+    if (!doc) throw new Error('Gagal membuka salinan dokumen setelah beberapa percobaan: ' + (lastOpenErr ? lastOpenErr.message : ''));
+
     var body = doc.getBody();
 
     body.replaceText('\\{\\{JOB\\}\\}', 'Staff Warehouse (OS)');
@@ -2171,6 +2187,7 @@ function exportSPL(kode, bulan, tahun) {
     }
 
     doc.saveAndClose();
+    Utilities.sleep(500); // jaga-jaga race condition serupa sebelum export
 
     // ---- Konversi ke .docx ----
     // CATATAN: DriveApp.getFileById(id).getAs(MimeType.MICROSOFT_WORD) TIDAK
