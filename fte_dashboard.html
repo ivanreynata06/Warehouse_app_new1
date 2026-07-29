@@ -354,7 +354,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           </div>
           <div class="table-wrap">
             <table class="data-table">
-              <thead><tr><th>Karyawan</th><th>Jam Lembur</th><th></th></tr></thead>
+              <thead><tr><th>Karyawan</th><th>Jam Lembur</th><th>OT %</th><th></th></tr></thead>
               <tbody id="tbody-os"></tbody>
             </table>
           </div>
@@ -518,11 +518,14 @@ function renderTabelOS(){
   var list = fteData.os.perOrang || [];
   document.getElementById('badge-os').textContent = list.length + ' orang';
   var tb = document.getElementById('tbody-os');
-  if(!list.length){ tb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px;">Belum ada data lembur bulan ini</td></tr>'; return; }
+  if(!list.length){ tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:16px;">Belum ada data lembur bulan ini</td></tr>'; return; }
   tb.innerHTML = list.map(function(p){
+    var pct = p.overtimePct || 0;
+    var barColor = pct<=6 ? 'var(--accent-green)' : 'var(--accent-red)';
     return '<tr>'+
       '<td><div class="name-cell"><div class="avatar-mini os">'+initials(p.nama)+'</div><div>'+p.nama+'</div></div></td>'+
       '<td style="font-weight:600;">'+p.totalJamLembur+'j</td>'+
+      '<td><div>'+pct.toLocaleString('id-ID',{maximumFractionDigits:2})+'%</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:'+Math.min(pct/12*100,100)+'%;background:'+barColor+';"></div></div></td>'+
       '<td><div class="btn-export-group">'+
         '<button class="btn-preview" onclick="previewSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Preview & Print"><i data-lucide="printer" style="width:11px;"></i>Print</button>'+
         '<button class="btn-export" onclick="exportSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Export ke Formulir SPL"><i data-lucide="file-down" style="width:11px;"></i>SPL</button>'+

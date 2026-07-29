@@ -2043,7 +2043,9 @@ function getAbsensiFTEData(bulan, tahun) {
         totalJamLembur: totalLembur,
         cutiDokter: cutiDokter, cutiTahunan: cutiTahunan, mangkir: mangkir,
         fteLembur:   isInternal ? Math.round((totalLembur / FTE_STANDAR_JAM_BULAN) * 10000) / 10000 : null,
-        overtimePct: isInternal ? Math.round((totalLembur / FTE_STANDAR_JAM_BULAN) * 10000) / 100 : null
+        // OT% dihitung untuk SEMUA kategori (Internal & OS) -- persentase jam
+        // lembur terhadap standar jam kerja 1 bulan penuh (FTE_STANDAR_JAM_BULAN).
+        overtimePct: Math.round((totalLembur / FTE_STANDAR_JAM_BULAN) * 10000) / 100
       };
     });
 
@@ -2192,7 +2194,15 @@ function _buildSPLDocument(kode, bulan, tahun) {
       vTgl = p[2] + '/' + p[1] + '/' + p[0];
       vNama = k.nama; vSimid = k.kode;
       vAwal = l.jamMulai; vAkhir = l.jamSelesai;
-      vTotal = String(l.totalJam); vKet = l.keterangan || '';
+      // PENTING: SPL (Surat Perintah Lembur) menampilkan DURASI MENTAH
+      // (jam selesai - jam mulai), TANPA potongan 1 jam istirahat -- beda
+      // dengan l.totalJam yang dipakai di rekap FTE (sudah otomatis
+      // terpotong 1 jam kalau durasi > 4 jam). Jadi lembur 6 jam tetap
+      // tertulis "6" di form SPL, meski di rekap FTE tercatat "5".
+      var rawMin = _timeStrToMinutes(l.jamSelesai) - _timeStrToMinutes(l.jamMulai);
+      if (rawMin < 0) rawMin += 24 * 60; // jaga-jaga kalau lembur lewat tengah malam
+      var rawJam = Math.round((rawMin / 60) * 100) / 100;
+      vTotal = String(rawJam); vKet = l.keterangan || '';
     }
     body.replaceText('\\{\\{TGL' + n + '\\}\\}', vTgl);
     body.replaceText('\\{\\{NAMA' + n + '\\}\\}', vNama);
