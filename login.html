@@ -267,6 +267,13 @@ body{
   .shutter, .seal-card, .brand{animation:none !important; opacity:1 !important; transform:none !important;}
   .pull-hint svg{animation:none;}
 }
+@keyframes shakeErr{
+  0%,100%{transform:translateX(0);}
+  20%{transform:translateX(-6px);}
+  40%{transform:translateX(6px);}
+  60%{transform:translateX(-4px);}
+  80%{transform:translateX(4px);}
+}
 </style>
 </head>
 <body>
@@ -341,29 +348,28 @@ body{
           </select>
         </div>
         <div class="field">
-          <label>Akun</label>
-          <div class="acc-pills" id="accPills">
-            <div class="acc-pill tl" data-role="tl">Team Leader<span class="role">1 akun</span></div>
-            <div class="acc-pill" data-role="k1">Karyawan 1<span class="role">akun</span></div>
-            <div class="acc-pill" data-role="k2">Karyawan 2<span class="role">akun</span></div>
-          </div>
+          <label for="nik">NIK</label>
+          <input type="text" id="nik" placeholder="Masukkan NIK Anda" required autocomplete="username">
         </div>
         <div class="field">
           <label for="pwd">Kata Sandi</label>
           <div class="pwd-wrap">
-            <input type="password" id="pwd" placeholder="Masukkan kata sandi" required>
+            <input type="password" id="pwd" placeholder="Masukkan kata sandi" required autocomplete="current-password">
             <button type="button" class="pwd-toggle" id="pwdToggle" aria-label="Tampilkan kata sandi">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
         </div>
-        <button type="submit" class="stamp-btn">Masuk Sistem</button>
+        <div id="loginError" style="display:none;color:#f87171;font-size:11.5px;margin:-6px 0 12px;text-align:center;"></div>
+        <button type="submit" class="stamp-btn" id="stampBtn">Masuk Sistem</button>
       </form>
       <div class="foot-note">Butuh bantuan akun? Hubungi <b>Admin Plant</b> Anda.</div>
     </div>
   </div>
 </div>
 
+<script src="./assets/js/config.js?v=20260729a"></script>
+<script src="./assets/js/api-shim.js?v=20260729a"></script>
 <script>
 const sealCard = document.getElementById('sealCard');
 const sealTop = document.getElementById('sealTop');
@@ -464,29 +470,57 @@ plantSel.addEventListener('change', ()=>{
   }
 });
 
-// Account pill selection
-document.querySelectorAll('.acc-pill').forEach(pill=>{
-  pill.addEventListener('click', ()=>{
-    document.querySelectorAll('.acc-pill').forEach(p=>p.classList.remove('active'));
-    pill.classList.add('active');
-  });
-});
-document.querySelector('.acc-pill').classList.add('active');
-
 // Password show/hide
 document.getElementById('pwdToggle').addEventListener('click', ()=>{
   const pwd = document.getElementById('pwd');
   pwd.type = pwd.type === 'password' ? 'text' : 'password';
 });
 
-// Submit placeholder — sambungkan ke Apps Script (cek Plant+Akun+Password)
+function showLoginError(msg){
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = 'block';
+  const card = document.querySelector('.form-wrap');
+  card.style.animation = 'none';
+  void card.offsetWidth; // restart animasi shake
+  card.style.animation = 'shakeErr .4s ease';
+}
+
 document.getElementById('loginForm').addEventListener('submit', (e)=>{
   e.preventDefault();
   const plant = document.getElementById('plant').value;
-  const dept = document.getElementById('dept').value;
-  const role = document.querySelector('.acc-pill.active').dataset.role;
-  alert('Contoh submit — Plant: ' + plant + ', Departemen: ' + dept + ', Akun: ' + role + '\n\n(Sambungkan ke Apps Script untuk verifikasi sungguhan)');
+  const dept  = document.getElementById('dept').value;
+  const nik   = document.getElementById('nik').value.trim();
+  const pwd   = document.getElementById('pwd').value;
+  const btn   = document.getElementById('stampBtn');
+  document.getElementById('loginError').style.display = 'none';
+
+  if (!plant || plant !== 'cibitung'){ showLoginError('Pilih Plant Cibitung (plant lain belum aktif).'); return; }
+  if (!dept){ showLoginError('Pilih departemen terlebih dahulu.'); return; }
+
+  btn.disabled = true; btn.textContent = 'Memeriksa...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled = false; btn.textContent = 'Masuk Sistem';
+      if (!res || !res.success){
+        showLoginError(res && res.error ? res.error : 'Login gagal, coba lagi.');
+        return;
+      }
+      try {
+        sessionStorage.setItem('wh_workspace', res.workspace);
+        sessionStorage.setItem('wh_nik', res.nik);
+        sessionStorage.setItem('wh_nama', res.nama);
+        sessionStorage.setItem('wh_role', res.role);
+      } catch(err){}
+      window.location.href = './index.html';
+    })
+    .withFailureHandler(function(err){
+      btn.disabled = false; btn.textContent = 'Masuk Sistem';
+      showLoginError('Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi'));
+    })
+    .loginUser(plant, dept, nik, pwd);
 });
+
 </script>
 </body>
 </html>

@@ -34,8 +34,21 @@
     console.warn('[api-shim] APPS_SCRIPT_URL belum diisi di assets/js/config.js — panggilan ke backend akan gagal.');
   }
 
+  // Workspace = kombinasi Plant + Departemen yang dipilih user saat login
+  // (lihat login.html). Disimpan di sessionStorage supaya bertahan selama
+  // 1 sesi browser, dan disertakan di SETIAP request backend + cache key
+  // supaya data antar departemen tidak pernah tercampur/ketuker.
+  function getWorkspace() {
+    try {
+      return sessionStorage.getItem('wh_workspace') || 'cibitung_fitting_import';
+    } catch (e) {
+      return 'cibitung_fitting_import';
+    }
+  }
+  global.getWorkspace = getWorkspace;
+
   function cacheKey(fn, args) {
-    return 'apicache::' + fn + '::' + JSON.stringify(args || []);
+    return 'apicache::' + getWorkspace() + '::' + fn + '::' + JSON.stringify(args || []);
   }
 
   function readCache(key) {
@@ -57,7 +70,7 @@
   }
 
   function callBackend(fnName, args) {
-    var payload = { action: fnName, params: args || [] };
+    var payload = { action: fnName, params: args || [], workspace: getWorkspace() };
 
     // savePhoto membawa base64 gambar yang bisa besar -> pakai POST.
     // Content-Type "text/plain" sengaja dipakai supaya browser
@@ -74,7 +87,8 @@
     var sep = BASE_URL.indexOf('?') === -1 ? '?' : '&';
     var url = BASE_URL + sep +
       'action=' + encodeURIComponent(fnName) +
-      '&params=' + encodeURIComponent(JSON.stringify(args || []));
+      '&params=' + encodeURIComponent(JSON.stringify(args || [])) +
+      '&workspace=' + encodeURIComponent(getWorkspace());
 
     return fetch(url, { method: 'GET' }).then(function (r) { return r.json(); });
   }
@@ -130,6 +144,7 @@
           // lambat sedikit).
           var sb = global.__supabaseSnapshot;
           var sbKey = sb ? sb.buildKey(prop, args) : null;
+          if (sbKey) sbKey = getWorkspace() + '::' + sbKey; // pisahkan snapshot per departemen
           if (sbKey) {
             sb.fetchSnapshot(sbKey).then(function (payload) {
               // PENTING: kalau snapshot yang tersimpan di Supabase ternyata

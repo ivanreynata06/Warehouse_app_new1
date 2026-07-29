@@ -49,7 +49,10 @@ var API_FUNCTIONS = {
   deleteAbsensi           : deleteAbsensi,
   getAbsensiFTEData       : getAbsensiFTEData,
   exportSPL               : exportSPL,
-  previewSPL              : previewSPL
+  previewSPL              : previewSPL,
+  // Multi-workspace (Plant & Departemen)
+  loginUser               : loginUser,
+  provisionDepartmentSpreadsheet: provisionDepartmentSpreadsheet
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -83,6 +86,7 @@ function handleApiRequest(e) {
     var params = (e && e.parameter) ? e.parameter : {};
     var action = params.action;
     var args   = [];
+    var workspace = params.workspace || '';
 
     // Body POST (dipakai savePhoto) dikirim sebagai text/plain berisi
     // JSON {action, params} supaya browser tidak mengirim preflight CORS.
@@ -91,12 +95,23 @@ function handleApiRequest(e) {
         var body = JSON.parse(e.postData.contents);
         action = body.action || action;
         args   = body.params || [];
+        workspace = body.workspace || workspace;
       } catch (parseErr) {
         // bukan JSON valid -> abaikan, tetap coba pakai query param di bawah
       }
     } else if (params.params) {
       args = JSON.parse(params.params);
     }
+
+    // ---- Resolusi WORKSPACE (Plant + Departemen) -> SPREADSHEET_ID ----
+    // Supaya 1 kode.gs ini bisa melayani banyak departemen/plant tanpa
+    // perlu di-copy-paste berkali-kali: setiap request membawa parameter
+    // "workspace" (mis. "cibitung_fitting_import"), lalu kita timpa
+    // variabel global SPREADSHEET_ID SEBELUM fungsi action dipanggil.
+    // Aman karena tiap request Web App = 1 eksekusi baru yang terpisah
+    // (bukan proses yang dipakai bersama antar request).
+    ACTIVE_WORKSPACE = resolveWorkspaceKey(workspace);
+    SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(ACTIVE_WORKSPACE);
 
     if (!action) {
       result = { success: false, error: 'Parameter "action" wajib diisi.' };
@@ -115,13 +130,57 @@ function handleApiRequest(e) {
       .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ================================================================
+//  MULTI-WORKSPACE (Plant & Departemen)
+// ------------------------------------------------------------
+//  Satu Apps Script + satu deployment URL ini melayani BANYAK
+//  spreadsheet (1 spreadsheet per departemen per plant), supaya
+//  tidak perlu maintenance banyak salinan kode.gs yang terpisah.
+//
+//  WORKSPACE_MAP memetakan "workspace key" -> Spreadsheet ID.
+//  "cibitung_fitting_import" SENGAJA diarahkan ke SPREADSHEET_ID
+//  yang sudah berjalan sekarang (data lama tetap di situ, dianggap
+//  sebagai departemen Fitting Import).
+//
+//  Departemen baru (belum di-provision) akan menampilkan pesan
+//  error yang jelas, bukan diam-diam salah baca data departemen lain.
+//
+//  Cara tambah workspace baru:
+//   1) Jalankan provisionDepartmentSpreadsheet('Nama Departemen') sekali
+//      lewat Apps Script editor (Run) -> catat Spreadsheet ID yang
+//      dikembalikan di Logger.
+//   2) Tambahkan baris baru di WORKSPACE_MAP di bawah ini.
+//   3) Deploy ulang (New version).
+// ================================================================
+var WORKSPACE_MAP = {
+  'cibitung_fitting_import': '1ZlcBhPQJpMFG4-Phwv1VCldIA4VXImzGgltj3ihR33c', // spreadsheet yang sudah berjalan
+  'cibitung_fitting_rucika': '', // isi setelah provisionDepartmentSpreadsheet()
+  'cibitung_pipa_rucika'   : '', // isi setelah provisionDepartmentSpreadsheet()
+  'cibitung_sparepart'     : ''  // isi setelah provisionDepartmentSpreadsheet()
+};
+var DEFAULT_WORKSPACE = 'cibitung_fitting_import'; // fallback kalau request lama belum kirim param workspace
+var ACTIVE_WORKSPACE = DEFAULT_WORKSPACE; // ditimpa tiap request oleh handleApiRequest
+
+function resolveWorkspaceKey(workspace) {
+  workspace = String(workspace || '').trim();
+  return (workspace && WORKSPACE_MAP.hasOwnProperty(workspace)) ? workspace : DEFAULT_WORKSPACE;
+}
+
+function resolveWorkspaceSpreadsheetId(workspaceKey) {
+  var id = WORKSPACE_MAP[workspaceKey];
+  if (!id) {
+    throw new Error('Departemen "' + workspaceKey + '" belum di-provision (Spreadsheet ID kosong). Jalankan provisionDepartmentSpreadsheet() dulu, lalu isi WORKSPACE_MAP.');
+  }
+  return id;
+}
+
 // Bungkus fungsi baca data dengan CacheService supaya panggilan berulang
 // (klik Refresh, atau beberapa orang buka dashboard bersamaan) dalam
 // jendela CACHE_TTL_SECONDS langsung dijawab dari cache (instan),
 // tidak perlu baca ulang spreadsheet tiap kali.
 function callWithServerCache(action, args) {
   var cache    = CacheService.getScriptCache();
-  var cacheKey = 'api::' + action + '::' + JSON.stringify(args);
+  var cacheKey = 'api::' + ACTIVE_WORKSPACE + '::' + action + '::' + JSON.stringify(args);
 
   try {
     var cached = cache.get(cacheKey);
@@ -1507,9 +1566,31 @@ function setupDailySyncTrigger() {
   Logger.log('Trigger harian syncAllToSupabase berhasil dipasang.');
 }
 
+// Loop semua departemen yang sudah punya Spreadsheet ID di WORKSPACE_MAP,
+// sync satu-satu (supaya kalau 1 departemen error, departemen lain tetap
+// lanjut). Dipanggil oleh trigger harian jam 00:xx.
 function syncAllToSupabase() {
+  var allLogs = [];
+  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
+    if (!WORKSPACE_MAP[workspaceKey]) return; // belum di-provision -> lewati
+    try {
+      var result = syncWorkspaceToSupabase(workspaceKey);
+      allLogs.push('=== ' + workspaceKey + ' ===\n' + result.join('\n'));
+    } catch (err) {
+      allLogs.push('=== ' + workspaceKey + ' === GAGAL TOTAL: ' + err.message);
+    }
+  });
+  Logger.log(allLogs.join('\n\n'));
+  return allLogs;
+}
+
+function syncWorkspaceToSupabase(workspaceKey) {
+  ACTIVE_WORKSPACE = workspaceKey;
+  SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+
   var log = [];
   function put(key, payloadFn) {
+    key = workspaceKey + '::' + key; // pisahkan snapshot per departemen
     Logger.log('... menghitung ' + key);
     try {
       var payload = payloadFn();
@@ -1728,6 +1809,169 @@ function setupLemburSheets() {
 
   Logger.log(msgs.join('\n'));
   return { success: true, message: msgs.join(' | ') };
+}
+
+// ================================================================
+//  AKUN_LOGIN — sheet berisi akun TL & Karyawan untuk 1 departemen.
+//  Setiap spreadsheet departemen punya sheet ini sendiri-sendiri
+//  (jadi TL/karyawan departemen A tidak akan pernah tersimpan atau
+//  tercampur di spreadsheet departemen B).
+//
+//  Kolom: NIK | Nama | Role (TL/Karyawan) | PasswordHash | Aktif
+//  Password TIDAK disimpan sebagai teks polos -- disimpan sebagai
+//  SHA-256 hash lewat setAkunPassword(), supaya tetap aman walau
+//  spreadsheet-nya suatu saat ter-share ke orang lain.
+// ================================================================
+var SH_AKUN_LOGIN = 'AKUN_LOGIN';
+
+function setupAkunLoginSheet() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+  if (sh) return { success: true, message: 'Sheet AKUN_LOGIN sudah ada, dilewati.' };
+  sh = ss.insertSheet(SH_AKUN_LOGIN);
+  sh.getRange(1, 1, 1, 5).setValues([['NIK', 'Nama', 'Role', 'PasswordHash', 'Aktif']]);
+  sh.setFrozenRows(1);
+  return { success: true, message: 'Sheet AKUN_LOGIN dibuat. Isi manual atau pakai setAkunPassword() untuk tambah akun.' };
+}
+
+function _hashPassword(plain) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(plain), Utilities.Charset.UTF_8);
+  return digest.map(function (b) { return (b < 0 ? b + 256 : b).toString(16).padStart(2, '0'); }).join('');
+}
+
+// Helper buat dijalankan manual di Apps Script editor (Run) untuk
+// menambah/reset password 1 akun. Nama karyawan & role diambil dari
+// KARYAWAN_LEMBUR kalau kode-nya sudah ada di situ.
+// Contoh pemakaian (isi lalu klik Run):
+//   setAkunPasswordHelper('PEG21101254', 'Doni Mulya Y', 'Karyawan', 'rucika123');
+//   setAkunPasswordHelper('SANDY01', 'Sandy Tyas Leo Saputra', 'TL', 'tlcibitung');
+function setAkunPasswordHelper(nik, nama, role, passwordPlain) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+  if (!sh) { setupAkunLoginSheet(); sh = ss.getSheetByName(SH_AKUN_LOGIN); }
+  var data = sh.getDataRange().getValues();
+  var hash = _hashPassword(passwordPlain);
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(nik)) {
+      sh.getRange(i + 1, 1, 1, 5).setValues([[nik, nama, role, hash, true]]);
+      Logger.log('Akun ' + nik + ' di-update.');
+      return;
+    }
+  }
+  sh.appendRow([nik, nama, role, hash, true]);
+  Logger.log('Akun ' + nik + ' ditambahkan.');
+}
+
+// ================================================================
+//  LOGIN — dipanggil dari login.html
+//  plant & dept datang dari pilihan dropdown di form login, dipetakan
+//  ke workspace key yang sama dipakai handleApiRequest (lihat
+//  WORKSPACE_MAP di atas). Kalau berhasil, browser menyimpan
+//  workspace key ini (sessionStorage) dan menyertakannya di SETIAP
+//  request berikutnya supaya data yang terbuka fokus ke departemen itu.
+// ================================================================
+function loginUser(plant, dept, nik, password) {
+  try {
+    var workspaceKey = String(plant || '').trim() + '_' + String(dept || '').trim();
+    if (!WORKSPACE_MAP.hasOwnProperty(workspaceKey)) {
+      return { success: false, error: 'Plant/Departemen tidak dikenali.' };
+    }
+    var targetSpreadsheetId;
+    try {
+      targetSpreadsheetId = resolveWorkspaceSpreadsheetId(workspaceKey);
+    } catch (resolveErr) {
+      return { success: false, error: 'Departemen ini belum aktif/di-provision. Hubungi admin.' };
+    }
+
+    var ss = SpreadsheetApp.openById(targetSpreadsheetId);
+    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum di-setup untuk departemen ini.' };
+
+    var data = sh.getDataRange().getValues();
+    var hash = _hashPassword(password);
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      if (String(row[0]) === String(nik).trim() && row[4] !== false) {
+        if (String(row[3]) === hash) {
+          return { success: true, workspace: workspaceKey, nik: row[0], nama: row[1], role: row[2] };
+        }
+        return { success: false, error: 'NIK atau kata sandi salah.' };
+      }
+    }
+    return { success: false, error: 'NIK tidak ditemukan di departemen ini.' };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ================================================================
+//  PROVISIONING — bikin spreadsheet baru untuk 1 departemen baru,
+//  menyalin SELURUH struktur (sheet, header, kolom, formatting) dari
+//  spreadsheet yang sedang berjalan sekarang, lalu MENGOSONGKAN semua
+//  baris data transaksional (header tetap ada) supaya departemen baru
+//  mulai dari kondisi bersih -- bukan ikut kebawa data Fitting Import.
+//
+//  CARA PAKAI (jalankan 1x per departemen baru, lewat Apps Script
+//  editor -> pilih fungsi ini di dropdown -> klik Run):
+//    provisionDepartmentSpreadsheet('Fitting Rucika', false)
+//    provisionDepartmentSpreadsheet('Pipa Rucika', false)
+//    provisionDepartmentSpreadsheet('Sparepart', false)
+//  Parameter kedua (includeRekapMuatan) HARUS false untuk semua
+//  departemen selain Fitting Import, sesuai instruksi: Rekap Muatan
+//  cuma ada di Warehouse Fitting Import.
+//
+//  Setelah selesai, ID spreadsheet baru muncul di Logger (View ->
+//  Logs / Executions) -- copy ID itu ke WORKSPACE_MAP di atas.
+// ================================================================
+function provisionDepartmentSpreadsheet(namaDept, includeRekapMuatan) {
+  var sourceId = WORKSPACE_MAP['cibitung_fitting_import'];
+  var sourceFile = DriveApp.getFileById(sourceId);
+  var newName = 'Warehouse App - Cibitung - ' + namaDept;
+  var copyFile = sourceFile.makeCopy(newName);
+  var newId = copyFile.getId();
+  var ss = SpreadsheetApp.openById(newId);
+
+  // Sheet yang datanya TRANSAKSIONAL -> dikosongkan (header baris 1 tetap)
+  var sheetsToClear = [
+    SH_STOCK, SH_KIRIM, SH_PRODUKSI, SH_PENGIRIMAN,
+    SH_KARYAWAN_LEMBUR, SH_LEMBUR_LOG, SH_ABSENSI_LOG, SH_HARI_LIBUR,
+    SH_AKUN_LOGIN, SH_PIC_PHOTOS
+  ];
+  sheetsToClear.forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (sh && sh.getLastRow() > 1) {
+      sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).clearContent();
+    }
+  });
+
+  // Rekap Muatan cuma untuk Warehouse Fitting Import -> hapus sheet-nya
+  // di departemen lain supaya tidak membingungkan (menu tetap ada di
+  // frontend, tapi baiknya nanti disembunyikan juga untuk departemen ini).
+  if (!includeRekapMuatan) {
+    [SH_REKAP_MUATAN, SH_REKAP_FITTING].forEach(function (name) {
+      var sh = ss.getSheetByName(name);
+      if (sh) ss.deleteSheet(sh);
+    });
+  }
+
+  // Pastikan sheet AKUN_LOGIN ada di spreadsheet baru ini (dibuat langsung
+  // di objek `ss` milik spreadsheet baru -- TIDAK bergantung pada
+  // SPREADSHEET_ID global, supaya tidak salah sasaran ke spreadsheet lain).
+  if (!ss.getSheetByName(SH_AKUN_LOGIN)) {
+    var shAkun = ss.insertSheet(SH_AKUN_LOGIN);
+    shAkun.getRange(1, 1, 1, 5).setValues([['NIK', 'Nama', 'Role', 'PasswordHash', 'Aktif']]);
+    shAkun.setFrozenRows(1);
+  }
+  // Catatan: kalau spreadsheet sumber SUDAH punya AKUN_LOGIN, sheet itu ikut
+  // ter-copy otomatis oleh makeCopy() dan sudah dikosongkan lewat loop
+  // sheetsToClear di atas -- departemen baru selalu mulai dari nol.
+
+  Logger.log('Spreadsheet baru dibuat untuk departemen "' + namaDept + '"');
+  Logger.log('Spreadsheet ID: ' + newId);
+  Logger.log('URL: ' + ss.getUrl());
+  Logger.log('LANGKAH SELANJUTNYA: copy ID di atas ke WORKSPACE_MAP, lalu deploy ulang.');
+
+  return { success: true, spreadsheetId: newId, url: ss.getUrl() };
 }
 
 function getKaryawanList() {
