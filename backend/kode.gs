@@ -1904,18 +1904,38 @@ function seedAkunUntukWorkspace(workspaceKey, daftarAkun) {
   Logger.log('Spreadsheet: ' + ss.getUrl());
 }
 
-// ---- Fitting Import (Cibitung) -- SUDAH AKTIF, spreadsheet sudah ada ----
+// ================================================================
+//  SEEDER AKUN — versi TEKS BIASA (tanpa kurung array), jauh lebih
+//  aman dari salah ketik dibanding format array-dalam-array.
+//  Format per baris: NIK, Nama, Role, Password
+//  (boleh ada spasi setelah koma, baris kosong otomatis diabaikan)
+// ================================================================
+function seedAkunDariTeks(workspaceKey, teksAkun) {
+  var baris = String(teksAkun).split('\n');
+  var daftarAkun = [];
+  baris.forEach(function (b) {
+    b = b.trim();
+    if (!b) return; // lewati baris kosong
+    var kol = b.split(',').map(function (s) { return s.trim(); });
+    if (kol.length < 4) {
+      throw new Error('Baris tidak lengkap (harus 4 bagian dipisah koma: NIK, Nama, Role, Password): "' + b + '"');
+    }
+    daftarAkun.push([kol[0], kol[1], kol[2], kol[3]]);
+  });
+  seedAkunUntukWorkspace(workspaceKey, daftarAkun);
+}
+
+
 function seedAkunCibitungFittingImport() {
-  seedAkunUntukWorkspace('cibitung_fitting_import', [
-    // [ NIK, Nama, Role, Password ]
-    ['2106619',     'Sandy Tyas Leo Saputra', 'TL',               'Rucika321'],
-    ['PEG21101254', 'Doni Mulya Y',           'Technician I',     'Rucika123'],
-    ['PEG25112073', 'Iman Abdul Rahman',      'Technician I',     'Rucika123'],
-    ['PEG22111246', 'Ivan Reynata',           'Admin Wh Fitting', 'Rucika321'],
-    ['2165310',     'Saepul Ganni',           'Technician I',     'Rucika123'],
-    ['2168311',     'Wang Sutrisno',          'Technician I',     'Rucika321'],
-    ['2155807',     'Sulistyo',               'Technician I',     'Rucika123']
-  ]);
+  seedAkunDariTeks('cibitung_fitting_import', `
+    2106619, Sandy Tyas Leo Saputra, TL, Rucika321
+    PEG21101254, Doni Mulya Y, Technician I, Rucika123
+    PEG25112073, Iman Abdul Rahman, Technician I, Rucika123
+    PEG22111246, Ivan Reynata, Admin Wh Fitting, Rucika321
+    2165310, Saepul Ganni, Technician I, Rucika123
+    2168311, Wang Sutrisno, Technician I, Rucika321
+    2155807, Sulistyo, Technician I, Rucika123
+  `);
 }
 
 // ---- Wrapper siap-Run (tinggal pilih di dropdown, tidak perlu isi
@@ -1940,24 +1960,27 @@ function jalankanProvisionPipaRucika() {
 //   1) provisionDepartmentSpreadsheet('Fitting Rucika', false) sudah dijalankan
 //   2) ID hasilnya sudah diisi ke WORKSPACE_MAP['cibitung_fitting_rucika']
 //   3) Deploy ulang
-//  Baru setelah itu, isi daftar akun di bawah ini & Run fungsi ini.
 function seedAkunCibitungFittingRucika() {
-  seedAkunUntukWorkspace('cibitung_fitting_rucika', [
-    // [ NIK, Nama, Role, Password ] -- ganti sesuai karyawan departemen ini
-    ['NIK_TL_RUCIKA', 'Nama TL Fitting Rucika', 'TL', 'gantiPasswordIni'],
-    ['NIK_KARYAWAN1', 'Nama Karyawan 1',        'Technician I', 'gantiPasswordIni']
-  ]);
+  seedAkunDariTeks('cibitung_fitting_rucika', `
+    2139614, Nurmukhayan, TL, Rucika321
+    2189312, Suryadi, Technician I, Rucika123
+    2188612, Syamsudin, Technician I, Rucika123
+    2131202, Dede Sarip Hidayat, Technician I, Rucika123
+    PEG24032730, Saepulloh, Admin Fitting, Rucika123
+    PEG21111298, Lucky Yulianto, Technician I, Rucika123
+    PEG22072699, Deden Maulana, Technician I, Rucika123
+    PEG24051679, Abdul Aziz, Technician I, Rucika123
+  `);
 }
 
 // ---- Pipa Rucika (Cibitung) -- sama syaratnya seperti Fitting Rucika di
 //      atas, tapi pakai jalankanProvisionPipaRucika() & WORKSPACE_MAP
-//      ['cibitung_pipa_rucika'].
+//      ['cibitung_pipa_rucika']. GANTI daftar di bawah sesuai karyawan asli.
 function seedAkunCibitungPipaRucika() {
-  seedAkunUntukWorkspace('cibitung_pipa_rucika', [
-    // [ NIK, Nama, Role, Password ] -- ganti sesuai karyawan departemen ini
-    ['NIK_TL_PIPA', 'Nama TL Pipa Rucika', 'TL', 'gantiPasswordIni'],
-    ['NIK_KARYAWAN1', 'Nama Karyawan 1',   'Technician I', 'gantiPasswordIni']
-  ]);
+  seedAkunDariTeks('cibitung_pipa_rucika', `
+    NIK_TL_PIPA, Nama TL Pipa Rucika, TL, gantiPasswordIni
+    NIK_KARYAWAN1, Nama Karyawan 1, Technician I, gantiPasswordIni
+  `);
 }
 
 
