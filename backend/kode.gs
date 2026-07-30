@@ -1918,6 +1918,24 @@ function seedAkunCibitungFittingImport() {
   ]);
 }
 
+// ---- Wrapper siap-Run (tinggal pilih di dropdown, tidak perlu isi
+//      parameter manual) untuk bikin spreadsheet 2 departemen baru ----
+function jalankanProvisionFittingRucika() {
+  var res = provisionDepartmentSpreadsheet('Fitting Rucika', false);
+  Logger.log('=== SELESAI: Fitting Rucika ===');
+  Logger.log('Spreadsheet ID: ' + res.spreadsheetId);
+  Logger.log('URL: ' + res.url);
+  Logger.log('LANGKAH SELANJUTNYA: copy ID di atas ke WORKSPACE_MAP[\'cibitung_fitting_rucika\'], lalu Deploy ulang.');
+}
+function jalankanProvisionPipaRucika() {
+  var res = provisionDepartmentSpreadsheet('Pipa Rucika', false);
+  Logger.log('=== SELESAI: Pipa Rucika ===');
+  Logger.log('Spreadsheet ID: ' + res.spreadsheetId);
+  Logger.log('URL: ' + res.url);
+  Logger.log('LANGKAH SELANJUTNYA: copy ID di atas ke WORKSPACE_MAP[\'cibitung_pipa_rucika\'], lalu Deploy ulang.');
+}
+
+
 // ---- Fitting Rucika (Cibitung) -- BARU AKTIF SETELAH:
 //   1) provisionDepartmentSpreadsheet('Fitting Rucika', false) sudah dijalankan
 //   2) ID hasilnya sudah diisi ke WORKSPACE_MAP['cibitung_fitting_rucika']
@@ -1930,6 +1948,18 @@ function seedAkunCibitungFittingRucika() {
     ['NIK_KARYAWAN1', 'Nama Karyawan 1',        'Technician I', 'gantiPasswordIni']
   ]);
 }
+
+// ---- Pipa Rucika (Cibitung) -- sama syaratnya seperti Fitting Rucika di
+//      atas, tapi pakai jalankanProvisionPipaRucika() & WORKSPACE_MAP
+//      ['cibitung_pipa_rucika'].
+function seedAkunCibitungPipaRucika() {
+  seedAkunUntukWorkspace('cibitung_pipa_rucika', [
+    // [ NIK, Nama, Role, Password ] -- ganti sesuai karyawan departemen ini
+    ['NIK_TL_PIPA', 'Nama TL Pipa Rucika', 'TL', 'gantiPasswordIni'],
+    ['NIK_KARYAWAN1', 'Nama Karyawan 1',   'Technician I', 'gantiPasswordIni']
+  ]);
+}
+
 
 // ================================================================
 //  LOGIN — dipanggil dari login.html
