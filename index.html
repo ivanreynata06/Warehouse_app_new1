@@ -750,6 +750,10 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
       </div>
 
       <!-- ═══════════ SECTION 4: REKAP MUATAN PER PIC ═══════════ -->
+      <!-- Cuma relevan untuk workspace cibitung_fitting_import; disembunyikan
+           via auth-guard.js untuk departemen lain (sheet-nya sengaja tidak
+           di-provision di departemen selain Fitting Import). -->
+      <div id="section-rekap-muatan">
       <div class="sec-divider">
         <span class="sec-divider-label">👷 Rekap Muatan per PIC</span>
         <div class="sec-divider-line"></div>
@@ -777,6 +781,7 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       <!-- ═══════════ SECTION 5: LOADING TIME / RESIDENCE TIME ═══════════ -->

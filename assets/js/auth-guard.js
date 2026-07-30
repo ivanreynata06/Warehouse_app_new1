@@ -27,8 +27,24 @@
     workspace: workspace,
     nik: nik,
     nama: sessionStorage.getItem('wh_nama') || '',
-    role: sessionStorage.getItem('wh_role') || ''
+    role: sessionStorage.getItem('wh_role') || '',
+    // Rekap Muatan sengaja CUMA ada di departemen Fitting Import (sheet-nya
+    // tidak di-provision di departemen lain) -- dipakai untuk sembunyikan
+    // menu & section terkait di halaman manapun secara otomatis.
+    hasRekapMuatan: workspace === 'cibitung_fitting_import'
   };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.WH_SESSION.hasRekapMuatan) return;
+    // Sembunyikan menu sidebar "Rekap Muatan" (pola onclick="navTo('rekap')"
+    // atau onclick="goTo('rekap')" -- dipakai konsisten di semua halaman)
+    document.querySelectorAll('[onclick*="\'rekap\'"]').forEach(function (el) {
+      el.style.display = 'none';
+    });
+    // Sembunyikan section "Rekap Muatan per PIC" khusus di Control Tower
+    var sec = document.getElementById('section-rekap-muatan');
+    if (sec) sec.style.display = 'none';
+  });
 })();
 
 // Dipanggil dari tombol "Logout" di halaman manapun
