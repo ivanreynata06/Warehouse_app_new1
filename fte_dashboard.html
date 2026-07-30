@@ -315,6 +315,25 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <!-- ═══ APPROVAL LEMBUR & CUTI — cuma tampil untuk TL/Admin ═══ -->
+      <div class="card" id="card-approval" style="display:none;margin-bottom:14px;">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="clipboard-check" style="width:12px;"></i>Approval Lembur &amp; Cuti</div>
+          <span class="card-badge badge-purple" id="badge-approval">0 menunggu</span>
+        </div>
+        <div id="ttd-setup-box" style="display:none;background:rgba(242,183,5,.08);border:1px solid rgba(242,183,5,.3);border-radius:10px;padding:12px;margin-bottom:12px;">
+          <div style="font-size:11.5px;color:#f2d98a;margin-bottom:8px;">✍️ Anda belum upload tanda tangan. Upload sekali, otomatis dipakai di setiap SPL yang Anda approve.</div>
+          <input type="file" id="ttd-file-input" accept="image/*" style="font-size:11px;color:var(--text-muted);">
+          <button class="btn-export" style="margin-left:8px;" onclick="uploadTtdTl()">Upload Tanda Tangan</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Tipe</th><th>Tanggal</th><th>Karyawan</th><th>Detail</th><th>Aksi</th></tr></thead>
+            <tbody id="tbody-approval"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="grid-2c">
         <div class="card">
           <div class="card-hdr">
@@ -446,6 +465,88 @@ function loadAll(){
     })
     .withFailureHandler(function(err){ showToast('Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'),'error'); showLoading(false); })
     .getAbsensiFTEData(curBulan, curTahun);
+
+  if (window.WH_SESSION && window.WH_SESSION.fullAccess) {
+    document.getElementById('card-approval').style.display = 'block';
+    loadApprovalPanel();
+    checkTtdSetup();
+  }
+}
+
+// ================================================================
+//  APPROVAL LEMBUR & CUTI (khusus TL/Admin)
+// ================================================================
+function loadApprovalPanel(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success) return;
+      var list = res.data || [];
+      document.getElementById('badge-approval').textContent = list.length + ' menunggu';
+      var tb = document.getElementById('tbody-approval');
+      if(!list.length){ tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:14px;">Tidak ada pengajuan menunggu approval 🎉</td></tr>'; return; }
+      tb.innerHTML = list.map(function(a){
+        var detail = a.tipe==='lembur'
+          ? (a.jamMulai+'–'+a.jamSelesai+' ('+a.totalJam+' jam) — '+(a.keterangan||'-'))
+          : (a.jenis+' — '+(a.keterangan||'-'));
+        var badge = a.tipe==='lembur' ? '<span class="card-badge badge-gold">Lembur</span>' : '<span class="card-badge badge-purple">Cuti</span>';
+        return '<tr>'+
+          '<td>'+badge+'</td>'+
+          '<td>'+a.tanggal+'</td>'+
+          '<td>'+a.nama+'</td>'+
+          '<td style="font-size:11px;color:var(--text-muted);">'+detail+'</td>'+
+          '<td><div class="btn-export-group">'+
+            '<button class="btn-export" style="background:linear-gradient(135deg,#16a34a,#22c55e);" onclick="doApprove(\''+a.tipe+'\','+a.rowIndex+',\'Disetujui\')">Setujui</button>'+
+            '<button class="btn-export" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" onclick="doApprove(\''+a.tipe+'\','+a.rowIndex+',\'Ditolak\')">Tolak</button>'+
+          '</div></td>'+
+        '</tr>';
+      }).join('');
+    })
+    .getPendingApprovals();
+}
+
+function doApprove(tipe, rowIndex, keputusan){
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  showToast('Memproses...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(keputusan+' berhasil disimpan','success');
+      loadApprovalPanel();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .approveItem(tipe, rowIndex, keputusan, nik);
+}
+
+function checkTtdSetup(){
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  if(!nik) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(res && res.success && !res.hasSignature){
+        document.getElementById('ttd-setup-box').style.display = 'block';
+      }
+    })
+    .hasTlSignature(nik);
+}
+
+function uploadTtdTl(){
+  var inp = document.getElementById('ttd-file-input');
+  var file = inp.files && inp.files[0];
+  if(!file){ showToast('Pilih file gambar tanda tangan dulu','error'); return; }
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  var reader = new FileReader();
+  reader.onload = function(e){
+    showToast('Mengupload tanda tangan...','info');
+    google.script.run
+      .withSuccessHandler(function(res){
+        if(!res || !res.success){ showToast('Gagal upload: '+(res&&res.error?res.error:''),'error'); return; }
+        showToast('Tanda tangan tersimpan! Otomatis dipakai di SPL berikutnya.','success');
+        document.getElementById('ttd-setup-box').style.display = 'none';
+      })
+      .withFailureHandler(function(err){ showToast('Gagal upload: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+      .uploadTlSignature(nik, e.target.result);
+  };
+  reader.readAsDataURL(file);
 }
 
 function renderAll(){
