@@ -52,7 +52,12 @@ var API_FUNCTIONS = {
   previewSPL              : previewSPL,
   // Multi-workspace (Plant & Departemen)
   loginUser               : loginUser,
-  provisionDepartmentSpreadsheet: provisionDepartmentSpreadsheet
+  provisionDepartmentSpreadsheet: provisionDepartmentSpreadsheet,
+  // Approval Lembur & Cuti + Tanda Tangan Digital TL
+  getPendingApprovals     : getPendingApprovals,
+  approveItem             : approveItem,
+  uploadTlSignature       : uploadTlSignature,
+  hasTlSignature          : hasTlSignature
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -2145,7 +2150,8 @@ function saveLembur(data) {
     sh.appendRow([
       new Date(), data.tanggal, data.kode, data.nama || '',
       data.jamMulai, data.jamSelesai, durJam,
-      data.keterangan || '', data.inputOleh || ''
+      data.keterangan || '', data.inputOleh || '',
+      'Pending', '' // Status (kol J) & ApprovedBy/NIK TL (kol K)
     ]);
 
     // ---- Notifikasi WhatsApp ke approver (khusus karyawan INTERNAL) ----
@@ -2265,6 +2271,7 @@ function getLemburList(filter) {
         rowIndex: i + 1, tanggal: dk, kode: String(r[2]), nama: String(r[3]),
         jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
         keterangan: String(r[7] || ''), inputOleh: String(r[8] || ''),
+        approvalStatus: String(r[9] || 'Pending'), approvedBy: String(r[10] || ''),
         isMinggu: tgl.getDay() === 0,
         isHariLibur: !!hariLibur[dk],
         hariLiburLabel: hariLibur[dk] || ''
@@ -2274,6 +2281,131 @@ function getLemburList(filter) {
     return { success: true, data: out };
   } catch (err) { return { success: false, error: err.message }; }
 }
+
+// ================================================================
+//  APPROVAL — TL menyetujui/menolak pengajuan Lembur & Cuti
+// ================================================================
+function getPendingApprovals() {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var out = [];
+
+    var shLem = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (shLem) {
+      var dl = shLem.getDataRange().getValues();
+      for (var i = 1; i < dl.length; i++) {
+        var r = dl[i];
+        if (!r[1]) continue;
+        var st = String(r[9] || 'Pending');
+        if (st !== 'Pending') continue;
+        out.push({
+          tipe: 'lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
+          kode: String(r[2]), nama: String(r[3]),
+          jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
+          keterangan: String(r[7] || '')
+        });
+      }
+    }
+
+    var shAbs = ss.getSheetByName(SH_ABSENSI_LOG);
+    if (shAbs) {
+      var da = shAbs.getDataRange().getValues();
+      for (var j = 1; j < da.length; j++) {
+        var ra = da[j];
+        if (!ra[1]) continue;
+        var sta = String(ra[7] || 'Pending');
+        if (sta !== 'Pending') continue;
+        out.push({
+          tipe: 'cuti', rowIndex: j + 1, tanggal: _fmtYMD(new Date(ra[1])),
+          kode: String(ra[2]), nama: String(ra[3]), jenis: String(ra[4]),
+          keterangan: String(ra[5] || '')
+        });
+      }
+    }
+
+    out.sort(function (a, b) { return a.tanggal < b.tanggal ? 1 : -1; });
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// tipe: 'lembur' | 'cuti'  |  keputusan: 'Disetujui' | 'Ditolak'
+function approveItem(tipe, rowIndex, keputusan, approverNik) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheetName = tipe === 'cuti' ? SH_ABSENSI_LOG : SH_LEMBUR_LOG;
+    var statusCol = tipe === 'cuti' ? 8 : 10; // kolom H (cuti) / J (lembur), 1-based
+    var sh = ss.getSheetByName(sheetName);
+    if (!sh) return { success: false, error: 'Sheet ' + sheetName + ' tidak ditemukan.' };
+    if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid.' };
+    sh.getRange(rowIndex, statusCol, 1, 2).setValues([[keputusan, approverNik || '']]);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  TANDA TANGAN DIGITAL TL — upload sekali, dipakai otomatis di
+//  setiap SPL yang di-generate untuk lembur/cuti yang TL itu approve.
+//  Disimpan di Drive (mirip pola savePhoto), URL-nya disimpan di
+//  sheet AKUN_LOGIN kolom F (index 6).
+// ================================================================
+function uploadTlSignature(nik, dataUrl) {
+  try {
+    if (!nik || !dataUrl) return { success: false, error: 'Data tidak lengkap.' };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+
+    var data = sh.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(nik)) { rowIdx = i + 1; break; }
+    }
+    if (rowIdx === -1) return { success: false, error: 'NIK tidak ditemukan di AKUN_LOGIN.' };
+
+    // Hapus file tanda tangan lama kalau ada
+    var oldFileId = String(data[rowIdx - 1][5] || '');
+    if (oldFileId) { try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (e) {} }
+
+    var mimeType = 'image/png';
+    var base64Data = dataUrl;
+    if (dataUrl.indexOf(',') > -1) {
+      var parts = dataUrl.split(',');
+      base64Data = parts[1];
+      if (parts[0].indexOf('jpeg') > -1 || parts[0].indexOf('jpg') > -1) mimeType = 'image/jpeg';
+    }
+    var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, 'ttd_' + nik + '.png');
+    var file = DriveApp.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    // Kolom F (6) khusus FileID tanda tangan. Pastikan header-nya ada.
+    if (String(sh.getRange(1, 6).getValue()) !== 'TandaTanganFileId') {
+      sh.getRange(1, 6).setValue('TandaTanganFileId');
+    }
+    sh.getRange(rowIdx, 6).setValue(file.getId());
+
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function _getTlSignatureBlob(nik) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+  if (!sh) return null;
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(nik)) {
+      var fileId = String(data[i][5] || '');
+      if (!fileId) return null;
+      try { return DriveApp.getFileById(fileId).getBlob(); } catch (e) { return null; }
+    }
+  }
+  return null;
+}
+
+function hasTlSignature(nik) {
+  return { success: true, hasSignature: !!_getTlSignatureBlob(nik) };
+}
+
 
 function deleteLembur(rowIndex) {
   try {
@@ -2290,7 +2422,7 @@ function saveAbsensi(data) {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sh = ss.getSheetByName(SH_ABSENSI_LOG);
     if (!sh) return { success: false, error: 'Sheet ABSENSI_LOG belum ada. Jalankan setupLemburSheets() dulu.' };
-    sh.appendRow([new Date(), data.tanggal, data.kode, data.nama || '', data.status, data.keterangan || '', data.inputOleh || '']);
+    sh.appendRow([new Date(), data.tanggal, data.kode, data.nama || '', data.status, data.keterangan || '', data.inputOleh || '', 'Pending', '']);
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
 }
@@ -2310,7 +2442,7 @@ function getAbsensiList(filter) {
       if (bulan && tahun) {
         if ((tgl.getMonth() + 1) != Number(bulan) || tgl.getFullYear() != Number(tahun)) continue;
       }
-      out.push({ rowIndex: i + 1, tanggal: _fmtYMD(tgl), kode: String(r[2]), nama: String(r[3]), status: String(r[4]), keterangan: String(r[5] || '') });
+      out.push({ rowIndex: i + 1, tanggal: _fmtYMD(tgl), kode: String(r[2]), nama: String(r[3]), status: String(r[4]), keterangan: String(r[5] || ''), approvalStatus: String(r[7] || 'Pending'), approvedBy: String(r[8] || '') });
     }
     return { success: true, data: out };
   } catch (err) { return { success: false, error: err.message }; }
@@ -2577,6 +2709,29 @@ function _buildSPLDocument(kode, bulan, tahun) {
     body.replaceText('\\{\\{AKHIR' + n + '\\}\\}', vAkhir);
     body.replaceText('\\{\\{TOTAL' + n + '\\}\\}', vTotal);
     body.replaceText('\\{\\{KET' + n + '\\}\\}', vKet);
+  }
+
+  // ---- Tanda tangan digital TL ----
+  // Kalau ada entri lembur bulan ini yang sudah Disetujui, ambil tanda
+  // tangan TL yang meng-approve (sudah di-upload sekali lewat
+  // uploadTlSignature) dan tempel ke placeholder {{TTD_TL}} di template
+  // (letakkan placeholder itu di sel kolom "Disetujui" pada template Doc).
+  var approvedEntry = lemburList.find(function (l) { return l.approvalStatus === 'Disetujui' && l.approvedBy; });
+  var sigBlob = approvedEntry ? _getTlSignatureBlob(approvedEntry.approvedBy) : null;
+  if (sigBlob) {
+    var foundTtd = body.findText('\\{\\{TTD_TL\\}\\}');
+    if (foundTtd) {
+      var elTtd = foundTtd.getElement();
+      elTtd.asText().setText('');
+      try {
+        elTtd.getParent().asParagraph().insertInlineImage(0, sigBlob).setWidth(90).setHeight(40);
+      } catch (imgErr) {
+        // posisi placeholder bukan paragraph biasa (mis. langsung di table
+        // cell tanpa paragraph pembungkus) -- lewati gambar, tidak fatal.
+      }
+    }
+  } else {
+    body.replaceText('\\{\\{TTD_TL\\}\\}', '');
   }
 
   doc.saveAndClose();
