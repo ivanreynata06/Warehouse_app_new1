@@ -1872,18 +1872,63 @@ function setAkunPasswordHelper(nik, nama, role, passwordPlain) {
 //  Aman dijalankan berkali-kali (akun yang sudah ada akan di-UPDATE,
 //  bukan dobel).
 // ================================================================
-function seedAkunCibitungFittingImport() {
-  var daftarAkun = [
-    // [ NIK, Nama, Role ('TL' atau 'Karyawan'), Password ]
-    ['SANDY01',     'Sandy Tyas Leo Saputra', 'TL',       'passwordrahasia'],
-    ['PEG21101254', 'Doni Mulya Y',           'Karyawan', 'doni12345'],
-    ['PEG25112073', 'Iman Abdul Rahman',      'Karyawan', 'iman12345'],
-    ['PEG22111246', 'Ivan Reynata',           'Karyawan', 'ivan12345']
-  ];
+// ================================================================
+//  SEEDER AKUN (generik) — daftarkan/update banyak akun sekaligus
+//  LANGSUNG ke spreadsheet milik 1 workspace tertentu, TIDAK bergantung
+//  pada variabel global SPREADSHEET_ID (supaya tidak salah sasaran
+//  departemen kalau dijalankan manual dari Apps Script editor).
+// ================================================================
+function seedAkunUntukWorkspace(workspaceKey, daftarAkun) {
+  var targetId = resolveWorkspaceSpreadsheetId(workspaceKey); // error jelas kalau belum di-provision
+  var ss = SpreadsheetApp.openById(targetId);
+  var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+  if (!sh) {
+    sh = ss.insertSheet(SH_AKUN_LOGIN);
+    sh.getRange(1, 1, 1, 5).setValues([['NIK', 'Nama', 'Role', 'PasswordHash', 'Aktif']]);
+    sh.setFrozenRows(1);
+  }
+  var data = sh.getDataRange().getValues();
   daftarAkun.forEach(function (a) {
-    setAkunPasswordHelper(a[0], a[1], a[2], a[3]);
+    var nik = a[0], nama = a[1], role = a[2], hash = _hashPassword(a[3]);
+    var found = false;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(nik)) {
+        sh.getRange(i + 1, 1, 1, 5).setValues([[nik, nama, role, hash, true]]);
+        found = true;
+        break;
+      }
+    }
+    if (!found) { sh.appendRow([nik, nama, role, hash, true]); data.push([nik]); }
   });
-  Logger.log('Selesai. ' + daftarAkun.length + ' akun didaftarkan/di-update.');
+  Logger.log(daftarAkun.length + ' akun disimpan ke workspace "' + workspaceKey + '"');
+  Logger.log('Spreadsheet: ' + ss.getUrl());
+}
+
+// ---- Fitting Import (Cibitung) -- SUDAH AKTIF, spreadsheet sudah ada ----
+function seedAkunCibitungFittingImport() {
+  seedAkunUntukWorkspace('cibitung_fitting_import', [
+    // [ NIK, Nama, Role, Password ]
+    ['2106619',     'Sandy Tyas Leo Saputra', 'TL',               'Rucika321'],
+    ['PEG21101254', 'Doni Mulya Y',           'Technician I',     'Rucika123'],
+    ['PEG25112073', 'Iman Abdul Rahman',      'Technician I',     'Rucika123'],
+    ['PEG22111246', 'Ivan Reynata',           'Admin Wh Fitting', 'Rucika321'],
+    ['2165310',     'Saepul Ganni',           'Technician I',     'Rucika123'],
+    ['2168311',     'Wang Sutrisno',          'Technician I',     'Rucika321'],
+    ['2155807',     'Sulistyo',               'Technician I',     'Rucika123']
+  ]);
+}
+
+// ---- Fitting Rucika (Cibitung) -- BARU AKTIF SETELAH:
+//   1) provisionDepartmentSpreadsheet('Fitting Rucika', false) sudah dijalankan
+//   2) ID hasilnya sudah diisi ke WORKSPACE_MAP['cibitung_fitting_rucika']
+//   3) Deploy ulang
+//  Baru setelah itu, isi daftar akun di bawah ini & Run fungsi ini.
+function seedAkunCibitungFittingRucika() {
+  seedAkunUntukWorkspace('cibitung_fitting_rucika', [
+    // [ NIK, Nama, Role, Password ] -- ganti sesuai karyawan departemen ini
+    ['NIK_TL_RUCIKA', 'Nama TL Fitting Rucika', 'TL', 'gantiPasswordIni'],
+    ['NIK_KARYAWAN1', 'Nama Karyawan 1',        'Technician I', 'gantiPasswordIni']
+  ]);
 }
 
 // ================================================================
