@@ -1863,6 +1863,30 @@ function setAkunPasswordHelper(nik, nama, role, passwordPlain) {
 }
 
 // ================================================================
+//  SEEDER AKUN — daftarkan BANYAK akun sekaligus dalam 1x Run, supaya
+//  tidak perlu bolak-balik edit 1 baris setAkunPasswordHelper().
+//
+//  CARA PAKAI: edit daftar di bawah (tambah/ubah baris sesuai
+//  kebutuhan), lalu di Apps Script editor pilih fungsi
+//  "seedAkunCibitungFittingImport" di dropdown -> klik Run.
+//  Aman dijalankan berkali-kali (akun yang sudah ada akan di-UPDATE,
+//  bukan dobel).
+// ================================================================
+function seedAkunCibitungFittingImport() {
+  var daftarAkun = [
+    // [ NIK, Nama, Role ('TL' atau 'Karyawan'), Password ]
+    ['SANDY01',     'Sandy Tyas Leo Saputra', 'TL',       'passwordrahasia'],
+    ['PEG21101254', 'Doni Mulya Y',           'Karyawan', 'doni12345'],
+    ['PEG25112073', 'Iman Abdul Rahman',      'Karyawan', 'iman12345'],
+    ['PEG22111246', 'Ivan Reynata',           'Karyawan', 'ivan12345']
+  ];
+  daftarAkun.forEach(function (a) {
+    setAkunPasswordHelper(a[0], a[1], a[2], a[3]);
+  });
+  Logger.log('Selesai. ' + daftarAkun.length + ' akun didaftarkan/di-update.');
+}
+
+// ================================================================
 //  LOGIN — dipanggil dari login.html
 //  plant & dept datang dari pilihan dropdown di form login, dipetakan
 //  ke workspace key yang sama dipakai handleApiRequest (lihat
