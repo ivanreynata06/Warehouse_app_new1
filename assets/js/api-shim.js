@@ -51,6 +51,21 @@
     return 'apicache::' + getWorkspace() + '::' + fn + '::' + JSON.stringify(args || []);
   }
 
+  // Whitelist fungsi yang AMAN di-cache -- data dashboard read-only yang
+  // boleh sedikit basi (beberapa menit) demi kecepatan tampilan.
+  // SEMUA fungsi lain (approval, save, login, upload, delete, dst) TIDAK
+  // BOLEH di-cache sama sekali -- harus selalu fresh dari server, karena
+  // hasilnya action-sensitive / berubah cepat / bisa menyesatkan kalau basi
+  // (contoh nyata: getPendingApprovals menampilkan "0 menunggu" basi
+  // padahal sudah ada pengajuan baru masuk).
+  var CACHEABLE_FRONTEND = {
+    getKaryawanList: 1, getGroupList: 1, getDashboardData: 1,
+    getOutboundData: 1, getInboundData: 1, getKanbanData: 1,
+    getRekapMuatanData: 1, getPhotos: 1, getStockTrendBatch: 1,
+    getIOTrendBatch: 1, getAbsensiFTEData: 1, getLemburList: 1,
+    getAbsensiList: 1
+  };
+
   function readCache(key) {
     try {
       var raw = sessionStorage.getItem(key);
@@ -115,6 +130,16 @@
         // Dianggap sebagai nama fungsi backend, mis. getKanbanData(...)
         return function () {
           var args = Array.prototype.slice.call(arguments);
+
+          // Fungsi di luar whitelist (approval, save, login, upload, dll)
+          // -- SELALU fresh, tidak pernah baca/tulis cache sama sekali.
+          if (!CACHEABLE_FRONTEND[prop]) {
+            callBackend(prop, args)
+              .then(function (data) { if (successCb) successCb(data); })
+              .catch(function (err) { if (failureCb) failureCb(err); });
+            return proxy;
+          }
+
           var key = cacheKey(prop, args);
           var cached = readCache(key);
           var isFresh = cached && (Date.now() - cached.t < TTL);
