@@ -480,6 +480,12 @@ function loadAll(){
 // ================================================================
 //  APPROVAL LEMBUR & CUTI (khusus TL/Admin)
 // ================================================================
+function escHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
 function loadApprovalPanel(){
   google.script.run
     .withSuccessHandler(function(res){
@@ -499,15 +505,24 @@ function loadApprovalPanel(){
         var badge = a.tipe==='lembur' ? '<span class="card-badge badge-gold">Lembur</span>' : '<span class="card-badge badge-purple">Cuti</span>';
         return '<tr>'+
           '<td>'+badge+'</td>'+
-          '<td>'+a.tanggal+'</td>'+
-          '<td>'+a.nama+'</td>'+
-          '<td style="font-size:11px;color:var(--text-muted);">'+detail+'</td>'+
+          '<td>'+escHtml(a.tanggal)+'</td>'+
+          '<td>'+escHtml(a.nama)+'</td>'+
+          '<td style="font-size:11px;color:var(--text-muted);">'+escHtml(detail)+'</td>'+
           '<td><div class="btn-export-group">'+
-            '<button class="btn-export" style="background:linear-gradient(135deg,#16a34a,#22c55e);" onclick="doApprove(\''+a.tipe+'\','+a.rowIndex+',\'Disetujui\')">Setujui</button>'+
-            '<button class="btn-export" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" onclick="doApprove(\''+a.tipe+'\','+a.rowIndex+',\'Ditolak\')">Tolak</button>'+
+            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#16a34a,#22c55e);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-keputusan="Disetujui">Setujui</button>'+
+            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-keputusan="Ditolak">Tolak</button>'+
           '</div></td>'+
         '</tr>';
       }).join('');
+      // Pasang event listener manual (bukan onclick inline) -- lebih aman
+      // dari karakter spesial (&, kutip, dll) yang bisa ada di teks
+      // keterangan/nama dan merusak parsing atribut HTML kalau ditulis
+      // sebagai string onclick langsung.
+      tb.querySelectorAll('.btn-approve-item').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          doApprove(btn.dataset.tipe, Number(btn.dataset.row), btn.dataset.keputusan);
+        });
+      });
     })
     .withFailureHandler(function(err){
       document.getElementById('badge-approval').textContent = 'Error';
