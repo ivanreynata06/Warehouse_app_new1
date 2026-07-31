@@ -334,6 +334,20 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <!-- ═══ REKAP MUATAN PER PIC — cuma tampil di departemen Fitting Import ═══ -->
+      <div class="card" id="card-rekap-pic" style="display:none;margin-bottom:14px;">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="truck" style="width:12px;"></i>Rekap Muatan per PIC</div>
+          <span class="card-badge badge-gold" id="badge-rekap-pic">—</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>PIC</th><th>Pipa (kg)</th><th>Fitting (Bx)</th></tr></thead>
+            <tbody id="tbody-rekap-pic"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="grid-2c">
         <div class="card">
           <div class="card-hdr">
@@ -471,7 +485,36 @@ function loadAll(){
     loadApprovalPanel();
     checkTtdSetup();
   }
+  if (window.WH_SESSION && window.WH_SESSION.hasRekapMuatan) {
+    document.getElementById('card-rekap-pic').style.display = 'block';
+    loadRekapPic();
+  }
 }
+
+// ================================================================
+//  REKAP MUATAN PER PIC (khusus departemen Fitting Import)
+// ================================================================
+function loadRekapPic(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){
+        document.getElementById('tbody-rekap-pic').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#f87171;padding:10px;">Gagal memuat: '+(res&&res.error?res.error:'')+'</td></tr>';
+        return;
+      }
+      document.getElementById('badge-rekap-pic').textContent = res.periodeLabel || '';
+      var pics = res.pics || {};
+      var order = ['DONI','IMAN','SAEPUL','SULIS','WANG'];
+      document.getElementById('tbody-rekap-pic').innerHTML = order.map(function(p){
+        var d = pics[p] || {pipa:0, fitting:0};
+        return '<tr><td style="font-weight:600;">'+p+'</td>'+
+          '<td>'+d.pipa.toLocaleString('id-ID',{maximumFractionDigits:2})+'</td>'+
+          '<td>'+d.fitting.toLocaleString('id-ID',{maximumFractionDigits:2})+'</td></tr>';
+      }).join('');
+    })
+    .withFailureHandler(function(err){
+      document.getElementById('tbody-rekap-pic').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#f87171;padding:10px;">Gagal terhubung: '+(err&&err.message?err.message:'')+'</td></tr>';
+    })
+    .getRekapMuatanData({mode:'bulanan', bulan:curBulan, tahun:curTahun});
 
 // ================================================================
 //  APPROVAL LEMBUR & CUTI (khusus TL/Admin)
