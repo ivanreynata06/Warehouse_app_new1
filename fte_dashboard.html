@@ -515,6 +515,7 @@ function loadRekapPic(){
       document.getElementById('tbody-rekap-pic').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#f87171;padding:10px;">Gagal terhubung: '+(err&&err.message?err.message:'')+'</td></tr>';
     })
     .getRekapMuatanData({mode:'bulanan', bulan:curBulan, tahun:curTahun});
+}
 
 // ================================================================
 //  APPROVAL LEMBUR & CUTI (khusus TL/Admin)
