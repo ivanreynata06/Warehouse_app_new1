@@ -191,6 +191,13 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .chip-sakit{background:rgba(6,182,212,.13);color:var(--accent-cyan);}
 .chip-cutitahunan{background:rgba(16,185,129,.13);color:var(--accent-green);}
 .chip-mangkir{background:rgba(239,68,68,.13);color:var(--accent-red);}
+.akt-pill{padding:6px 12px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;
+  background:rgba(255,255,255,.04);border:1px solid var(--border-color,#232b45);color:var(--text-muted,#8b93a7);
+  transition:all .15s;user-select:none;}
+.akt-pill:hover{border-color:var(--accent-gold,#f2b705);}
+.akt-pill.active{background:rgba(242,183,5,.14);border-color:var(--accent-gold,#f2b705);color:var(--accent-gold2,#f2d98a);}
+.akt-pill.custom{background:rgba(139,92,246,.14);border-color:#8b5cf6;color:#c4b5fd;}
+.akt-pill .rm{margin-left:5px;opacity:.7;}
 .btn-del{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;border-radius:6px;display:flex;transition:all .15s;}
 .btn-del:hover{background:rgba(239,68,68,.13);color:var(--accent-red);}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:30px 10px;color:var(--text-muted);text-align:center;}
@@ -335,9 +342,9 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <div class="form-grid">
               <div class="form-field span2">
                 <label>Karyawan</label>
-                <select id="lm-karyawan" onchange="onKaryawanChange()">
-                  <option value="">— Pilih karyawan —</option>
-                </select>
+                <div id="lm-karyawan-info" style="padding:10px 12px;border-radius:9px;background:var(--bg-input,rgba(255,255,255,.04));border:1px solid var(--border-color,#232b45);font-size:13px;font-weight:600;color:var(--accent-gold2,#f2d98a);display:flex;align-items:center;gap:8px;">
+                  <i data-lucide="user-check" style="width:14px;"></i><span id="lm-karyawan-nama">—</span>
+                </div>
               </div>
               <div class="form-field">
                 <label>Tanggal</label>
@@ -353,8 +360,12 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
                 <input type="time" id="lm-selesai" onchange="updateDurasiPreview()">
               </div>
               <div class="form-field span2">
-                <label>Keterangan (opsional)</label>
-                <textarea id="lm-ket" placeholder="mis. Bongkar muat kiriman mendadak"></textarea>
+                <label>Aktivitas (bisa pilih lebih dari 1)</label>
+                <div id="lm-aktivitas-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+                <div style="display:flex;gap:6px;">
+                  <input type="text" id="lm-aktivitas-custom" placeholder="Aktivitas lain (tidak ada di daftar)..." style="flex:1;">
+                  <button type="button" class="btn-export" onclick="addAktivitasCustom()">+ Tambah</button>
+                </div>
               </div>
             </div>
 
@@ -579,8 +590,9 @@ function loadAll(){
 }
 
 function populateKaryawanSelects(){
-  ['lm-karyawan','ab-karyawan'].forEach(function(id){
+  ['ab-karyawan'].forEach(function(id){
     var sel = document.getElementById(id);
+    if(!sel) return; // elemen tidak ada di halaman ini -> lewati (aman)
     sel.innerHTML = '<option value="">— Pilih karyawan —</option>';
     var internalGroup = document.createElement('optgroup'); internalGroup.label = 'Internal';
     var osGroup = document.createElement('optgroup'); osGroup.label = 'Outsourcing (OS)';
@@ -752,18 +764,61 @@ function updateDurasiPreview(){
   if(typeof lucide!=='undefined') lucide.createIcons();
 }
 
+// ================================================================
+//  AKTIVITAS (pengganti Keterangan bebas) — pilihan multi + custom
+// ================================================================
+var AKTIVITAS_PRESET = ['Support Pengiriman','Stock Opname','Relokasi','Input Data','Relokasi Fitting PPR','Persiapan Pipa PPR','Persiapan Fitting PPR'];
+var aktivitasTerpilih = [];
+
+function renderAktivitasPills(){
+  var wrap = document.getElementById('lm-aktivitas-pills');
+  wrap.innerHTML = AKTIVITAS_PRESET.map(function(a){
+    var active = aktivitasTerpilih.indexOf(a) > -1;
+    return '<span class="akt-pill'+(active?' active':'')+'" onclick="toggleAktivitas(\''+a.replace(/'/g,"\\'")+'\')">'+a+'</span>';
+  }).join('') + aktivitasTerpilih.filter(function(a){ return AKTIVITAS_PRESET.indexOf(a)===-1; }).map(function(a){
+    return '<span class="akt-pill custom active">'+a+'<span class="rm" onclick="removeAktivitasCustom(\''+a.replace(/'/g,"\\'")+'\')">✕</span></span>';
+  }).join('');
+}
+function toggleAktivitas(a){
+  var idx = aktivitasTerpilih.indexOf(a);
+  if(idx>-1) aktivitasTerpilih.splice(idx,1); else aktivitasTerpilih.push(a);
+  renderAktivitasPills();
+}
+function addAktivitasCustom(){
+  var inp = document.getElementById('lm-aktivitas-custom');
+  var val = inp.value.trim();
+  if(!val) return;
+  if(aktivitasTerpilih.indexOf(val)===-1) aktivitasTerpilih.push(val);
+  inp.value='';
+  renderAktivitasPills();
+}
+function removeAktivitasCustom(a){
+  var idx = aktivitasTerpilih.indexOf(a);
+  if(idx>-1) aktivitasTerpilih.splice(idx,1);
+  renderAktivitasPills();
+}
+renderAktivitasPills();
+
+// Tampilkan nama karyawan otomatis dari akun yang login (bukan dropdown lagi)
+(function initKaryawanInfo(){
+  if (window.WH_SESSION && window.WH_SESSION.nama) {
+    document.getElementById('lm-karyawan-nama').textContent = window.WH_SESSION.nama + ' (' + window.WH_SESSION.nik + ')';
+  }
+})();
+
 function submitLembur(){
-  var kode = document.getElementById('lm-karyawan').value;
+  var kode = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  var namaUser = window.WH_SESSION ? window.WH_SESSION.nama : '';
   var tanggal = document.getElementById('lm-tanggal').value;
   var mulai = document.getElementById('lm-mulai').value;
   var selesai = document.getElementById('lm-selesai').value;
-  var ket = document.getElementById('lm-ket').value.trim();
+  var ket = aktivitasTerpilih.join(', ');
 
-  if(!kode){ showToast('Pilih karyawan dulu','error'); return; }
+  if(!kode){ showToast('Sesi login tidak ditemukan, silakan login ulang','error'); return; }
   if(!tanggal){ showToast('Isi tanggal dulu','error'); return; }
   if(!mulai || !selesai){ showToast('Isi jam mulai dan selesai','error'); return; }
 
-  var k = karyawanList.find(function(x){ return x.kode===kode; });
+  var k = karyawanList.find(function(x){ return x.kode===kode; }) || { nama: namaUser };
   var btn = document.getElementById('btn-submit-lembur');
   btn.disabled = true; btn.style.opacity='.6';
 
@@ -782,7 +837,7 @@ function submitLembur(){
         }, 600);
       }
       document.getElementById('lm-mulai').value=''; document.getElementById('lm-selesai').value='';
-      document.getElementById('lm-ket').value='';
+      aktivitasTerpilih = []; renderAktivitasPills();
       document.getElementById('durasi-preview').style.display='none';
       clearApiCache(); loadLemburAbsensi();
     })
@@ -790,8 +845,9 @@ function submitLembur(){
       btn.disabled=false; btn.style.opacity='1';
       showToast('Gagal simpan: '+(err&&err.message?err.message:'cek koneksi'),'error');
     })
-    .saveLembur({ tanggal: tanggal, kode: kode, nama: k?k.nama:'', jamMulai: mulai, jamSelesai: selesai, keterangan: ket, inputOleh: '' });
+    .saveLembur({ tanggal: tanggal, kode: kode, nama: k?k.nama:namaUser, jamMulai: mulai, jamSelesai: selesai, keterangan: ket, inputOleh: namaUser });
 }
+
 
 function hapusLembur(rowIndex){
   if(!confirm('Hapus catatan lembur ini?')) return;
