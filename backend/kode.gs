@@ -2333,13 +2333,103 @@ function approveItem(tipe, rowIndex, keputusan, approverNik) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheetName = tipe === 'cuti' ? SH_ABSENSI_LOG : SH_LEMBUR_LOG;
-    var statusCol = tipe === 'cuti' ? 8 : 10; // kolom H (cuti) / J (lembur), 1-based
+    var statusCol  = tipe === 'cuti' ? 8 : 10;  // kolom H (cuti) / J (lembur), 1-based
+    var catatanCol = tipe === 'cuti' ? 10 : 12; // kolom J (cuti) / L (lembur) -- catatan attestasi
     var sh = ss.getSheetByName(sheetName);
     if (!sh) return { success: false, error: 'Sheet ' + sheetName + ' tidak ditemukan.' };
     if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid.' };
+
+    var row = sh.getRange(rowIndex, 1, 1, 4).getValues()[0]; // [Timestamp, Tanggal, Kode, Nama]
+    var kode = String(row[2] || ''), nama = String(row[3] || '');
+
     sh.getRange(rowIndex, statusCol, 1, 2).setValues([[keputusan, approverNik || '']]);
+
+    var catatan = '';
+    if (keputusan === 'Disetujui') {
+      catatan = 'Sudah dipastikan TL sudah menginput cuti/lembur karyawan ' + nama + ' (' + kode + ') di aplikasi Sunfish.';
+    }
+    sh.getRange(rowIndex, catatanCol).setValue(catatan);
+
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  REMINDER WA OTOMATIS — Approval Cuti yang belum diproses TL >24 jam.
+//  Dijadwalkan jalan 2x sehari (jam 11:00 & 16:00) lewat setupReminderTriggers().
+//  Loop semua departemen yang sudah di-provision (WORKSPACE_MAP), sama
+//  pola-nya dengan syncAllToSupabase().
+// ================================================================
+function remindPendingApprovals() {
+  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
+    if (!WORKSPACE_MAP[workspaceKey]) return; // belum di-provision -> lewati
+    try {
+      ACTIVE_WORKSPACE = workspaceKey;
+      SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+      _remindPendingApprovalsWorkspaceAktif();
+    } catch (err) {
+      Logger.log('Gagal reminder utk ' + workspaceKey + ': ' + err.message);
+    }
+  });
+}
+
+function _remindPendingApprovalsWorkspaceAktif() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_ABSENSI_LOG);
+  if (!sh) return;
+
+  var data = sh.getDataRange().getValues();
+  var now = new Date();
+  var pendingLama = [];
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    if (!r[1]) continue;
+    var status = String(r[7] || 'Pending');
+    if (status !== 'Pending') continue;
+    var submittedAt = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
+    var jamSejak = (now - submittedAt) / 3600000;
+    if (jamSejak >= 24) {
+      pendingLama.push({ nama: String(r[3] || ''), kode: String(r[2] || ''), tanggal: _fmtYMD(new Date(r[1])) });
+    }
+  }
+  if (!pendingLama.length) return;
+
+  var props  = PropertiesService.getScriptProperties();
+  var token  = props.getProperty('FONNTE_TOKEN');
+  var target = props.getProperty('FONNTE_APPROVER_WA');
+  if (!token || !target) {
+    Logger.log('FONNTE_TOKEN / FONNTE_APPROVER_WA belum di-set -- reminder dilewati untuk ' + ACTIVE_WORKSPACE);
+    return;
+  }
+
+  var pesan =
+    '*REMINDER APPROVAL CUTI* (' + ACTIVE_WORKSPACE + ')\n\n' +
+    pendingLama.length + ' pengajuan cuti sudah lebih dari 24 jam belum diproses:\n' +
+    pendingLama.map(function (p) { return '- ' + p.nama + ' (' + p.kode + ') — ' + p.tanggal; }).join('\n') +
+    '\n\nMohon segera di-approve/tolak di aplikasi Sunfish.';
+
+  try {
+    UrlFetchApp.fetch('https://api.fonnte.com/send', {
+      method: 'post',
+      headers: { Authorization: token },
+      payload: { target: target, message: pesan, countryCode: '62' },
+      muteHttpExceptions: true
+    });
+    Logger.log('Reminder terkirim untuk ' + ACTIVE_WORKSPACE + ' (' + pendingLama.length + ' item)');
+  } catch (waErr) {
+    Logger.log('Gagal kirim reminder WA: ' + waErr.message);
+  }
+}
+
+// Jalankan SEKALI SAJA lewat Apps Script editor untuk memasang jadwal
+// reminder otomatis jam 11:00 & 16:00 setiap hari.
+function setupReminderTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'remindPendingApprovals') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('remindPendingApprovals').timeBased().atHour(11).everyDays(1).create();
+  ScriptApp.newTrigger('remindPendingApprovals').timeBased().atHour(16).everyDays(1).create();
+  Logger.log('Trigger reminder approval cuti terpasang: jam 11:00 & 16:00 setiap hari.');
 }
 
 // ================================================================

@@ -64,6 +64,27 @@
         });
       });
     }
+
+    // ---- Menu "Pengajuan Cuti" ----
+    // Disisipkan otomatis tepat setelah menu "Input Lembur" di SEMUA
+    // halaman (bukan edit manual tiap file). Untuk TL, menu "Input Lembur"
+    // aslinya malah disembunyikan (TL tidak input lembur lewat sana,
+    // cukup approve) -- tapi tetap dapat menu "Pengajuan Cuti" karena TL
+    // juga bisa mengajukan cuti/sakit untuk dirinya sendiri.
+    var lemburMenuEl = document.querySelector('[onclick*="\'input_lembur\'"]');
+    if (lemburMenuEl) {
+      var cutiMenuEl = lemburMenuEl.cloneNode(true);
+      cutiMenuEl.setAttribute('onclick', "location.href='./input_lembur.html?tab=cuti'");
+      var labelEl = cutiMenuEl.querySelector('span');
+      if (labelEl) labelEl.textContent = 'Pengajuan Cuti';
+      lemburMenuEl.insertAdjacentElement('afterend', cutiMenuEl);
+
+      var roleUp = (window.WH_SESSION.role || '').trim().toUpperCase();
+      if (roleUp === 'TL') {
+        lemburMenuEl.style.display = 'none'; // TL: sembunyikan "Input Lembur", sisakan "Pengajuan Cuti"
+      }
+    }
+
     if (window.WH_SESSION.hasRekapMuatan) return;
     // Sembunyikan menu sidebar "Rekap Muatan" (pola onclick="navTo('rekap')"
     // atau onclick="goTo('rekap')" -- dipakai konsisten di semua halaman)

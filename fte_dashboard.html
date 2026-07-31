@@ -479,7 +479,11 @@ function loadAll(){
 function loadApprovalPanel(){
   google.script.run
     .withSuccessHandler(function(res){
-      if(!res || !res.success) return;
+      if(!res || !res.success){
+        document.getElementById('badge-approval').textContent = 'Gagal muat';
+        document.getElementById('tbody-approval').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#f87171;padding:14px;">Gagal memuat: '+(res&&res.error?res.error:'tidak diketahui — coba deploy ulang backend')+'</td></tr>';
+        return;
+      }
       var list = res.data || [];
       document.getElementById('badge-approval').textContent = list.length + ' menunggu';
       var tb = document.getElementById('tbody-approval');
@@ -500,6 +504,10 @@ function loadApprovalPanel(){
           '</div></td>'+
         '</tr>';
       }).join('');
+    })
+    .withFailureHandler(function(err){
+      document.getElementById('badge-approval').textContent = 'Error';
+      document.getElementById('tbody-approval').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#f87171;padding:14px;">Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi')+'</td></tr>';
     })
     .getPendingApprovals();
 }
