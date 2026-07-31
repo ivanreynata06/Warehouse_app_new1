@@ -465,6 +465,7 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
         </button>
         <span class="tb-title">Warehouse Control Tower</span>
         <span class="tb-badge" id="period-main-badge">—</span>
+        <span class="tb-badge" id="greeting-badge" style="display:none;"></span>
       </div>
       <div class="tb-right">
         <span class="tb-clock" id="live-clock">00:00:00</span>
@@ -866,6 +867,12 @@ var charts = {};
   setInterval(function(){var n=new Date();document.getElementById('live-clock').textContent=p2(n.getHours())+':'+p2(n.getMinutes())+':'+p2(n.getSeconds());},1000);
   if (window.WH_SESSION && window.WH_SESSION.nama) {
     document.getElementById('user-session-badge').textContent = window.WH_SESSION.nama + ' · ' + window.WH_SESSION.role;
+    var jamNow = new Date().getHours();
+    var salam = jamNow < 11 ? 'Selamat Pagi' : jamNow < 15 ? 'Selamat Siang' : jamNow < 19 ? 'Selamat Sore' : 'Selamat Malam';
+    var namaDepan = window.WH_SESSION.nama.split(' ')[0];
+    var gb = document.getElementById('greeting-badge');
+    gb.textContent = '👋 ' + salam + ', ' + namaDepan;
+    gb.style.display = 'inline-flex';
   }
   loadAll();
 })();

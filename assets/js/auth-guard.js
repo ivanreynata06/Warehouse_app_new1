@@ -95,23 +95,39 @@
       if (typeof lucide !== 'undefined') lucide.createIcons();
     })();
 
-    // ---- Menu "Pengajuan Cuti" ----
-    // Disisipkan otomatis tepat setelah menu "Input Lembur" di SEMUA
-    // halaman (bukan edit manual tiap file). Untuk TL, menu "Input Lembur"
-    // aslinya malah disembunyikan (TL tidak input lembur lewat sana,
-    // cukup approve) -- tapi tetap dapat menu "Pengajuan Cuti" karena TL
-    // juga bisa mengajukan cuti/sakit/mangkir untuk dirinya sendiri.
+    // ---- Menu "Input Lembur" / "Pengajuan Cuti" ----
+    // Disisipkan & disesuaikan otomatis di SEMUA halaman (bukan edit
+    // manual tiap file), tergantung role:
+    //  - TL      : menu asli DIGANTI NAMA jadi "Inputan Karyawan" (tetap
+    //              ke input_lembur.html), PLUS tetap dapat menu terpisah
+    //              "Pengajuan Cuti" untuk cuti/sakit/mangkir dirinya sendiri.
+    //  - Technician (role terbatas): DIGABUNG jadi SATU menu saja,
+    //              "Input Lemburan, Cuti DLL" -- tidak perlu menu Pengajuan
+    //              Cuti terpisah karena halamannya sudah punya 2 tab.
+    //  - Role lain (Admin dkk): dibiarkan default (Input Lembur + Pengajuan
+    //              Cuti terpisah, nama asli).
     var lemburMenuEl = document.querySelector('[onclick*="\'input_lembur\'"]');
     if (lemburMenuEl) {
-      var cutiMenuEl = lemburMenuEl.cloneNode(true);
-      cutiMenuEl.setAttribute('onclick', "location.href='./input_lembur.html?tab=cuti'");
-      var labelEl = cutiMenuEl.querySelector('span');
-      if (labelEl) labelEl.textContent = 'Pengajuan Cuti';
-      lemburMenuEl.insertAdjacentElement('afterend', cutiMenuEl);
-
       var roleUp = (window.WH_SESSION.role || '').trim().toUpperCase();
+      var labelEl = lemburMenuEl.querySelector('span');
+
       if (roleUp === 'TL') {
-        lemburMenuEl.style.display = 'none'; // TL: sembunyikan "Input Lembur", sisakan "Pengajuan Cuti"
+        if (labelEl) labelEl.textContent = 'Inputan Karyawan';
+        var cutiMenuEl = lemburMenuEl.cloneNode(true);
+        cutiMenuEl.setAttribute('onclick', "location.href='./input_lembur.html?tab=cuti'");
+        var cutiLabelEl = cutiMenuEl.querySelector('span');
+        if (cutiLabelEl) cutiLabelEl.textContent = 'Pengajuan Cuti';
+        lemburMenuEl.insertAdjacentElement('afterend', cutiMenuEl);
+      } else if (!window.WH_SESSION.fullAccess) {
+        if (labelEl) labelEl.textContent = 'Input Lemburan, Cuti DLL';
+        // Technician: tidak perlu menu Pengajuan Cuti terpisah, 1 menu ini
+        // sudah membuka halaman yang sama dengan 2 tab (Lembur & Cuti).
+      } else {
+        var cutiMenuEl2 = lemburMenuEl.cloneNode(true);
+        cutiMenuEl2.setAttribute('onclick', "location.href='./input_lembur.html?tab=cuti'");
+        var cutiLabelEl2 = cutiMenuEl2.querySelector('span');
+        if (cutiLabelEl2) cutiLabelEl2.textContent = 'Pengajuan Cuti';
+        lemburMenuEl.insertAdjacentElement('afterend', cutiMenuEl2);
       }
     }
 
