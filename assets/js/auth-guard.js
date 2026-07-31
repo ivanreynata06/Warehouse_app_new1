@@ -65,12 +65,42 @@
       });
     }
 
+    // ---- Grup menu "Monitoring" ----
+    // Menggabungkan Monitoring Stock, Monitoring Kanban, dan Monitoring FTE
+    // (dulunya Monitoring FTE nempel di dalam grup "Transaksi") jadi satu
+    // dropdown baru "Monitoring" di level atas. "Dashboard WH Import"
+    // sengaja TIDAK dimasukkan -- tetap berdiri sendiri di luar grup ini.
+    (function buildMonitoringGroup(){
+      var stockEl  = document.querySelector('[onclick*="\'index\'"]');
+      var kanbanEl = document.querySelector('[onclick*="\'kanban\'"]');
+      var fteEl    = document.querySelector('[onclick*="\'fte_dashboard\'"]');
+      if (!stockEl && !kanbanEl && !fteEl) return; // halaman ini tidak punya menu-menu ini
+
+      var wrapper = document.createElement('div');
+      wrapper.className = 'mgroup open';
+      wrapper.innerHTML =
+        '<div class="mgroup-hdr" onclick="this.parentElement.classList.toggle(\'open\')">' +
+          '<div class="mgroup-hdr-left"><i data-lucide="monitor" style="width:12px;flex-shrink:0;"></i><span>Monitoring</span></div>' +
+          '<svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>' +
+        '</div>' +
+        '<div class="mgroup-body"></div>';
+
+      var anchor = stockEl || kanbanEl || fteEl;
+      anchor.parentElement.insertBefore(wrapper, anchor);
+      var body = wrapper.querySelector('.mgroup-body');
+      if (stockEl)  body.appendChild(stockEl);
+      if (kanbanEl) body.appendChild(kanbanEl);
+      if (fteEl)    body.appendChild(fteEl);
+
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    })();
+
     // ---- Menu "Pengajuan Cuti" ----
     // Disisipkan otomatis tepat setelah menu "Input Lembur" di SEMUA
     // halaman (bukan edit manual tiap file). Untuk TL, menu "Input Lembur"
     // aslinya malah disembunyikan (TL tidak input lembur lewat sana,
     // cukup approve) -- tapi tetap dapat menu "Pengajuan Cuti" karena TL
-    // juga bisa mengajukan cuti/sakit untuk dirinya sendiri.
+    // juga bisa mengajukan cuti/sakit/mangkir untuk dirinya sendiri.
     var lemburMenuEl = document.querySelector('[onclick*="\'input_lembur\'"]');
     if (lemburMenuEl) {
       var cutiMenuEl = lemburMenuEl.cloneNode(true);

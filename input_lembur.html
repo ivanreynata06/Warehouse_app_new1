@@ -533,14 +533,9 @@ function switchTab(name){
   if (isTL) {
     var tabLemburBtn = document.querySelector('.tab-btn[data-tab="lembur"]');
     if (tabLemburBtn) tabLemburBtn.style.display = 'none';
-
-    var selStatus = document.getElementById('ab-status');
-    if (selStatus) {
-      Array.prototype.forEach.call(selStatus.options, function(opt){
-        if (opt.value === 'CutiTahunan' || opt.value === 'CutiDokter') opt.style.display = 'none';
-      });
-      selStatus.value = 'Sakit';
-    }
+    // Catatan: TL boleh ajukan SEMUA jenis (Sakit, Cuti Dokter, Cuti
+    // Tahunan, Mangkir) untuk dirinya sendiri lewat menu "Pengajuan Cuti"
+    // -- tidak dibatasi lagi, supaya TL juga bisa ambil cuti tahunan.
   }
 
   var params = new URLSearchParams(window.location.search);
