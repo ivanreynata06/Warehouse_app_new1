@@ -466,7 +466,7 @@ function loadAll(){
     .withFailureHandler(function(err){ showToast('Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'),'error'); showLoading(false); })
     .getAbsensiFTEData(curBulan, curTahun);
 
-  if (window.WH_SESSION && window.WH_SESSION.fullAccess) {
+  if (window.WH_SESSION && window.WH_SESSION.isTL) {
     // PENTING: pakai '' (hapus override inline), BUKAN 'block' -- supaya
     // .card{display:flex;...} dari stylesheet tetap berlaku normal. Kalau
     // dipaksa 'block', flex-direction/gap di CSS jadi tidak berfungsi dan

@@ -28,6 +28,7 @@
   //    Control Tower, Input Lembur (+Cuti), Loading Time, Monitoring FTE
   var roleUpper = (sessionStorage.getItem('wh_role') || '').trim().toUpperCase();
   var fullAccess = (roleUpper === 'TL') || roleUpper.indexOf('ADMIN') !== -1;
+  var isTL = (roleUpper === 'TL');
   var ALLOWED_FILES_RESTRICTED = ['index.html', 'input_lembur.html', 'residance_time.html', 'fte_dashboard.html', 'login.html', ''];
   // Menu sidebar yang harus disembunyikan untuk role terbatas (pola onclick
   // navTo('kanban') / navTo('index') dipakai konsisten di semua halaman;
@@ -41,10 +42,11 @@
     nama: sessionStorage.getItem('wh_nama') || '',
     role: sessionStorage.getItem('wh_role') || '',
     fullAccess: fullAccess,
+    isTL: isTL,
     // Rekap Muatan sengaja CUMA ada di departemen Fitting Import (sheet-nya
-    // tidak di-provision di departemen lain) DAN cuma untuk TL/Admin --
-    // dipakai untuk sembunyikan menu & section terkait secara otomatis.
-    hasRekapMuatan: workspace === 'cibitung_fitting_import' && fullAccess
+    // tidak di-provision di departemen lain) -- boleh dilihat SEMUA role
+    // (termasuk Technician), asal masih di departemen Fitting Import.
+    hasRekapMuatan: workspace === 'cibitung_fitting_import'
   };
 
   // Role terbatas coba buka halaman yang tidak diizinkan -> tendang ke Control Tower
@@ -74,7 +76,8 @@
       var stockEl  = document.querySelector('[onclick*="\'index\'"]');
       var kanbanEl = document.querySelector('[onclick*="\'kanban\'"]');
       var fteEl    = document.querySelector('[onclick*="\'fte_dashboard\'"]');
-      if (!stockEl && !kanbanEl && !fteEl) return; // halaman ini tidak punya menu-menu ini
+      var rekapEl  = document.querySelector('[onclick*="\'rekap\'"]');
+      if (!stockEl && !kanbanEl && !fteEl && !rekapEl) return; // halaman ini tidak punya menu-menu ini
 
       var wrapper = document.createElement('div');
       wrapper.className = 'mgroup open';
@@ -85,12 +88,17 @@
         '</div>' +
         '<div class="mgroup-body"></div>';
 
-      var anchor = stockEl || kanbanEl || fteEl;
+      var anchor = stockEl || kanbanEl || fteEl || rekapEl;
       anchor.parentElement.insertBefore(wrapper, anchor);
       var body = wrapper.querySelector('.mgroup-body');
       if (stockEl)  body.appendChild(stockEl);
       if (kanbanEl) body.appendChild(kanbanEl);
       if (fteEl)    body.appendChild(fteEl);
+      // Rekap Muatan: cuma dipindah ke grup Monitoring kalau memang boleh
+      // tampil (departemen Fitting Import); kalau tidak, biarkan tetap di
+      // luar supaya logic sembunyikan di bawah (hasRekapMuatan false) tetap
+      // jalan seperti biasa.
+      if (rekapEl && window.WH_SESSION.hasRekapMuatan) body.appendChild(rekapEl);
 
       if (typeof lucide !== 'undefined') lucide.createIcons();
     })();
