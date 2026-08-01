@@ -66,6 +66,19 @@
     getAbsensiList: 1
   };
 
+  // getResidenceTimeData dipakai di 2 tempat dengan kebutuhan berbeda:
+  //  - Control Tower manggil dengan mode 'bulan' (rekap bulanan) -- AMAN
+  //    di-cache, ada snapshot Supabase-nya (lihat supabase-cache.js).
+  //  - Halaman Loading Time (residance_time.html) manggil dengan mode lain
+  //    (harian/real-time) untuk pantau proses muat yang sedang berjalan --
+  //    TIDAK BOLEH di-cache, harus selalu fresh.
+  // Makanya keputusan cache-nya dicek per-parameter, bukan cuma nama fungsi.
+  function isCacheableCall(fnName, args) {
+    if (CACHEABLE_FRONTEND[fnName]) return true;
+    if (fnName === 'getResidenceTimeData' && args && args[0] === 'bulan') return true;
+    return false;
+  }
+
   function readCache(key) {
     try {
       var raw = sessionStorage.getItem(key);
@@ -131,9 +144,10 @@
         return function () {
           var args = Array.prototype.slice.call(arguments);
 
-          // Fungsi di luar whitelist (approval, save, login, upload, dll)
-          // -- SELALU fresh, tidak pernah baca/tulis cache sama sekali.
-          if (!CACHEABLE_FRONTEND[prop]) {
+          // Fungsi/parameter di luar whitelist (approval, save, login,
+          // upload, dll, atau getResidenceTimeData mode real-time) --
+          // SELALU fresh, tidak pernah baca/tulis cache sama sekali.
+          if (!isCacheableCall(prop, args)) {
             callBackend(prop, args)
               .then(function (data) { if (successCb) successCb(data); })
               .catch(function (err) { if (failureCb) failureCb(err); });
