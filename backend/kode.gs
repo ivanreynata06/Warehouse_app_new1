@@ -1574,6 +1574,75 @@ function setupDailySyncTrigger() {
 // Loop semua departemen yang sudah punya Spreadsheet ID di WORKSPACE_MAP,
 // sync satu-satu (supaya kalau 1 departemen error, departemen lain tetap
 // lanjut). Dipanggil oleh trigger harian jam 00:xx.
+// ================================================================
+//  SYNC REAL-TIME — begitu ada yang mengetik/ubah data di spreadsheet
+//  manapun (Fitting Import, Fitting Rucika, dst), LANGSUNG dorong ulang
+//  snapshot ke Supabase saat itu juga -- TIDAK menunggu jadwal harian
+//  jam 00:xx lagi. Ini pelengkap syncAllToSupabase() (yang tetap jalan
+//  sebagai jaring pengaman harian kalau trigger ini kebetulan gagal).
+//
+//  CATATAN PENTING soal kecepatan vs beban server:
+//  - Tidak ada jeda/throttle waktu buatan -- setiap edit langsung diproses.
+//  - TAPI dikasih LockService supaya kalau banyak sel diedit sekaligus
+//    (misal paste banyak baris), proses sync yang tumpang tindih tidak
+//    saling rebutan/nabrak -- bukan menunda, cuma mencegah 2 proses jalan
+//    BERSAMAAN di spreadsheet yang sama (yang justru bisa bikin data di
+//    Supabase malah kacau kalau race condition).
+//
+//  CARA PASANG (jalankan 1x lewat Apps Script editor -> Run):
+//    setupEditTriggers()
+//  Otomatis terpasang ke SEMUA spreadsheet yang sudah ada di WORKSPACE_MAP.
+//  Kalau nanti nambah departemen baru, jalankan ulang fungsi ini.
+// ================================================================
+function onSheetEditSync(e) {
+  try {
+    if (!e || !e.source) return;
+    var editedId = e.source.getId();
+    var workspaceKey = null;
+    for (var key in WORKSPACE_MAP) {
+      if (WORKSPACE_MAP[key] === editedId) { workspaceKey = key; break; }
+    }
+    if (!workspaceKey) return; // spreadsheet ini bukan bagian dari WORKSPACE_MAP
+
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(3000)) return; // lagi ada proses sync lain jalan -> lewati, biar tidak dobel
+    try {
+      syncWorkspaceToSupabase(workspaceKey);
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    Logger.log('onSheetEditSync gagal: ' + err.message);
+  }
+}
+
+function setupEditTriggers() {
+  // Hapus trigger onEdit lama biar tidak dobel kalau fungsi ini dijalankan berkali-kali
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'onSheetEditSync') ScriptApp.deleteTrigger(t);
+  });
+
+  var jumlah = 0;
+  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
+    var id = WORKSPACE_MAP[workspaceKey];
+    if (!id) return; // belum di-provision -> lewati
+    try {
+      var ss = SpreadsheetApp.openById(id);
+      ScriptApp.newTrigger('onSheetEditSync').forSpreadsheet(ss).onEdit().create();
+      jumlah++;
+      Logger.log('Trigger onEdit terpasang untuk: ' + workspaceKey);
+    } catch (err) {
+      Logger.log('Gagal pasang trigger utk ' + workspaceKey + ': ' + err.message);
+    }
+  });
+  Logger.log('Selesai. ' + jumlah + ' trigger onEdit terpasang.');
+}
+
+
+// Loop semua departemen yang sudah punya Spreadsheet ID di WORKSPACE_MAP,
+// sync satu-satu (supaya kalau 1 departemen error, departemen lain tetap
+// lanjut). Dipanggil oleh trigger harian jam 00:xx (jaring pengaman),
+// selain sync real-time lewat onSheetEditSync() di atas.
 function syncAllToSupabase() {
   var allLogs = [];
   Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {

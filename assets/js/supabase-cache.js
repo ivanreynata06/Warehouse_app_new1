@@ -1,21 +1,29 @@
 /*!
  * supabase-cache.js
  * -----------------------------------------------------------------
- * Jalur "cepat" opsional untuk dashboard yang datanya di-update 1x
- * sehari (Stock, Kanban, Rekap Muatan, Control Tower). TIDAK dipakai
- * di halaman Loading Time (residance_time.html) — itu tetap langsung
- * ke Apps Script karena datanya berubah real-time.
+ * Jalur "cepat" untuk dashboard (Stock, Kanban, Rekap Muatan, Control
+ * Tower). TIDAK dipakai di halaman Loading Time (residance_time.html)
+ * — itu tetap langsung ke Apps Script karena datanya berubah real-time
+ * lewat interaksi user (mulai/selesai loading), bukan lewat spreadsheet.
+ *
+ * Snapshot di Supabase sekarang di-update REAL-TIME: begitu ada
+ * perubahan di spreadsheet manapun, trigger onEdit (lihat
+ * onSheetEditSync di backend/kode.gs) langsung menghitung ulang &
+ * mendorong snapshot terbaru ke Supabase saat itu juga -- bukan cuma
+ * menunggu jadwal harian jam 00:xx (syncAllToSupabase tetap jalan
+ * sebagai jaring pengaman tambahan). Jadi snapshot untuk periode yang
+ * SEDANG BERJALAN (hari ini, bulan ini) juga aman dipakai, tidak perlu
+ * dipaksa selalu live lagi.
  *
  * Cara kerja: setiap fungsi (getDashboardData, getKanbanData, dst)
  * + argumennya, dicek dulu apakah cocok dengan salah satu snapshot
- * yang di-precompute harian oleh Apps Script (lihat syncAllToSupabase
- * di backend/kode.gs). Kalau cocok DAN ketemu -> pakai data dari
- * Supabase (jauh lebih cepat, tidak perlu Apps Script hitung ulang).
- * Kalau tidak cocok (mis. user pilih bulan/grup yang jarang dipakai,
- * yang tidak di-precompute) atau Supabase gagal diakses -> otomatis
- * fallback ke Apps Script seperti biasa (lihat api-shim.js). Jadi
- * TIDAK ADA fitur yang hilang, cuma kombinasi yang sering dipakai
- * jadi jauh lebih cepat.
+ * yang di-precompute (lihat syncWorkspaceToSupabase di backend/kode.gs).
+ * Kalau cocok DAN ketemu -> pakai data dari Supabase (jauh lebih cepat,
+ * tidak perlu Apps Script hitung ulang). Kalau tidak cocok (mis. user
+ * pilih bulan/grup yang jarang dipakai, yang tidak di-precompute) atau
+ * Supabase gagal diakses -> otomatis fallback ke Apps Script seperti
+ * biasa (lihat api-shim.js). Jadi TIDAK ADA fitur yang hilang, cuma
+ * kombinasi yang sering dipakai jadi jauh lebih cepat.
  * -----------------------------------------------------------------
  */
 (function (global) {
@@ -26,37 +34,17 @@
 
   function pad2(n) { n = parseInt(n, 10); return n < 10 ? '0' + n : '' + n; }
 
-  // Tanggal hari ini dalam format YYYY-MM-DD (dipakai untuk mendeteksi
-  // permintaan "harian" yang menunjuk ke HARI INI).
-  function todayYMD() {
-    var d = new Date();
-    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-  }
-
   // Bangun snapshot_key dari nama fungsi + argumennya. Return null kalau
   // kombinasi ini tidak termasuk yang di-precompute (biar fallback normal).
   //
-  // CATATAN PENTING soal mode "harian" utk HARI INI:
-  // syncAllToSupabase() di Apps Script cuma jalan 1x/hari jam 00:xx, jadi
-  // snapshot "harian hari ini" yang tersimpan di Supabase itu dihitung
-  // dari data jam 00:xx dini hari -- SEBELUM user sempat update data di
-  // siang/sore hari. Kalau snapshot basi ini tetap dipakai, kanban/stock
-  // harian akan terus tampil kosong/lama walau spreadsheet sudah di-update.
-  // Solusi: khusus utk tanggal = HARI INI, sengaja return null (skip
-  // Supabase) supaya SELALU fallback ke Apps Script (data live/real-time).
-  // Harian utk tanggal-tanggal LAMPAU (sudah final, tidak berubah lagi)
-  // tetap boleh pakai snapshot Supabase yang cepat.
-  // Cek apakah bulan/tahun yang diminta = bulan YANG SEDANG BERJALAN.
-  // Data bulan berjalan masih terus berubah (kiriman/muatan baru tiap hari),
-  // jadi TIDAK aman dipakaikan snapshot Supabase yang cuma di-generate 1x
-  // di tengah malam -- bisa beda jauh dari angka live begitu ada input baru
-  // di hari yang sama. Bulan yang SUDAH LEWAT aman di-cache karena datanya
-  // sudah final/tidak berubah lagi.
-  function isCurrentYM(bulan, tahun) {
-    var d = new Date();
-    return String(parseInt(bulan,10)) === String(d.getMonth()+1) && String(parseInt(tahun,10)) === String(d.getFullYear());
-  }
-
+  // CATATAN (update): dulu di sini ada pengecualian "kalau tanggal/bulan =
+  // hari/bulan ini, selalu skip cache" -- karena snapshot cuma dihitung
+  // ulang 1x/hari jam 00:xx, jadi gampang basi begitu ada input baru di
+  // siang hari. Sekarang backend (kode.gs) sudah pasang trigger onEdit
+  // (lihat onSheetEditSync + setupEditTriggers) yang langsung mendorong
+  // ulang snapshot ke Supabase SETIAP kali ada perubahan di spreadsheet --
+  // jadi snapshot untuk periode yang sedang berjalan pun bisa dipercaya
+  // selalu segar, dan TIDAK perlu lagi pengecualian "selalu live" itu.
   function buildKey(fnName, args) {
     try {
       if (fnName === 'getGroupList') return 'group_list';
@@ -64,50 +52,29 @@
       if (fnName === 'getDashboardData') {
         var mode = args[0], p = args[1] || {};
         if (p.group) return null; // filter grup spesifik -> tidak di-precompute
-        if (mode === 'harian' && p.dari && p.sampai === p.dari) {
-          if (p.dari === todayYMD()) return null; // hari ini -> selalu live
-          return 'stock:harian:' + p.dari;
-        }
-        if (mode === 'bulanan' && p.bulan && p.tahun) {
-          if (isCurrentYM(p.bulan, p.tahun)) return null; // bulan berjalan -> selalu live
-          return 'stock:bulanan:' + p.tahun + '-' + pad2(p.bulan);
-        }
+        if (mode === 'harian' && p.dari && p.sampai === p.dari) return 'stock:harian:' + p.dari;
+        if (mode === 'bulanan' && p.bulan && p.tahun) return 'stock:bulanan:' + p.tahun + '-' + pad2(p.bulan);
         return null;
       }
       if (fnName === 'getOutboundData') {
         var po = args[0] || {};
-        if (po.bulan && po.tahun) {
-          if (isCurrentYM(po.bulan, po.tahun)) return null; // bulan berjalan -> selalu live
-          return 'outbound:bulanan:' + po.tahun + '-' + pad2(po.bulan);
-        }
+        if (po.bulan && po.tahun) return 'outbound:bulanan:' + po.tahun + '-' + pad2(po.bulan);
         return null;
       }
       if (fnName === 'getInboundData') {
         var pi = args[0] || {};
-        if (pi.bulan && pi.tahun) {
-          if (isCurrentYM(pi.bulan, pi.tahun)) return null; // bulan berjalan -> selalu live
-          return 'inbound:bulanan:' + pi.tahun + '-' + pad2(pi.bulan);
-        }
+        if (pi.bulan && pi.tahun) return 'inbound:bulanan:' + pi.tahun + '-' + pad2(pi.bulan);
         return null;
       }
       if (fnName === 'getKanbanData') {
         var kmode = args[0], kp = args[1] || {};
-        if (kmode === 'harian' && kp.dari && kp.sampai === kp.dari) {
-          if (kp.dari === todayYMD()) return null; // hari ini -> selalu live
-          return 'kanban:harian:' + kp.dari;
-        }
-        if (kmode === 'bulanan' && kp.bulan && kp.tahun) {
-          if (isCurrentYM(kp.bulan, kp.tahun)) return null; // bulan berjalan -> selalu live
-          return 'kanban:bulanan:' + kp.tahun + '-' + pad2(kp.bulan);
-        }
+        if (kmode === 'harian' && kp.dari && kp.sampai === kp.dari) return 'kanban:harian:' + kp.dari;
+        if (kmode === 'bulanan' && kp.bulan && kp.tahun) return 'kanban:bulanan:' + kp.tahun + '-' + pad2(kp.bulan);
         return null;
       }
       if (fnName === 'getRekapMuatanData') {
         var rp = args[0] || {};
-        if (rp.mode === 'bulanan' && rp.bulan && rp.tahun) {
-          if (isCurrentYM(rp.bulan, rp.tahun)) return null; // bulan berjalan -> selalu live
-          return 'rekap:bulanan:' + rp.tahun + '-' + pad2(rp.bulan);
-        }
+        if (rp.mode === 'bulanan' && rp.bulan && rp.tahun) return 'rekap:bulanan:' + rp.tahun + '-' + pad2(rp.bulan);
         return null;
       }
       if (fnName === 'getStockTrendBatch') return 'stock_trend:6mo';
