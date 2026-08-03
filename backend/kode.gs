@@ -1604,6 +1604,22 @@ function onSheetEditSync(e) {
     }
     if (!workspaceKey) return; // spreadsheet ini bukan bagian dari WORKSPACE_MAP
 
+    // Cooldown singkat (10 detik) per departemen -- BUKAN buat menunda
+    // sengaja, tapi supaya kalau ada beberapa sel diedit/paste beruntun
+    // dalam hitungan detik, tidak semuanya memicu hitung-ulang penuh
+    // (11 fungsi) secara bersamaan. Tanpa ini, edit beruntun bisa
+    // memenuhi kuota eksekusi Apps Script project ini -- dan karena
+    // project yang sama juga melayani permintaan LIVE dari website,
+    // permintaan website bisa ikut antre/macet ("muter terus").
+    // Edit TERAKHIR dalam rentetan tetap akan ke-sync begitu cooldown
+    // lewat (lihat pengecekan properti di bawah).
+    var props = PropertiesService.getScriptProperties();
+    var propKey = 'LAST_SYNC_' + workspaceKey;
+    var lastSync = Number(props.getProperty(propKey) || 0);
+    var now = Date.now();
+    if (now - lastSync < 10000) return; // masih dalam cooldown -> lewati, sinkronisasi berikutnya akan menyusul
+    props.setProperty(propKey, String(now));
+
     var lock = LockService.getScriptLock();
     if (!lock.tryLock(3000)) return; // lagi ada proses sync lain jalan -> lewati, biar tidak dobel
     try {

@@ -99,12 +99,20 @@
     var url = SB_URL.replace(/\/$/, '') +
       '/rest/v1/dashboard_snapshots?snapshot_key=eq.' + encodeURIComponent(key) +
       '&select=payload&limit=1';
+
+    // PENTING: batasi waktu tunggu ke Supabase. Tanpa ini, kalau Supabase
+    // lambat/timeout, halaman bisa "muter" selamanya karena fetch() bawaan
+    // browser tidak punya batas waktu sendiri.
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 8000) : null;
+
     return fetch(url, {
-      headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON }
+      headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON },
+      signal: ctrl ? ctrl.signal : undefined
     })
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) { if (timer) clearTimeout(timer); return r.ok ? r.json() : null; })
       .then(function (rows) { return (rows && rows.length) ? rows[0].payload : null; })
-      .catch(function () { return null; });
+      .catch(function () { if (timer) clearTimeout(timer); return null; }); // gagal/timeout -> anggap "tidak ketemu", biar fallback ke Apps Script
   }
 
   global.__supabaseSnapshot = { buildKey: buildKey, fetchSnapshot: fetchSnapshot };

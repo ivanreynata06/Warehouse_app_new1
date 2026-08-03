@@ -97,6 +97,18 @@
     }
   }
 
+  // Batas waktu tunggu ke Apps Script. Dikasih lebih panjang dari Supabase
+  // (25 detik, wajar karena kadang perlu hitung banyak baris sheet), tapi
+  // tetap ada batasnya -- supaya kalau macet/quota Apps Script kepenuhan,
+  // user dapat pesan error yang jelas alih-alih layar "muter" selamanya.
+  function fetchWithTimeout(url, opts, ms) {
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, ms) : null;
+    opts = opts || {};
+    if (ctrl) opts.signal = ctrl.signal;
+    return fetch(url, opts).finally(function(){ if (timer) clearTimeout(timer); });
+  }
+
   function callBackend(fnName, args) {
     var payload = { action: fnName, params: args || [], workspace: getWorkspace() };
 
@@ -105,11 +117,11 @@
     // menganggap ini "simple request" dan TIDAK mengirim preflight
     // OPTIONS (Apps Script Web App tidak bisa menjawab preflight CORS).
     if (fnName === 'savePhoto') {
-      return fetch(BASE_URL, {
+      return fetchWithTimeout(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }).then(function (r) { return r.json(); });
+      }, 40000).then(function (r) { return r.json(); }); // upload foto dikasih waktu lebih lama (40dtk)
     }
 
     var sep = BASE_URL.indexOf('?') === -1 ? '?' : '&';
@@ -118,7 +130,7 @@
       '&params=' + encodeURIComponent(JSON.stringify(args || [])) +
       '&workspace=' + encodeURIComponent(getWorkspace());
 
-    return fetch(url, { method: 'GET' }).then(function (r) { return r.json(); });
+    return fetchWithTimeout(url, { method: 'GET' }, 25000).then(function (r) { return r.json(); });
   }
 
   function makeRunner() {
