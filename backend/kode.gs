@@ -1611,14 +1611,23 @@ function onSheetEditSync(e) {
     // memenuhi kuota eksekusi Apps Script project ini -- dan karena
     // project yang sama juga melayani permintaan LIVE dari website,
     // permintaan website bisa ikut antre/macet ("muter terus").
-    // Edit TERAKHIR dalam rentetan tetap akan ke-sync begitu cooldown
-    // lewat (lihat pengecekan properti di bawah).
+    //
+    // PENTING: kalau edit TERAKHIR dalam 1 rentetan jatuh PAS di dalam
+    // jeda cooldown ini dan tidak ada edit susulan, perubahan itu bisa
+    // "hilang" (tidak pernah ke-sync) -- makanya ditandai PENDING_SYNC
+    // di sini, lalu checkPendingSyncs() (trigger tiap beberapa menit)
+    // akan menyusulkan sync-nya supaya tidak ada perubahan yang kelewat.
     var props = PropertiesService.getScriptProperties();
-    var propKey = 'LAST_SYNC_' + workspaceKey;
+    var propKey    = 'LAST_SYNC_' + workspaceKey;
+    var pendingKey = 'PENDING_SYNC_' + workspaceKey;
     var lastSync = Number(props.getProperty(propKey) || 0);
     var now = Date.now();
-    if (now - lastSync < 10000) return; // masih dalam cooldown -> lewati, sinkronisasi berikutnya akan menyusul
+    if (now - lastSync < 10000) {
+      props.setProperty(pendingKey, '1'); // tandai "ada perubahan menunggu disinkronkan"
+      return;
+    }
     props.setProperty(propKey, String(now));
+    props.deleteProperty(pendingKey);
 
     var lock = LockService.getScriptLock();
     if (!lock.tryLock(3000)) return; // lagi ada proses sync lain jalan -> lewati, biar tidak dobel
@@ -1630,6 +1639,30 @@ function onSheetEditSync(e) {
   } catch (err) {
     Logger.log('onSheetEditSync gagal: ' + err.message);
   }
+}
+
+// Jaring pengaman: kalau ada perubahan yang sempat "kelewat" karena jatuh
+// di dalam jeda cooldown onSheetEditSync (ditandai PENDING_SYNC), fungsi
+// ini menyusulkan sync-nya. Dipasang sebagai trigger berkala (tiap 5
+// menit) lewat setupEditTriggers() di bawah -- jadi paling lama nunggu
+// 5 menit, tidak akan ada perubahan yang hilang selamanya.
+function checkPendingSyncs() {
+  var props = PropertiesService.getScriptProperties();
+  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
+    if (!WORKSPACE_MAP[workspaceKey]) return;
+    var pendingKey = 'PENDING_SYNC_' + workspaceKey;
+    if (props.getProperty(pendingKey) !== '1') return;
+    try {
+      ACTIVE_WORKSPACE = workspaceKey;
+      SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+      syncWorkspaceToSupabase(workspaceKey);
+      props.setProperty('LAST_SYNC_' + workspaceKey, String(Date.now()));
+      props.deleteProperty(pendingKey);
+      Logger.log('checkPendingSyncs: menyusulkan sync utk ' + workspaceKey);
+    } catch (err) {
+      Logger.log('checkPendingSyncs gagal utk ' + workspaceKey + ': ' + err.message);
+    }
+  });
 }
 
 function setupEditTriggers() {
@@ -1651,7 +1684,71 @@ function setupEditTriggers() {
       Logger.log('Gagal pasang trigger utk ' + workspaceKey + ': ' + err.message);
     }
   });
-  Logger.log('Selesai. ' + jumlah + ' trigger onEdit terpasang.');
+
+  // Trigger berkala (tiap 5 menit) buat jaring pengaman checkPendingSyncs
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'checkPendingSyncs') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('checkPendingSyncs').timeBased().everyMinutes(5).create();
+
+  Logger.log('Selesai. ' + jumlah + ' trigger onEdit terpasang + 1 trigger checkPendingSyncs (tiap 5 menit).');
+}
+
+
+// Loop semua departemen yang sudah punya Spreadsheet ID di WORKSPACE_MAP,
+// sync satu-satu (supaya kalau 1 departemen error, departemen lain tetap
+// lanjut). Dipanggil oleh trigger harian jam 00:xx (jaring pengaman),
+// selain sync real-time lewat onSheetEditSync() di atas.
+// ================================================================
+//  ARSIP PERMANEN BULAN LAMA
+//  Beda dari syncAllToSupabase() (yang cuma sync BULAN BERJALAN terus-
+//  menerus), fungsi ini secara EKSPLISIT menghitung & menyimpan snapshot
+//  untuk bulan-bulan LAMA yang sudah lewat (mis. Januari-Juli), supaya
+//  datanya AMAN TERSIMPAN PERMANEN di Supabase -- walau nanti baris-baris
+//  itu dihapus dari spreadsheet, dashboard tetap bisa tampilkan datanya
+//  (karena tidak akan pernah dihitung ulang dari spreadsheet lagi setelah
+//  di-arsipkan, kecuali dijalankan manual lagi).
+//
+//  CARA PAKAI (jalankan manual 1x lewat Apps Script editor -> Run):
+//    arsipkanBulanLamaFittingImport()
+// ================================================================
+function archiveMonthToSupabase(workspaceKey, bulan, tahun) {
+  ACTIVE_WORKSPACE = workspaceKey;
+  SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+  var bulanStr = String(bulan), tahunStr = String(tahun);
+  var ym = tahunStr + '-' + _pad2(bulan);
+  var log = [];
+  function put(key, payloadFn) {
+    key = workspaceKey + '::' + key;
+    try {
+      var payload = payloadFn();
+      if (payload && payload.success === false) { log.push('SKIP ' + key + ' (' + payload.error + ')'); return; }
+      _supabaseUpsertSnapshot(key, payload);
+      log.push('OK   ' + key);
+    } catch (err) {
+      log.push('GAGAL ' + key + ': ' + err.message);
+    }
+  }
+  put('stock:bulanan:' + ym,    function () { return getDashboardData('bulanan', { bulan: bulanStr, tahun: tahunStr }); });
+  put('outbound:bulanan:' + ym, function () { return getOutboundData({ bulan: bulanStr, tahun: tahunStr }); });
+  put('inbound:bulanan:' + ym,  function () { return getInboundData({ bulan: bulanStr, tahun: tahunStr }); });
+  put('kanban:bulanan:' + ym,   function () { return getKanbanData('bulanan', { bulan: bulanStr, tahun: tahunStr }); });
+  put('rekap:bulanan:' + ym,    function () { return getRekapMuatanData({ mode: 'bulanan', bulan: bulanStr, tahun: tahunStr }); });
+  put('residence_time:bulanan:' + ym, function () { return getResidenceTimeData({ mode: 'bulan-custom', date: ym }); });
+  Logger.log('=== Arsip ' + workspaceKey + ' ' + ym + ' ===\n' + log.join('\n'));
+  return log;
+}
+
+// Wrapper siap-Run untuk arsipkan Januari-Juli 2026 di Fitting Import.
+// Ganti daftar bulan/tahun di bawah sesuai kebutuhan (mis. departemen lain
+// atau rentang bulan lain), lalu Run.
+function arsipkanBulanLamaFittingImport() {
+  var daftarBulan = [1, 2, 3, 4, 5, 6, 7]; // Januari s.d. Juli
+  var tahun = 2026;
+  daftarBulan.forEach(function (b) {
+    archiveMonthToSupabase('cibitung_fitting_import', b, tahun);
+  });
+  Logger.log('SELESAI mengarsipkan ' + daftarBulan.length + ' bulan.');
 }
 
 
