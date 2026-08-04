@@ -4,523 +4,469 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login — Warehouse App</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="icon" href="./assets/img/rucika-logo.png">
 <style>
-:root{
-  --navy-deep:#080b14;
-  --navy-panel:#10152a;
-  --navy-panel2:#161d38;
-  --steel:#2f3b52;
-  --steel-light:#4a5a78;
-  --paper:#ede6d6;
-  --paper-dark:#ded4bd;
-  --hazard:#f2b705;
-  --ink:#1a1e29;
-  --ink-soft:#4a4536;
-  --stamp:#b8402e;
-  --safe:#22c55e;
-  --muted:#8b93a7;
-  --danger:#ef4444;
-}
-*{box-sizing:border-box;}
-html,body{height:100%;}
-body{
-  margin:0;
-  min-height:100vh;
-  background:var(--navy-deep);
-  font-family:'Inter',sans-serif;
-  overflow:hidden;
-  position:relative;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
 
-/* ---------- Ambient warehouse backdrop ---------- */
-.backdrop{
-  position:fixed; inset:0;
-  background:
-    radial-gradient(ellipse 900px 500px at 50% -10%, rgba(58,79,120,.35), transparent 60%),
-    repeating-linear-gradient(115deg, rgba(255,255,255,.015) 0 2px, transparent 2px 34px),
-    linear-gradient(180deg, #0a0e1c 0%, #070a13 60%, #05070d 100%);
-  z-index:0;
-}
-.floor-glow{
-  position:fixed; left:50%; bottom:-10%; transform:translateX(-50%);
-  width:1400px; height:420px;
-  background:radial-gradient(ellipse at center, rgba(242,183,5,.06), transparent 70%);
-  z-index:0; pointer-events:none;
-}
-.hazard-strip{
-  position:fixed; left:0; right:0; height:10px; z-index:1; opacity:.5;
-  background:repeating-linear-gradient(135deg, var(--hazard) 0 18px, #0a0e1c 18px 36px);
-}
-.hazard-strip.top{top:0;} .hazard-strip.bottom{bottom:0;}
+  body {
+    min-height: 100vh;
+    background-image:
+      linear-gradient(rgba(5,5,8,0.75), rgba(5,5,8,0.88)),
+      url('./assets/img/warehouse-bg.jfif');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow-x: hidden;
+    position: relative;
+    padding: 20px;
+  }
 
-/* ---------- Stage ---------- */
-.stage{
-  position:relative; z-index:2;
-  width:420px; max-width:92vw;
-  perspective:1400px;
-}
-.brand{
-  text-align:center; margin-bottom:22px;
-  opacity:0; transform:translateY(8px);
-  animation:fadeUp .7s ease forwards; animation-delay:1.55s;
-}
-.brand .logo-mark{
-  width:40px;height:40px;margin:0 auto 10px; border-radius:9px;
-  background:linear-gradient(135deg,var(--hazard),#d99a00);
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 8px 22px rgba(242,183,5,.25);
-}
-.brand .logo-mark svg{width:22px;height:22px;}
-.brand h1{
-  font-family:'Oswald',sans-serif; font-weight:600; letter-spacing:.14em;
-  font-size:20px; color:#f4f1e8; margin:0; text-transform:uppercase;
-}
-.brand p{margin:4px 0 0; font-size:11.5px; color:var(--muted); letter-spacing:.03em;}
+  .glow {
+    position: absolute;
+    width: 400px; height: 400px;
+    background: linear-gradient(135deg, rgba(0,168,204,0.15), rgba(0,82,204,0.15));
+    filter: blur(120px);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+  }
 
-/* ---------- Roller shutter (opening intro) ---------- */
-.shutter-wrap{
-  position:absolute; inset:-40px -40px 0 -40px; z-index:5;
-  border-radius:18px; overflow:hidden; pointer-events:none;
-}
-.shutter{
-  position:absolute; inset:0;
-  display:flex; flex-direction:column;
-  transform:translateY(0%);
-  animation:liftShutter 1.1s cubic-bezier(.7,0,.15,1) forwards;
-  animation-delay:.5s;
-}
-.slat{
-  flex:1; background:linear-gradient(180deg,var(--steel-light),var(--steel) 45%,#232c40);
-  border-bottom:2px solid rgba(0,0,0,.35);
-  box-shadow:inset 0 2px 0 rgba(255,255,255,.06);
-}
-.shutter-handle{
-  position:absolute; left:50%; bottom:8px; transform:translateX(-50%);
-  width:64px; height:8px; border-radius:4px; background:#0a0e1c;
-  box-shadow:0 0 0 2px rgba(255,255,255,.06) inset;
-}
-@keyframes liftShutter{ to{ transform:translateY(-104%); } }
+  /* ---- hanging clip + string (badge lanyard) ---- */
+  .hanger {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 1;
+    margin-bottom: -14px;
+    animation: fadeIn 0.6s ease both;
+  }
 
-/* ---------- Sealed card ---------- */
-.seal-card{
-  position:relative;
-  background:var(--paper);
-  border-radius:14px;
-  box-shadow:0 30px 60px -20px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.06);
-  opacity:0; transform:translateY(14px) scale(.98);
-  animation:cardIn .6s ease forwards; animation-delay:1.5s;
-  overflow:visible;
-}
-@keyframes cardIn{ to{opacity:1; transform:translateY(0) scale(1);} }
-@keyframes fadeUp{ to{opacity:1; transform:translateY(0);} }
+  .clip {
+    width: 16px; height: 8px;
+    background-color: #4b5563;
+    border-radius: 4px;
+    margin-bottom: 2px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  }
 
-.seal-top, .seal-bottom{
-  position:relative; padding:22px 26px;
-}
-.seal-top{
-  border-radius:14px 14px 0 0;
-  padding-bottom:26px;
-}
-.seal-stamp-row{
-  display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;
-}
-.seal-stamp-row .tag{
-  font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
-  letter-spacing:.08em; color:var(--ink-soft); background:rgba(0,0,0,.06);
-  padding:3px 8px; border-radius:4px;
-}
-.seal-stamp-row .tag.corner{color:#7a2015; background:rgba(184,64,46,.1);}
-.seal-title{
-  font-family:'Oswald',sans-serif; font-weight:600; font-size:18px;
-  letter-spacing:.05em; color:var(--ink); text-transform:uppercase; margin:0 0 3px;
-}
-.seal-sub{font-size:11px; color:var(--ink-soft); margin:0;}
+  .string {
+    width: 6px; height: 110px;
+    background: linear-gradient(to bottom, #4b5563, #1f2937, #0f172a);
+    border-radius: 9999px;
+    transform-origin: top center;
+    box-shadow: inset 1px 0 4px rgba(255,255,255,0.35), 4px 0 12px rgba(0,0,0,0.8);
+    transition: transform 0.5s cubic-bezier(.34,1.56,.64,1);
+  }
 
-.pull-hint{
-  display:flex; align-items:center; gap:8px; margin-top:16px;
-  font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.06em;
-  color:var(--ink-soft); text-transform:uppercase;
-}
-.pull-hint svg{width:13px;height:13px; animation:bob 1.4s ease-in-out infinite;}
-@keyframes bob{0%,100%{transform:translateY(0);} 50%{transform:translateY(4px);}}
+  .buckle {
+    width: 46px; height: 22px;
+    background: linear-gradient(135deg, #f8fafc 0%, #94a3b8 50%, #334155 100%);
+    border-radius: 6px;
+    box-shadow: 0 12px 20px rgba(0,0,0,0.8), inset 0 2px 4px rgba(255,255,255,0.8);
+    border: 1px solid rgba(255,255,255,0.5);
+    transition: transform 0.5s cubic-bezier(.34,1.56,.64,1);
+  }
 
-/* perforation line */
-.perf{
-  position:relative; height:0; overflow:visible;
-}
-.perf::before{
-  content:""; position:absolute; left:14px; right:14px; top:-1px;
-  border-top:2.5px dashed rgba(26,30,41,.28);
-}
-.perf-tab{
-  position:absolute; left:50%; top:-13px; transform:translateX(-50%);
-  width:46px; height:26px; border-radius:0 0 10px 10px;
-  background:var(--paper-dark);
-  box-shadow:0 3px 6px rgba(0,0,0,.15);
-  display:flex; align-items:center; justify-content:center;
-  cursor:grab; touch-action:none; z-index:3;
-}
-.perf-tab:active{cursor:grabbing;}
-.perf-tab svg{width:16px;height:16px;color:var(--ink-soft);}
+  /* ---- login card ---- */
+  .card-wrap { perspective: 1300px; z-index: 1; }
 
-.seal-bottom{
-  border-radius:0 0 14px 14px;
-  padding-top:30px;
-}
-.seal-bottom .locked-msg{
-  text-align:center; font-size:11.5px; color:var(--ink-soft);
-  padding:6px 0 4px; font-style:italic;
-}
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: linear-gradient(145deg, rgba(22,22,30,0.88), rgba(10,10,15,0.95));
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 32px;
+    padding: 36px;
+    box-shadow: 0 50px 100px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.18);
+    cursor: grab;
+    transform-style: preserve-3d;
+    transform: translateY(-400px);
+    opacity: 0;
+    animation: dropIn 0.9s cubic-bezier(.22,1.15,.36,1) 0.15s forwards;
+    transition: transform 0.5s cubic-bezier(.34,1.56,.64,1);
+  }
 
-/* Torn edge svg strip sits at the boundary, revealed after tearing */
-.torn-edge{
-  position:absolute; left:0; right:0; top:0; height:16px;
-  color:var(--paper);
-  transform:translateY(-1px);
-}
+  .card:active { cursor: grabbing; }
+  .card.shake { animation: shakeErr 0.4s ease; }
 
-/* ---------- Form (revealed layer) ---------- */
-.form-wrap{
-  padding:26px 26px 24px;
-  background:var(--navy-panel);
-  border-radius:0 0 14px 14px;
-  display:none;
-}
-.field{margin-bottom:14px;}
-.field label{
-  display:block; font-size:10.5px; font-weight:700; letter-spacing:.08em;
-  color:var(--muted); text-transform:uppercase; margin-bottom:6px;
-}
-.field select, .field input{
-  width:100%; padding:11px 12px; border-radius:9px;
-  background:var(--navy-panel2); border:1px solid #232b45; color:#f2f0ea;
-  font-family:'Inter',sans-serif; font-size:13.5px; outline:none;
-  transition:border-color .15s, box-shadow .15s;
-}
-.field select:focus, .field input:focus{
-  border-color:var(--hazard); box-shadow:0 0 0 3px rgba(242,183,5,.15);
-}
-.acc-pills{display:flex; gap:8px;}
-.acc-pill{
-  flex:1; padding:10px 8px; border-radius:9px; text-align:center; cursor:pointer;
-  background:var(--navy-panel2); border:1px solid #232b45; color:var(--muted);
-  font-size:11.5px; font-weight:600; transition:all .15s;
-}
-.acc-pill.tl{border-color:rgba(242,183,5,.25);}
-.acc-pill:hover{border-color:var(--steel-light);}
-.acc-pill.active{
-  background:rgba(242,183,5,.12); border-color:var(--hazard); color:#f2d98a;
-}
-.acc-pill .role{display:block; font-size:8.5px; opacity:.7; margin-top:2px; letter-spacing:.05em;}
+  @keyframes dropIn {
+    0%   { transform: translateY(-400px); opacity: 0; }
+    60%  { transform: translateY(18px);  opacity: 1; }
+    80%  { transform: translateY(-6px); }
+    100% { transform: translateY(0); }
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes shakeErr {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(5px); }
+  }
 
-.pwd-wrap{position:relative;}
-.pwd-wrap input{padding-right:38px;}
-.pwd-toggle{
-  position:absolute; right:10px; top:50%; transform:translateY(-50%);
-  background:none; border:none; color:var(--muted); cursor:pointer; padding:4px;
-}
+  .grip {
+    width: 48px; height: 5px;
+    background-color: rgba(255,255,255,0.3);
+    border-radius: 9999px;
+    margin: 0 auto 24px auto;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
 
-.stamp-btn{
-  width:100%; margin-top:6px; padding:13px; border:none; border-radius:10px;
-  background:linear-gradient(135deg,var(--stamp),#8f2c1f); color:#fdf6ee;
-  font-family:'Oswald',sans-serif; font-weight:600; font-size:14px; letter-spacing:.1em;
-  text-transform:uppercase; cursor:pointer; position:relative;
-  box-shadow:0 10px 22px -6px rgba(184,64,46,.5);
-  transition:transform .12s, box-shadow .12s;
-}
-.stamp-btn:hover{transform:translateY(-1px); box-shadow:0 14px 26px -6px rgba(184,64,46,.6);}
-.stamp-btn:active{transform:translateY(1px) scale(.98); box-shadow:0 4px 10px -4px rgba(184,64,46,.5);}
+  .header { text-align: center; margin-bottom: 24px; }
 
-.foot-note{
-  text-align:center; margin-top:16px; font-size:10px; color:var(--muted);
-  letter-spacing:.03em;
-}
-.foot-note b{color:#c9cddb;}
+  .logo-badge {
+    display: inline-block;
+    padding: 10px 24px;
+    background: #ffffff;
+    border-radius: 16px;
+    border: 1px solid rgba(0,168,204,0.3);
+    box-shadow: 0 0 25px rgba(0,168,204,0.3);
+    margin-bottom: 12px;
+    animation: pulse 3s ease-in-out infinite;
+  }
+  .logo-badge img { height: 36px; object-fit: contain; display: block; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
-/* accessible fallback button (keyboard / reduced motion) */
-.fallback-open{
-  display:block; margin:14px auto 0; background:none; border:1px dashed rgba(26,30,41,.3);
-  color:var(--ink-soft); font-size:10.5px; padding:7px 14px; border-radius:20px; cursor:pointer;
-  font-family:'Inter',sans-serif;
-}
-.fallback-open:focus-visible, .perf-tab:focus-visible{outline:2px solid var(--hazard); outline-offset:2px;}
+  h2 { font-size: 24px; font-weight: 700; margin: 0 0 8px 0; letter-spacing: -0.5px; }
+  .subtitle { font-size: 14px; color: #94a3b8; margin: 0; }
 
-/* torn flap animation state */
-.seal-top.tearing{
-  animation:tearAway .55s cubic-bezier(.5,0,.75,0) forwards;
-}
-@keyframes tearAway{
-  to{ transform:translateY(-120%) rotate(-7deg); opacity:0; }
-}
-.confetti{
-  position:absolute; width:6px; height:9px; background:var(--paper-dark);
-  opacity:0; z-index:4; pointer-events:none;
-}
+  form { display: flex; flex-direction: column; gap: 18px; width: 100%; }
 
-@media (prefers-reduced-motion: reduce){
-  .shutter, .seal-card, .brand{animation:none !important; opacity:1 !important; transform:none !important;}
-  .pull-hint svg{animation:none;}
-}
-@keyframes shakeErr{
-  0%,100%{transform:translateX(0);}
-  20%{transform:translateX(-6px);}
-  40%{transform:translateX(6px);}
-  60%{transform:translateX(-4px);}
-  80%{transform:translateX(4px);}
-}
+  .field label {
+    display: block; font-size: 13px; font-weight: 500;
+    color: #cbd5e1; margin-bottom: 8px;
+  }
+
+  .input-wrap { position: relative; width: 100%; }
+  .input-wrap svg {
+    position: absolute; left: 16px; top: 50%;
+    transform: translateY(-50%); color: #64748b; pointer-events: none;
+  }
+
+  .input-wrap input, .input-wrap select {
+    width: 100%;
+    background: rgba(15,23,42,0.6);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 14px 16px 14px 48px;
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.3s;
+    font-family: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .input-wrap select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 40px;
+  }
+  .input-wrap select option { background: #10131d; color: #fff; }
+
+  .input-wrap input:focus, .input-wrap select:focus {
+    border-color: rgba(0,168,204,0.6);
+    box-shadow: 0 0 0 3px rgba(0,168,204,0.15);
+  }
+  .input-wrap input::placeholder { color: #475569; }
+
+  .pwd-toggle {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: #64748b; cursor: pointer; padding: 4px;
+    display: flex;
+  }
+  .pwd-toggle:hover { color: #94a3b8; }
+
+  #deptField { display: none; }
+
+  .error-msg {
+    display: none; font-size: 13px; color: #fca5a5;
+    background: rgba(220,38,38,0.12); border: 1px solid rgba(220,38,38,0.3);
+    border-radius: 10px; padding: 10px 14px;
+  }
+
+  button[type="submit"] {
+    margin-top: 4px; width: 100%;
+    background: linear-gradient(135deg, #00a8cc 0%, #0052cc 100%);
+    color: #ffffff; border: none; border-radius: 14px; padding: 16px;
+    font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    cursor: pointer;
+    box-shadow: 0 10px 25px rgba(0,168,204,0.4);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+  button[type="submit"]:hover { transform: scale(1.02); }
+  button[type="submit"]:active { transform: scale(0.98); }
+  button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+  .footer-note {
+    margin-top: 22px; display: flex; align-items: center; justify-content: center;
+    gap: 6px; font-size: 12px; color: #64748b;
+  }
+  .footer-note svg { color: #00a8cc; }
+
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #ffffff; border-radius: 50%;
+    animation: spin 0.7s linear infinite; display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 
-<div class="backdrop"></div>
-<div class="floor-glow"></div>
-<div class="hazard-strip top"></div>
-<div class="hazard-strip bottom"></div>
+  <div class="glow"></div>
 
-<div class="stage">
-  <div class="brand">
-    <div class="logo-mark">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#1a1e29" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg>
-    </div>
-    <h1>Warehouse App</h1>
-    <p>Standar Operasional — Semua Plant</p>
+  <div class="hanger" id="hanger">
+    <div class="clip"></div>
+    <div class="string" id="string"></div>
+    <div class="buckle" id="buckle"></div>
   </div>
 
-  <div class="seal-card" id="sealCard">
-    <div class="shutter-wrap">
-      <div class="shutter" id="shutter">
-        <div class="slat"></div><div class="slat"></div><div class="slat"></div>
-        <div class="slat"></div><div class="slat"></div><div class="slat"></div>
-        <div class="shutter-handle"></div>
-      </div>
-    </div>
+  <div class="card-wrap">
+    <div class="card" id="card">
+      <div class="grip"></div>
 
-    <div class="seal-top" id="sealTop">
-      <div class="seal-stamp-row">
-        <span class="tag">NO. SEGEL WH-2026</span>
-        <span class="tag corner">TAMPER EVIDENT</span>
+      <div class="header">
+        <div class="logo-badge">
+          <img src="./assets/img/rucika-logo.png" alt="Logo Rucika">
+        </div>
+        <h2>Warehouse App</h2>
+        <p class="subtitle">Autentikasi aman — Standar Operasional Semua Plant</p>
       </div>
-      <h2 class="seal-title">Segel Akses</h2>
-      <p class="seal-sub">Tarik tab ke bawah untuk membuka &amp; masuk ke sistem.</p>
-      <div class="pull-hint">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v13M6 13l6 6 6-6"/></svg>
-        Tarik untuk buka segel
-      </div>
-    </div>
 
-    <div class="perf">
-      <div class="perf-tab" id="perfTab" tabindex="0" role="button" aria-label="Tarik untuk membuka segel dan masuk">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
-      </div>
-    </div>
-
-    <div class="seal-bottom" id="sealBottom">
-      <p class="locked-msg">🔒 Form login tersegel. Sobek untuk mengakses.</p>
-      <button class="fallback-open" id="fallbackOpen">atau klik di sini untuk membuka</button>
-    </div>
-
-    <div class="form-wrap" id="formWrap">
-      <form id="loginForm">
+      <form id="loginForm" autocomplete="off">
         <div class="field">
           <label for="plant">Plant</label>
-          <select id="plant" required>
-            <option value="" disabled selected>— Pilih Plant —</option>
-            <option value="cibitung">Plant Cibitung</option>
-            <option value="karawang">Plant Karawang (segera hadir)</option>
-            <option value="kutorejo">Plant Kutorejo (segera hadir)</option>
-            <option value="gresik">Plant Gresik (segera hadir)</option>
-          </select>
+          <div class="input-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg>
+            <select id="plant" required>
+              <option value="" disabled selected>— Pilih Plant —</option>
+              <option value="cibitung">Plant Cibitung</option>
+              <option value="karawang">Plant Karawang (segera hadir)</option>
+              <option value="kutorejo">Plant Kutorejo (segera hadir)</option>
+              <option value="gresik">Plant Gresik (segera hadir)</option>
+            </select>
+          </div>
         </div>
-        <div class="field" id="deptField" style="display:none;">
+
+        <div class="field" id="deptField">
           <label for="dept">Departemen</label>
-          <select id="dept">
-            <option value="" disabled selected>— Pilih Departemen —</option>
-            <option value="fitting_import">Warehouse Fitting Import</option>
-            <option value="fitting_rucika">Warehouse Fitting Rucika</option>
-            <option value="pipa_rucika">Warehouse Pipa Rucika</option>
-            <option value="sparepart">Warehouse Sparepart</option>
-          </select>
+          <div class="input-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <select id="dept">
+              <option value="" disabled selected>— Pilih Departemen —</option>
+              <option value="fitting_import">Warehouse Fitting Import</option>
+              <option value="fitting_rucika">Warehouse Fitting Rucika</option>
+              <option value="pipa_rucika">Warehouse Pipa Rucika</option>
+              <option value="sparepart">Warehouse Sparepart</option>
+            </select>
+          </div>
         </div>
+
         <div class="field">
           <label for="nik">NIK</label>
-          <input type="text" id="nik" placeholder="Masukkan NIK Anda" required autocomplete="username">
+          <div class="input-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <input id="nik" name="nik" type="text" inputmode="numeric" placeholder="Masukkan NIK Anda" required autocomplete="username">
+          </div>
         </div>
+
         <div class="field">
           <label for="pwd">Kata Sandi</label>
-          <div class="pwd-wrap">
-            <input type="password" id="pwd" placeholder="Masukkan kata sandi" required autocomplete="current-password">
+          <div class="input-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input id="pwd" name="pwd" type="password" placeholder="Masukkan kata sandi" required autocomplete="current-password" style="padding-right:44px;">
             <button type="button" class="pwd-toggle" id="pwdToggle" aria-label="Tampilkan kata sandi">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
         </div>
-        <div id="loginError" style="display:none;color:#f87171;font-size:11.5px;margin:-6px 0 12px;text-align:center;"></div>
-        <button type="submit" class="stamp-btn" id="stampBtn">Masuk Sistem</button>
+
+        <div class="error-msg" id="loginError"></div>
+
+        <button type="submit" id="stampBtn">
+          <span id="btnLabel">Masuk Sistem</span>
+          <div class="spinner" id="btnSpinner"></div>
+          <svg id="btnArrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
       </form>
-      <div class="foot-note">Butuh bantuan akun? Hubungi <b>Admin Plant</b> Anda.</div>
+
+      <div class="footer-note">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Enkripsi End-to-End Aktif</span>
+      </div>
     </div>
   </div>
-</div>
 
-<script src="./assets/js/config.js?v=20260729a"></script>
-<script src="./assets/js/api-shim.js?v=20260729a"></script>
-<script>
-const sealCard = document.getElementById('sealCard');
-const sealTop = document.getElementById('sealTop');
-const sealBottom = document.getElementById('sealBottom');
-const perfTab = document.getElementById('perfTab');
-const formWrap = document.getElementById('formWrap');
-const fallbackOpen = document.getElementById('fallbackOpen');
+  <script src="./assets/js/config.js?v=20260729a"></script>
+  <script src="./assets/js/api-shim.js?v=20260729a"></script>
+  <script>
+    // ============================================================
+    // 1) ANIMASI "GANTUNGAN KARTU" — drag/spring meniru versi React
+    // ============================================================
+    const card = document.getElementById('card');
+    const stringEl = document.getElementById('string');
+    const buckleEl = document.getElementById('buckle');
 
-let dragging = false, startY = 0, dragY = 0, opened = false;
-const THRESHOLD = 70;
+    let dragging = false, startY = 0, dy = 0;
 
-function openSeal(){
-  if (opened) return;
-  opened = true;
-  sealTop.classList.add('tearing');
-  spawnConfetti();
-  setTimeout(()=>{
-    sealTop.style.display = 'none';
-    sealBottom.style.display = 'none';
-    formWrap.style.display = 'block';
-    formWrap.style.animation = 'fadeUp .45s ease forwards';
-    document.getElementById('plant').focus();
-  }, 480);
-}
-
-function spawnConfetti(){
-  const rect = perfTab.getBoundingClientRect();
-  for(let i=0;i<14;i++){
-    const c = document.createElement('div');
-    c.className = 'confetti';
-    c.style.left = (rect.left + rect.width/2 + (Math.random()*60-30)) + 'px';
-    c.style.top = (rect.top + 6) + 'px';
-    c.style.background = Math.random()>.5 ? '#ded4bd' : '#f2b705';
-    c.style.transform = `rotate(${Math.random()*360}deg)`;
-    document.body.appendChild(c);
-    const dx = (Math.random()*140-70), dy = 90+Math.random()*70;
-    c.animate([
-      { transform:c.style.transform, opacity:1, top:c.style.top },
-      { transform:`translate(${dx}px, ${dy}px) rotate(${Math.random()*540}deg)`, opacity:0, top:(rect.top+dy)+'px' }
-    ], { duration: 700+Math.random()*300, easing:'cubic-bezier(.3,.6,.4,1)' });
-    setTimeout(()=>c.remove(), 1100);
-  }
-}
-
-function onDown(e){
-  dragging = true;
-  startY = (e.touches ? e.touches[0].clientY : e.clientY);
-  perfTab.style.transition = 'none';
-  sealTop.style.transition = 'none';
-}
-function onMove(e){
-  if (!dragging || opened) return;
-  const y = (e.touches ? e.touches[0].clientY : e.clientY);
-  dragY = Math.max(0, y - startY);
-  const eased = Math.min(dragY, 90);
-  perfTab.style.transform = `translateX(-50%) translateY(${eased}px)`;
-  sealTop.style.transform = `translateY(${eased*0.25}px) rotate(${eased*0.03}deg)`;
-  sealTop.style.opacity = String(1 - eased/160);
-  if (dragY > THRESHOLD){ onUp(); openSeal(); }
-}
-function onUp(){
-  dragging = false;
-  if (!opened){
-    perfTab.style.transition = 'transform .3s cubic-bezier(.34,1.56,.64,1)';
-    sealTop.style.transition = 'transform .3s ease, opacity .3s ease';
-    perfTab.style.transform = 'translateX(-50%) translateY(0)';
-    sealTop.style.transform = 'translateY(0) rotate(0deg)';
-    sealTop.style.opacity = '1';
-  }
-}
-
-perfTab.addEventListener('mousedown', onDown);
-window.addEventListener('mousemove', onMove);
-window.addEventListener('mouseup', onUp);
-perfTab.addEventListener('touchstart', onDown, {passive:true});
-window.addEventListener('touchmove', onMove, {passive:true});
-window.addEventListener('touchend', onUp);
-perfTab.addEventListener('keydown', (e)=>{
-  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openSeal(); }
-});
-fallbackOpen.addEventListener('click', openSeal);
-
-// Plant -> tampilkan Departemen (khusus Cibitung yang sudah aktif)
-const plantSel = document.getElementById('plant');
-const deptField = document.getElementById('deptField');
-const deptSel = document.getElementById('dept');
-plantSel.addEventListener('change', ()=>{
-  if (plantSel.value === 'cibitung'){
-    deptField.style.display = 'block';
-    deptSel.required = true;
-  } else {
-    deptField.style.display = 'none';
-    deptSel.required = false;
-    if (plantSel.value){
-      alert('Plant ini belum aktif. Saat ini baru Plant Cibitung yang tersedia.');
-      plantSel.value = '';
+    function applyTilt(deltaY) {
+      const clamped = Math.max(-250, Math.min(250, deltaY));
+      const rotateX = (clamped / 250) * -25;
+      const rotateY = (clamped / 250) * 20;
+      const scaleY = 1 + (clamped / 250) * 0.6;
+      card.style.transform = `translateY(${clamped}px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+      stringEl.style.transform = `scaleY(${Math.max(0.35, scaleY)})`;
+      buckleEl.style.transform = `translateY(${clamped * 0.15}px)`;
     }
-  }
-});
 
-// Password show/hide
-document.getElementById('pwdToggle').addEventListener('click', ()=>{
-  const pwd = document.getElementById('pwd');
-  pwd.type = pwd.type === 'password' ? 'text' : 'password';
-});
+    function resetTilt() {
+      card.style.transition = 'transform 0.5s cubic-bezier(.34,1.56,.64,1)';
+      stringEl.style.transition = 'transform 0.5s cubic-bezier(.34,1.56,.64,1)';
+      buckleEl.style.transition = 'transform 0.5s cubic-bezier(.34,1.56,.64,1)';
+      card.style.transform = 'translateY(0) rotateX(0) rotateY(0)';
+      stringEl.style.transform = 'scaleY(1)';
+      buckleEl.style.transform = 'translateY(0)';
+    }
 
-function showLoginError(msg){
-  const el = document.getElementById('loginError');
-  el.textContent = msg;
-  el.style.display = 'block';
-  const card = document.querySelector('.form-wrap');
-  card.style.animation = 'none';
-  void card.offsetWidth; // restart animasi shake
-  card.style.animation = 'shakeErr .4s ease';
-}
+    function startDrag(y, target) {
+      // Jangan mulai drag kalau yang disentuh input/select/tombol (biar form tetap bisa dipakai normal)
+      if (target && target.closest && target.closest('input, select, button, a')) return;
+      dragging = true; startY = y;
+      card.style.transition = 'none';
+      stringEl.style.transition = 'none';
+      buckleEl.style.transition = 'none';
+    }
+    function moveDrag(y) {
+      if (!dragging) return;
+      dy = Math.max(-120, Math.min(200, y - startY));
+      applyTilt(dy);
+    }
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      resetTilt();
+    }
 
-document.getElementById('loginForm').addEventListener('submit', (e)=>{
-  e.preventDefault();
-  const plant = document.getElementById('plant').value;
-  const dept  = document.getElementById('dept').value;
-  const nik   = document.getElementById('nik').value.trim();
-  const pwd   = document.getElementById('pwd').value;
-  const btn   = document.getElementById('stampBtn');
-  document.getElementById('loginError').style.display = 'none';
+    card.addEventListener('mousedown', e => startDrag(e.clientY, e.target));
+    window.addEventListener('mousemove', e => moveDrag(e.clientY));
+    window.addEventListener('mouseup', endDrag);
+    card.addEventListener('touchstart', e => startDrag(e.touches[0].clientY, e.target), { passive: true });
+    window.addEventListener('touchmove', e => moveDrag(e.touches[0].clientY), { passive: true });
+    window.addEventListener('touchend', endDrag);
 
-  if (!plant || plant !== 'cibitung'){ showLoginError('Pilih Plant Cibitung (plant lain belum aktif).'); return; }
-  if (!dept){ showLoginError('Pilih departemen terlebih dahulu.'); return; }
-
-  btn.disabled = true; btn.textContent = 'Memeriksa...';
-  google.script.run
-    .withSuccessHandler(function(res){
-      btn.disabled = false; btn.textContent = 'Masuk Sistem';
-      if (!res || !res.success){
-        showLoginError(res && res.error ? res.error : 'Login gagal, coba lagi.');
-        return;
+    // ============================================================
+    // 2) Plant -> tampilkan Departemen (sama seperti versi lama)
+    // ============================================================
+    const plantSel = document.getElementById('plant');
+    const deptField = document.getElementById('deptField');
+    const deptSel = document.getElementById('dept');
+    plantSel.addEventListener('change', () => {
+      if (plantSel.value === 'cibitung') {
+        deptField.style.display = 'block';
+        deptSel.required = true;
+      } else {
+        deptField.style.display = 'none';
+        deptSel.required = false;
+        if (plantSel.value) {
+          alert('Plant ini belum aktif. Saat ini baru Plant Cibitung yang tersedia.');
+          plantSel.value = '';
+        }
       }
-      try {
-        sessionStorage.setItem('wh_workspace', res.workspace);
-        sessionStorage.setItem('wh_nik', res.nik);
-        sessionStorage.setItem('wh_nama', res.nama);
-        sessionStorage.setItem('wh_role', res.role);
-      } catch(err){}
-      window.location.href = './index.html';
-    })
-    .withFailureHandler(function(err){
-      btn.disabled = false; btn.textContent = 'Masuk Sistem';
-      showLoginError('Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi'));
-    })
-    .loginUser(plant, dept, nik, pwd);
-});
+    });
 
-</script>
+    // Toggle show/hide password
+    document.getElementById('pwdToggle').addEventListener('click', () => {
+      const pwd = document.getElementById('pwd');
+      pwd.type = pwd.type === 'password' ? 'text' : 'password';
+    });
+
+    // NIK cuma boleh angka
+    document.getElementById('nik').addEventListener('input', function () {
+      this.value = this.value.replace(/\D/g, '');
+    });
+
+    // ============================================================
+    // 3) LOGIN — tetap panggil loginUser() lewat google.script.run
+    //    (di-shim oleh api-shim.js supaya jalan di GitHub Pages)
+    // ============================================================
+    const submitBtn = document.getElementById('stampBtn');
+    const btnLabel = document.getElementById('btnLabel');
+    const btnArrow = document.getElementById('btnArrow');
+    const btnSpinner = document.getElementById('btnSpinner');
+    const errorEl = document.getElementById('loginError');
+
+    function setLoading(isLoading) {
+      submitBtn.disabled = isLoading;
+      btnLabel.textContent = isLoading ? 'Memeriksa...' : 'Masuk Sistem';
+      btnArrow.style.display = isLoading ? 'none' : 'inline-block';
+      btnSpinner.style.display = isLoading ? 'inline-block' : 'none';
+    }
+
+    function showLoginError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+      card.classList.remove('shake');
+      void card.offsetWidth; // restart animasi
+      card.classList.add('shake');
+    }
+
+    function clearLoginError() {
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      clearLoginError();
+
+      const plant = plantSel.value;
+      const dept = deptSel.value;
+      const nik = document.getElementById('nik').value.trim();
+      const pwd = document.getElementById('pwd').value;
+
+      if (!plant || plant !== 'cibitung') { showLoginError('Pilih Plant Cibitung (plant lain belum aktif).'); return; }
+      if (!dept) { showLoginError('Pilih departemen terlebih dahulu.'); return; }
+      if (!nik || !pwd) { showLoginError('NIK dan kata sandi wajib diisi.'); return; }
+
+      setLoading(true);
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setLoading(false);
+          if (!res || !res.success) {
+            showLoginError((res && res.error) ? res.error : 'Login gagal, coba lagi.');
+            return;
+          }
+          try {
+            sessionStorage.setItem('wh_workspace', res.workspace);
+            sessionStorage.setItem('wh_nik', res.nik);
+            sessionStorage.setItem('wh_nama', res.nama);
+            sessionStorage.setItem('wh_role', res.role);
+          } catch (err) {}
+          window.location.href = './index.html';
+        })
+        .withFailureHandler(function (err) {
+          setLoading(false);
+          showLoginError('Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi'));
+        })
+        .loginUser(plant, dept, nik, pwd);
+    });
+  </script>
 </body>
 </html>
