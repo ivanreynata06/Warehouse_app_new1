@@ -1233,6 +1233,21 @@ function getRekapMuatanData(params) {
     var ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
     var mode = 'bulanan'; // hanya bulanan
 
+    // ---- CACHE: hindari scan ulang seluruh sheet tiap kali dibuka ----
+    // Sheet REKAP MUATAN / REKAP MUATAN FITTING / DASHBOARD_KIRIM dibaca penuh
+    // (getDataRange) beberapa kali per request -> berat kalau datanya sudah
+    // banyak bulan. Bulan yang sudah lewat datanya tidak berubah lagi, jadi
+    // aman di-cache lebih lama. Bulan berjalan di-cache singkat saja supaya
+    // input baru tetap kelihatan update dalam beberapa menit.
+    var bulanKey = parseInt(params && params.bulan ? params.bulan : (new Date().getMonth() + 1), 10);
+    var tahunKey = parseInt(params && params.tahun ? params.tahun : new Date().getFullYear(), 10);
+    var cacheKey = 'rekapMuatan_' + tahunKey + '_' + bulanKey;
+    var scriptCache = CacheService.getScriptCache();
+    if (!(params && params.noCache)) {
+      var cachedVal = scriptCache.get(cacheKey);
+      if (cachedVal) return JSON.parse(cachedVal);
+    }
+
     // ---- Build date range ----
     var range = buildRekapDateRange(params);
 
@@ -1372,7 +1387,7 @@ function getRekapMuatanData(params) {
     var bIdx=parseInt(params&&params.bulan?params.bulan:new Date().getMonth()+1,10)-1;
     var periodeLabel=bNames[bIdx]+' '+(params&&params.tahun?params.tahun:new Date().getFullYear());
 
-    return {
+    var resultOut = {
       success             : true,
       periodeLabel        : periodeLabel,
       totalPipa           : totalPipa,
@@ -1383,6 +1398,17 @@ function getRekapMuatanData(params) {
       pics                : picsOut,
       trendLabels         : sortedDates
     };
+
+    // Simpan ke cache: 3 menit kalau bulan berjalan (masih sering diinput),
+    // 6 jam kalau bulan yang sudah lewat (datanya sudah final/tidak berubah).
+    try {
+      var nowD = new Date();
+      var isCurrentMonth = (tahunKey === nowD.getFullYear() && bulanKey === (nowD.getMonth() + 1));
+      var ttlSeconds = isCurrentMonth ? 180 : 21600;
+      scriptCache.put(cacheKey, JSON.stringify(resultOut), ttlSeconds);
+    } catch (cacheErr) { /* kalau gagal cache, tidak masalah, tetap return data */ }
+
+    return resultOut;
   } catch(err) {
     return { success: false, error: err.message };
   }
