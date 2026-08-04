@@ -948,7 +948,7 @@ function loadAll(){
   var lbl=globalMode==='bulanan'?(BNAMES3[parseInt(p.bulan||7,10)-1]+' '+p.tahun):'Tahun '+p.tahun;
   setText('period-main-badge',lbl); setText('period-badge',lbl);
   _months=getLastNMonths(6,p.bulan,p.tahun);
-  _pending=6;
+  _pending=5;
   _pendingIO=2;
   _pendingKanban=2;
 
