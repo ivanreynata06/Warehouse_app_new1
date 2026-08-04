@@ -78,19 +78,27 @@
   }
 
   /* ---- login card ---- */
-  .card-wrap { z-index: 1; }
+  .card-wrap { perspective: 1300px; z-index: 1; }
 
   .card {
     width: 100%;
     max-width: 420px;
-    background: linear-gradient(145deg, rgba(22,22,30,0.94), rgba(10,10,15,0.97));
+    background: linear-gradient(145deg, rgba(22,22,30,0.88), rgba(10,10,15,0.95));
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
     border: 1px solid rgba(255,255,255,0.15);
     border-radius: 32px;
     padding: 36px;
     box-shadow: 0 50px 100px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.18);
     cursor: grab;
-    transform: translateY(-400px);
-    opacity: 0;
+    transform-style: preserve-3d;
+    will-change: transform;
+    /* opacity TIDAK ikut animasi lagi (lihat catatan di bawah) — kartu selalu
+       opacity:1, cuma posisinya yang animasi. Ini menghindari bug Chrome Android
+       yang membuat elemen ber-backdrop-filter gagal render permanen saat
+       animasi opacity 0->1 digabung dengan transform 3D. */
+    opacity: 1;
+    transform: translateY(-400px) translateZ(0);
     animation: dropIn 0.9s cubic-bezier(.22,1.15,.36,1) 0.15s forwards;
     transition: transform 0.5s cubic-bezier(.34,1.56,.64,1);
   }
@@ -99,10 +107,10 @@
   .card.shake { animation: shakeErr 0.4s ease; }
 
   @keyframes dropIn {
-    0%   { transform: translateY(-400px); opacity: 0; }
-    60%  { transform: translateY(18px);  opacity: 1; }
-    80%  { transform: translateY(-6px); }
-    100% { transform: translateY(0); }
+    0%   { transform: translateY(-400px) translateZ(0); }
+    60%  { transform: translateY(18px) translateZ(0); }
+    80%  { transform: translateY(-6px) translateZ(0); }
+    100% { transform: translateY(0) translateZ(0); }
   }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes shakeErr {
@@ -324,9 +332,10 @@
 
     function applyTilt(deltaY) {
       const clamped = Math.max(-250, Math.min(250, deltaY));
-      const rotate = (clamped / 250) * 6; // goyangan ringan, 2D saja
-      const scaleY = 1 + (clamped / 250) * 0.5;
-      card.style.transform = `translateY(${clamped}px) rotate(${rotate}deg)`;
+      const rotateX = (clamped / 250) * -18;
+      const rotateY = (clamped / 250) * 14;
+      const scaleY = 1 + (clamped / 250) * 0.6;
+      card.style.transform = `translateY(${clamped}px) translateZ(0) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
       stringEl.style.transform = `scaleY(${Math.max(0.35, scaleY)})`;
       buckleEl.style.transform = `translateY(${clamped * 0.15}px)`;
     }
@@ -335,7 +344,7 @@
       card.style.transition = 'transform 0.5s cubic-bezier(.34,1.56,.64,1)';
       stringEl.style.transition = 'transform 0.5s cubic-bezier(.34,1.56,.64,1)';
       buckleEl.style.transition = 'transform 0.5s cubic-bezier(.34,1.56,.64,1)';
-      card.style.transform = 'translateY(0) rotate(0deg)';
+      card.style.transform = 'translateY(0) translateZ(0) rotateX(0) rotateY(0)';
       stringEl.style.transform = 'scaleY(1)';
       buckleEl.style.transform = 'translateY(0)';
     }
@@ -359,11 +368,10 @@
       resetTilt();
     }
 
-    // Jaring pengaman: apa pun yang terjadi dengan animasi CSS, paksa kartu
-    // tampil normal setelah 1.2 detik supaya tidak pernah tersangkut kosong.
+    // Jaring pengaman: apa pun yang terjadi, pastikan kartu ada di posisi
+    // normal setelah 1.2 detik (opacity sudah selalu 1 by default sekarang).
     setTimeout(() => {
-      card.style.opacity = '1';
-      if (!dragging) card.style.transform = 'translateY(0) rotate(0deg)';
+      if (!dragging) card.style.transform = 'translateY(0) translateZ(0) rotateX(0) rotateY(0)';
     }, 1200);
 
     card.addEventListener('mousedown', e => startDrag(e.clientY, e.target));
