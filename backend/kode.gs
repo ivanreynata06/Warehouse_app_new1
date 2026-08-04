@@ -1777,6 +1777,65 @@ function arsipkanBulanLamaFittingImport() {
   Logger.log('SELESAI mengarsipkan ' + daftarBulan.length + ' bulan.');
 }
 
+// ================================================================
+//  ARSIP OTOMATIS BULANAN — SEMUA DEPARTEMEN (sama seperti Control
+//  Tower: begitu bulan berganti, data bulan yang baru saja selesai
+//  otomatis diarsipkan permanen ke Supabase untuk SEMUA departemen
+//  sekaligus -- bukan cuma 1 departemen, dan tidak perlu dijalankan
+//  manual lagi tiap bulan. Data tetap terbaca dari Supabase walau
+//  baris-barisnya nanti dihapus dari spreadsheet.
+//
+//  CARA PASANG (jalankan 1x lewat Apps Script editor -> Run):
+//    setupMonthlyArchiveTrigger()
+//  Setelah itu otomatis jalan sendiri tiap tanggal 2 jam 01:00 pagi,
+//  mengarsipkan bulan yang baru saja selesai (mis. tanggal 2 Agustus
+//  akan mengarsipkan bulan Juli).
+// ================================================================
+
+// Arsipkan SATU bulan/tahun tertentu untuk SEMUA departemen yang sudah
+// punya Spreadsheet ID di WORKSPACE_MAP (dept yang belum di-provision,
+// spreadsheet ID-nya masih '', otomatis dilewati).
+function archiveAllWorkspacesForMonth(bulan, tahun) {
+  var allLogs = [];
+  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
+    if (!WORKSPACE_MAP[workspaceKey]) return; // belum di-provision -> lewati
+    try {
+      var log = archiveMonthToSupabase(workspaceKey, bulan, tahun);
+      allLogs.push('=== ' + workspaceKey + ' ===\n' + log.join('\n'));
+    } catch (err) {
+      allLogs.push('=== ' + workspaceKey + ' === GAGAL TOTAL: ' + err.message);
+    }
+  });
+  Logger.log(allLogs.join('\n\n'));
+  return allLogs;
+}
+
+// Dipanggil otomatis oleh trigger bulanan. Menghitung "bulan lalu" relatif
+// terhadap tanggal hari ini, lalu mengarsipkannya untuk semua departemen.
+function arsipkanBulanLaluOtomatis() {
+  var now = new Date();
+  var bulanLalu = now.getMonth(); // getMonth() 0-based -> ini sudah "bulan sebelumnya" dalam angka 1-based
+  var tahunLalu = now.getFullYear();
+  if (bulanLalu === 0) { bulanLalu = 12; tahunLalu -= 1; } // Januari -> bulan lalu = Desember tahun sebelumnya
+  Logger.log('Mengarsipkan otomatis bulan ' + bulanLalu + '/' + tahunLalu + ' untuk semua departemen...');
+  return archiveAllWorkspacesForMonth(bulanLalu, tahunLalu);
+}
+
+// Jalankan SEKALI SAJA secara manual (pilih fungsi ini di dropdown Apps
+// Script editor -> Run) untuk memasang jadwal arsip otomatis bulanan.
+function setupMonthlyArchiveTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'arsipkanBulanLaluOtomatis') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('arsipkanBulanLaluOtomatis')
+    .timeBased()
+    .onMonthDay(2)   // tanggal 2 tiap bulan (kasih jeda 1 hari dari akhir bulan,
+                      // supaya input/koreksi last-minute di H-1 akhir bulan sempat masuk)
+    .atHour(1)        // jam 01:xx pagi (zona waktu project Apps Script)
+    .create();
+  Logger.log('Trigger arsip otomatis bulanan berhasil dipasang (tiap tanggal 2, jam 01:00).');
+}
+
 
 // Loop semua departemen yang sudah punya Spreadsheet ID di WORKSPACE_MAP,
 // sync satu-satu (supaya kalau 1 departemen error, departemen lain tetap
