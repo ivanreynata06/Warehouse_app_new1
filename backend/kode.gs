@@ -159,8 +159,8 @@ function handleApiRequest(e) {
 // ================================================================
 var WORKSPACE_MAP = {
   'cibitung_fitting_import': '1ZlcBhPQJpMFG4-Phwv1VCldIA4VXImzGgltj3ihR33c', // spreadsheet yang sudah berjalan
-  'cibitung_fitting_rucika': '', // isi setelah provisionDepartmentSpreadsheet()
-  'cibitung_pipa_rucika'   : '', // isi setelah provisionDepartmentSpreadsheet()
+  'cibitung_fitting_rucika': '1-WSl4W6IoCmX6Du1fqPqswn9xqn960PtpwtmuluLO8Q',
+  'cibitung_pipa_rucika'   : '1xJZPYLxZqalNf5qpw9OLW6j57y9Tb__eW0d8TkO0ywc',
   'cibitung_sparepart'     : ''  // isi setelah provisionDepartmentSpreadsheet()
 };
 var DEFAULT_WORKSPACE = 'cibitung_fitting_import'; // fallback kalau request lama belum kirim param workspace
