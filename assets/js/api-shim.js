@@ -129,7 +129,11 @@
       // aksi yang SENGAJA ditunggu manual oleh pengguna (klik tombol
       // "Sync Sekarang"), kasih waktu jauh lebih panjang (4.5 menit,
       // masih di bawah batas eksekusi Apps Script 6 menit).
-      var timeoutMs = (fnName === 'manualSyncNow') ? 270000 : 90000;
+      // Upload (appendStockData dkk) sekarang JUGA menunggu sync ringkas
+      // selesai sebelum merespons (bukan lagi diserahkan ke trigger),
+      // jadi butuh waktu tunggu sepanjang manualSyncNow juga -- bukan
+      // cuma manualSyncNow saja.
+      var timeoutMs = 270000;
       return fetchWithTimeout(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },

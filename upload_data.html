@@ -656,7 +656,7 @@ function submitData(tab){
   var spin = document.getElementById('spin-'+tab);
   var lbl = document.getElementById('lbl-submit-'+tab);
 
-  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Mengupload...';
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Mengupload (bisa sampai beberapa menit utk data banyak)...';
   showStatus(tab,'info','Mengupload '+rows.length+' baris ke sistem, mohon tunggu...');
 
   google.script.run
