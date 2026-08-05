@@ -594,7 +594,7 @@ function showStatus(tab, type, msg){
   el.textContent = msg;
 }
 
-function clearTab(tab){
+function clearTab(tab, keepStatus){
   var pasteEl = document.getElementById('paste-'+tab);
   if (pasteEl) pasteEl.value = '';
   var fileEl = document.getElementById('file-'+tab);
@@ -603,7 +603,9 @@ function clearTab(tab){
   if (fnameEl) fnameEl.textContent = '';
   document.getElementById('preview-wrap-'+tab).style.display = 'none';
   document.getElementById('summary-'+tab).textContent = '';
-  document.getElementById('status-'+tab).className = 'status-msg';
+  if (!keepStatus){
+    document.getElementById('status-'+tab).className = 'status-msg';
+  }
   document.getElementById('btn-submit-'+tab).disabled = true;
   PARSED_ROWS[tab] = null;
 }
@@ -633,7 +635,7 @@ function submitData(tab){
           ? ' Data banyak (>150 baris) -- Monitoring Stock/Kanban/Rekap Muatan akan ter-update otomatis dalam beberapa saat (biasanya kurang dari 1 menit), tidak perlu upload ulang.'
           : ' Menyinkronkan ke Monitoring Stock, Kanban, dan Rekap Muatan...';
         showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan.'+syncNote);
-        clearTab(tab);
+        clearTab(tab, true);
         try { clearApiCache(); } catch(e){}
       } else {
         showStatus(tab,'err','Gagal: ' + (res && res.error ? res.error : 'terjadi kesalahan tidak diketahui.'));
