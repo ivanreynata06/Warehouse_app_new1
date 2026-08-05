@@ -16,6 +16,7 @@
 <title>Upload Data Harian</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -104,6 +105,14 @@ textarea.paste-area{width:100%;min-height:130px;background:var(--bg-card2);borde
   resize:vertical;outline:none;}
 textarea.paste-area:focus{border-color:var(--green);}
 textarea.paste-area::placeholder{color:var(--txt3);}
+
+.drop-zone{border:2px dashed var(--border2);border-radius:10px;padding:22px 16px;text-align:center;
+  cursor:pointer;transition:all .15s;background:var(--bg-card2);}
+.drop-zone:hover{border-color:var(--green);background:rgba(16,185,129,.05);}
+.drop-zone.dragover{border-color:var(--green);background:rgba(16,185,129,.1);}
+.drop-zone svg{color:var(--txt3);margin-bottom:6px;}
+.drop-zone-txt{font-size:11px;color:var(--txt2);line-height:1.6;}
+.drop-zone-file{margin-top:8px;font-size:11px;color:var(--green);font-family:var(--font-mono);font-weight:600;}
 
 .btn-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 .btn{padding:8px 16px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
@@ -238,13 +247,23 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         <div class="card-header"><div class="card-title">Upload Data Stock (DASHBOARD_STOCK)</div></div>
         <div class="card-body">
           <div class="col-ref">
-            Urutan kolom (10 kolom, pisahkan dengan <b>Tab</b> kalau copy dari Excel, atau koma):<br>
-            <code>Item Number</code> · <code>Site</code> · <code>Unit</code> · <code>Group</code> · <code>Description</code> · <code>Description2</code> · <code>Stock Pcs</code> · <code>Stock Tonnase</code> · <code>Drawing</code> · <code>Tanggal (YYYY-MM-DD)</code><br>
-            Contoh Drawing: <code>PIPA PPR KELEN GREEN</code>, <code>PIPA PPR KELEN GREY</code>, <code>FITTING PPR KELEN GREEN</code>, <code>FITTING PPR KELEN GREY</code>.
+            Upload file <b>Excel (.xlsx)</b> — cukup isi kolom <b>A sampai H</b>:<br>
+            <code>A: Item Number</code> · <code>B: Site</code> · <code>C: Unit</code> · <code>D: Group</code> · <code>E: Description</code> · <code>F: Description2</code> · <code>G: Stock Pcs</code> · <code>H: Stock Tonnase</code><br>
+            Kolom <b>I dan seterusnya JANGAN diisi</b> — itu rumus yang sudah ada di spreadsheet, otomatis akan ikut terhitung sendiri begitu baris baru masuk. Baris pertama di file harus header (nama kolom), data mulai baris ke-2.
           </div>
-          <textarea class="paste-area" id="paste-stock" placeholder="Tempel data di sini (copy langsung dari Excel, baris per baris)&#10;Contoh:&#10;PPR001&#9;Cibitung&#9;PCS&#9;GroupA&#9;Pipa PPR 20mm&#9;-&#9;1000&#9;520.5&#9;PIPA PPR KELEN GREEN&#9;2026-08-05"></textarea>
           <div class="btn-row">
-            <button class="btn btn-secondary" onclick="parsePreview('stock')">Parse &amp; Preview</button>
+            <button class="btn btn-secondary" onclick="downloadTemplate('stock')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template Excel
+            </button>
+          </div>
+          <input type="file" id="file-stock" accept=".xlsx,.xls" style="display:none;" onchange="handleExcelFile(event,'stock')">
+          <div class="drop-zone" id="dropzone-stock" onclick="document.getElementById('file-stock').click()">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div class="drop-zone-txt"><b>Klik untuk pilih file Excel</b><br>atau drag &amp; drop file .xlsx di sini</div>
+            <div class="drop-zone-file" id="dropzone-filename-stock"></div>
+          </div>
+          <div class="btn-row">
             <button class="btn btn-primary" id="btn-submit-stock" onclick="submitData('stock')" disabled>
               <span class="spinner-sm" id="spin-stock"></span>
               <span id="lbl-submit-stock">Upload ke Sistem</span>
@@ -364,9 +383,9 @@ function switchTab(name){
 var TAB_CONFIG = {
   stock: {
     fn: 'appendStockData',
-    cols: ['Item Number','Site','Unit','Group','Description','Description2','Stock Pcs','Stock Tonnase','Drawing','Tanggal'],
+    cols: ['Item Number','Site','Unit','Group','Description','Description2','Stock Pcs','Stock Tonnase'],
     numericCols: [6,7],   // index kolom yang wajib angka
-    dateCols: [9]         // index kolom yang wajib tanggal
+    dateCols: []
   },
   outbound: {
     fn: 'appendOutboundData',
@@ -403,17 +422,32 @@ function isValidDateStr(s){
 }
 
 function parsePreview(tab){
-  var cfg = TAB_CONFIG[tab];
   var raw = document.getElementById('paste-'+tab).value;
   var lines = raw.split(/\r?\n/).map(function(l){return l.trim();}).filter(function(l){return l.length>0;});
 
+  if (!lines.length){
+    showStatus(tab,'err','Belum ada data yang ditempel.');
+    document.getElementById('btn-submit-'+tab).disabled = true;
+    document.getElementById('preview-wrap-'+tab).style.display='none';
+    document.getElementById('summary-'+tab).textContent='';
+    PARSED_ROWS[tab] = null;
+    return;
+  }
+  var cellRows = lines.map(function(line){ return splitLine(line).map(function(c){return c.trim();}); });
+  validateAndPreview(tab, cellRows);
+}
+
+// Dipakai bersama oleh alur paste (Outbound/Inbound) DAN alur upload file
+// Excel (Stock) -- cellRows = array of array of string, 1 baris data per item.
+function validateAndPreview(tab, cellRows){
+  var cfg = TAB_CONFIG[tab];
   var statusEl = document.getElementById('status-'+tab);
   var submitBtn = document.getElementById('btn-submit-'+tab);
   var previewWrap = document.getElementById('preview-wrap-'+tab);
   var summaryEl = document.getElementById('summary-'+tab);
 
-  if (!lines.length){
-    showStatus(tab,'err','Belum ada data yang ditempel.');
+  if (!cellRows.length){
+    showStatus(tab,'err','Tidak ada baris data ditemukan.');
     submitBtn.disabled = true; previewWrap.style.display='none'; summaryEl.textContent='';
     PARSED_ROWS[tab] = null;
     return;
@@ -422,8 +456,7 @@ function parsePreview(tab){
   var rows = [];
   var validCount = 0, invalidCount = 0;
 
-  lines.forEach(function(line){
-    var cells = splitLine(line).map(function(c){return c.trim();});
+  cellRows.forEach(function(cells){
     var reasons = [];
     if (cells.length !== cfg.cols.length){
       reasons.push('Jumlah kolom harus ' + cfg.cols.length + ' (ada ' + cells.length + ')');
@@ -457,6 +490,84 @@ function parsePreview(tab){
   }
 }
 
+// ================================================================
+//  EXCEL: upload file (.xlsx) & download template -- dipakai tab Stock
+// ================================================================
+function handleExcelFile(evt, tab){
+  var file = (evt.target && evt.target.files && evt.target.files[0]) || (evt.dataTransfer && evt.dataTransfer.files[0]);
+  if (!file) return;
+  document.getElementById('dropzone-filename-'+tab).textContent = '📄 ' + file.name;
+  showStatus(tab,'info','Membaca file Excel...');
+
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, {type:'array'});
+      var firstSheetName = wb.SheetNames[0];
+      var ws = wb.Sheets[firstSheetName];
+      // header:1 -> array of array (baris 1 = header, dilewati)
+      var aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+      var cfg = TAB_CONFIG[tab];
+      var dataRows = aoa.slice(1) // lewati baris header
+        .filter(function(r){ return r.some(function(c){ return String(c).trim()!==''; }); }) // buang baris kosong total
+        .map(function(r){
+          var cells = [];
+          for (var i=0;i<cfg.cols.length;i++){
+            var v = r[i];
+            cells.push(v===undefined||v===null ? '' : String(v).trim());
+          }
+          return cells;
+        });
+      if (!dataRows.length){
+        showStatus(tab,'err','File Excel tidak berisi data (cek apakah baris pertama adalah header, data mulai baris ke-2).');
+        PARSED_ROWS[tab] = null;
+        document.getElementById('btn-submit-'+tab).disabled = true;
+        return;
+      }
+      validateAndPreview(tab, dataRows);
+    } catch (err){
+      console.error(err);
+      showStatus(tab,'err','Gagal membaca file Excel: ' + err.message);
+      PARSED_ROWS[tab] = null;
+      document.getElementById('btn-submit-'+tab).disabled = true;
+    }
+  };
+  reader.onerror = function(){
+    showStatus(tab,'err','Gagal membaca file.');
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function downloadTemplate(tab){
+  var cfg = TAB_CONFIG[tab];
+  var exampleRow = tab === 'stock'
+    ? ['PPR001','Cibitung','PCS','GroupA','Pipa PPR 20mm','-',1000,520.5]
+    : ['PPR001','PIPA PPR KELEN GREEN','Pipa PPR 20mm','-','2026-08-05',350.2];
+  var aoa = [cfg.cols, exampleRow];
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = cfg.cols.map(function(){ return {wch:18}; });
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Template');
+  XLSX.writeFile(wb, 'template_upload_' + tab + '.xlsx');
+}
+
+// Drag & drop untuk drop-zone Stock
+(function setupDropZone(){
+  var dz = document.getElementById('dropzone-stock');
+  if (!dz) return;
+  ['dragenter','dragover'].forEach(function(evt){
+    dz.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.add('dragover'); });
+  });
+  ['dragleave','drop'].forEach(function(evt){
+    dz.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.remove('dragover'); });
+  });
+  dz.addEventListener('drop', function(e){
+    var file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleExcelFile({dataTransfer:e.dataTransfer}, 'stock');
+  });
+})();
+
 function renderPreviewTable(tab, cfg, rows){
   var table = document.getElementById('preview-table-'+tab);
   var thead = '<thead><tr><th>#</th><th>Status</th>' + cfg.cols.map(function(c){return '<th>'+c+'</th>';}).join('') + '</tr></thead>';
@@ -484,7 +595,12 @@ function showStatus(tab, type, msg){
 }
 
 function clearTab(tab){
-  document.getElementById('paste-'+tab).value = '';
+  var pasteEl = document.getElementById('paste-'+tab);
+  if (pasteEl) pasteEl.value = '';
+  var fileEl = document.getElementById('file-'+tab);
+  if (fileEl) fileEl.value = '';
+  var fnameEl = document.getElementById('dropzone-filename-'+tab);
+  if (fnameEl) fnameEl.textContent = '';
   document.getElementById('preview-wrap-'+tab).style.display = 'none';
   document.getElementById('summary-'+tab).textContent = '';
   document.getElementById('status-'+tab).className = 'status-msg';
