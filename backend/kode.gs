@@ -1108,7 +1108,12 @@ function appendStockData(rows) {
       srcFormulaRange.copyTo(destRange, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
     }
 
-    _forceSyncCurrentWorkspace(out.length, 'stock');
+    // TIDAK ada sync yang ditunggu di sini lagi -- upload cuma menempel
+    // data ke spreadsheet (cepat). Update ke Monitoring Stock/Kanban
+    // tetap otomatis lewat trigger onEdit yang sudah terpasang di
+    // spreadsheet (jalan sendiri di background begitu baris ini masuk).
+    // Backup permanen ke Supabase tetap sesuai jadwal arsip bulanan
+    // (tanggal 2 tiap bulan) yang sudah terpasang sebelumnya.
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
@@ -1142,7 +1147,8 @@ function _appendKirimProduksi(rows, sheetName) {
 
     var startRow = sheet.getLastRow() + 1;
     sheet.getRange(startRow, 1, out.length, 6).setValues(out);
-    _forceSyncCurrentWorkspace(out.length, 'io');
+    // Sama seperti Stock: tidak ditunggu sync-nya di sini, biar cepat.
+    // Trigger onEdit + arsip bulanan otomatis yang menangani sync/backup.
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
