@@ -109,19 +109,25 @@
     return fetch(url, opts).finally(function(){ if (timer) clearTimeout(timer); });
   }
 
+  // Fungsi yang bisa membawa payload BESAR (ratusan/ribuan baris upload,
+  // atau base64 foto) -- kalau dikirim lewat GET (jadi query string di
+  // URL), gampang melebihi batas panjang URL browser (~8000 karakter)
+  // dan request langsung gagal total ("Failed to fetch") sebelum sempat
+  // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
+  var LARGE_PAYLOAD_FUNCTIONS = { savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1 };
+
   function callBackend(fnName, args) {
     var payload = { action: fnName, params: args || [], workspace: getWorkspace() };
 
-    // savePhoto membawa base64 gambar yang bisa besar -> pakai POST.
-    // Content-Type "text/plain" sengaja dipakai supaya browser
-    // menganggap ini "simple request" dan TIDAK mengirim preflight
-    // OPTIONS (Apps Script Web App tidak bisa menjawab preflight CORS).
-    if (fnName === 'savePhoto') {
+    // Content-Type "text/plain" sengaja dipakai supaya browser menganggap
+    // ini "simple request" dan TIDAK mengirim preflight OPTIONS (Apps
+    // Script Web App tidak bisa menjawab preflight CORS).
+    if (LARGE_PAYLOAD_FUNCTIONS[fnName]) {
       return fetchWithTimeout(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }, 40000).then(function (r) { return r.json(); }); // upload foto dikasih waktu lebih lama (40dtk)
+      }, 90000).then(function (r) { return r.json(); }); // upload data besar dikasih waktu lebih lama (90dtk)
     }
 
     var sep = BASE_URL.indexOf('?') === -1 ? '?' : '&';
