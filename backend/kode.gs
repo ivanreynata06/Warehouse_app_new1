@@ -61,7 +61,8 @@ var API_FUNCTIONS = {
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
   appendOutboundData      : appendOutboundData,
-  appendInboundData       : appendInboundData
+  appendInboundData       : appendInboundData,
+  manualSyncNow           : manualSyncNow
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -1999,6 +2000,20 @@ function syncAllToSupabase() {
   });
   Logger.log(allLogs.join('\n\n'));
   return allLogs;
+}
+
+// Dipanggil manual dari tombol "Sync Sekarang" di halaman Upload Data --
+// sync LANGSUNG (blocking, ditunggu sampai selesai) dan MENGEMBALIKAN
+// rincian per bagian (OK/SKIP/GAGAL) supaya kalau ada yang gagal,
+// masalahnya kelihatan jelas -- bukan cuma "tidak update" tanpa sebab.
+function manualSyncNow() {
+  try {
+    var log = syncWorkspaceToSupabase(ACTIVE_WORKSPACE);
+    var gagalCount = log.filter(function (l) { return l.indexOf('GAGAL') === 0; }).length;
+    return { success: true, log: log, adaGagal: gagalCount > 0 };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 }
 
 function syncWorkspaceToSupabase(workspaceKey) {

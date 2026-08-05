@@ -130,6 +130,14 @@ textarea.paste-area::placeholder{color:var(--txt3);}
 .status-msg.err{background:var(--red-bg);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
 .status-msg.info{background:var(--blue-bg);color:#93c5fd;border:1px solid rgba(59,130,246,.3);}
 
+.sync-now-wrap{display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
+.sync-result{font-size:10.5px;font-family:var(--font-mono);white-space:pre-wrap;background:var(--bg-card2);
+  border:1px solid var(--border2);border-radius:8px;padding:10px 12px;display:none;max-height:220px;overflow-y:auto;}
+.sync-result.show{display:block;}
+.sync-result .ln-ok{color:var(--green);}
+.sync-result .ln-skip{color:var(--amber);}
+.sync-result .ln-gagal{color:#fca5a5;}
+
 .preview-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;max-height:340px;overflow-y:auto;}
 table.preview-table{width:100%;border-collapse:collapse;font-size:10.5px;white-space:nowrap;}
 table.preview-table th{position:sticky;top:0;background:var(--bg-card2);padding:7px 9px;text-align:left;
@@ -271,6 +279,13 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             <button class="btn btn-secondary" onclick="clearTab('stock')">Bersihkan</button>
           </div>
           <div class="status-msg" id="status-stock"></div>
+          <div class="sync-now-wrap" id="sync-now-wrap-stock" style="display:none;">
+            <button class="btn btn-secondary" onclick="handleSyncNow('stock')">
+              <span class="spinner-sm" id="sync-spin-stock"></span>
+              <span id="sync-lbl-stock">🔄 Sync Sekarang (cek status)</span>
+            </button>
+            <div class="sync-result" id="sync-result-stock"></div>
+          </div>
           <div class="summary-line" id="summary-stock"></div>
           <div class="preview-wrap" id="preview-wrap-stock" style="display:none;">
             <table class="preview-table" id="preview-table-stock"></table>
@@ -298,6 +313,13 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             <button class="btn btn-secondary" onclick="clearTab('outbound')">Bersihkan</button>
           </div>
           <div class="status-msg" id="status-outbound"></div>
+          <div class="sync-now-wrap" id="sync-now-wrap-outbound" style="display:none;">
+            <button class="btn btn-secondary" onclick="handleSyncNow('outbound')">
+              <span class="spinner-sm" id="sync-spin-outbound"></span>
+              <span id="sync-lbl-outbound">🔄 Sync Sekarang (cek status)</span>
+            </button>
+            <div class="sync-result" id="sync-result-outbound"></div>
+          </div>
           <div class="summary-line" id="summary-outbound"></div>
           <div class="preview-wrap" id="preview-wrap-outbound" style="display:none;">
             <table class="preview-table" id="preview-table-outbound"></table>
@@ -325,6 +347,13 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             <button class="btn btn-secondary" onclick="clearTab('inbound')">Bersihkan</button>
           </div>
           <div class="status-msg" id="status-inbound"></div>
+          <div class="sync-now-wrap" id="sync-now-wrap-inbound" style="display:none;">
+            <button class="btn btn-secondary" onclick="handleSyncNow('inbound')">
+              <span class="spinner-sm" id="sync-spin-inbound"></span>
+              <span id="sync-lbl-inbound">🔄 Sync Sekarang (cek status)</span>
+            </button>
+            <div class="sync-result" id="sync-result-inbound"></div>
+          </div>
           <div class="summary-line" id="summary-inbound"></div>
           <div class="preview-wrap" id="preview-wrap-inbound" style="display:none;">
             <table class="preview-table" id="preview-table-inbound"></table>
@@ -605,6 +634,9 @@ function clearTab(tab, keepStatus){
   document.getElementById('summary-'+tab).textContent = '';
   if (!keepStatus){
     document.getElementById('status-'+tab).className = 'status-msg';
+    document.getElementById('sync-now-wrap-'+tab).style.display = 'none';
+    document.getElementById('sync-result-'+tab).className = 'sync-result';
+    document.getElementById('sync-result-'+tab).textContent = '';
   }
   document.getElementById('btn-submit-'+tab).disabled = true;
   PARSED_ROWS[tab] = null;
@@ -632,10 +664,13 @@ function submitData(tab){
       spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
       if (res && res.success){
         var syncNote = (res.jumlah > 150)
-          ? ' Data banyak (>150 baris) -- Monitoring Stock/Kanban/Rekap Muatan akan ter-update otomatis dalam beberapa saat (biasanya kurang dari 1 menit), tidak perlu upload ulang.'
+          ? ' Data banyak (>150 baris) — biasanya Monitoring Stock/Kanban/Rekap Muatan ter-update otomatis dalam 10 detik s/d 2 menit. Kalau setelah 2 menit masih belum berubah, klik tombol "Sync Sekarang" di bawah untuk memaksa sync + lihat penyebabnya kalau gagal.'
           : ' Menyinkronkan ke Monitoring Stock, Kanban, dan Rekap Muatan...';
         showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan.'+syncNote);
         clearTab(tab, true);
+        if (res.jumlah > 150){
+          document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
+        }
         try { clearApiCache(); } catch(e){}
       } else {
         showStatus(tab,'err','Gagal: ' + (res && res.error ? res.error : 'terjadi kesalahan tidak diketahui.'));
@@ -648,6 +683,54 @@ function submitData(tab){
       btn.disabled = false;
     })
     [cfg.fn](rows);
+}
+
+// ================================================================
+//  SYNC SEKARANG — tombol manual setelah upload besar, supaya kalau
+//  data belum muncul di Monitoring Stock/Kanban, penyebabnya kelihatan
+//  jelas (bukan cuma "tidak update" tanpa keterangan).
+// ================================================================
+function handleSyncNow(tab){
+  var btnSpin = document.getElementById('sync-spin-'+tab);
+  var btnLbl  = document.getElementById('sync-lbl-'+tab);
+  var resultEl = document.getElementById('sync-result-'+tab);
+
+  btnSpin.style.display = 'inline-block';
+  btnLbl.textContent = 'Menyinkronkan (bisa sampai ±1 menit)...';
+  resultEl.className = 'sync-result';
+  resultEl.textContent = '';
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      btnSpin.style.display = 'none';
+      btnLbl.textContent = '🔄 Sync Sekarang (cek status)';
+      if (res && res.success){
+        var lines = (res.log || []).map(function(l){
+          var cls = l.indexOf('GAGAL')===0 ? 'ln-gagal' : (l.indexOf('SKIP')===0 ? 'ln-skip' : 'ln-ok');
+          return '<span class="'+cls+'">'+escapeHtml(l)+'</span>';
+        });
+        resultEl.innerHTML = lines.join('\n');
+        resultEl.className = 'sync-result show';
+        if (res.adaGagal){
+          showStatus(tab,'err','Sync selesai TAPI ada bagian yang gagal — lihat detail di bawah untuk tahu penyebabnya.');
+        } else {
+          showStatus(tab,'ok','Sync berhasil untuk semua bagian. Coba buka/refresh Monitoring Stock, Kanban, atau Rekap Muatan sekarang.');
+        }
+        try { clearApiCache(); } catch(e){}
+      } else {
+        resultEl.textContent = 'Sync gagal total: ' + (res && res.error ? res.error : 'tidak diketahui');
+        resultEl.className = 'sync-result show';
+        showStatus(tab,'err','Sync gagal — lihat detail error di bawah.');
+      }
+    })
+    .withFailureHandler(function(err){
+      btnSpin.style.display = 'none';
+      btnLbl.textContent = '🔄 Sync Sekarang (cek status)';
+      resultEl.textContent = 'Tidak bisa terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi internet.');
+      resultEl.className = 'sync-result show';
+      showStatus(tab,'err','Gagal terhubung ke server saat sync.');
+    })
+    .manualSyncNow();
 }
 </script>
 </body>
