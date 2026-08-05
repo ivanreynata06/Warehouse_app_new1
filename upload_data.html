@@ -629,7 +629,10 @@ function submitData(tab){
     .withSuccessHandler(function(res){
       spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
       if (res && res.success){
-        showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan & sedang disinkronkan ke Monitoring Stock, Kanban, dan Rekap Muatan.');
+        var syncNote = (res.jumlah > 150)
+          ? ' Data banyak (>150 baris) -- Monitoring Stock/Kanban/Rekap Muatan akan ter-update otomatis dalam beberapa saat (biasanya kurang dari 1 menit), tidak perlu upload ulang.'
+          : ' Menyinkronkan ke Monitoring Stock, Kanban, dan Rekap Muatan...';
+        showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan.'+syncNote);
         clearTab(tab);
         try { clearApiCache(); } catch(e){}
       } else {

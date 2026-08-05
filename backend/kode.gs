@@ -1049,10 +1049,26 @@ function _parseTanggalFleksibel(v) {
   return isNaN(d.getTime()) ? s : d;
 }
 
-// Setelah upload, langsung dorong snapshot terbaru ke Supabase untuk
-// workspace yang sedang aktif -- supaya semua menu (Monitoring Stock,
-// Kanban, Rekap Muatan) langsung kebaca update tanpa perlu menunggu.
-function _forceSyncCurrentWorkspace() {
+// Setelah upload, dorong snapshot terbaru ke Supabase untuk workspace yang
+// sedang aktif -- supaya semua menu (Monitoring Stock, Kanban, Rekap
+// Muatan) kebaca update tanpa perlu menunggu jadwal sync biasa.
+//
+// jumlahBaris dipakai untuk memutuskan cara sync:
+//  - Upload KECIL (<=150 baris): sync LANGSUNG di sini (blocking) --
+//    cepat, jadi user langsung lihat hasilnya begitu upload selesai.
+//  - Upload BESAR (>150 baris, mis. ratusan baris dari Excel): sync
+//    penuh (rekap ulang semua dashboard) bisa makan waktu puluhan detik
+//    dan bikin request upload dari browser timeout. Untuk kasus ini,
+//    sync DILEWATI di sini dan diserahkan ke trigger onEdit yang sudah
+//    otomatis terpasang di spreadsheet (baris yang baru ditulis/di-copy
+//    formulanya tetap terhitung sebagai "edit", trigger itu akan jalan
+//    sendiri dalam hitungan detik setelah upload selesai) -- jadi tetap
+//    otomatis, cuma tidak menunggu di sini supaya upload-nya tidak macet.
+function _forceSyncCurrentWorkspace(jumlahBaris) {
+  if (jumlahBaris && jumlahBaris > 150) {
+    Logger.log('Upload ' + jumlahBaris + ' baris: sync Supabase diserahkan ke trigger onEdit otomatis (tidak blocking).');
+    return;
+  }
   try {
     syncWorkspaceToSupabase(ACTIVE_WORKSPACE);
   } catch (err) {
@@ -1100,7 +1116,7 @@ function appendStockData(rows) {
       srcFormulaRange.copyTo(destRange, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
     }
 
-    _forceSyncCurrentWorkspace();
+    _forceSyncCurrentWorkspace(out.length);
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
@@ -1134,7 +1150,7 @@ function _appendKirimProduksi(rows, sheetName) {
 
     var startRow = sheet.getLastRow() + 1;
     sheet.getRange(startRow, 1, out.length, 6).setValues(out);
-    _forceSyncCurrentWorkspace();
+    _forceSyncCurrentWorkspace(out.length);
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
