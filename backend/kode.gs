@@ -1998,9 +1998,14 @@ function syncAllToSupabase() {
 // sync LANGSUNG (blocking, ditunggu sampai selesai) dan MENGEMBALIKAN
 // rincian per bagian (OK/SKIP/GAGAL) supaya kalau ada yang gagal,
 // masalahnya kelihatan jelas -- bukan cuma "tidak update" tanpa sebab.
-function manualSyncNow() {
+// kind: 'stock' -> cuma sync Monitoring Stock+Kanban, 'io' -> cuma sync
+// Outbound/Inbound+Kanban+Rekap Muatan, selain itu -> sync PENUH (semua).
+function manualSyncNow(kind) {
   try {
-    var log = syncWorkspaceToSupabase(ACTIVE_WORKSPACE);
+    var log;
+    if (kind === 'stock') log = syncStockOnly(ACTIVE_WORKSPACE);
+    else if (kind === 'io') log = syncOutboundInboundOnly(ACTIVE_WORKSPACE);
+    else log = syncWorkspaceToSupabase(ACTIVE_WORKSPACE);
     var gagalCount = log.filter(function (l) { return l.indexOf('GAGAL') === 0; }).length;
     return { success: true, log: log, adaGagal: gagalCount > 0 };
   } catch (err) {

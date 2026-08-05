@@ -663,14 +663,10 @@ function submitData(tab){
     .withSuccessHandler(function(res){
       spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
       if (res && res.success){
-        var syncNote = (res.jumlah > 150)
-          ? ' Data banyak (>150 baris) — biasanya Monitoring Stock/Kanban/Rekap Muatan ter-update otomatis dalam 10 detik s/d 2 menit. Kalau setelah 2 menit masih belum berubah, klik tombol "Sync Sekarang" di bawah untuk memaksa sync + lihat penyebabnya kalau gagal.'
-          : ' Menyinkronkan ke Monitoring Stock, Kanban, dan Rekap Muatan...';
+        var syncNote = ' Monitoring Stock, Kanban'+(tab!=='stock' ? ', dan Rekap Muatan' : '')+' sudah ikut ter-update.';
         showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan.'+syncNote);
         clearTab(tab, true);
-        if (res.jumlah > 150){
-          document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
-        }
+        document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
         try { clearApiCache(); } catch(e){}
       } else {
         showStatus(tab,'err','Gagal: ' + (res && res.error ? res.error : 'terjadi kesalahan tidak diketahui.'));
@@ -730,7 +726,7 @@ function handleSyncNow(tab){
       resultEl.className = 'sync-result show';
       showStatus(tab,'err','Gagal terhubung ke server saat sync.');
     })
-    .manualSyncNow();
+    .manualSyncNow(tab === 'stock' ? 'stock' : 'io');
 }
 </script>
 </body>
