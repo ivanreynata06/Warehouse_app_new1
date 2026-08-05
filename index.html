@@ -949,6 +949,15 @@ var USE_DEMO = !(typeof google!=='undefined' && google.script && google.script.r
 function loadAll(){
   showLoading(true,'Menghubungkan ke spreadsheet...');
   document.getElementById('btn-refresh').classList.add('spin');
+  // Jaring pengaman terakhir: apa pun yang terjadi (error tak terduga,
+  // request yang macet, dll), overlay loading DIPAKSA hilang maksimal
+  // 20 detik supaya menu di sidebar tidak pernah "terkunci" selamanya.
+  clearTimeout(window._whLoadingSafetyTimer);
+  window._whLoadingSafetyTimer = setTimeout(function () {
+    showLoading(false);
+    var btn = document.getElementById('btn-refresh');
+    if (btn) btn.classList.remove('spin');
+  }, 20000);
   var p=buildParams();
   var lbl=globalMode==='bulanan'?(BNAMES3[parseInt(p.bulan||7,10)-1]+' '+p.tahun):'Tahun '+p.tahun;
   setText('period-main-badge',lbl); setText('period-badge',lbl);
@@ -1009,7 +1018,16 @@ function checkDone(key){
   if(key==='rekap') renderRekap();
   if(key==='lt') renderLT();
   if(_pending<=0){
-    renderAll();
+    // Dibungkus try/catch: kalau ada 1 bagian render yang error (mis. data
+    // tren belum siap), overlay loading tetap HARUS hilang dan tombol
+    // menu tetap bisa diklik -- jangan sampai 1 error bikin seluruh
+    // halaman "macet" tertutup overlay selamanya.
+    try {
+      renderAll();
+    } catch (renderErr) {
+      console.error('[renderAll] error (overlay tetap ditutup):', renderErr);
+    }
+    clearTimeout(window._whLoadingSafetyTimer);
     showLoading(false);
     document.getElementById('btn-refresh').classList.remove('spin');
     setText('last-update', p2(new Date().getHours())+':'+p2(new Date().getMinutes()));
@@ -1185,10 +1203,15 @@ function renderKPIStrip(){
     setDelta('kpi-loading-delta', null); document.getElementById('kpi-loading-delta').textContent=s.selesai+' selesai dari '+s.total;
   }
   // Deltas from monthly trend arrays
-  setDelta('kpi-stok-pipa-delta', trendDelta(_stockTrend,'pipa'));
-  setDelta('kpi-stok-fitting-delta', trendDelta(_stockTrend,'fitting'));
-  setDelta('kpi-out-delta', trendDelta(_ioTrend.map(function(r){return{v:(r.outPipa||0)+(r.outFit||0)};}),'v'));
-  setDelta('kpi-in-delta', trendDelta(_ioTrend.map(function(r){return{v:(r.inPipa||0)+(r.inFit||0)};}),'v'));
+  // (_stockTrend / _ioTrend dijaga dengan fallback [] -- kalau request
+  // tren belum selesai/gagal saat renderKPIStrip dipanggil, jangan sampai
+  // crash dan mengunci overlay loading di seluruh halaman)
+  var stockTrendSafe = _stockTrend || [];
+  var ioTrendSafe = _ioTrend || [];
+  setDelta('kpi-stok-pipa-delta', trendDelta(stockTrendSafe,'pipa'));
+  setDelta('kpi-stok-fitting-delta', trendDelta(stockTrendSafe,'fitting'));
+  setDelta('kpi-out-delta', trendDelta(ioTrendSafe.map(function(r){return{v:(r.outPipa||0)+(r.outFit||0)};}),'v'));
+  setDelta('kpi-in-delta', trendDelta(ioTrendSafe.map(function(r){return{v:(r.inPipa||0)+(r.inFit||0)};}),'v'));
   if(_dataKanbanTrend&&_dataKanbanTrend.trend&&_dataKanbanTrend.trend.length>1){
     var d=trendDelta(_dataKanbanTrend.trend,'rakTerpakai'); setDelta('kpi-rak-pipa-delta',d);
   }
