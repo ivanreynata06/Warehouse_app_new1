@@ -1050,23 +1050,22 @@ function _parseTanggalFleksibel(v) {
   return isNaN(d.getTime()) ? s : d;
 }
 
-// Setelah upload, dorong snapshot terbaru ke Supabase -- TAPI cuma bagian
-// yang benar-benar berkaitan (lihat syncStockOnly / syncOutboundInboundOnly
-// di atas), bukan semua dashboard. Karena jauh lebih ringan, ini SELALU
-// dijalankan langsung (blocking) berapa pun jumlah barisnya -- tidak perlu
-// lagi dilewati/diserahkan ke trigger seperti sebelumnya.
+// Setelah upload, TIDAK melakukan sync blocking apa pun lagi di sini --
+// menu Upload Data Harian tugasnya HANYA menempelkan data ke spreadsheet
+// (itu sumber data utama/yang dikelola), secepat mungkin, tanpa menunggu
+// proses lain supaya tidak pernah timeout lagi walau uploadnya besar.
 //
-// kind: 'stock' -> syncStockOnly, 'io' -> syncOutboundInboundOnly
+// Data tetap otomatis "terlihat" ke Supabase lewat 2 mekanisme yang
+// SUDAH ADA sebelumnya (tidak perlu ditunggu di sini):
+//   1) Trigger onSheetEditSync -- baris baru/rumus yang ditulis tetap
+//      terhitung sebagai "edit" ke sheet, jadi trigger itu otomatis
+//      jalan sendiri di belakang layar (di luar request upload ini).
+//   2) Trigger arsip bulanan (arsipkanBulanLaluOtomatis, jalan tiap
+//      tanggal 2) -- backup permanen ke Supabase per bulan, untuk semua
+//      departemen, seperti yang diminta sebelumnya.
 function _forceSyncCurrentWorkspace(jumlahBaris, kind) {
-  try {
-    if (kind === 'io') {
-      return syncOutboundInboundOnly(ACTIVE_WORKSPACE);
-    }
-    return syncStockOnly(ACTIVE_WORKSPACE);
-  } catch (err) {
-    Logger.log('Force sync setelah upload gagal (data tetap tersimpan di sheet): ' + err.message);
-    return ['GAGAL sync: ' + err.message];
-  }
+  // Sengaja dikosongkan -- lihat catatan di atas. Parameter dibiarkan
+  // ada supaya pemanggil (appendStockData dkk) tidak perlu diubah lagi.
 }
 
 // rows: array of array, urutan kolom PERSIS:

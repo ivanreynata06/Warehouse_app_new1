@@ -656,15 +656,15 @@ function submitData(tab){
   var spin = document.getElementById('spin-'+tab);
   var lbl = document.getElementById('lbl-submit-'+tab);
 
-  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Mengupload (bisa sampai beberapa menit utk data banyak)...';
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Mengupload...';
   showStatus(tab,'info','Mengupload '+rows.length+' baris ke sistem, mohon tunggu...');
 
   google.script.run
     .withSuccessHandler(function(res){
       spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
       if (res && res.success){
-        var syncNote = ' Monitoring Stock, Kanban'+(tab!=='stock' ? ', dan Rekap Muatan' : '')+' sudah ikut ter-update.';
-        showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan.'+syncNote);
+        var syncNote = ' Data sudah masuk ke spreadsheet (sumber data utama). Monitoring Stock/Kanban akan ikut ter-update otomatis di belakang layar (biasanya dalam beberapa menit); backup permanen ke Supabase berjalan otomatis tiap tanggal 2. Kalau ingin memaksa update sekarang juga, klik "Sync Sekarang" di bawah.';
+        showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan ke sheet.'+syncNote);
         clearTab(tab, true);
         document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
         try { clearApiCache(); } catch(e){}
