@@ -842,6 +842,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
     <div class="mitem" onclick="goTo('kanban')"><i data-lucide="layout-grid" style="width:12px;flex-shrink:0;"></i><span>Monitoring Kanban</span></div>
     <div class="mitem" onclick="goTo('rekap')"><i data-lucide="truck" style="width:12px;flex-shrink:0;"></i><span>Rekap Muatan</span></div>
     <div class="mitem active"><i data-lucide="timer" style="width:12px;flex-shrink:0;"></i><span>Loading Time</span></div>
+    <div class="mitem" onclick="goTo('upload')"><i data-lucide="upload" style="width:12px;flex-shrink:0;"></i><span>Upload Data Harian</span></div>
     <div class="mgroup open">
       <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
         <div class="mgroup-hdr-left"><i data-lucide="repeat" style="width:12px;flex-shrink:0;"></i><span>Transaksi</span></div>
@@ -1588,7 +1589,8 @@ var PAGE_MAP = {
   'wh_control_tower': 'index.html',
   'residance'       : 'residance_time.html',
   'input_lembur'    : 'input_lembur.html',
-  'fte_dashboard'   : 'fte_dashboard.html'
+  'fte_dashboard'   : 'fte_dashboard.html',
+  'upload'          : 'upload_data.html'
 };
 function goTo(page){
   var target = PAGE_MAP[page || ''] || 'index.html';

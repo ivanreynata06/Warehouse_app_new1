@@ -561,6 +561,7 @@
     <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:13px;"></i><span>Rekap Muatan</span></div>
     <div class="mitem"><i data-lucide="clipboard-list" style="width:13px;"></i><span>Stock Opname</span></div>
     <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:13px;"></i><span>Loading Time Pengiriman</span></div>
+    <div class="mitem" onclick="navTo('upload')"><i data-lucide="upload" style="width:13px;"></i><span>Upload Data Harian</span></div>
     <div class="mgroup open">
       <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
         <div class="mgroup-hdr-left"><i data-lucide="repeat" style="width:13px;"></i><span>Transaksi</span></div>
@@ -1119,7 +1120,8 @@ var PAGE_MAP = {
   'wh_control_tower': 'index.html',
   'residance'       : 'residance_time.html',
   'input_lembur'    : 'input_lembur.html',
-  'fte_dashboard'   : 'fte_dashboard.html'
+  'fte_dashboard'   : 'fte_dashboard.html',
+  'upload'          : 'upload_data.html'
 };
 function navTo(page) {
   var target = PAGE_MAP[page || ''] || 'index.html';

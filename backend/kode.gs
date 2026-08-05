@@ -57,7 +57,11 @@ var API_FUNCTIONS = {
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
   uploadTlSignature       : uploadTlSignature,
-  hasTlSignature          : hasTlSignature
+  hasTlSignature          : hasTlSignature,
+  // Upload Data Harian (Stock / Outbound / Inbound)
+  appendStockData         : appendStockData,
+  appendOutboundData      : appendOutboundData,
+  appendInboundData       : appendInboundData
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -1010,6 +1014,110 @@ function getKirimData(ss, range) {
 // ================================================================
 function getProduksiData(ss, range) {
   return readTransaksi(ss, SH_PRODUKSI, range);
+}
+
+// ================================================================
+//  UPLOAD DATA HARIAN — Stock / Outbound (Kirim) / Inbound (Produksi)
+// ------------------------------------------------------------
+//  Dipanggil dari upload_data.html. Menambahkan baris baru ke sheet
+//  yang bersangkutan (DASHBOARD_STOCK / DASHBOARD_KIRIM /
+//  DASHBOARD_PRODUKSI) dengan urutan kolom PERSIS SAMA seperti yang
+//  sudah dipakai fungsi-fungsi baca yang sudah ada (getStockData,
+//  readTransaksi, dst) -- jadi TIDAK ada rumus baru, cuma menambah
+//  baris data mentah yang nanti dibaca oleh rumus yang sudah ada.
+//
+//  Setelah baris ditambahkan, langsung dipaksa sync ke Supabase saat
+//  itu juga (tidak menunggu trigger onEdit / jadwal harian), supaya
+//  Monitoring Stock, Kanban, dan Rekap Muatan langsung update begitu
+//  upload selesai -- sama seperti pola Control Tower.
+// ================================================================
+
+// Ubah berbagai format tanggal umum (YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY,
+// atau objek Date dari sheet) menjadi objek Date yang valid. Kalau gagal
+// di-parse, dikembalikan apa adanya (string) supaya kelihatan jelas di
+// sheet ada input yang salah, bukan diam-diam hilang/jadi tanggal keliru.
+function _parseTanggalFleksibel(v) {
+  if (!v && v !== 0) return '';
+  if (v instanceof Date) return v;
+  var s = String(v).trim();
+  if (!s) return '';
+  var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return new Date(parseInt(m[3],10), parseInt(m[2],10)-1, parseInt(m[1],10));
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? s : d;
+}
+
+// Setelah upload, langsung dorong snapshot terbaru ke Supabase untuk
+// workspace yang sedang aktif -- supaya semua menu (Monitoring Stock,
+// Kanban, Rekap Muatan) langsung kebaca update tanpa perlu menunggu.
+function _forceSyncCurrentWorkspace() {
+  try {
+    syncWorkspaceToSupabase(ACTIVE_WORKSPACE);
+  } catch (err) {
+    Logger.log('Force sync setelah upload gagal (data tetap tersimpan di sheet): ' + err.message);
+  }
+}
+
+// rows: array of array, urutan kolom PERSIS:
+// [ItemNumber, Site, Unit, Group, Description, Description2, StockPcs, StockTonnase, Drawing, Tanggal]
+function appendStockData(rows) {
+  try {
+    if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(SH_STOCK);
+    if (!sheet) return { success: false, error: 'Sheet "' + SH_STOCK + '" tidak ditemukan.' };
+
+    var out = rows.map(function (r) {
+      return [
+        r[0] || '', r[1] || '', r[2] || '', r[3] || '', r[4] || '', r[5] || '',
+        parseFloat(r[6]) || 0, parseFloat(r[7]) || 0, r[8] || '',
+        _parseTanggalFleksibel(r[9])
+      ];
+    });
+
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, out.length, 10).setValues(out);
+    _forceSyncCurrentWorkspace();
+    return { success: true, jumlah: out.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// rows: array of array, urutan kolom PERSIS:
+// [ItemNumber, DrawingCode, Description, Description2, EffectiveDate, TotalWeight]
+function appendOutboundData(rows) {
+  return _appendKirimProduksi(rows, SH_KIRIM);
+}
+
+// Sama seperti appendOutboundData, tapi target sheetnya DASHBOARD_PRODUKSI
+function appendInboundData(rows) {
+  return _appendKirimProduksi(rows, SH_PRODUKSI);
+}
+
+function _appendKirimProduksi(rows, sheetName) {
+  try {
+    if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Sheet "' + sheetName + '" tidak ditemukan.' };
+
+    var out = rows.map(function (r) {
+      return [
+        r[0] || '', r[1] || '', r[2] || '', r[3] || '',
+        _parseTanggalFleksibel(r[4]), parseFloat(r[5]) || 0
+      ];
+    });
+
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, out.length, 6).setValues(out);
+    _forceSyncCurrentWorkspace();
+    return { success: true, jumlah: out.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 }
 
 function readTransaksi(ss, sheetName, range) {

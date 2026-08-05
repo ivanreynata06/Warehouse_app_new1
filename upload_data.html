@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
+<script src="./assets/js/auth-guard.js?v=20260805a"></script>
+<script src="./assets/js/config.js?v=20260722d"></script>
+<script src="./assets/js/supabase-cache.js?v=20260722d"></script>
+<script src="./assets/js/api-shim.js?v=20260722d"></script>
+<script src="./assets/js/sw-register.js?v=20260722d"></script>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="preconnect" href="https://lfplllzsvpbgzcftcgmi.supabase.co">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Upload Data Harian</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
+  --border:#252538;--border2:#2e2e48;
+  --txt:#e8eaf0;--txt2:#9da3b8;--txt3:#6b7280;
+  --green:#10b981;--green2:#059669;--green-bg:rgba(16,185,129,.12);
+  --blue:#3b82f6;--blue-bg:rgba(59,130,246,.12);
+  --amber:#f59e0b;--amber-bg:rgba(245,158,11,.12);
+  --red:#ef4444;--red-bg:rgba(239,68,68,.12);
+  --purple:#8b5cf6;--purple-bg:rgba(139,92,246,.12);
+  --cyan:#06b6d4;--cyan-bg:rgba(6,182,212,.12);
+  --orange:#f97316;--orange-bg:rgba(249,115,22,.12);
+  --sidebar-w:200px;
+  --font-mono:'JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;}
+.shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg2);
+  padding:12px 10px;display:flex;flex-direction:column;gap:6px;
+  border-right:1px solid var(--border);flex-shrink:0;overflow-y:auto;
+  transition:width .25s ease, min-width .25s ease, padding .25s ease, opacity .15s ease;}
+.sidebar.collapsed{width:0;min-width:0;padding:0;overflow:hidden;opacity:0;border:none;}
+.sidebar.collapsed *{display:none;}
+.toggle-sidebar-btn{position:fixed;left:calc(var(--sidebar-w) + 0px);top:14px;z-index:200;
+  background:var(--bg2);border:1px solid var(--border);border-radius:0 8px 8px 0;
+  padding:6px 5px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--txt2);transition:left .25s ease, color .15s;line-height:0;}
+.toggle-sidebar-btn:hover{color:var(--txt);}
+.toggle-sidebar-btn.collapsed{left:0;}
+.logo{display:flex;align-items:center;gap:8px;padding:4px 2px 10px;
+  border-bottom:1px solid var(--border);margin-bottom:4px;}
+.logo-text{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;}
+.logo-sub{font-size:9.5px;color:var(--txt2);margin-top:1px;}
+.sec-title{color:var(--txt3);font-size:10px;text-transform:uppercase;letter-spacing:.8px;font-weight:700;padding:4px 8px 2px;}
+.mitem{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:7px;color:var(--txt2);font-size:11px;cursor:pointer;transition:all .15s;font-weight:500;white-space:nowrap;}
+.mitem.active{background:rgba(16,185,129,.15);color:var(--green);}
+.mgroup{display:flex;flex-direction:column;}
+.mgroup-hdr{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:6px 8px;border-radius:7px;color:var(--txt2);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:600;}
+.mgroup-hdr:hover{background:rgba(255,255,255,.05);color:var(--txt);}
+.mgroup-hdr-left{display:flex;align-items:center;gap:7px;}
+.mgroup-hdr svg.chev{transition:transform .2s;flex-shrink:0;}
+.mgroup.open .mgroup-hdr svg.chev{transform:rotate(90deg);}
+.mgroup-hdr.active-parent{color:#d4af37;}
+.mgroup-body{display:none;flex-direction:column;gap:2px;padding-left:15px;margin-top:2px;}
+.mgroup.open .mgroup-body{display:flex;}
+.mitem:hover:not(.active){background:rgba(255,255,255,.05);color:var(--txt);}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.topbar{height:48px;background:var(--bg2);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;}
+.topbar-title{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;}
+.topbar-sub{font-size:10px;color:var(--txt2);}
+.live-clock{font-family:var(--font-mono);font-size:12px;color:var(--cyan);font-weight:600;}
+
+.content{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+.content::-webkit-scrollbar{width:5px;}
+.content::-webkit-scrollbar-track{background:transparent;}
+.content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px;}
+
+/* TABS */
+.tabs{display:flex;gap:6px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:5px;}
+.tab-btn{flex:1;padding:9px 12px;border-radius:7px;border:none;background:transparent;color:var(--txt2);
+  font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .15s;
+  display:flex;align-items:center;justify-content:center;gap:6px;}
+.tab-btn.active{background:var(--green);color:#fff;}
+.tab-btn:hover:not(.active){background:rgba(255,255,255,.05);color:var(--txt);}
+.tab-panel{display:none;flex-direction:column;gap:12px;}
+.tab-panel.active{display:flex;}
+
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.card-header{padding:12px 16px;border-bottom:1px solid var(--border);}
+.card-title{font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px;}
+.card-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+
+.col-ref{background:var(--bg-card2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;
+  font-size:10.5px;color:var(--txt2);line-height:1.6;}
+.col-ref b{color:var(--txt);}
+.col-ref code{font-family:var(--font-mono);background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;color:var(--cyan);}
+
+textarea.paste-area{width:100%;min-height:130px;background:var(--bg-card2);border:1px solid var(--border2);
+  border-radius:8px;padding:10px 12px;color:var(--txt);font-family:var(--font-mono);font-size:11px;
+  resize:vertical;outline:none;}
+textarea.paste-area:focus{border-color:var(--green);}
+textarea.paste-area::placeholder{color:var(--txt3);}
+
+.btn-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.btn{padding:8px 16px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
+  border:none;font-family:'Inter',sans-serif;transition:opacity .15s,transform .1s;display:inline-flex;align-items:center;gap:6px;}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--green);color:#fff;}
+.btn-secondary{background:var(--bg-card2);color:var(--txt2);border:1px solid var(--border2);}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn-primary:hover:not(:disabled){opacity:.88;}
+.btn-secondary:hover:not(:disabled){color:var(--txt);border-color:var(--border);}
+
+.status-msg{font-size:11px;padding:9px 12px;border-radius:8px;display:none;align-items:center;gap:7px;}
+.status-msg.show{display:flex;}
+.status-msg.ok{background:var(--green-bg);color:var(--green);border:1px solid rgba(16,185,129,.3);}
+.status-msg.err{background:var(--red-bg);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
+.status-msg.info{background:var(--blue-bg);color:#93c5fd;border:1px solid rgba(59,130,246,.3);}
+
+.preview-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;max-height:340px;overflow-y:auto;}
+table.preview-table{width:100%;border-collapse:collapse;font-size:10.5px;white-space:nowrap;}
+table.preview-table th{position:sticky;top:0;background:var(--bg-card2);padding:7px 9px;text-align:left;
+  color:var(--txt3);font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:.4px;
+  border-bottom:1px solid var(--border);z-index:1;}
+table.preview-table td{padding:6px 9px;border-bottom:1px solid rgba(37,37,56,.6);font-family:var(--font-mono);}
+table.preview-table tr.row-invalid td{background:rgba(239,68,68,.08);color:#fca5a5;}
+table.preview-table tr.row-valid td{color:var(--txt);}
+.row-status{font-family:'Inter',sans-serif;font-weight:600;}
+.row-status.ok{color:var(--green);}
+.row-status.bad{color:#fca5a5;}
+.summary-line{font-size:11px;color:var(--txt2);display:flex;gap:14px;flex-wrap:wrap;}
+.summary-line b{color:var(--txt);}
+
+.spinner-sm{width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+  border-radius:50%;animation:spin .7s linear infinite;display:none;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+@media (max-width:860px){
+  .shell{ height:auto; min-height:100vh; }
+  html,body{ overflow:auto; }
+  .sidebar{ position:fixed; top:0; left:0; bottom:0; z-index:60; box-shadow:10px 0 30px rgba(0,0,0,.45); }
+  .tabs{ flex-direction:column; }
+}
+</style>
+</head>
+<body>
+
+<button class="toggle-sidebar-btn" id="toggle-btn" onclick="toggleSidebar()" title="Sembunyikan/tampilkan menu">
+  <svg id="toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+</button>
+<div class="shell">
+<div class="sidebar" id="sidebar">
+  <div class="logo">
+    <img src="./assets/img/rucika-logo.png" alt="Rucika" style="height:22px;width:auto;object-fit:contain;">
+    <div><div class="logo-text">PPR Stock</div><div class="logo-sub">Tonase Persiapan</div></div>
+  </div>
+  <div class="sec-title">Menu</div>
+  <div class="mitem" onclick="navTo('wh_control_tower')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="6" height="4"/><rect x="10" y="3" width="12" height="4"/><rect x="2" y="10" width="12" height="4"/><rect x="16" y="10" width="6" height="4"/><rect x="2" y="17" width="6" height="4"/><rect x="10" y="17" width="12" height="4"/></svg>
+    <span>Dashboard WH Import</span>
+  </div>
+  <div class="mitem" onclick="navTo('index')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    <span>Monitoring Stock</span>
+  </div>
+  <div class="mitem" onclick="navTo('kanban')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+    <span>Monitoring Kanban</span>
+  </div>
+  <div class="mitem" onclick="navTo('rekap')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8l4 2 3 5H16z"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>
+    <span>Rekap Muatan</span>
+  </div>
+  <div class="mitem" onclick="navTo('residance')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span>Loading Time</span>
+  </div>
+  <div class="mitem active">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <span>Upload Data Harian</span>
+  </div>
+  <div class="mgroup open">
+    <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
+      <div class="mgroup-hdr-left">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+        <span>Transaksi</span>
+      </div>
+      <svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+    </div>
+    <div class="mgroup-body">
+      <div class="mitem" onclick="navTo('input_lembur')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <span>Input Lembur</span>
+      </div>
+      <div class="mitem" onclick="navTo('fte_dashboard')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        <span>Monitoring FTE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title">Upload Data Harian</div>
+      <div class="topbar-sub">Stock, Outbound (Kirim) &amp; Inbound (Produksi) — otomatis update ke Monitoring Stock, Kanban &amp; Rekap Muatan</div>
+    </div>
+    <div class="topbar-right">
+      <span class="live-clock" id="live-clock">--:--:--</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="tabs">
+      <button class="tab-btn active" id="tabbtn-stock" onclick="switchTab('stock')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        Stock
+      </button>
+      <button class="tab-btn" id="tabbtn-outbound" onclick="switchTab('outbound')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+        Outbound (Kirim)
+      </button>
+      <button class="tab-btn" id="tabbtn-inbound" onclick="switchTab('inbound')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Inbound (Produksi)
+      </button>
+    </div>
+
+    <!-- ============== TAB: STOCK ============== -->
+    <div class="tab-panel active" id="tab-stock">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Upload Data Stock (DASHBOARD_STOCK)</div></div>
+        <div class="card-body">
+          <div class="col-ref">
+            Urutan kolom (10 kolom, pisahkan dengan <b>Tab</b> kalau copy dari Excel, atau koma):<br>
+            <code>Item Number</code> · <code>Site</code> · <code>Unit</code> · <code>Group</code> · <code>Description</code> · <code>Description2</code> · <code>Stock Pcs</code> · <code>Stock Tonnase</code> · <code>Drawing</code> · <code>Tanggal (YYYY-MM-DD)</code><br>
+            Contoh Drawing: <code>PIPA PPR KELEN GREEN</code>, <code>PIPA PPR KELEN GREY</code>, <code>FITTING PPR KELEN GREEN</code>, <code>FITTING PPR KELEN GREY</code>.
+          </div>
+          <textarea class="paste-area" id="paste-stock" placeholder="Tempel data di sini (copy langsung dari Excel, baris per baris)&#10;Contoh:&#10;PPR001&#9;Cibitung&#9;PCS&#9;GroupA&#9;Pipa PPR 20mm&#9;-&#9;1000&#9;520.5&#9;PIPA PPR KELEN GREEN&#9;2026-08-05"></textarea>
+          <div class="btn-row">
+            <button class="btn btn-secondary" onclick="parsePreview('stock')">Parse &amp; Preview</button>
+            <button class="btn btn-primary" id="btn-submit-stock" onclick="submitData('stock')" disabled>
+              <span class="spinner-sm" id="spin-stock"></span>
+              <span id="lbl-submit-stock">Upload ke Sistem</span>
+            </button>
+            <button class="btn btn-secondary" onclick="clearTab('stock')">Bersihkan</button>
+          </div>
+          <div class="status-msg" id="status-stock"></div>
+          <div class="summary-line" id="summary-stock"></div>
+          <div class="preview-wrap" id="preview-wrap-stock" style="display:none;">
+            <table class="preview-table" id="preview-table-stock"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============== TAB: OUTBOUND ============== -->
+    <div class="tab-panel" id="tab-outbound">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Upload Data Outbound / Kirim (DASHBOARD_KIRIM)</div></div>
+        <div class="card-body">
+          <div class="col-ref">
+            Urutan kolom (6 kolom, pisahkan dengan <b>Tab</b> atau koma):<br>
+            <code>Item Number</code> · <code>Drawing Code</code> · <code>Description</code> · <code>Description2</code> · <code>Effective Date (YYYY-MM-DD)</code> · <code>Total Weight</code>
+          </div>
+          <textarea class="paste-area" id="paste-outbound" placeholder="Tempel data di sini (copy langsung dari Excel, baris per baris)&#10;Contoh:&#10;PPR001&#9;PIPA PPR KELEN GREEN&#9;Pipa PPR 20mm&#9;-&#9;2026-08-05&#9;350.2"></textarea>
+          <div class="btn-row">
+            <button class="btn btn-secondary" onclick="parsePreview('outbound')">Parse &amp; Preview</button>
+            <button class="btn btn-primary" id="btn-submit-outbound" onclick="submitData('outbound')" disabled>
+              <span class="spinner-sm" id="spin-outbound"></span>
+              <span id="lbl-submit-outbound">Upload ke Sistem</span>
+            </button>
+            <button class="btn btn-secondary" onclick="clearTab('outbound')">Bersihkan</button>
+          </div>
+          <div class="status-msg" id="status-outbound"></div>
+          <div class="summary-line" id="summary-outbound"></div>
+          <div class="preview-wrap" id="preview-wrap-outbound" style="display:none;">
+            <table class="preview-table" id="preview-table-outbound"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============== TAB: INBOUND ============== -->
+    <div class="tab-panel" id="tab-inbound">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Upload Data Inbound / Produksi (DASHBOARD_PRODUKSI)</div></div>
+        <div class="card-body">
+          <div class="col-ref">
+            Urutan kolom (6 kolom, pisahkan dengan <b>Tab</b> atau koma):<br>
+            <code>Item Number</code> · <code>Drawing Code</code> · <code>Description</code> · <code>Description2</code> · <code>Effective Date (YYYY-MM-DD)</code> · <code>Total Weight</code>
+          </div>
+          <textarea class="paste-area" id="paste-inbound" placeholder="Tempel data di sini (copy langsung dari Excel, baris per baris)&#10;Contoh:&#10;PPR001&#9;PIPA PPR KELEN GREEN&#9;Pipa PPR 20mm&#9;-&#9;2026-08-05&#9;480.0"></textarea>
+          <div class="btn-row">
+            <button class="btn btn-secondary" onclick="parsePreview('inbound')">Parse &amp; Preview</button>
+            <button class="btn btn-primary" id="btn-submit-inbound" onclick="submitData('inbound')" disabled>
+              <span class="spinner-sm" id="spin-inbound"></span>
+              <span id="lbl-submit-inbound">Upload ke Sistem</span>
+            </button>
+            <button class="btn btn-secondary" onclick="clearTab('inbound')">Bersihkan</button>
+          </div>
+          <div class="status-msg" id="status-inbound"></div>
+          <div class="summary-line" id="summary-inbound"></div>
+          <div class="preview-wrap" id="preview-wrap-inbound" style="display:none;">
+            <table class="preview-table" id="preview-table-inbound"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ================================================================
+//  NAVIGASI (sama persis dengan halaman lain)
+// ================================================================
+var PAGE_MAP = {
+  ''                : 'index.html',
+  'index'           : 'monitoring_stock.html',
+  'kanban'          : 'kanban.html',
+  'rekap'           : 'rekap_muatan.html',
+  'wh_control_tower': 'index.html',
+  'residance'       : 'residance_time.html',
+  'input_lembur'    : 'input_lembur.html',
+  'fte_dashboard'   : 'fte_dashboard.html',
+  'upload'          : 'upload_data.html'
+};
+function navTo(pg){
+  var t = PAGE_MAP[pg || ''] || 'index.html';
+  t += '?v=' + (window.SITE_VERSION||Date.now());
+  if(window.top!==window.self) window.top.location.href=t; else window.location.href=t;
+}
+function toggleSidebar(){
+  var sb=document.getElementById('sidebar'), btn=document.getElementById('toggle-btn'), ic=document.getElementById('toggle-icon');
+  sb.classList.toggle('collapsed'); btn.classList.toggle('collapsed');
+  ic.style.transform = sb.classList.contains('collapsed') ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+(function tickClock(){
+  var el=document.getElementById('live-clock');
+  function tick(){ if(el) el.textContent = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+  tick(); setInterval(tick,1000);
+})();
+
+// ================================================================
+//  TABS
+// ================================================================
+function switchTab(name){
+  ['stock','outbound','inbound'].forEach(function(t){
+    document.getElementById('tab-'+t).classList.toggle('active', t===name);
+    document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
+  });
+}
+
+// ================================================================
+//  KONFIGURASI PER TAB: kolom, backend function, label
+// ================================================================
+var TAB_CONFIG = {
+  stock: {
+    fn: 'appendStockData',
+    cols: ['Item Number','Site','Unit','Group','Description','Description2','Stock Pcs','Stock Tonnase','Drawing','Tanggal'],
+    numericCols: [6,7],   // index kolom yang wajib angka
+    dateCols: [9]         // index kolom yang wajib tanggal
+  },
+  outbound: {
+    fn: 'appendOutboundData',
+    cols: ['Item Number','Drawing Code','Description','Description2','Effective Date','Total Weight'],
+    numericCols: [5],
+    dateCols: [4]
+  },
+  inbound: {
+    fn: 'appendInboundData',
+    cols: ['Item Number','Drawing Code','Description','Description2','Effective Date','Total Weight'],
+    numericCols: [5],
+    dateCols: [4]
+  }
+};
+
+var PARSED_ROWS = { stock: null, outbound: null, inbound: null };
+
+// ================================================================
+//  PARSE: terima paste dari Excel (tab-separated) ATAU CSV (koma)
+// ================================================================
+function splitLine(line){
+  if (line.indexOf('\t') !== -1) return line.split('\t');
+  // CSV sederhana (tidak menangani koma di dalam tanda kutip, cukup untuk data numerik/kode)
+  return line.split(',');
+}
+
+function isValidDateStr(s){
+  s = String(s||'').trim();
+  if (!s) return false;
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) return true;
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(s)) return true;
+  var d = new Date(s);
+  return !isNaN(d.getTime());
+}
+
+function parsePreview(tab){
+  var cfg = TAB_CONFIG[tab];
+  var raw = document.getElementById('paste-'+tab).value;
+  var lines = raw.split(/\r?\n/).map(function(l){return l.trim();}).filter(function(l){return l.length>0;});
+
+  var statusEl = document.getElementById('status-'+tab);
+  var submitBtn = document.getElementById('btn-submit-'+tab);
+  var previewWrap = document.getElementById('preview-wrap-'+tab);
+  var summaryEl = document.getElementById('summary-'+tab);
+
+  if (!lines.length){
+    showStatus(tab,'err','Belum ada data yang ditempel.');
+    submitBtn.disabled = true; previewWrap.style.display='none'; summaryEl.textContent='';
+    PARSED_ROWS[tab] = null;
+    return;
+  }
+
+  var rows = [];
+  var validCount = 0, invalidCount = 0;
+
+  lines.forEach(function(line){
+    var cells = splitLine(line).map(function(c){return c.trim();});
+    var reasons = [];
+    if (cells.length !== cfg.cols.length){
+      reasons.push('Jumlah kolom harus ' + cfg.cols.length + ' (ada ' + cells.length + ')');
+    }
+    (cfg.numericCols||[]).forEach(function(ci){
+      var v = cells[ci];
+      if (v===undefined || v==='' || isNaN(parseFloat(v))) reasons.push('Kolom "'+cfg.cols[ci]+'" harus angka');
+    });
+    (cfg.dateCols||[]).forEach(function(ci){
+      var v = cells[ci];
+      if (!isValidDateStr(v)) reasons.push('Kolom "'+cfg.cols[ci]+'" harus tanggal valid (YYYY-MM-DD)');
+    });
+    var valid = reasons.length === 0;
+    if (valid) validCount++; else invalidCount++;
+    rows.push({ cells: cells, valid: valid, reasons: reasons });
+  });
+
+  renderPreviewTable(tab, cfg, rows);
+  previewWrap.style.display = 'block';
+  summaryEl.innerHTML = '<span>Total baris: <b>'+rows.length+'</b></span><span style="color:var(--green)">Valid: <b>'+validCount+'</b></span>' +
+    (invalidCount ? '<span style="color:#fca5a5">Tidak valid: <b>'+invalidCount+'</b></span>' : '');
+
+  if (invalidCount > 0){
+    showStatus(tab,'err','Ada '+invalidCount+' baris tidak valid — perbaiki dulu sebelum upload (lihat highlight merah di tabel).');
+    submitBtn.disabled = true;
+    PARSED_ROWS[tab] = null;
+  } else {
+    showStatus(tab,'info', validCount + ' baris siap diupload. Cek dulu preview di bawah, lalu klik "Upload ke Sistem".');
+    submitBtn.disabled = false;
+    PARSED_ROWS[tab] = rows.map(function(r){ return r.cells; });
+  }
+}
+
+function renderPreviewTable(tab, cfg, rows){
+  var table = document.getElementById('preview-table-'+tab);
+  var thead = '<thead><tr><th>#</th><th>Status</th>' + cfg.cols.map(function(c){return '<th>'+c+'</th>';}).join('') + '</tr></thead>';
+  var tbody = '<tbody>' + rows.map(function(r,i){
+    var cls = r.valid ? 'row-valid' : 'row-invalid';
+    var statusCell = r.valid
+      ? '<span class="row-status ok">✓ OK</span>'
+      : '<span class="row-status bad" title="'+r.reasons.join('; ').replace(/"/g,'&quot;')+'">✗ '+r.reasons[0]+'</span>';
+    var cells = cfg.cols.map(function(_,ci){ return '<td>'+(r.cells[ci]!==undefined?escapeHtml(r.cells[ci]):'')+'</td>'; }).join('');
+    return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+statusCell+'</td>'+cells+'</tr>';
+  }).join('') + '</tbody>';
+  table.innerHTML = thead + tbody;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function showStatus(tab, type, msg){
+  var el = document.getElementById('status-'+tab);
+  el.className = 'status-msg show ' + type;
+  el.textContent = msg;
+}
+
+function clearTab(tab){
+  document.getElementById('paste-'+tab).value = '';
+  document.getElementById('preview-wrap-'+tab).style.display = 'none';
+  document.getElementById('summary-'+tab).textContent = '';
+  document.getElementById('status-'+tab).className = 'status-msg';
+  document.getElementById('btn-submit-'+tab).disabled = true;
+  PARSED_ROWS[tab] = null;
+}
+
+// ================================================================
+//  SUBMIT ke backend (appendStockData / appendOutboundData / appendInboundData)
+// ================================================================
+function submitData(tab){
+  var rows = PARSED_ROWS[tab];
+  if (!rows || !rows.length){
+    showStatus(tab,'err','Tidak ada data valid untuk diupload. Klik "Parse & Preview" dulu.');
+    return;
+  }
+  var cfg = TAB_CONFIG[tab];
+  var btn = document.getElementById('btn-submit-'+tab);
+  var spin = document.getElementById('spin-'+tab);
+  var lbl = document.getElementById('lbl-submit-'+tab);
+
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Mengupload...';
+  showStatus(tab,'info','Mengupload '+rows.length+' baris ke sistem, mohon tunggu...');
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
+      if (res && res.success){
+        showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan & sedang disinkronkan ke Monitoring Stock, Kanban, dan Rekap Muatan.');
+        clearTab(tab);
+        try { clearApiCache(); } catch(e){}
+      } else {
+        showStatus(tab,'err','Gagal: ' + (res && res.error ? res.error : 'terjadi kesalahan tidak diketahui.'));
+        btn.disabled = false;
+      }
+    })
+    .withFailureHandler(function(err){
+      spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
+      showStatus(tab,'err','Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi.'));
+      btn.disabled = false;
+    })
+    [cfg.fn](rows);
+}
+</script>
+</body>
+</html>

@@ -250,6 +250,10 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     <span>Loading Time</span>
   </div>
+  <div class="mitem" onclick="navTo('upload')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <span>Upload Data Harian</span>
+  </div>
   <div class="mgroup open">
     <div class="mgroup-hdr active-parent" onclick="this.parentElement.classList.toggle('open')">
       <div class="mgroup-hdr-left">
@@ -505,7 +509,8 @@ var PAGE_MAP = {
   'wh_control_tower': 'index.html',
   'residance'       : 'residance_time.html',
   'input_lembur'    : 'input_lembur.html',
-  'fte_dashboard'   : 'fte_dashboard.html'
+  'fte_dashboard'   : 'fte_dashboard.html',
+  'upload'          : 'upload_data.html'
 };
 function navTo(pg){
   var t = PAGE_MAP[pg || ''] || 'index.html';
