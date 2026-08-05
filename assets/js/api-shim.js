@@ -123,11 +123,18 @@
     // ini "simple request" dan TIDAK mengirim preflight OPTIONS (Apps
     // Script Web App tidak bisa menjawab preflight CORS).
     if (LARGE_PAYLOAD_FUNCTIONS[fnName]) {
+      // manualSyncNow menghitung ulang SEMUA dashboard (tren 6 bulan,
+      // kanban, rekap, dll) dalam 1 eksekusi -- bisa jauh lebih lama dari
+      // upload biasa, apalagi kalau sheet-nya sudah besar. Karena ini
+      // aksi yang SENGAJA ditunggu manual oleh pengguna (klik tombol
+      // "Sync Sekarang"), kasih waktu jauh lebih panjang (4.5 menit,
+      // masih di bawah batas eksekusi Apps Script 6 menit).
+      var timeoutMs = (fnName === 'manualSyncNow') ? 270000 : 90000;
       return fetchWithTimeout(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }, 90000).then(function (r) { return r.json(); }); // upload data besar dikasih waktu lebih lama (90dtk)
+      }, timeoutMs).then(function (r) { return r.json(); });
     }
 
     var sep = BASE_URL.indexOf('?') === -1 ? '?' : '&';
