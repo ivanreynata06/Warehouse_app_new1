@@ -1050,30 +1050,22 @@ function _parseTanggalFleksibel(v) {
   return isNaN(d.getTime()) ? s : d;
 }
 
-// Setelah upload, dorong snapshot terbaru ke Supabase untuk workspace yang
-// sedang aktif -- supaya semua menu (Monitoring Stock, Kanban, Rekap
-// Muatan) kebaca update tanpa perlu menunggu jadwal sync biasa.
+// Setelah upload, dorong snapshot terbaru ke Supabase -- TAPI cuma bagian
+// yang benar-benar berkaitan (lihat syncStockOnly / syncOutboundInboundOnly
+// di atas), bukan semua dashboard. Karena jauh lebih ringan, ini SELALU
+// dijalankan langsung (blocking) berapa pun jumlah barisnya -- tidak perlu
+// lagi dilewati/diserahkan ke trigger seperti sebelumnya.
 //
-// jumlahBaris dipakai untuk memutuskan cara sync:
-//  - Upload KECIL (<=150 baris): sync LANGSUNG di sini (blocking) --
-//    cepat, jadi user langsung lihat hasilnya begitu upload selesai.
-//  - Upload BESAR (>150 baris, mis. ratusan baris dari Excel): sync
-//    penuh (rekap ulang semua dashboard) bisa makan waktu puluhan detik
-//    dan bikin request upload dari browser timeout. Untuk kasus ini,
-//    sync DILEWATI di sini dan diserahkan ke trigger onEdit yang sudah
-//    otomatis terpasang di spreadsheet (baris yang baru ditulis/di-copy
-//    formulanya tetap terhitung sebagai "edit", trigger itu akan jalan
-//    sendiri dalam hitungan detik setelah upload selesai) -- jadi tetap
-//    otomatis, cuma tidak menunggu di sini supaya upload-nya tidak macet.
-function _forceSyncCurrentWorkspace(jumlahBaris) {
-  if (jumlahBaris && jumlahBaris > 150) {
-    Logger.log('Upload ' + jumlahBaris + ' baris: sync Supabase diserahkan ke trigger onEdit otomatis (tidak blocking).');
-    return;
-  }
+// kind: 'stock' -> syncStockOnly, 'io' -> syncOutboundInboundOnly
+function _forceSyncCurrentWorkspace(jumlahBaris, kind) {
   try {
-    syncWorkspaceToSupabase(ACTIVE_WORKSPACE);
+    if (kind === 'io') {
+      return syncOutboundInboundOnly(ACTIVE_WORKSPACE);
+    }
+    return syncStockOnly(ACTIVE_WORKSPACE);
   } catch (err) {
     Logger.log('Force sync setelah upload gagal (data tetap tersimpan di sheet): ' + err.message);
+    return ['GAGAL sync: ' + err.message];
   }
 }
 
@@ -1117,7 +1109,7 @@ function appendStockData(rows) {
       srcFormulaRange.copyTo(destRange, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
     }
 
-    _forceSyncCurrentWorkspace(out.length);
+    _forceSyncCurrentWorkspace(out.length, 'stock');
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
@@ -1151,7 +1143,7 @@ function _appendKirimProduksi(rows, sheetName) {
 
     var startRow = sheet.getLastRow() + 1;
     sheet.getRange(startRow, 1, out.length, 6).setValues(out);
-    _forceSyncCurrentWorkspace(out.length);
+    _forceSyncCurrentWorkspace(out.length, 'io');
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
@@ -2014,6 +2006,99 @@ function manualSyncNow() {
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+// ================================================================
+//  SYNC RINGKAS (scoped) -- dipakai setelah Upload Data Harian, supaya
+//  tidak perlu menghitung ulang SEMUA hal seperti syncWorkspaceToSupabase
+//  penuh. DASHBOARD_STOCK cuma berkaitan dengan Monitoring Stock, Kanban,
+//  dan ringkasan di Control Tower -- TIDAK dengan Outbound/Inbound/Rekap
+//  Muatan/Loading Time, jadi bagian-bagian itu dilewati supaya cepat.
+// ================================================================
+function _syncPutHelper(workspaceKey, log) {
+  return function (key, payloadFn) {
+    var fullKey = workspaceKey + '::' + key;
+    try {
+      var payload = payloadFn();
+      if (payload && payload.success === false) {
+        log.push('SKIP ' + fullKey + ' (hasil gagal: ' + payload.error + ')');
+        return;
+      }
+      _supabaseUpsertSnapshot(fullKey, payload);
+      log.push('OK   ' + fullKey);
+    } catch (err) {
+      log.push('GAGAL ' + fullKey + ': ' + err.message);
+    }
+  };
+}
+
+// Upload STOCK -> cuma pengaruh ke: Monitoring Stock (harian+bulanan+tren)
+// dan Kanban (yang menampilkan ringkasan stock). TIDAK menyentuh
+// Outbound/Inbound/Rekap Muatan/Loading Time.
+function syncStockOnly(workspaceKey) {
+  ACTIVE_WORKSPACE = workspaceKey;
+  SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+  var log = [];
+  var put = _syncPutHelper(workspaceKey, log);
+
+  var now = new Date();
+  var bulanIni = String(now.getMonth() + 1), tahunIni = String(now.getFullYear());
+  var todayStr = now.getFullYear() + '-' + _pad2(now.getMonth() + 1) + '-' + _pad2(now.getDate());
+
+  var months6 = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months6.push({ bulan: String(d.getMonth() + 1), tahun: String(d.getFullYear()) });
+  }
+  var stockTrendResult = null;
+  put('stock_trend:6mo', function () { stockTrendResult = getStockTrendBatch(months6); return stockTrendResult; });
+  put('stock:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    if (stockTrendResult && stockTrendResult.success && stockTrendResult.results) {
+      return stockTrendResult.results[stockTrendResult.results.length - 1];
+    }
+    return getDashboardData('bulanan', { bulan: bulanIni, tahun: tahunIni, group: '' });
+  });
+  put('stock:harian:' + todayStr, function () { return getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' }); });
+  put('kanban:harian:' + todayStr, function () { return getKanbanData('harian', { dari: todayStr, sampai: todayStr }); });
+  put('kanban:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni }); });
+
+  Logger.log(log.join('\n'));
+  return log;
+}
+
+// Upload OUTBOUND/INBOUND -> pengaruh ke: Kanban (yang juga menampilkan
+// data kirim/produksi) dan Rekap Muatan. TIDAK menyentuh Stock.
+function syncOutboundInboundOnly(workspaceKey) {
+  ACTIVE_WORKSPACE = workspaceKey;
+  SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+  var log = [];
+  var put = _syncPutHelper(workspaceKey, log);
+
+  var now = new Date();
+  var bulanIni = String(now.getMonth() + 1), tahunIni = String(now.getFullYear());
+  var todayStr = now.getFullYear() + '-' + _pad2(now.getMonth() + 1) + '-' + _pad2(now.getDate());
+
+  var months6 = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months6.push({ bulan: String(d.getMonth() + 1), tahun: String(d.getFullYear()) });
+  }
+  var ioTrendResult = null;
+  put('io_trend:6mo', function () { ioTrendResult = getIOTrendBatch(months6); return ioTrendResult; });
+  put('outbound:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) return ioTrendResult.results[ioTrendResult.results.length - 1].out;
+    return getOutboundData({ bulan: bulanIni, tahun: tahunIni });
+  });
+  put('inbound:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) return ioTrendResult.results[ioTrendResult.results.length - 1].in;
+    return getInboundData({ bulan: bulanIni, tahun: tahunIni });
+  });
+  put('kanban:harian:' + todayStr, function () { return getKanbanData('harian', { dari: todayStr, sampai: todayStr }); });
+  put('kanban:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni }); });
+  put('rekap:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getRekapMuatanData({ mode: 'bulanan', bulan: bulanIni, tahun: tahunIni }); });
+
+  Logger.log(log.join('\n'));
+  return log;
 }
 
 function syncWorkspaceToSupabase(workspaceKey) {
