@@ -2127,6 +2127,15 @@ var SH_HARI_LIBUR      = 'HARI_LIBUR';
 
 var FTE_STANDAR_JAM_BULAN = 173; // standar jam kerja/bulan, sama untuk semua kategori
 
+// Kategori karyawan SEKARANG OTOMATIS dari awalan kode/NIK -- bukan lagi
+// manual per baris di sheet KARYAWAN_LEMBUR. NIK berawalan "PEG" = OS
+// (Outsourcing), selain itu = Internal. Ini supaya akun baru (PEG...)
+// yang lupa/belum di-set manual di sheet tetap otomatis kebaca sebagai
+// OS, tidak perlu edit sheet satu-satu lagi.
+function _kategoriDariNIK(kode) {
+  return /^PEG/i.test(String(kode || '').trim()) ? 'OS' : 'Internal';
+}
+
 // Data master 6 karyawan (dipakai buat auto-isi sheet KARYAWAN_LEMBUR
 // kalau masih kosong). Jam sudah NET (weekday karyawan biasa & Ivan
 // 8-1=7, TL 9-1=8, OS Doni/Iman weekday 14:00-22:00 -1j=7 & Minggu 6-1=5).
@@ -2391,9 +2400,10 @@ function loginUser(plant, dept, nik, password) {
 
     var data = sh.getDataRange().getValues();
     var hash = _hashPassword(password);
+    var nikInput = String(nik).trim().toUpperCase();
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
-      if (String(row[0]) === String(nik).trim() && row[4] !== false) {
+      if (String(row[0]).trim().toUpperCase() === nikInput && row[4] !== false) {
         if (String(row[3]) === hash) {
           return { success: true, workspace: workspaceKey, nik: row[0], nama: row[1], role: row[2] };
         }
@@ -2487,7 +2497,7 @@ function getKaryawanList() {
       var r = data[i];
       if (!r[0]) continue;
       out.push({
-        kode: String(r[0]), nama: String(r[1]), kategori: String(r[2]), jabatan: String(r[3]),
+        kode: String(r[0]), nama: String(r[1]), kategori: _kategoriDariNIK(r[0]), jabatan: String(r[3]),
         jamWeekday: Number(r[4]) || 0, jamSabtu: Number(r[5]) || 0, jamMinggu: Number(r[6]) || 0,
         aktif: r[7] === true || String(r[7]).toUpperCase() === 'TRUE'
       });
@@ -2536,14 +2546,7 @@ function saveLembur(data) {
     var waNotifSent = false;
     var isInternal  = false;
     try {
-      var shKar = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
-      var kategori = '';
-      if (shKar) {
-        var dk = shKar.getDataRange().getValues();
-        for (var ik = 1; ik < dk.length; ik++) {
-          if (String(dk[ik][0]) === String(data.kode)) { kategori = String(dk[ik][2] || ''); break; }
-        }
-      }
+      var kategori = _kategoriDariNIK(data.kode);
       isInternal = (kategori === 'Internal');
       if (isInternal) {
         waNotifSent = sendWaNotifLembur(data.kode, data.nama || data.kode, data.tanggal, data.jamMulai, data.jamSelesai, durJam, data.keterangan || '-');

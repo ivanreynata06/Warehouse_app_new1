@@ -35,6 +35,15 @@
   // 'index' = key menu utk Monitoring Stock, lihat PAGE_MAP di index.html)
   var HIDDEN_NAV_KEYS_RESTRICTED = ['kanban', 'index'];
 
+  // "Upload Data Harian" SENGAJA dibatasi lebih ketat daripada menu admin
+  // lain: HANYA boleh diakses TL, atau 2 orang admin spesifik ini (dicek
+  // lewat NIK, bukan nama, supaya tidak salah kalau ada nama yang mirip).
+  // Admin lain (mis. "Admin Wh Fitting" selain 2 NIK ini) TIDAK boleh
+  // lihat/akses menu ini walaupun role-nya Admin.
+  var UPLOAD_ALLOWED_NIK = ['PEG22111246', 'PEG24032730']; // Ivan Reynata, Saepulloh
+  var nikUpper = String(nik || '').trim().toUpperCase();
+  var canUploadData = isTL || UPLOAD_ALLOWED_NIK.indexOf(nikUpper) !== -1;
+
   // Info sesi yang sedang login, dipakai halaman lain (nama di header, dst)
   window.WH_SESSION = {
     workspace: workspace,
@@ -43,6 +52,7 @@
     role: sessionStorage.getItem('wh_role') || '',
     fullAccess: fullAccess,
     isTL: isTL,
+    canUploadData: canUploadData,
     // Rekap Muatan sengaja CUMA ada di departemen Fitting Import (sheet-nya
     // tidak di-provision di departemen lain) -- boleh dilihat SEMUA role
     // (termasuk Technician), asal masih di departemen Fitting Import.
@@ -52,7 +62,24 @@
   // Role terbatas coba buka halaman yang tidak diizinkan -> tendang ke Control Tower
   if (!fullAccess) {
     var hereFile = (window.location.pathname.split('/').pop() || '').toLowerCase();
-    if (ALLOWED_FILES_RESTRICTED.indexOf(hereFile) === -1) {
+    // Rekap Muatan BUKAN halaman "admin-only" -- boleh dibuka role apa pun
+    // (termasuk Technician) SELAMA workspace-nya memang punya Rekap Muatan
+    // (hasRekapMuatan). Sebelumnya file ini ketinggalan dari daftar, jadi
+    // walaupun hasRekapMuatan true, tetap ketendang ke Control Tower.
+    var allowedNow = ALLOWED_FILES_RESTRICTED.slice();
+    if (window.WH_SESSION.hasRekapMuatan) allowedNow.push('rekap_muatan.html');
+    if (allowedNow.indexOf(hereFile) === -1) {
+      window.location.replace('./index.html');
+      return;
+    }
+  }
+
+  // Upload Data Harian: blokir akses LANGSUNG lewat URL juga (bukan cuma
+  // sembunyikan menunya) -- berlaku untuk SEMUA orang termasuk admin lain
+  // yang bukan 2 NIK di atas, walaupun fullAccess mereka true.
+  if (!canUploadData) {
+    var hereFile2 = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    if (hereFile2 === 'upload_data.html') {
       window.location.replace('./index.html');
       return;
     }
@@ -64,6 +91,15 @@
         document.querySelectorAll('[onclick*="\'' + key + '\'"]').forEach(function (el) {
           el.style.display = 'none';
         });
+      });
+    }
+
+    // Sembunyikan menu "Upload Data Harian" untuk siapa pun selain TL
+    // atau 2 admin spesifik (lihat UPLOAD_ALLOWED_NIK di atas) -- termasuk
+    // admin lain yang biasanya fullAccess=true tetap TIDAK boleh lihat ini.
+    if (!window.WH_SESSION.canUploadData) {
+      document.querySelectorAll('[onclick*="\'upload\'"]').forEach(function (el) {
+        el.style.display = 'none';
       });
     }
 
