@@ -578,9 +578,13 @@ function handleExcelFile(evt, tab){
       var firstSheetName = wb.SheetNames[0];
       var ws = wb.Sheets[firstSheetName];
       // header:1 -> array of array (baris 1 = header, dilewati)
-      // raw:false -> nilai non-tanggal tetap apa adanya, tapi kalau ada
-      // sel tanggal, cellDates:true di atas yang menang duluan.
-      var aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:'', dateNF:'yyyy-mm-dd'});
+      // raw:true -> WAJIB untuk kolom angka, supaya nilainya didapat dari
+      // nilai asli sel (mis. 23989.53), BUKAN teks hasil format lokal
+      // Indonesia (mis. "23.989,53") yang kalau di-parseFloat malah
+      // terpotong jadi 23.989 saja (bug yang sempat kejadian). Kolom
+      // tanggal TETAP aman terbaca benar berkat cellDates:true di atas
+      // (sel bertipe tanggal otomatis jadi objek Date asli walau raw:true).
+      var aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
       var cfg = TAB_CONFIG[tab];
       var dateColIdx = cfg.dateCols || [];
       var dataRows = aoa.slice(1) // lewati baris header
