@@ -1113,6 +1113,116 @@ function _forceSyncCurrentWorkspace(jumlahBaris, kind) {
 //  "repairMissingDrawingFormulas" di dropdown -> klik Run. Jalankan
 //  SEKALI SAJA setelah deploy versi terbaru kode.gs.
 // ================================================================
+// ================================================================
+//  PEMBERSIHAN SEKALI-JALAN -- membersihkan sisa-sisa dari percobaan
+//  upload berulang saat proses debug (baris kosong total, dan baris
+//  dengan tanggal rusak akibat bug lama di Outbound/Inbound).
+//
+//  CARA PAKAI: buka Apps Script editor -> pilih salah satu fungsi di
+//  bawah dari dropdown -> Run. Semua fungsi ini AMAN (cuma menghapus
+//  baris yang benar-benar kosong / tanggalnya jelas tidak masuk akal),
+//  tapi tetap disarankan cek log hasilnya (View -> Logs / Executions)
+//  setelah Run untuk lihat berapa baris yang kehapus.
+// ================================================================
+
+// Hapus baris yang BENAR-BENAR KOSONG (kolom A/Item Number kosong DAN
+// tidak ada data berarti di kolom lain) -- sisa dari penghapusan manual
+// yang tidak lengkap sebelumnya. Dipakai untuk DASHBOARD_STOCK,
+// DASHBOARD_KIRIM, atau DASHBOARD_PRODUKSI.
+function cleanupBlankRowsInSheet(sheetName) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return 'Sheet ' + sheetName + ' tidak ditemukan.';
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return 'Sheet kosong, tidak ada yang perlu dibersihkan.';
+
+  // Cukup cek kolom A sampai F (data inti) -- kalau semua kosong,
+  // anggap baris itu benar-benar kosong walau kolom rumus di kanannya
+  // (G dst) mungkin masih menampilkan sisa angka 0.
+  var checkCols = Math.min(6, lastCol);
+  var data = sheet.getRange(2, 1, lastRow - 1, checkCols).getValues();
+
+  var rowsToDelete = [];
+  for (var i = 0; i < data.length; i++) {
+    var isBlank = data[i].every(function (v) { return v === '' || v === null || v === undefined; });
+    if (isBlank) rowsToDelete.push(2 + i);
+  }
+  if (!rowsToDelete.length) return 'Tidak ada baris kosong yang perlu dibersihkan di ' + sheetName + '.';
+
+  // Kelompokkan baris berurutan jadi blok, hapus dari bawah ke atas.
+  rowsToDelete.sort(function (a, b) { return a - b; });
+  var blocks = [];
+  var blockStart = rowsToDelete[0], blockLen = 1;
+  for (var j = 1; j < rowsToDelete.length; j++) {
+    if (rowsToDelete[j] === blockStart + blockLen) { blockLen++; }
+    else { blocks.push([blockStart, blockLen]); blockStart = rowsToDelete[j]; blockLen = 1; }
+  }
+  blocks.push([blockStart, blockLen]);
+  for (var k = blocks.length - 1; k >= 0; k--) sheet.deleteRows(blocks[k][0], blocks[k][1]);
+
+  var msg = 'Selesai membersihkan ' + sheetName + ': ' + rowsToDelete.length + ' baris kosong dihapus (' + blocks.length + ' blok).';
+  Logger.log(msg);
+  return msg;
+}
+
+// Hapus baris di DASHBOARD_KIRIM / DASHBOARD_PRODUKSI yang tanggalnya
+// RUSAK akibat bug lama (SheetJS baca serial number Excel mentah, jadi
+// kolom Effective Date isinya jadi tanggal ngawur seperti "01/01/46235").
+// Baris seperti ini dianggap tidak valid dan aman dihapus -- datanya
+// perlu diupload ulang pakai file yang sama (sekarang tanggalnya sudah
+// dibaca dengan benar).
+function cleanupCorruptedDates(sheetName) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return 'Sheet ' + sheetName + ' tidak ditemukan.';
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 'Sheet kosong, tidak ada yang perlu dibersihkan.';
+
+  var colE = sheet.getRange(2, 5, lastRow - 1, 1).getValues(); // Effective Date = kolom E
+  var rowsToDelete = [];
+  var TAHUN_MIN = 2020, TAHUN_MAX = 2035; // di luar rentang ini dianggap rusak
+
+  for (var i = 0; i < colE.length; i++) {
+    var v = colE[i][0];
+    if (!v) continue;
+    var d = (v instanceof Date) ? v : new Date(v);
+    if (isNaN(d.getTime())) continue;
+    var tahun = d.getFullYear();
+    if (tahun < TAHUN_MIN || tahun > TAHUN_MAX) rowsToDelete.push(2 + i);
+  }
+  if (!rowsToDelete.length) return 'Tidak ada tanggal rusak yang ditemukan di ' + sheetName + '.';
+
+  rowsToDelete.sort(function (a, b) { return a - b; });
+  var blocks = [];
+  var blockStart = rowsToDelete[0], blockLen = 1;
+  for (var j = 1; j < rowsToDelete.length; j++) {
+    if (rowsToDelete[j] === blockStart + blockLen) { blockLen++; }
+    else { blocks.push([blockStart, blockLen]); blockStart = rowsToDelete[j]; blockLen = 1; }
+  }
+  blocks.push([blockStart, blockLen]);
+  for (var k = blocks.length - 1; k >= 0; k--) sheet.deleteRows(blocks[k][0], blocks[k][1]);
+
+  var msg = 'Selesai membersihkan ' + sheetName + ': ' + rowsToDelete.length + ' baris dengan tanggal rusak dihapus (' + blocks.length + ' blok). Silakan upload ulang data yang sama, sekarang tanggalnya akan terbaca benar.';
+  Logger.log(msg);
+  return msg;
+}
+
+// Jalankan SEMUA pembersihan sekaligus untuk ketiga sheet transaksi.
+function runFullCleanup() {
+  var hasil = [];
+  hasil.push(cleanupBlankRowsInSheet(SH_STOCK));
+  hasil.push(cleanupBlankRowsInSheet(SH_KIRIM));
+  hasil.push(cleanupBlankRowsInSheet(SH_PRODUKSI));
+  hasil.push(cleanupCorruptedDates(SH_KIRIM));
+  hasil.push(cleanupCorruptedDates(SH_PRODUKSI));
+  var msg = hasil.join('\n');
+  Logger.log(msg);
+  return msg;
+}
+
 function repairMissingDrawingFormulas() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sheet = ss.getSheetByName(SH_STOCK);
