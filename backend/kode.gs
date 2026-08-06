@@ -1068,17 +1068,13 @@ function _forceSyncCurrentWorkspace(jumlahBaris, kind) {
   // ada supaya pemanggil (appendStockData dkk) tidak perlu diubah lagi.
 }
 
-// rows: array of array, urutan kolom PERSIS:
-// [ItemNumber, Site, Unit, Group, Description, Description2, StockPcs, StockTonnase, Drawing, Tanggal]
 // rows: array of array, HANYA 8 kolom (A-H) -- data mentah:
 // [ItemNumber, Site, Unit, Group, Description, Description2, StockPcs, StockTonnase]
-// Kolom I dst (Drawing, dll) SENGAJA TIDAK ditulis dari sini -- itu rumus
-// yang sudah ada di spreadsheet. Setelah baris A-H ditambahkan, rumus di
-// baris tepat di atasnya (kolom I sampai kolom terakhir yang dipakai)
-// di-copy-turun otomatis ke baris-baris baru, supaya rumus itu langsung
-// menghitung berdasarkan data baris baru -- sama seperti kalau di-drag
-// manual di Excel/Sheets.
-function appendStockData(rows) {
+// tanggal: string tanggal (YYYY-MM-DD) untuk kolom J (TANGGAL) -- kolom ini
+// TERNYATA bukan rumus (nilai manual), jadi ditulis eksplisit di sini,
+// beda dengan kolom I (Drawing) dan K dst (Kanban dkk) yang memang rumus
+// dan tetap di-copy-turun dari baris di atasnya.
+function appendStockData(rows, tanggal) {
   try {
     if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -1094,18 +1090,31 @@ function appendStockData(rows) {
 
     var startRow = sheet.getLastRow() + 1;
     var lastCol  = sheet.getLastColumn();
+    var tglValue = _parseTanggalFleksibel(tanggal) || new Date();
 
     // 1) Tulis HANYA kolom A-H (8 kolom pertama) -- data mentah dari Excel
     sheet.getRange(startRow, 1, out.length, 8).setValues(out);
 
-    // 2) Kolom I dst: copy rumus dari baris tepat di atas baris baru
-    //    (startRow-1), lalu "tile" turun ke semua baris baru sekaligus.
-    //    copyTo otomatis menyesuaikan referensi relatif per baris, persis
-    //    seperti drag-fill di Excel/Sheets.
-    if (startRow > 2 && lastCol > 8) {
-      var srcFormulaRange = sheet.getRange(startRow - 1, 9, 1, lastCol - 8);
-      var destRange        = sheet.getRange(startRow, 9, out.length, lastCol - 8);
-      srcFormulaRange.copyTo(destRange, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+    // 2) Kolom I (Drawing) -- ini RUMUS, copy-turun dari baris di atasnya
+    if (startRow > 2 && lastCol >= 9) {
+      var srcI = sheet.getRange(startRow - 1, 9, 1, 1);
+      var destI = sheet.getRange(startRow, 9, out.length, 1);
+      srcI.copyTo(destI, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+    }
+
+    // 3) Kolom J (TANGGAL) -- ini NILAI MANUAL (bukan rumus), jadi ditulis
+    //    langsung sebagai tanggal upload (bukan di-copy dari baris atas).
+    if (lastCol >= 10) {
+      var tglRows = out.map(function () { return [tglValue]; });
+      sheet.getRange(startRow, 10, out.length, 1).setValues(tglRows);
+    }
+
+    // 4) Kolom K dst (Kanban, Standar Isi, Konversi Box, dll) -- ini RUMUS
+    //    lagi, copy-turun dari baris di atasnya seperti kolom I.
+    if (startRow > 2 && lastCol > 10) {
+      var srcRest = sheet.getRange(startRow - 1, 11, 1, lastCol - 10);
+      var destRest = sheet.getRange(startRow, 11, out.length, lastCol - 10);
+      srcRest.copyTo(destRest, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
     }
 
     // TIDAK ada sync yang ditunggu di sini lagi -- upload cuma menempel

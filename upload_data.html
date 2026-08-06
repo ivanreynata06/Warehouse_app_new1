@@ -114,6 +114,11 @@ textarea.paste-area::placeholder{color:var(--txt3);}
 .drop-zone-txt{font-size:11px;color:var(--txt2);line-height:1.6;}
 .drop-zone-file{margin-top:8px;font-size:11px;color:var(--green);font-family:var(--font-mono);font-weight:600;}
 
+.date-input{background:var(--bg-card2);border:1px solid var(--border2);border-radius:8px;
+  padding:9px 12px;color:var(--txt);font-family:var(--font-mono);font-size:12px;outline:none;
+  max-width:200px;}
+.date-input:focus{border-color:var(--green);}
+
 .btn-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 .btn{padding:8px 16px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
   border:none;font-family:'Inter',sans-serif;transition:opacity .15s,transform .1s;display:inline-flex;align-items:center;gap:6px;}
@@ -259,6 +264,10 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             <code>A: Item Number</code> · <code>B: Site</code> · <code>C: Unit</code> · <code>D: Group</code> · <code>E: Description</code> · <code>F: Description2</code> · <code>G: Stock Pcs</code> · <code>H: Stock Tonnase</code><br>
             Kolom <b>I dan seterusnya JANGAN diisi</b> — itu rumus yang sudah ada di spreadsheet, otomatis akan ikut terhitung sendiri begitu baris baru masuk. Baris pertama di file harus header (nama kolom), data mulai baris ke-2.
           </div>
+          <div class="field">
+            <label for="tanggal-stock" style="display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:6px;">Tanggal data ini (kolom TANGGAL)</label>
+            <input type="date" id="tanggal-stock" class="date-input">
+          </div>
           <div class="btn-row">
             <button class="btn btn-secondary" onclick="downloadTemplate('stock')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -300,12 +309,23 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         <div class="card-header"><div class="card-title">Upload Data Outbound / Kirim (DASHBOARD_KIRIM)</div></div>
         <div class="card-body">
           <div class="col-ref">
-            Urutan kolom (6 kolom, pisahkan dengan <b>Tab</b> atau koma):<br>
-            <code>Item Number</code> · <code>Drawing Code</code> · <code>Description</code> · <code>Description2</code> · <code>Effective Date (YYYY-MM-DD)</code> · <code>Total Weight</code>
+            Upload file <b>Excel (.xlsx)</b> dengan 6 kolom:<br>
+            <code>A: Item Number</code> · <code>B: Drawing Code</code> · <code>C: Description</code> · <code>D: Description2</code> · <code>E: Effective Date (YYYY-MM-DD)</code> · <code>F: Total Weight</code><br>
+            Baris pertama di file harus header (nama kolom), data mulai baris ke-2.
           </div>
-          <textarea class="paste-area" id="paste-outbound" placeholder="Tempel data di sini (copy langsung dari Excel, baris per baris)&#10;Contoh:&#10;PPR001&#9;PIPA PPR KELEN GREEN&#9;Pipa PPR 20mm&#9;-&#9;2026-08-05&#9;350.2"></textarea>
           <div class="btn-row">
-            <button class="btn btn-secondary" onclick="parsePreview('outbound')">Parse &amp; Preview</button>
+            <button class="btn btn-secondary" onclick="downloadTemplate('outbound')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template Excel
+            </button>
+          </div>
+          <input type="file" id="file-outbound" accept=".xlsx,.xls" style="display:none;" onchange="handleExcelFile(event,'outbound')">
+          <div class="drop-zone" id="dropzone-outbound" onclick="document.getElementById('file-outbound').click()">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div class="drop-zone-txt"><b>Klik untuk pilih file Excel</b><br>atau drag &amp; drop file .xlsx di sini</div>
+            <div class="drop-zone-file" id="dropzone-filename-outbound"></div>
+          </div>
+          <div class="btn-row">
             <button class="btn btn-primary" id="btn-submit-outbound" onclick="submitData('outbound')" disabled>
               <span class="spinner-sm" id="spin-outbound"></span>
               <span id="lbl-submit-outbound">Upload ke Sistem</span>
@@ -334,12 +354,23 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         <div class="card-header"><div class="card-title">Upload Data Inbound / Produksi (DASHBOARD_PRODUKSI)</div></div>
         <div class="card-body">
           <div class="col-ref">
-            Urutan kolom (6 kolom, pisahkan dengan <b>Tab</b> atau koma):<br>
-            <code>Item Number</code> · <code>Drawing Code</code> · <code>Description</code> · <code>Description2</code> · <code>Effective Date (YYYY-MM-DD)</code> · <code>Total Weight</code>
+            Upload file <b>Excel (.xlsx)</b> dengan 6 kolom:<br>
+            <code>A: Item Number</code> · <code>B: Drawing Code</code> · <code>C: Description</code> · <code>D: Description2</code> · <code>E: Effective Date (YYYY-MM-DD)</code> · <code>F: Total Weight</code><br>
+            Baris pertama di file harus header (nama kolom), data mulai baris ke-2.
           </div>
-          <textarea class="paste-area" id="paste-inbound" placeholder="Tempel data di sini (copy langsung dari Excel, baris per baris)&#10;Contoh:&#10;PPR001&#9;PIPA PPR KELEN GREEN&#9;Pipa PPR 20mm&#9;-&#9;2026-08-05&#9;480.0"></textarea>
           <div class="btn-row">
-            <button class="btn btn-secondary" onclick="parsePreview('inbound')">Parse &amp; Preview</button>
+            <button class="btn btn-secondary" onclick="downloadTemplate('inbound')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template Excel
+            </button>
+          </div>
+          <input type="file" id="file-inbound" accept=".xlsx,.xls" style="display:none;" onchange="handleExcelFile(event,'inbound')">
+          <div class="drop-zone" id="dropzone-inbound" onclick="document.getElementById('file-inbound').click()">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div class="drop-zone-txt"><b>Klik untuk pilih file Excel</b><br>atau drag &amp; drop file .xlsx di sini</div>
+            <div class="drop-zone-file" id="dropzone-filename-inbound"></div>
+          </div>
+          <div class="btn-row">
             <button class="btn btn-primary" id="btn-submit-inbound" onclick="submitData('inbound')" disabled>
               <span class="spinner-sm" id="spin-inbound"></span>
               <span id="lbl-submit-inbound">Upload ke Sistem</span>
@@ -399,6 +430,14 @@ function toggleSidebar(){
 // ================================================================
 //  TABS
 // ================================================================
+(function setDefaultDate(){
+  var el = document.getElementById('tanggal-stock');
+  if (!el) return;
+  var d = new Date();
+  var iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  el.value = iso;
+})();
+
 function switchTab(name){
   ['stock','outbound','inbound'].forEach(function(t){
     document.getElementById('tab-'+t).classList.toggle('active', t===name);
@@ -582,18 +621,20 @@ function downloadTemplate(tab){
 }
 
 // Drag & drop untuk drop-zone Stock
-(function setupDropZone(){
-  var dz = document.getElementById('dropzone-stock');
-  if (!dz) return;
-  ['dragenter','dragover'].forEach(function(evt){
-    dz.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.add('dragover'); });
-  });
-  ['dragleave','drop'].forEach(function(evt){
-    dz.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.remove('dragover'); });
-  });
-  dz.addEventListener('drop', function(e){
-    var file = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (file) handleExcelFile({dataTransfer:e.dataTransfer}, 'stock');
+(function setupDropZones(){
+  ['stock','outbound','inbound'].forEach(function(tab){
+    var dz = document.getElementById('dropzone-'+tab);
+    if (!dz) return;
+    ['dragenter','dragover'].forEach(function(evt){
+      dz.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.add('dragover'); });
+    });
+    ['dragleave','drop'].forEach(function(evt){
+      dz.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.remove('dragover'); });
+    });
+    dz.addEventListener('drop', function(e){
+      var file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleExcelFile({dataTransfer:e.dataTransfer}, tab);
+    });
   });
 })();
 
@@ -689,7 +730,11 @@ function submitData(tab){
     lbl.textContent = batchLabel;
     showStatus(tab,'info', batchLabel + (totalOk>0 ? ' — '+totalOk+' baris sebelumnya sudah tersimpan.' : ''));
 
-    google.script.run
+    var callArgs = (tab === 'stock')
+      ? [batch, (document.getElementById('tanggal-stock')||{}).value || '']
+      : [batch];
+
+    var runner = google.script.run
       .withSuccessHandler(function(res){
         if (res && res.success){
           totalOk += res.jumlah;
@@ -707,8 +752,9 @@ function submitData(tab){
         showStatus(tab,'err','Gagal terhubung ke server di batch '+(batchIdx+1)+': ' + (err && err.message ? err.message : 'cek koneksi.') +
           (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan.)' : ''));
         btn.disabled = false;
-      })
-      [cfg.fn](batch);
+      });
+
+    runner[cfg.fn](...callArgs);
   }
 
   uploadNextBatch();
