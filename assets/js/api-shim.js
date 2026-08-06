@@ -114,7 +114,7 @@
   // URL), gampang melebihi batas panjang URL browser (~8000 karakter)
   // dan request langsung gagal total ("Failed to fetch") sebelum sempat
   // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
-  var LARGE_PAYLOAD_FUNCTIONS = { savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1 };
+  var LARGE_PAYLOAD_FUNCTIONS = { savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1 };
 
   function callBackend(fnName, args) {
     var payload = { action: fnName, params: args || [], workspace: getWorkspace() };
@@ -133,7 +133,8 @@
       // spreadsheet (tanpa menunggu sync apa pun), jadi cukup cepat --
       // timeout wajar saja. manualSyncNow beda: itu menghitung ulang
       // dashboard, jadi tetap dikasih waktu panjang.
-      var timeoutMs = (fnName === 'manualSyncNow') ? 270000 : 60000;
+      var LONG_TIMEOUT_FUNCTIONS = { manualSyncNow: 1, clearStockDataForDate: 1 };
+      var timeoutMs = LONG_TIMEOUT_FUNCTIONS[fnName] ? 270000 : 60000;
       return fetchWithTimeout(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },

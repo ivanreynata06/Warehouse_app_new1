@@ -721,7 +721,7 @@ function submitData(tab){
   if (tab === 'stock'){
     var tglEl = document.getElementById('tanggal-stock');
     var tglVal = tglEl ? tglEl.value : '';
-    lbl.textContent = 'Menghapus data lama di tanggal ini (kalau ada)...';
+    lbl.textContent = 'Menghapus data lama (bisa sampai beberapa menit utk sheet besar, jangan tutup halaman)...';
     showStatus(tab,'info','Upload Stock = ganti total per tanggal. Mengecek & menghapus data lama tanggal '+tglVal+' dulu (kalau ada) sebelum menulis data baru...');
     google.script.run
       .withSuccessHandler(function(res){
