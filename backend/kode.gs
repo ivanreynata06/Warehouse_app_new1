@@ -1074,6 +1074,62 @@ function _forceSyncCurrentWorkspace(jumlahBaris, kind) {
 // TERNYATA bukan rumus (nilai manual), jadi ditulis eksplisit di sini,
 // beda dengan kolom I (Drawing) dan K dst (Kanban dkk) yang memang rumus
 // dan tetap di-copy-turun dari baris di atasnya.
+// ================================================================
+//  PERBAIKAN SEKALI-JALAN: kolom I (Drawing) / K dst (Kanban dkk) yang
+//  kosong akibat percobaan upload sebelumnya (versi kode lama sempat
+//  menulis kolom itu sebagai data kosong, menimpa rumus yang seharusnya
+//  ada). Fungsi ini mencari SEMUA baris yang kolom I-nya kosong, lalu
+//  menyalin rumus dari baris VALID terdekat di atasnya (kolom I dan K
+//  dst -- TIDAK menyentuh kolom J/TANGGAL karena itu memang data manual,
+//  bukan rumus, jadi tidak ikut diperbaiki di sini).
+//
+//  CARA PAKAI: buka Apps Script editor -> pilih fungsi
+//  "repairMissingDrawingFormulas" di dropdown -> klik Run. Jalankan
+//  SEKALI SAJA setelah deploy versi terbaru kode.gs.
+// ================================================================
+function repairMissingDrawingFormulas() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(SH_STOCK);
+  if (!sheet) return 'Sheet ' + SH_STOCK + ' tidak ditemukan.';
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 9 || lastRow < 3) return 'Tidak ada yang perlu diperbaiki (sheet terlalu kecil / kolom I belum ada).';
+
+  var colI = sheet.getRange(2, 9, lastRow - 1, 1).getValues(); // baris 2..lastRow
+  var totalFixed = 0;
+  var blockCount = 0;
+  var i = 0;
+
+  while (i < colI.length) {
+    if (colI[i][0] !== '' && colI[i][0] !== null) { i++; continue; }
+
+    var blockStartRow = 2 + i; // baris sheet sebenarnya
+    var blockLen = 0;
+    while (i < colI.length && (colI[i][0] === '' || colI[i][0] === null)) { blockLen++; i++; }
+
+    var srcRow = blockStartRow - 1;
+    if (srcRow < 2) continue; // tidak ada baris acuan valid di atasnya, lewati blok ini
+
+    var srcI  = sheet.getRange(srcRow, 9, 1, 1);
+    var destI = sheet.getRange(blockStartRow, 9, blockLen, 1);
+    srcI.copyTo(destI, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+
+    if (lastCol > 10) {
+      var srcRest  = sheet.getRange(srcRow, 11, 1, lastCol - 10);
+      var destRest = sheet.getRange(blockStartRow, 11, blockLen, lastCol - 10);
+      srcRest.copyTo(destRest, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+    }
+
+    totalFixed += blockLen;
+    blockCount++;
+  }
+
+  var msg = 'Selesai. Diperbaiki ' + totalFixed + ' baris (dalam ' + blockCount + ' blok) -- kolom I (Drawing) dan K dst (Kanban dkk) sudah ditambal rumusnya.';
+  Logger.log(msg);
+  return msg;
+}
+
 function appendStockData(rows, tanggal) {
   try {
     if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
