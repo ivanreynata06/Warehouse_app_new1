@@ -928,6 +928,30 @@ function getKategoriStock(drawingVal) {
   return null;
 }
 
+// Dipakai kalau getKategoriStock(drawingVal) gagal (kosong / tidak persis
+// cocok, mis. item baru yang belum ada di MASTER lookup Drawing). Baca
+// kata kunci dari kolom E (Description) sebagai cadangan, supaya item
+// tetap masuk kategori yang benar walau kolom Drawing-nya kosong -- tidak
+// lagi "hilang" dari rincian walau tetap terhitung di Total.
+function getKategoriStockFallback(descE) {
+  var desc = normStr(descE);
+  if (!desc) return null;
+  var fittingKw = ['ELBOW','REDUC','EQUAL','COUPL','COUP','VALVE','SOCK','UNION',
+                   'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT',
+                   'KELEN REDU','KLN REDU','KELEN EQUA','KLN EQUA',
+                   'KELEN ELBO','KLN ELBO','KELEN COUP','KLN COUP',
+                   'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN'];
+  var isFitting = fittingKw.some(function(k){ return desc.indexOf(k) !== -1; });
+  var isPipa    = !isFitting && (desc.indexOf('PIPE') !== -1 || desc.indexOf('PIPA') !== -1);
+  if (!isPipa && !isFitting) return null;
+  var isGreen = desc.indexOf('GREEN') !== -1;
+  var isGrey  = desc.indexOf('GREY') !== -1 || desc.indexOf('GRAY') !== -1;
+  if (!isGreen && !isGrey) isGreen = true; // default GREEN kalau tidak disebutkan
+  if (isPipa)    return isGreen ? 'pipaGreen'    : 'pipaGrey';
+  if (isFitting) return isGreen ? 'fittingGreen' : 'fittingGrey';
+  return null;
+}
+
 // ================================================================
 //  Kategori dari Description kolom C/D (DASHBOARD_KIRIM/PRODUKSI)
 // ================================================================
@@ -991,6 +1015,7 @@ function getStockData(ss, range, group) {
     out.groupTonase += tonnaseH;
 
     var kat = getKategoriStock(row[8]);
+    if (!kat) kat = getKategoriStockFallback(row[4]); // fallback: baca Description (kolom E)
     if (!kat) continue;
 
     var pcs = parseFloat(row[6]) || 0;
