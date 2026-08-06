@@ -645,6 +645,10 @@ function clearTab(tab, keepStatus){
 // ================================================================
 //  SUBMIT ke backend (appendStockData / appendOutboundData / appendInboundData)
 // ================================================================
+// Kirim data dalam BATCH kecil (bukan 1 request raksasa) -- lebih aman
+// untuk koneksi/jaringan yang mungkin gagal kalau payload-nya kegedean.
+var BATCH_SIZE = 150;
+
 function submitData(tab){
   var rows = PARSED_ROWS[tab];
   if (!rows || !rows.length){
@@ -656,29 +660,58 @@ function submitData(tab){
   var spin = document.getElementById('spin-'+tab);
   var lbl = document.getElementById('lbl-submit-'+tab);
 
-  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Mengupload...';
-  showStatus(tab,'info','Mengupload '+rows.length+' baris ke sistem, mohon tunggu...');
+  var batches = [];
+  for (var i=0; i<rows.length; i+=BATCH_SIZE){
+    batches.push(rows.slice(i, i+BATCH_SIZE));
+  }
 
-  google.script.run
-    .withSuccessHandler(function(res){
+  btn.disabled = true; spin.style.display = 'inline-block';
+  var totalOk = 0;
+  var batchIdx = 0;
+
+  function uploadNextBatch(){
+    if (batchIdx >= batches.length){
+      // Semua batch selesai
       spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
-      if (res && res.success){
-        var syncNote = ' Data sudah masuk ke spreadsheet (sumber data utama). Monitoring Stock/Kanban akan ikut ter-update otomatis di belakang layar (biasanya dalam beberapa menit); backup permanen ke Supabase berjalan otomatis tiap tanggal 2. Kalau ingin memaksa update sekarang juga, klik "Sync Sekarang" di bawah.';
-        showStatus(tab,'ok','Berhasil! '+res.jumlah+' baris tersimpan ke sheet.'+syncNote);
-        clearTab(tab, true);
-        document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
-        try { clearApiCache(); } catch(e){}
-      } else {
-        showStatus(tab,'err','Gagal: ' + (res && res.error ? res.error : 'terjadi kesalahan tidak diketahui.'));
-        btn.disabled = false;
-      }
-    })
-    .withFailureHandler(function(err){
-      spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
-      showStatus(tab,'err','Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi.'));
+      var syncNote = ' Data sudah masuk ke spreadsheet (sumber data utama). Monitoring Stock/Kanban akan ikut ter-update otomatis di belakang layar (biasanya dalam beberapa menit); backup permanen ke Supabase berjalan otomatis tiap tanggal 2. Kalau ingin memaksa update sekarang juga, klik "Sync Sekarang" di bawah.';
+      showStatus(tab,'ok','Berhasil! '+totalOk+' baris tersimpan ke sheet.'+syncNote);
+      clearTab(tab, true);
+      document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
+      try { clearApiCache(); } catch(e){}
       btn.disabled = false;
-    })
-    [cfg.fn](rows);
+      return;
+    }
+
+    var batch = batches[batchIdx];
+    var batchLabel = batches.length > 1
+      ? 'Mengupload batch '+(batchIdx+1)+'/'+batches.length+' ('+batch.length+' baris)...'
+      : 'Mengupload...';
+    lbl.textContent = batchLabel;
+    showStatus(tab,'info', batchLabel + (totalOk>0 ? ' — '+totalOk+' baris sebelumnya sudah tersimpan.' : ''));
+
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (res && res.success){
+          totalOk += res.jumlah;
+          batchIdx++;
+          uploadNextBatch();
+        } else {
+          spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
+          showStatus(tab,'err','Batch '+(batchIdx+1)+' gagal: ' + (res && res.error ? res.error : 'kesalahan tidak diketahui') +
+            (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan, tidak perlu diulang -- lanjutkan sisanya saja.)' : ''));
+          btn.disabled = false;
+        }
+      })
+      .withFailureHandler(function(err){
+        spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
+        showStatus(tab,'err','Gagal terhubung ke server di batch '+(batchIdx+1)+': ' + (err && err.message ? err.message : 'cek koneksi.') +
+          (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan.)' : ''));
+        btn.disabled = false;
+      })
+      [cfg.fn](batch);
+  }
+
+  uploadNextBatch();
 }
 
 // ================================================================
