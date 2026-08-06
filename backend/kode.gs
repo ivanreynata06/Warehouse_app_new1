@@ -60,6 +60,7 @@ var API_FUNCTIONS = {
   hasTlSignature          : hasTlSignature,
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
+  clearStockDataForDate   : clearStockDataForDate,
   appendOutboundData      : appendOutboundData,
   appendInboundData       : appendInboundData,
   manualSyncNow           : manualSyncNow
@@ -1128,6 +1129,69 @@ function repairMissingDrawingFormulas() {
   var msg = 'Selesai. Diperbaiki ' + totalFixed + ' baris (dalam ' + blockCount + ' blok) -- kolom I (Drawing) dan K dst (Kanban dkk) sudah ditambal rumusnya.';
   Logger.log(msg);
   return msg;
+}
+
+// ================================================================
+//  Upload Stock = FULL RE-COUNT per tanggal (bukan transaksi harian
+//  yang menumpuk). Dipanggil SEKALI dari frontend SEBELUM batch upload
+//  dimulai, supaya kalau tanggal yang sama diupload ulang (mis. karena
+//  ada revisi data / upload sempat gagal separuh), data lama di tanggal
+//  itu dihapus dulu -- tidak numpuk jadi dobel seperti sebelumnya.
+// ================================================================
+function clearStockDataForDate(tanggal) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(SH_STOCK);
+    if (!sheet) return { success: false, error: 'Sheet ' + SH_STOCK + ' tidak ditemukan.' };
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, dihapus: 0 };
+
+    var tglTarget = _parseTanggalFleksibel(tanggal);
+    if (!(tglTarget instanceof Date) || isNaN(tglTarget.getTime())) {
+      return { success: false, error: 'Tanggal tidak valid: ' + tanggal };
+    }
+    var tz = Session.getScriptTimeZone();
+    var tglTargetStr = Utilities.formatDate(tglTarget, tz, 'yyyy-MM-dd');
+
+    var colJ = sheet.getRange(2, 10, lastRow - 1, 1).getValues();
+    var rowsToDelete = [];
+    for (var i = 0; i < colJ.length; i++) {
+      var v = colJ[i][0];
+      if (!v) continue;
+      var d = (v instanceof Date) ? v : new Date(v);
+      if (isNaN(d.getTime())) continue;
+      if (Utilities.formatDate(d, tz, 'yyyy-MM-dd') === tglTargetStr) {
+        rowsToDelete.push(2 + i);
+      }
+    }
+    if (!rowsToDelete.length) return { success: true, dihapus: 0 };
+
+    // Kelompokkan baris yang berurutan jadi satu blok, supaya hapusnya
+    // efisien (tidak 1-per-1 kalau ratusan baris berurutan).
+    rowsToDelete.sort(function (a, b) { return a - b; });
+    var blocks = [];
+    var blockStart = rowsToDelete[0], blockLen = 1;
+    for (var j = 1; j < rowsToDelete.length; j++) {
+      if (rowsToDelete[j] === blockStart + blockLen) {
+        blockLen++;
+      } else {
+        blocks.push([blockStart, blockLen]);
+        blockStart = rowsToDelete[j]; blockLen = 1;
+      }
+    }
+    blocks.push([blockStart, blockLen]);
+
+    // Hapus dari blok PALING BAWAH dulu supaya nomor baris blok di
+    // atasnya tidak ikut bergeser.
+    for (var k = blocks.length - 1; k >= 0; k--) {
+      sheet.deleteRows(blocks[k][0], blocks[k][1]);
+    }
+
+    return { success: true, dihapus: rowsToDelete.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 }
 
 function appendStockData(rows, tanggal) {

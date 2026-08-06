@@ -571,18 +571,28 @@ function handleExcelFile(evt, tab){
   reader.onload = function(e){
     try {
       var data = new Uint8Array(e.target.result);
-      var wb = XLSX.read(data, {type:'array'});
+      // cellDates:true -- WAJIB supaya kolom tanggal di Excel dibaca sebagai
+      // tanggal asli, BUKAN angka serial mentah (mis. 46235) yang bikin
+      // hasil parsing jadi tanggal ngawur seperti "01/01/46235".
+      var wb = XLSX.read(data, {type:'array', cellDates:true});
       var firstSheetName = wb.SheetNames[0];
       var ws = wb.Sheets[firstSheetName];
       // header:1 -> array of array (baris 1 = header, dilewati)
-      var aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+      // raw:false -> nilai non-tanggal tetap apa adanya, tapi kalau ada
+      // sel tanggal, cellDates:true di atas yang menang duluan.
+      var aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:'', dateNF:'yyyy-mm-dd'});
       var cfg = TAB_CONFIG[tab];
+      var dateColIdx = cfg.dateCols || [];
       var dataRows = aoa.slice(1) // lewati baris header
         .filter(function(r){ return r.some(function(c){ return String(c).trim()!==''; }); }) // buang baris kosong total
         .map(function(r){
           var cells = [];
           for (var i=0;i<cfg.cols.length;i++){
             var v = r[i];
+            if (v instanceof Date){
+              // Jaga-jaga kalau masih lolos sebagai objek Date asli
+              v = v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+            }
             cells.push(v===undefined||v===null ? '' : String(v).trim());
           }
           return cells;
@@ -707,6 +717,34 @@ function submitData(tab){
   }
 
   btn.disabled = true; spin.style.display = 'inline-block';
+
+  if (tab === 'stock'){
+    var tglEl = document.getElementById('tanggal-stock');
+    var tglVal = tglEl ? tglEl.value : '';
+    lbl.textContent = 'Menghapus data lama di tanggal ini (kalau ada)...';
+    showStatus(tab,'info','Upload Stock = ganti total per tanggal. Mengecek & menghapus data lama tanggal '+tglVal+' dulu (kalau ada) sebelum menulis data baru...');
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (res && res.success){
+          if (res.dihapus > 0){
+            showStatus(tab,'info', res.dihapus+' baris data lama di tanggal ini sudah dihapus. Mengupload data baru...');
+          }
+          startBatchUpload();
+        } else {
+          spin.style.display='none'; lbl.textContent='Upload ke Sistem'; btn.disabled=false;
+          showStatus(tab,'err','Gagal menghapus data lama: '+(res&&res.error?res.error:'tidak diketahui')+'. Upload dibatalkan supaya data tidak dobel.');
+        }
+      })
+      .withFailureHandler(function(err){
+        spin.style.display='none'; lbl.textContent='Upload ke Sistem'; btn.disabled=false;
+        showStatus(tab,'err','Gagal terhubung ke server saat membersihkan data lama: '+(err&&err.message?err.message:'cek koneksi.'));
+      })
+      .clearStockDataForDate(tglVal);
+  } else {
+    startBatchUpload();
+  }
+
+  function startBatchUpload(){
   var totalOk = 0;
   var batchIdx = 0;
 
@@ -758,6 +796,7 @@ function submitData(tab){
   }
 
   uploadNextBatch();
+  }
 }
 
 // ================================================================
