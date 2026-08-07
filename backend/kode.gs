@@ -1211,6 +1211,34 @@ function cleanupCorruptedDates(sheetName) {
 }
 
 // Jalankan SEMUA pembersihan sekaligus untuk ketiga sheet transaksi.
+// Kosongkan SEMUA baris data di sebuah sheet (sisakan baris 1/header).
+// Dipakai kalau seluruh isi sheet itu memang hasil testing/percobaan dan
+// mau mulai dari nol lagi (mis. DASHBOARD_PRODUKSI yang datanya kacau
+// akibat percobaan upload berulang sebelum semua bug tanggal/angka
+// diperbaiki). HATI-HATI: ini menghapus SEMUA baris data, tidak bisa
+// dibatalkan (undo Google Sheets masih bisa dipakai sesaat setelah Run,
+// tapi jangan diandalkan).
+function clearAllDataInSheet(sheetName) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return 'Sheet ' + sheetName + ' tidak ditemukan.';
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 'Sheet ' + sheetName + ' sudah kosong (cuma ada header).';
+
+  sheet.deleteRows(2, lastRow - 1);
+  var msg = 'Selesai: semua data di ' + sheetName + ' sudah dikosongkan (' + (lastRow - 1) + ' baris dihapus). Header di baris 1 tetap ada, silakan upload ulang data yang bersih.';
+  Logger.log(msg);
+  return msg;
+}
+
+// Wrapper siap-Run khusus untuk mengosongkan DASHBOARD_PRODUKSI (Inbound)
+// -- sesuai konfirmasi: semua isi sheet ini boleh dihapus, akan diupload
+// ulang dari awal.
+function clearDashboardProduksi() {
+  return clearAllDataInSheet(SH_PRODUKSI);
+}
+
 function runFullCleanup() {
   var hasil = [];
   hasil.push(cleanupBlankRowsInSheet(SH_STOCK));
