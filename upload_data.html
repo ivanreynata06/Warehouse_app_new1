@@ -595,7 +595,13 @@ function handleExcelFile(evt, tab){
             var v = r[i];
             if (v instanceof Date){
               // Jaga-jaga kalau masih lolos sebagai objek Date asli
-              v = v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+              // WAJIB pakai method UTC (getUTCFullYear dst), BUKAN method
+              // lokal (getFullYear dst) -- SheetJS membuat objek Date dari
+              // tanggal Excel berbasis UTC. Kalau pakai method lokal, hasil
+              // tanggalnya bisa geser mundur 1 hari tergantung timezone
+              // komputer/browser (bug yang sempat kejadian: 06/08 kebaca
+              // jadi 05/08).
+              v = v.getUTCFullYear()+'-'+String(v.getUTCMonth()+1).padStart(2,'0')+'-'+String(v.getUTCDate()).padStart(2,'0');
             }
             cells.push(v===undefined||v===null ? '' : String(v).trim());
           }
