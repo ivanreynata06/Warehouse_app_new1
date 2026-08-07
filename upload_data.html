@@ -561,6 +561,18 @@ function validateAndPreview(tab, cellRows){
 // ================================================================
 //  EXCEL: upload file (.xlsx) & download template -- dipakai tab Stock
 // ================================================================
+function excelSerialToISODate(serial){
+  // Konversi manual angka serial Excel ke tanggal, TANPA bergantung pada
+  // objek Date otomatis SheetJS (yang ternyata perilakunya tidak
+  // konsisten/tergantung timezone). Rumus standar: serial 25569 = epoch
+  // JS (1 Jan 1970). Dihitung murni pakai UTC, jadi hasilnya PASTI sama
+  // persis dengan tanggal yang tertulis di Excel, di komputer manapun.
+  var utcDays = Math.floor(serial - 25569);
+  var utcMs = utcDays * 86400 * 1000;
+  var d = new Date(utcMs);
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+}
+
 function handleExcelFile(evt, tab){
   var file = (evt.target && evt.target.files && evt.target.files[0]) || (evt.dataTransfer && evt.dataTransfer.files[0]);
   if (!file) return;
@@ -571,19 +583,18 @@ function handleExcelFile(evt, tab){
   reader.onload = function(e){
     try {
       var data = new Uint8Array(e.target.result);
-      // cellDates:true -- WAJIB supaya kolom tanggal di Excel dibaca sebagai
-      // tanggal asli, BUKAN angka serial mentah (mis. 46235) yang bikin
-      // hasil parsing jadi tanggal ngawur seperti "01/01/46235".
-      var wb = XLSX.read(data, {type:'array', cellDates:true});
+      // TIDAK pakai cellDates:true lagi -- konversi Date otomatis SheetJS
+      // terbukti tidak bisa diandalkan (hasilnya beda-beda). Sekarang
+      // kolom tanggal dibaca sebagai ANGKA SERIAL MENTAH, lalu dikonversi
+      // manual sendiri (lihat excelSerialToISODate di atas) supaya pasti
+      // konsisten di komputer manapun.
+      var wb = XLSX.read(data, {type:'array'});
       var firstSheetName = wb.SheetNames[0];
       var ws = wb.Sheets[firstSheetName];
       // header:1 -> array of array (baris 1 = header, dilewati)
-      // raw:true -> WAJIB untuk kolom angka, supaya nilainya didapat dari
-      // nilai asli sel (mis. 23989.53), BUKAN teks hasil format lokal
-      // Indonesia (mis. "23.989,53") yang kalau di-parseFloat malah
-      // terpotong jadi 23.989 saja (bug yang sempat kejadian). Kolom
-      // tanggal TETAP aman terbaca benar berkat cellDates:true di atas
-      // (sel bertipe tanggal otomatis jadi objek Date asli walau raw:true).
+      // raw:true -> nilai angka (termasuk serial tanggal & tonase) didapat
+      // dari nilai ASLI sel, bukan teks berformat lokal yang bisa salah
+      // parse (mis. "23.989,53" jadi 23 doang).
       var aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
       var cfg = TAB_CONFIG[tab];
       var dateColIdx = cfg.dateCols || [];
@@ -593,15 +604,15 @@ function handleExcelFile(evt, tab){
           var cells = [];
           for (var i=0;i<cfg.cols.length;i++){
             var v = r[i];
-            if (v instanceof Date){
-              // Jaga-jaga kalau masih lolos sebagai objek Date asli
-              // WAJIB pakai method UTC (getUTCFullYear dst), BUKAN method
-              // lokal (getFullYear dst) -- SheetJS membuat objek Date dari
-              // tanggal Excel berbasis UTC. Kalau pakai method lokal, hasil
-              // tanggalnya bisa geser mundur 1 hari tergantung timezone
-              // komputer/browser (bug yang sempat kejadian: 06/08 kebaca
-              // jadi 05/08).
-              v = v.getUTCFullYear()+'-'+String(v.getUTCMonth()+1).padStart(2,'0')+'-'+String(v.getUTCDate()).padStart(2,'0');
+            if (dateColIdx.indexOf(i) !== -1){
+              if (typeof v === 'number' && v > 0){
+                v = excelSerialToISODate(v); // kolom tanggal, angka serial -> konversi manual
+              } else if (v instanceof Date){
+                // jaga-jaga kalau tetap lolos sebagai objek Date
+                v = v.getUTCFullYear()+'-'+String(v.getUTCMonth()+1).padStart(2,'0')+'-'+String(v.getUTCDate()).padStart(2,'0');
+              }
+              // kalau sudah berupa teks tanggal (mis. "06/08/2026"),
+              // dibiarkan apa adanya -- nanti dibaca fleksibel di backend
             }
             cells.push(v===undefined||v===null ? '' : String(v).trim());
           }
