@@ -1329,6 +1329,33 @@ function clearStockDataForDate(tanggal) {
   }
 }
 
+// Parser angka yang PINTAR: otomatis mendeteksi format ribuan/desimal,
+// baik gaya Indonesia/Eropa ("23.989,53") maupun gaya US ("23,989.53"),
+// supaya TIDAK ada nilai yang kepotong seperti bug sebelumnya (23.989,53
+// salah kebaca jadi cuma 23). Aturannya: pemisah yang muncul PALING
+// KANAN (terakhir) dianggap tanda desimal, sisanya dianggap pemisah
+// ribuan dan dibuang. Kalau nilainya sudah berupa angka asli (bukan
+// teks), dikembalikan apa adanya tanpa diubah sama sekali.
+function _parseAngkaFleksibel(v) {
+  if (typeof v === 'number') return isNaN(v) ? 0 : v;
+  if (v === null || v === undefined || v === '') return 0;
+  var s = String(v).trim().replace(/[^0-9,.\-]/g, '');
+  if (!s) return 0;
+  var lastComma = s.lastIndexOf(',');
+  var lastDot   = s.lastIndexOf('.');
+  if (lastComma > lastDot) {
+    // koma = desimal (format ID/EU) -> buang semua titik (ribuan), koma jadi titik
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (lastDot > lastComma) {
+    // titik = desimal (format US) -> buang semua koma (ribuan)
+    s = s.replace(/,/g, '');
+  }
+  // kalau cuma salah satu jenis pemisah dan cuma muncul sekali, biarkan
+  // apa adanya (sudah tertangani oleh dua kondisi di atas / memang polos)
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
 function appendStockData(rows, tanggal) {
   try {
     if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
@@ -1339,7 +1366,7 @@ function appendStockData(rows, tanggal) {
     var out = rows.map(function (r) {
       return [
         r[0] || '', r[1] || '', r[2] || '', r[3] || '',
-        r[4] || '', r[5] || '', parseFloat(r[6]) || 0, parseFloat(r[7]) || 0
+        r[4] || '', r[5] || '', _parseAngkaFleksibel(r[6]), _parseAngkaFleksibel(r[7])
       ];
     });
 
@@ -1405,7 +1432,7 @@ function _appendKirimProduksi(rows, sheetName) {
     var out = rows.map(function (r) {
       return [
         r[0] || '', r[1] || '', r[2] || '', r[3] || '',
-        _parseTanggalFleksibel(r[4]), parseFloat(r[5]) || 0
+        _parseTanggalFleksibel(r[4]), _parseAngkaFleksibel(r[5])
       ];
     });
 
