@@ -61,6 +61,7 @@ var API_FUNCTIONS = {
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
   clearStockDataForDate   : clearStockDataForDate,
+  getSheetStats           : getSheetStats,
   appendOutboundData      : appendOutboundData,
   appendInboundData       : appendInboundData,
   manualSyncNow           : manualSyncNow
@@ -1235,6 +1236,43 @@ function clearAllDataInSheet(sheetName) {
 // Wrapper siap-Run khusus untuk mengosongkan DASHBOARD_PRODUKSI (Inbound)
 // -- sesuai konfirmasi: semua isi sheet ini boleh dihapus, akan diupload
 // ulang dari awal.
+// Dipanggil OTOMATIS dari frontend setelah semua batch upload selesai --
+// supaya hasil upload langsung bisa diverifikasi (total baris & tanggal
+// terakhir yang benar-benar ada di sheet SEKARANG), tanpa perlu buka
+// spreadsheet manual atau menebak-nebak lagi.
+function getSheetStats(sheetName, tanggalColIdx) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Sheet ' + sheetName + ' tidak ditemukan.' };
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, totalBaris: 0, tanggalTerakhir: null };
+
+    var colVals = sheet.getRange(2, tanggalColIdx, lastRow - 1, 1).getValues();
+    var maxDate = null;
+    var totalBaris = 0;
+    for (var i = 0; i < colVals.length; i++) {
+      var v = colVals[i][0];
+      if (v === '' || v === null || v === undefined) continue;
+      totalBaris++;
+      var d = (v instanceof Date) ? v : new Date(v);
+      if (!isNaN(d.getTime())) {
+        if (!maxDate || d.getTime() > maxDate.getTime()) maxDate = d;
+      }
+    }
+    var tz = Session.getScriptTimeZone();
+    return {
+      success: true,
+      totalBaris: totalBaris,
+      totalBarisSheet: lastRow - 1,
+      tanggalTerakhir: maxDate ? Utilities.formatDate(maxDate, tz, 'dd/MM/yyyy') : null
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 function clearDashboardProduksi() {
   return clearAllDataInSheet(SH_PRODUKSI);
 }

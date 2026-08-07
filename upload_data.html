@@ -754,14 +754,36 @@ function submitData(tab){
 
   function uploadNextBatch(){
     if (batchIdx >= batches.length){
-      // Semua batch selesai
+      // Semua batch selesai -- verifikasi langsung ke sheet (total baris
+      // & tanggal terakhir), supaya tidak perlu cek manual/menebak lagi.
       spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
-      var syncNote = ' Data sudah masuk ke spreadsheet (sumber data utama). Monitoring Stock/Kanban akan ikut ter-update otomatis di belakang layar (biasanya dalam beberapa menit); backup permanen ke Supabase berjalan otomatis tiap tanggal 2. Kalau ingin memaksa update sekarang juga, klik "Sync Sekarang" di bawah.';
-      showStatus(tab,'ok','Berhasil! '+totalOk+' baris tersimpan ke sheet.'+syncNote);
       clearTab(tab, true);
       document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
       try { clearApiCache(); } catch(e){}
       btn.disabled = false;
+
+      var SHEET_NAME = { stock:'DASHBOARD_STOCK', outbound:'DASHBOARD_KIRIM', inbound:'DASHBOARD_PRODUKSI' }[tab];
+      var TGL_COL_IDX = { stock:10, outbound:5, inbound:5 }[tab];
+
+      showStatus(tab,'ok','Berhasil! '+totalOk+' baris terkirim. Memverifikasi ke sheet...');
+
+      google.script.run
+        .withSuccessHandler(function(stat){
+          var verif = '';
+          if (stat && stat.success){
+            verif = ' Verifikasi: sheet sekarang punya total '+stat.totalBarisSheet+' baris data'+
+              (stat.tanggalTerakhir ? ', tanggal terakhir '+stat.tanggalTerakhir+'.' : '.') +
+              ' Cek angka ini cocok dengan yang kamu harapkan.';
+          } else {
+            verif = ' (Tidak bisa verifikasi otomatis: '+(stat&&stat.error?stat.error:'-')+')';
+          }
+          var syncNote = ' Monitoring Stock/Kanban akan ikut ter-update otomatis di belakang layar; backup permanen ke Supabase berjalan otomatis tiap tanggal 2. Klik "Sync Sekarang" untuk memaksa update sekarang.';
+          showStatus(tab,'ok','Berhasil! '+totalOk+' baris tersimpan ke sheet.'+verif+syncNote);
+        })
+        .withFailureHandler(function(){
+          showStatus(tab,'ok','Berhasil! '+totalOk+' baris tersimpan ke sheet. (Verifikasi otomatis gagal terhubung, cek manual di sheet kalau perlu.)');
+        })
+        .getSheetStats(SHEET_NAME, TGL_COL_IDX);
       return;
     }
 
@@ -776,27 +798,42 @@ function submitData(tab){
       ? [batch, (document.getElementById('tanggal-stock')||{}).value || '']
       : [batch];
 
-    var runner = google.script.run
-      .withSuccessHandler(function(res){
-        if (res && res.success){
-          totalOk += res.jumlah;
-          batchIdx++;
-          uploadNextBatch();
-        } else {
-          spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
-          showStatus(tab,'err','Batch '+(batchIdx+1)+' gagal: ' + (res && res.error ? res.error : 'kesalahan tidak diketahui') +
-            (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan, tidak perlu diulang -- lanjutkan sisanya saja.)' : ''));
-          btn.disabled = false;
-        }
-      })
-      .withFailureHandler(function(err){
-        spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
-        showStatus(tab,'err','Gagal terhubung ke server di batch '+(batchIdx+1)+': ' + (err && err.message ? err.message : 'cek koneksi.') +
-          (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan.)' : ''));
-        btn.disabled = false;
-      });
+    var MAX_RETRY = 2;
+    var retryCount = 0;
 
-    runner[cfg.fn](...callArgs);
+    function attemptBatch(){
+      var runner = google.script.run
+        .withSuccessHandler(function(res){
+          if (res && res.success){
+            totalOk += res.jumlah;
+            batchIdx++;
+            uploadNextBatch();
+          } else if (retryCount < MAX_RETRY){
+            retryCount++;
+            showStatus(tab,'info','Batch '+(batchIdx+1)+' gagal, mencoba lagi ('+retryCount+'/'+MAX_RETRY+')...');
+            attemptBatch();
+          } else {
+            spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
+            showStatus(tab,'err','Batch '+(batchIdx+1)+' gagal setelah '+MAX_RETRY+'x dicoba ulang: ' + (res && res.error ? res.error : 'kesalahan tidak diketahui') +
+              (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan, tidak perlu diulang -- upload lagi HANYA sisa data yang belum masuk.)' : ''));
+            btn.disabled = false;
+          }
+        })
+        .withFailureHandler(function(err){
+          if (retryCount < MAX_RETRY){
+            retryCount++;
+            showStatus(tab,'info','Batch '+(batchIdx+1)+' gagal terhubung, mencoba lagi ('+retryCount+'/'+MAX_RETRY+')...');
+            attemptBatch();
+          } else {
+            spin.style.display = 'none'; lbl.textContent = 'Upload ke Sistem';
+            showStatus(tab,'err','Gagal terhubung ke server di batch '+(batchIdx+1)+' setelah '+MAX_RETRY+'x dicoba ulang: ' + (err && err.message ? err.message : 'cek koneksi.') +
+              (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan.)' : ''));
+            btn.disabled = false;
+          }
+        });
+      runner[cfg.fn](...callArgs);
+    }
+    attemptBatch();
   }
 
   uploadNextBatch();
