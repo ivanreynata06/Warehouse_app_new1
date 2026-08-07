@@ -1273,6 +1273,13 @@ function getSheetStats(sheetName, tanggalColIdx) {
   }
 }
 
+// Wrapper siap-Run khusus untuk mengosongkan DASHBOARD_KIRIM (Outbound) --
+// sama seperti clearDashboardProduksi, dipakai kalau seluruh isi sheet
+// ini mau dihapus total dan diupload ulang dari awal.
+function clearDashboardKirim() {
+  return clearAllDataInSheet(SH_KIRIM);
+}
+
 function clearDashboardProduksi() {
   return clearAllDataInSheet(SH_PRODUKSI);
 }
