@@ -355,6 +355,14 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="bar-chart-4" style="width:12px;"></i>Tren Kategori Lembur — 6 Bulan Terakhir</div>
+          <span class="card-badge badge-blue">Jam Lembur</span>
+        </div>
+        <div class="chart-wrap" style="height:220px;"><canvas id="chart-kategori-trend"></canvas></div>
+      </div>
+
       <div class="grid-2c">
         <div class="card">
           <div class="card-hdr">
@@ -389,6 +397,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 var karyawanList = [];
 var fteData = null;
 var chartOT = null;
+var chartKategori = null;
 var _now = new Date();
 var curBulan = _now.getMonth()+1, curTahun = _now.getFullYear();
 
@@ -419,7 +428,7 @@ function toggleTheme(){
   var isLight = document.body.classList.toggle('theme-light');
   localStorage.setItem('lembur_theme', isLight?'light':'dark');
   updateThemeBtn(isLight);
-  setTimeout(function(){ if(chartOT) chartOT.destroy(); loadTrendChart(); }, 60);
+  setTimeout(function(){ if(chartOT) chartOT.destroy(); loadTrendChart(); if(chartKategori) chartKategori.destroy(); loadKategoriTrendChart(); }, 60);
 }
 function updateThemeBtn(isLight){
   document.getElementById('theme-icon').setAttribute('data-lucide', isLight?'sun':'moon');
@@ -586,6 +595,7 @@ function renderAll(){
   renderTabelOS();
   renderHoliday();
   loadTrendChart();
+  loadKategoriTrendChart();
 }
 
 function renderHeroGauge(){
@@ -727,6 +737,74 @@ function renderChart(months, results){
       scales:{
         x:{ grid:{color:gridCol}, ticks:{color:tickCol, font:{size:8.5}} },
         y:{ grid:{color:gridCol}, ticks:{color:tickCol, font:{size:8.5}, callback:function(v){return v+'%';}}, beginAtZero:true }
+      }
+    }
+  });
+}
+
+// ================================================================
+//  GRAFIK TREN KATEGORI LEMBUR — 6 bulan terakhir, stacked bar per
+//  kategori (Loading, Preparation, Putaway, dst), pakai pola yang sama
+//  seperti loadTrendChart/renderChart di atas.
+// ================================================================
+var KATEGORI_LEMBUR_CHART_DEF = [
+  { kode:'loading',      label:'Loading / Muat',          warna:'#10b981' },
+  { kode:'preparation',  label:'Preparation / Persiapan', warna:'#3b82f6' },
+  { kode:'putaway',      label:'Putaway / Penyimpanan',   warna:'#8b5cf6' },
+  { kode:'receiving',    label:'Receiving / Bongkar',     warna:'#f59e0b' },
+  { kode:'stock',        label:'Stock / Inventory',       warna:'#06b6d4' },
+  { kode:'checking',     label:'Checking / Administrasi', warna:'#ec4899' },
+  { kode:'housekeeping', label:'Housekeeping / 5S',       warna:'#84cc16' },
+  { kode:'lain',         label:'Lain-lain',               warna:'#6b7280' }
+];
+
+function loadKategoriTrendChart(){
+  var months = [];
+  for(var i=5;i>=0;i--){
+    var d = new Date(curTahun, curBulan-1-i, 1);
+    months.push({bulan:d.getMonth()+1, tahun:d.getFullYear(), label:NM[d.getMonth()+1].substring(0,3)+' '+String(d.getFullYear()).slice(2)});
+  }
+  var results = [];
+  var pending = months.length;
+  months.forEach(function(m, idx){
+    google.script.run
+      .withSuccessHandler(function(res){
+        results[idx] = (res&&res.success) ? res.totals : null;
+        pending--; if(pending<=0) renderKategoriChart(months, results);
+      })
+      .withFailureHandler(function(){ results[idx]=null; pending--; if(pending<=0) renderKategoriChart(months, results); })
+      .getLemburKategoriBulanan(m.bulan, m.tahun);
+  });
+}
+
+function renderKategoriChart(months, results){
+  if(!months || !results) return;
+  var ctx = document.getElementById('chart-kategori-trend');
+  if(!ctx) return;
+  var isDark = !document.body.classList.contains('theme-light');
+  var gridCol = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  var tickCol = isDark ? '#9da3b8' : '#5a6785';
+
+  var datasets = KATEGORI_LEMBUR_CHART_DEF.map(function(k){
+    return {
+      label: k.label,
+      data: results.map(function(r){ return r ? (r[k.kode]||0) : 0; }),
+      backgroundColor: k.warna,
+      borderRadius: 3,
+      stack: 'lembur'
+    };
+  });
+
+  if(chartKategori) chartKategori.destroy();
+  chartKategori = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: months.map(function(m){return m.label;}), datasets: datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ color:tickCol, font:{size:8.5}, boxWidth:9, padding:8 } } },
+      scales:{
+        x:{ stacked:true, grid:{display:false}, ticks:{color:tickCol, font:{size:8.5}} },
+        y:{ stacked:true, grid:{color:gridCol}, ticks:{color:tickCol, font:{size:8.5}, callback:function(v){return v+'j';}}, beginAtZero:true }
       }
     }
   });

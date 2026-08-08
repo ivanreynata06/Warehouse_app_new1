@@ -128,6 +128,45 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
   padding:5px 10px;border-radius:7px;font-family:'Inter',sans-serif;font-size:9px;font-weight:700;
   display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;}
 .btn-export-sm:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(34,197,94,.35);}
+
+/* Tombol "+ Tambah" aktivitas -- dibuat lebih hidup: gradient, ikon "+"
+   berputar saat hover, sedikit "mantul" saat ditekan. */
+.btn-tambah-aktivitas{
+  background:linear-gradient(135deg,#d4af37,#f2d98a);
+  border:none;color:#1a1408;cursor:pointer;
+  padding:0 16px;border-radius:9px;font-family:'Inter',sans-serif;font-size:11px;font-weight:700;
+  display:flex;align-items:center;gap:6px;white-space:nowrap;
+  box-shadow:0 3px 10px rgba(212,175,55,.25);
+  transition:transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease, background .18s ease;
+}
+.btn-tambah-aktivitas svg{transition:transform .25s cubic-bezier(.34,1.56,.64,1);}
+.btn-tambah-aktivitas:hover{
+  transform:translateY(-2px) scale(1.04);
+  box-shadow:0 8px 20px rgba(212,175,55,.4);
+  background:linear-gradient(135deg,#e0bb45,#f7e2a3);
+}
+.btn-tambah-aktivitas:hover svg{transform:rotate(90deg) scale(1.15);}
+.btn-tambah-aktivitas:active{transform:translateY(0) scale(.94);box-shadow:0 2px 6px rgba(212,175,55,.3);}
+.btn-tambah-aktivitas.just-added{animation:tambahPop .4s ease;}
+@keyframes tambahPop{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.18);box-shadow:0 0 0 8px rgba(212,175,55,.18);}
+  100%{transform:scale(1);box-shadow:0 3px 10px rgba(212,175,55,.25);}
+}
+
+/* Dropdown Kategori Lembur */
+.kategori-select{
+  width:100%;background:var(--bg-input,rgba(255,255,255,.04));
+  border:1px solid var(--border-color,#232b45);border-radius:9px;
+  padding:10px 34px 10px 12px;color:var(--text-main);font-family:'Inter',sans-serif;font-size:12.5px;
+  font-weight:600;outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d4af37' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+  transition:border-color .15s;
+}
+.kategori-select:focus{border-color:var(--accent-gold2,#f2d98a);}
+.kategori-select option{background:#12121f;color:#fff;}
+
 .card-title{font-family:var(--font-display);font-size:11px;font-weight:700;color:var(--text-main);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;}
 .card-badge{font-size:8px;padding:2px 7px;border-radius:20px;font-weight:600;}
 .badge-gold{background:rgba(212,175,55,.15);color:var(--accent-gold2);border:1px solid rgba(212,175,55,.3);}
@@ -347,6 +386,12 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
                   <i data-lucide="user-check" style="width:14px;"></i><span id="lm-karyawan-nama">—</span>
                 </div>
               </div>
+              <div class="form-field span2">
+                <label>Kategori Lembur</label>
+                <select id="lm-kategori" class="kategori-select">
+                  <option value="" disabled selected>— Pilih kategori —</option>
+                </select>
+              </div>
               <div class="form-field">
                 <label>Tanggal</label>
                 <input type="date" id="lm-tanggal" onchange="updateDurasiPreview()">
@@ -365,7 +410,10 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
                 <div id="lm-aktivitas-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
                 <div style="display:flex;gap:6px;">
                   <input type="text" id="lm-aktivitas-custom" placeholder="Aktivitas lain (tidak ada di daftar)..." style="flex:1;">
-                  <button type="button" class="btn-export" onclick="addAktivitasCustom()">+ Tambah</button>
+                  <button type="button" class="btn-tambah-aktivitas" id="btn-tambah-aktivitas" onclick="addAktivitasCustom()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Tambah
+                  </button>
                 </div>
               </div>
             </div>
@@ -772,6 +820,28 @@ function updateDurasiPreview(){
 var AKTIVITAS_PRESET = ['Support Pengiriman','Stock Opname','Relokasi','Input Data','Relokasi Fitting PPR','Persiapan Pipa PPR','Persiapan Fitting PPR'];
 var aktivitasTerpilih = [];
 
+// Sama persis dengan KATEGORI_LEMBUR_LIST di backend/kode.gs -- kalau
+// mau ubah daftar kategori, ubah juga yang di sana biar konsisten.
+var KATEGORI_LEMBUR_LIST = [
+  { kode:'loading',      label:'Loading / Muat' },
+  { kode:'preparation',  label:'Preparation / Persiapan' },
+  { kode:'putaway',      label:'Putaway / Penyimpanan' },
+  { kode:'receiving',    label:'Receiving / Bongkar' },
+  { kode:'stock',        label:'Stock / Inventory' },
+  { kode:'checking',     label:'Checking / Administrasi' },
+  { kode:'housekeeping', label:'Housekeeping / 5S' },
+  { kode:'lain',         label:'Lain-lain' }
+];
+(function renderKategoriDropdown(){
+  var sel = document.getElementById('lm-kategori');
+  if (!sel) return;
+  KATEGORI_LEMBUR_LIST.forEach(function(k){
+    var opt = document.createElement('option');
+    opt.value = k.kode; opt.textContent = k.label;
+    sel.appendChild(opt);
+  });
+})();
+
 function renderAktivitasPills(){
   var wrap = document.getElementById('lm-aktivitas-pills');
   wrap.innerHTML = AKTIVITAS_PRESET.map(function(a){
@@ -789,10 +859,17 @@ function toggleAktivitas(a){
 function addAktivitasCustom(){
   var inp = document.getElementById('lm-aktivitas-custom');
   var val = inp.value.trim();
-  if(!val) return;
+  var btn = document.getElementById('btn-tambah-aktivitas');
+  if(!val){
+    // getar dikit + kasih tahu, biar tombolnya kerasa "hidup" walau gagal
+    if(btn){ btn.classList.remove('just-added'); void btn.offsetWidth; btn.classList.add('just-added'); }
+    inp.focus();
+    return;
+  }
   if(aktivitasTerpilih.indexOf(val)===-1) aktivitasTerpilih.push(val);
   inp.value='';
   renderAktivitasPills();
+  if(btn){ btn.classList.remove('just-added'); void btn.offsetWidth; btn.classList.add('just-added'); }
 }
 function removeAktivitasCustom(a){
   var idx = aktivitasTerpilih.indexOf(a);
@@ -814,9 +891,11 @@ function submitLembur(){
   var tanggal = document.getElementById('lm-tanggal').value;
   var mulai = document.getElementById('lm-mulai').value;
   var selesai = document.getElementById('lm-selesai').value;
+  var kategoriLembur = document.getElementById('lm-kategori').value;
   var ket = aktivitasTerpilih.join(', ');
 
   if(!kode){ showToast('Sesi login tidak ditemukan, silakan login ulang','error'); return; }
+  if(!kategoriLembur){ showToast('Pilih kategori lembur dulu','error'); return; }
   if(!tanggal){ showToast('Isi tanggal dulu','error'); return; }
   if(!mulai || !selesai){ showToast('Isi jam mulai dan selesai','error'); return; }
 
@@ -839,6 +918,7 @@ function submitLembur(){
         }, 600);
       }
       document.getElementById('lm-mulai').value=''; document.getElementById('lm-selesai').value='';
+      document.getElementById('lm-kategori').value='';
       aktivitasTerpilih = []; renderAktivitasPills();
       document.getElementById('durasi-preview').style.display='none';
       clearApiCache(); loadLemburAbsensi();
@@ -847,7 +927,7 @@ function submitLembur(){
       btn.disabled=false; btn.style.opacity='1';
       showToast('Gagal simpan: '+(err&&err.message?err.message:'cek koneksi'),'error');
     })
-    .saveLembur({ tanggal: tanggal, kode: kode, nama: k?k.nama:namaUser, jamMulai: mulai, jamSelesai: selesai, keterangan: ket, inputOleh: namaUser });
+    .saveLembur({ tanggal: tanggal, kode: kode, nama: k?k.nama:namaUser, jamMulai: mulai, jamSelesai: selesai, keterangan: ket, inputOleh: namaUser, kategoriLembur: kategoriLembur });
 }
 
 

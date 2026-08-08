@@ -41,6 +41,8 @@ var API_FUNCTIONS = {
   deletePhoto             : deletePhoto,
   // Modul Lembur & FTE
   getKaryawanList         : getKaryawanList,
+  getKategoriLemburList   : getKategoriLemburList,
+  getLemburKategoriBulanan: getLemburKategoriBulanan,
   saveLembur              : saveLembur,
   getLemburList           : getLemburList,
   deleteLembur            : deleteLembur,
@@ -2680,7 +2682,7 @@ function setupLemburSheets() {
   var shL = ss.getSheetByName(SH_LEMBUR_LOG);
   if (!shL) {
     shL = ss.insertSheet(SH_LEMBUR_LOG);
-    shL.getRange(1, 1, 1, 9).setValues([['Timestamp', 'Tanggal', 'Kode', 'Nama', 'JamMulai', 'JamSelesai', 'TotalJamLembur', 'Keterangan', 'InputOleh']]);
+    shL.getRange(1, 1, 1, 12).setValues([['Timestamp', 'Tanggal', 'Kode', 'Nama', 'JamMulai', 'JamSelesai', 'TotalJamLembur', 'Keterangan', 'InputOleh', 'Status', 'ApprovedBy', 'KategoriLembur']]);
     shL.setFrozenRows(1);
     msgs.push('Sheet LEMBUR_LOG dibuat.');
   } else {
@@ -3026,6 +3028,22 @@ function _timeStrToMinutes(t) {
   return h * 60 + m;
 }
 
+// ================================================================
+//  KATEGORI LEMBUR -- klasifikasi jenis aktivitas lembur (dipakai di
+//  dropdown Form Lembur dan grafik tren kategori di Monitoring FTE).
+// ================================================================
+var KATEGORI_LEMBUR_LIST = [
+  { kode: 'loading',       label: 'Loading / Muat',            warna: '#10b981' },
+  { kode: 'preparation',   label: 'Preparation / Persiapan',   warna: '#3b82f6' },
+  { kode: 'putaway',       label: 'Putaway / Penyimpanan',     warna: '#8b5cf6' },
+  { kode: 'receiving',     label: 'Receiving / Bongkar',       warna: '#f59e0b' },
+  { kode: 'stock',         label: 'Stock / Inventory',         warna: '#06b6d4' },
+  { kode: 'checking',      label: 'Checking / Administrasi',   warna: '#ec4899' },
+  { kode: 'housekeeping',  label: 'Housekeeping / 5S',         warna: '#84cc16' },
+  { kode: 'lain',          label: 'Lain-lain',                 warna: '#6b7280' }
+];
+function getKategoriLemburList() { return { success: true, data: KATEGORI_LEMBUR_LIST }; }
+
 function saveLembur(data) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -3047,7 +3065,8 @@ function saveLembur(data) {
       new Date(), data.tanggal, data.kode, data.nama || '',
       data.jamMulai, data.jamSelesai, durJam,
       data.keterangan || '', data.inputOleh || '',
-      'Pending', '' // Status (kol J) & ApprovedBy/NIK TL (kol K)
+      'Pending', '', // Status (kol J) & ApprovedBy/NIK TL (kol K)
+      data.kategoriLembur || '' // Kategori Lembur (kol L) -- lihat KATEGORI_LEMBUR_LIST
     ]);
 
     // ---- Notifikasi WhatsApp ke approver (khusus karyawan INTERNAL) ----
@@ -3161,6 +3180,7 @@ function getLemburList(filter) {
         jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
         keterangan: String(r[7] || ''), inputOleh: String(r[8] || ''),
         approvalStatus: String(r[9] || 'Pending'), approvedBy: String(r[10] || ''),
+        kategoriLembur: String(r[11] || ''),
         isMinggu: tgl.getDay() === 0,
         isHariLibur: !!hariLibur[dk],
         hariLiburLabel: hariLibur[dk] || ''
@@ -3171,9 +3191,34 @@ function getLemburList(filter) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
-// ================================================================
-//  APPROVAL — TL menyetujui/menolak pengajuan Lembur & Cuti
-// ================================================================
+// Total jam lembur per kategori untuk SATU bulan -- dipanggil berulang
+// dari Monitoring FTE (6x, satu per bulan) untuk bikin grafik tren,
+// persis pola yang sudah dipakai grafik "Tren Over Time %".
+function getLemburKategoriBulanan(bulan, tahun) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet LEMBUR_LOG belum ada.' };
+    var data = sh.getDataRange().getValues();
+
+    var totals = {};
+    KATEGORI_LEMBUR_LIST.forEach(function (k) { totals[k.kode] = 0; });
+
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (!r[1]) continue;
+      var tgl = new Date(r[1]);
+      if ((tgl.getMonth() + 1) != Number(bulan) || tgl.getFullYear() != Number(tahun)) continue;
+      var kat = String(r[11] || '').trim();
+      if (!totals.hasOwnProperty(kat)) kat = 'lain'; // data lama sebelum fitur ini ada / kategori kosong
+      totals[kat] += Number(r[6]) || 0;
+    }
+    Object.keys(totals).forEach(function (k) { totals[k] = Math.round(totals[k] * 100) / 100; });
+    return { success: true, totals: totals };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+
 function getPendingApprovals() {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
