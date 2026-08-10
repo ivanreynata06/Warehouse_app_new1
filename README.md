@@ -217,3 +217,4 @@ Cache yang **masih dipakai** cuma satu lapis:
   Apps Script Web App biasa). Kalau datanya sensitif, pertimbangkan
   tambah token rahasia sederhana (cek `params.token` di
   `handleApiRequest`) yang juga dikirim dari `api-shim.js`.
+
