@@ -124,7 +124,7 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .kpi-val.c-purple{color:var(--accent-purple);}
 .kpi-sub{font-size:9px;color:var(--text-muted);}
 
-.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:13px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;}
+.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:13px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;flex-shrink:0;}
 .card-hdr{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:6px;}
 .card-title{font-family:var(--font-display);font-size:11px;font-weight:700;color:var(--text-main);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;}
 .card-badge{font-size:8px;padding:2px 7px;border-radius:20px;font-weight:600;}
@@ -317,7 +317,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
       </div>
 
       <!-- ═══ APPROVAL LEMBUR & CUTI — cuma tampil untuk TL/Admin ═══ -->
-      <div class="card" id="card-approval" style="display:none;">
+      <div class="card" id="card-approval" style="display:none;min-height:120px;overflow:visible;">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="clipboard-check" style="width:12px;"></i>Approval Lembur &amp; Cuti</div>
           <span class="card-badge badge-purple" id="badge-approval">0 menunggu</span>
