@@ -114,7 +114,7 @@
   // URL), gampang melebihi batas panjang URL browser (~8000 karakter)
   // dan request langsung gagal total ("Failed to fetch") sebelum sempat
   // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
-  var LARGE_PAYLOAD_FUNCTIONS = { savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1 };
+  var LARGE_PAYLOAD_FUNCTIONS = { savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, uploadTlSignature: 1 };
 
   function callBackend(fnName, args) {
     var payload = { action: fnName, params: args || [], workspace: getWorkspace() };
