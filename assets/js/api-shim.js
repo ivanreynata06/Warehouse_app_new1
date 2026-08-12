@@ -148,7 +148,7 @@
       '&params=' + encodeURIComponent(JSON.stringify(args || [])) +
       '&workspace=' + encodeURIComponent(getWorkspace());
 
-    return fetchWithTimeout(url, { method: 'GET' }, 25000).then(function (r) { return r.json(); });
+    return fetchWithTimeout(url, { method: 'GET' }, 45000).then(function (r) { return r.json(); });
   }
 
   function makeRunner() {
