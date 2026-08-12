@@ -13,7 +13,7 @@
  *   6. Paste di bawah ini.
  * -----------------------------------------------------------------
  */
-window.APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz6Og2xFO4XR7gwqqAkVApjVyw1d0C8F5_qK0c9WGNu9pq-F4oK9G9feMsNNjZbqNC_Vw/exec';
+window.APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz-9hZQJ_-EwOwT1D5iFSi6rJqBgDH8fy_d_zJ6U3l8arHdmBQ2Emm8wZqsOP8quC_rpA/exec';
 
 // Berapa lama (ms) data hasil panggilan backend dianggap "masih segar"
 // sebelum diambil ulang otomatis. Selama masih segar, saat pindah menu
