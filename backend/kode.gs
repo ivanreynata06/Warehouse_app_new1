@@ -46,6 +46,9 @@ var API_FUNCTIONS = {
   saveLembur              : saveLembur,
   getLemburList           : getLemburList,
   deleteLembur            : deleteLembur,
+  submitEditLembur        : submitEditLembur,
+  approveEditRequest      : approveEditRequest,
+  getPendingApprovalCount : getPendingApprovalCount,
   saveAbsensi             : saveAbsensi,
   getAbsensiList          : getAbsensiList,
   deleteAbsensi           : deleteAbsensi,
@@ -2682,7 +2685,7 @@ function setupLemburSheets() {
   var shL = ss.getSheetByName(SH_LEMBUR_LOG);
   if (!shL) {
     shL = ss.insertSheet(SH_LEMBUR_LOG);
-    shL.getRange(1, 1, 1, 12).setValues([['Timestamp', 'Tanggal', 'Kode', 'Nama', 'JamMulai', 'JamSelesai', 'TotalJamLembur', 'Keterangan', 'InputOleh', 'Status', 'ApprovedBy', 'KategoriLembur']]);
+    shL.getRange(1, 1, 1, 17).setValues([['Timestamp', 'Tanggal', 'Kode', 'Nama', 'JamMulai', 'JamSelesai', 'TotalJamLembur', 'Keterangan', 'InputOleh', 'Status', 'ApprovedBy', 'Catatan', 'KategoriLembur', 'EditReqStatus', 'EditReqData', 'EditReqBy', 'EditReqNote']]);
     shL.setFrozenRows(1);
     msgs.push('Sheet LEMBUR_LOG dibuat.');
   } else {
@@ -3066,7 +3069,11 @@ function saveLembur(data) {
       data.jamMulai, data.jamSelesai, durJam,
       data.keterangan || '', data.inputOleh || '',
       'Pending', '', // Status (kol J) & ApprovedBy/NIK TL (kol K)
-      data.kategoriLembur || '' // Kategori Lembur (kol L) -- lihat KATEGORI_LEMBUR_LIST
+      '', // Catatan attestasi TL (kol L) -- diisi approveItem()
+      data.kategoriLembur || '', // Kategori Lembur (kol M) -- PINDAH dari L krn tadinya
+      // bentrok sama kolom Catatan attestasi (L) di approveItem(). Lihat
+      // KATEGORI_LEMBUR_LIST untuk daftar kategorinya.
+      '', '', '', '' // EditReqStatus(N), EditReqData(O), EditReqBy(P), EditReqNote(Q)
     ]);
 
     // ---- Notifikasi WhatsApp ke approver (khusus karyawan INTERNAL) ----
@@ -3175,12 +3182,17 @@ function getLemburList(filter) {
       }
       if (kodeFilter && String(r[2]) !== String(kodeFilter)) continue;
       var dk = _fmtYMD(tgl);
+      var editReqStatus = String(r[13] || ''); // kolom N
       out.push({
-        rowIndex: i + 1, tanggal: dk, kode: String(r[2]), nama: String(r[3]),
+        rowIndex: i + 1, timestamp: r[0] ? new Date(r[0]).toISOString() : '',
+        tanggal: dk, kode: String(r[2]), nama: String(r[3]),
         jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
         keterangan: String(r[7] || ''), inputOleh: String(r[8] || ''),
         approvalStatus: String(r[9] || 'Pending'), approvedBy: String(r[10] || ''),
-        kategoriLembur: String(r[11] || ''),
+        kategoriLembur: String(r[12] || ''), // kolom M
+        editReqStatus: editReqStatus,
+        editReqData: editReqStatus === 'Pending' ? String(r[14] || '') : '', // kolom O (JSON)
+        editReqBy: String(r[15] || ''), // kolom P
         isMinggu: tgl.getDay() === 0,
         isHariLibur: !!hariLibur[dk],
         hariLiburLabel: hariLibur[dk] || ''
@@ -3209,7 +3221,7 @@ function getLemburKategoriBulanan(bulan, tahun) {
       if (!r[1]) continue;
       var tgl = new Date(r[1]);
       if ((tgl.getMonth() + 1) != Number(bulan) || tgl.getFullYear() != Number(tahun)) continue;
-      var kat = String(r[11] || '').trim();
+      var kat = String(r[12] || '').trim();
       if (!totals.hasOwnProperty(kat)) kat = 'lain'; // data lama sebelum fitur ini ada / kategori kosong
       totals[kat] += Number(r[6]) || 0;
     }
@@ -3218,6 +3230,15 @@ function getLemburKategoriBulanan(bulan, tahun) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
+
+// Versi ringkas getPendingApprovals -- cuma JUMLAHNYA, dipakai saat TL
+// login untuk tahu perlu diarahkan ke Monitoring FTE atau tidak, tanpa
+// perlu ambil semua detail datanya.
+function getPendingApprovalCount() {
+  var res = getPendingApprovals();
+  if (!res.success) return { success: false, error: res.error };
+  return { success: true, jumlah: res.data.length };
+}
 
 function getPendingApprovals() {
   try {
@@ -3231,13 +3252,32 @@ function getPendingApprovals() {
         var r = dl[i];
         if (!r[1]) continue;
         var st = String(r[9] || 'Pending');
-        if (st !== 'Pending') continue;
-        out.push({
-          tipe: 'lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
-          kode: String(r[2]), nama: String(r[3]),
-          jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
-          keterangan: String(r[7] || '')
-        });
+        if (st === 'Pending') {
+          out.push({
+            tipe: 'lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
+            kode: String(r[2]), nama: String(r[3]),
+            jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
+            keterangan: String(r[7] || '')
+          });
+        }
+        // Pengajuan edit/hapus (kolom N = EditReqStatus) -- terpisah dari
+        // status approval catatan lembur itu sendiri (kolom J), supaya
+        // catatan yang SUDAH disetujui pun tetap bisa diajukan edit/hapus.
+        var editReqSt = String(r[13] || '');
+        if (editReqSt === 'Pending') {
+          var reqData = {};
+          try { reqData = JSON.parse(r[14] || '{}'); } catch (e) {}
+          out.push({
+            tipe: 'edit_lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
+            kode: String(r[2]), nama: String(r[3]),
+            jamMulaiLama: _fmtTime(r[4]), jamSelesaiLama: _fmtTime(r[5]), totalJamLama: Number(r[6]) || 0,
+            keteranganLama: String(r[7] || ''),
+            aksi: reqData.action || 'edit',
+            jamMulaiBaru: reqData.jamMulai || '', jamSelesaiBaru: reqData.jamSelesai || '',
+            totalJamBaru: reqData.totalJam || 0, keteranganBaru: reqData.keterangan || '',
+            diajukanOleh: String(r[15] || '')
+          });
+        }
       }
     }
 
@@ -3431,12 +3471,113 @@ function hasTlSignature(nik) {
 }
 
 
-function deleteLembur(rowIndex) {
+// ================================================================
+//  EDIT/HAPUS LEMBUR — hanya boleh oleh akun yang membuat (kolom Kode).
+//  Kalau catatannya masih BARU (<24 jam sejak diinput): boleh langsung
+//  diedit/dihapus tanpa approval. Kalau sudah LEBIH dari 24 jam: tidak
+//  langsung diterapkan -- disimpan sebagai PENGAJUAN yang harus di-
+//  approve TL dulu (lihat approveEditRequest).
+// ================================================================
+var BATAS_EDIT_LANGSUNG_MS = 24 * 60 * 60 * 1000; // 24 jam
+
+function _cekKepemilikanLembur(sh, rowIndex, nikRequester) {
+  if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { ok: false, error: 'Baris tidak valid / sudah tidak ada.' };
+  var row = sh.getRange(rowIndex, 1, 1, 3).getValues()[0]; // Timestamp, Tanggal, Kode
+  var pemilikNik = String(row[2] || '').trim();
+  if (pemilikNik !== String(nikRequester || '').trim()) {
+    return { ok: false, error: 'Anda hanya bisa mengedit/menghapus catatan lembur milik sendiri.' };
+  }
+  var timestamp = row[0] ? new Date(row[0]) : null;
+  var masihBaru = timestamp && ((new Date()).getTime() - timestamp.getTime()) < BATAS_EDIT_LANGSUNG_MS;
+  return { ok: true, masihBaru: masihBaru, timestamp: timestamp };
+}
+
+function deleteLembur(rowIndex, nikRequester) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sh = ss.getSheetByName(SH_LEMBUR_LOG);
     if (!sh) return { success: false, error: 'Sheet tidak ditemukan' };
-    sh.deleteRow(rowIndex);
+
+    var cek = _cekKepemilikanLembur(sh, rowIndex, nikRequester);
+    if (!cek.ok) return { success: false, error: cek.error };
+
+    if (cek.masihBaru) {
+      sh.deleteRow(rowIndex);
+      return { success: true, applied: true };
+    }
+
+    // Sudah lebih dari 24 jam -- ajukan permintaan hapus ke TL, jangan
+    // langsung dihapus.
+    sh.getRange(rowIndex, 14, 1, 4).setValues([[ // kolom N-Q
+      'Pending', JSON.stringify({ action: 'delete' }), nikRequester || '', ''
+    ]]);
+    return { success: true, applied: false, needsApproval: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// newData: { jamMulai, jamSelesai, keterangan, kategoriLembur }
+function submitEditLembur(rowIndex, nikRequester, newData) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet tidak ditemukan' };
+
+    var cek = _cekKepemilikanLembur(sh, rowIndex, nikRequester);
+    if (!cek.ok) return { success: false, error: cek.error };
+
+    var m1 = _timeStrToMinutes(newData.jamMulai);
+    var m2 = _timeStrToMinutes(newData.jamSelesai);
+    if (m1 == null || m2 == null) return { success: false, error: 'Format jam tidak valid (harus HH:MM)' };
+    var durMin = m2 - m1;
+    if (durMin <= 0) durMin += 24 * 60;
+    var durJam = durMin / 60;
+    if (durJam > 4) durJam -= 1;
+    durJam = Math.round(durJam * 100) / 100;
+
+    if (cek.masihBaru) {
+      // Masih baru -> langsung terapkan perubahan, tidak perlu approval.
+      sh.getRange(rowIndex, 5, 1, 3).setValues([[newData.jamMulai, newData.jamSelesai, durJam]]); // E,F,G
+      sh.getRange(rowIndex, 8).setValue(newData.keterangan || ''); // H
+      sh.getRange(rowIndex, 13).setValue(newData.kategoriLembur || ''); // M
+      return { success: true, applied: true };
+    }
+
+    // Sudah lebih dari 24 jam -- simpan sebagai pengajuan, TL yang approve.
+    sh.getRange(rowIndex, 14, 1, 4).setValues([[ // kolom N-Q
+      'Pending',
+      JSON.stringify({ action: 'edit', jamMulai: newData.jamMulai, jamSelesai: newData.jamSelesai, totalJam: durJam, keterangan: newData.keterangan || '', kategoriLembur: newData.kategoriLembur || '' }),
+      nikRequester || '', ''
+    ]]);
+    return { success: true, applied: false, needsApproval: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Dipanggil TL dari panel approval. keputusan: 'Disetujui' | 'Ditolak'.
+function approveEditRequest(rowIndex, keputusan, approverNik, catatan) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet tidak ditemukan' };
+    if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid / sudah tidak ada.' };
+
+    var reqDataRaw = sh.getRange(rowIndex, 15).getValue(); // kolom O
+    var reqData = {};
+    try { reqData = JSON.parse(reqDataRaw || '{}'); } catch (e) {}
+
+    if (keputusan === 'Disetujui') {
+      if (reqData.action === 'delete') {
+        sh.deleteRow(rowIndex);
+        return { success: true };
+      }
+      if (reqData.action === 'edit') {
+        sh.getRange(rowIndex, 5, 1, 3).setValues([[reqData.jamMulai, reqData.jamSelesai, reqData.totalJam]]); // E,F,G
+        sh.getRange(rowIndex, 8).setValue(reqData.keterangan || ''); // H
+        sh.getRange(rowIndex, 13).setValue(reqData.kategoriLembur || ''); // M
+      }
+    }
+
+    // Reset kolom pengajuan (baik disetujui-sudah-diterapkan maupun ditolak)
+    sh.getRange(rowIndex, 14, 1, 4).setValues([[keputusan === 'Ditolak' ? 'Ditolak' : '', '', '', catatan || '']]);
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
 }

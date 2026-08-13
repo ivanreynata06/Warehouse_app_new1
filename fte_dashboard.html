@@ -171,6 +171,7 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .toast-success{border-left:3px solid var(--accent-green);}
 .toast-info{border-left:3px solid var(--accent-blue);}
 .toast-error{border-left:3px solid var(--accent-red);}
+.toast-warning{border-left:3px solid var(--accent-gold2,#f2d98a);}
 
 body.theme-light{--bg-main:#eef1f8;--bg-sidebar:#ffffff;--bg-card:#ffffff;--bg-card-hover:#f6f8fc;--text-main:#101a30;--text-muted:#5a6785;--border-color:#dfe4ee;}
 body.theme-light .hero-gauge-card{background:linear-gradient(160deg,#ffffff,#f8f6ee);}
@@ -491,6 +492,18 @@ function loadAll(){
     document.getElementById('card-approval').style.display = '';
     loadApprovalPanel();
     checkTtdSetup();
+
+    // Peringatan sekali-tampil kalau baru saja diarahkan ke sini dari
+    // halaman login karena ada lembur/cuti/pengajuan edit yang menunggu.
+    try {
+      var pendingCount = sessionStorage.getItem('wh_pending_approval_count');
+      if (pendingCount && Number(pendingCount) > 0) {
+        setTimeout(function(){
+          showToast('Ada '+pendingCount+' pengajuan (lembur/cuti/edit) yang menunggu approval Anda 👇', 'warning');
+        }, 400);
+        sessionStorage.removeItem('wh_pending_approval_count');
+      }
+    } catch (e) {}
   }
 }
 
@@ -516,15 +529,26 @@ function loadApprovalPanel(){
       var tb = document.getElementById('tbody-approval');
       if(!list.length){ tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:14px;">Tidak ada pengajuan menunggu approval 🎉</td></tr>'; return; }
       tb.innerHTML = list.map(function(a){
-        var detail = a.tipe==='lembur'
-          ? (a.jamMulai+'–'+a.jamSelesai+' ('+a.totalJam+' jam) — '+(a.keterangan||'-'))
-          : (a.jenis+' — '+(a.keterangan||'-'));
-        var badge = a.tipe==='lembur' ? '<span class="card-badge badge-gold">Lembur</span>' : '<span class="card-badge badge-purple">Cuti</span>';
+        var detail, badge;
+        if (a.tipe === 'edit_lembur'){
+          if (a.aksi === 'delete'){
+            detail = 'Minta HAPUS catatan: '+a.jamMulaiLama+'–'+a.jamSelesaiLama+' ('+a.totalJamLama+' jam) — '+(a.keteranganLama||'-');
+          } else {
+            detail = 'Ubah dari <s>'+a.jamMulaiLama+'–'+a.jamSelesaiLama+', '+(a.keteranganLama||'-')+'</s> menjadi <b>'+a.jamMulaiBaru+'–'+a.jamSelesaiBaru+' ('+a.totalJamBaru+' jam), '+(a.keteranganBaru||'-')+'</b>';
+          }
+          badge = '<span class="card-badge badge-blue">'+(a.aksi==='delete'?'Hapus Lembur':'Edit Lembur')+'</span>';
+        } else if (a.tipe==='lembur'){
+          detail = a.jamMulai+'–'+a.jamSelesai+' ('+a.totalJam+' jam) — '+(a.keterangan||'-');
+          badge = '<span class="card-badge badge-gold">Lembur</span>';
+        } else {
+          detail = a.jenis+' — '+(a.keterangan||'-');
+          badge = '<span class="card-badge badge-purple">Cuti</span>';
+        }
         return '<tr>'+
           '<td>'+badge+'</td>'+
           '<td>'+escHtml(a.tanggal)+'</td>'+
           '<td>'+escHtml(a.nama)+'</td>'+
-          '<td style="font-size:11px;color:var(--text-muted);">'+escHtml(detail)+'</td>'+
+          '<td style="font-size:11px;color:var(--text-muted);">'+detail+'</td>'+
           '<td><div class="btn-export-group">'+
             '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#16a34a,#22c55e);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-keputusan="Disetujui">Setujui</button>'+
             '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-keputusan="Ditolak">Tolak</button>'+
@@ -551,14 +575,19 @@ function loadApprovalPanel(){
 function doApprove(tipe, rowIndex, keputusan){
   var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
   showToast('Memproses...','info');
-  google.script.run
+  var runner = google.script.run
     .withSuccessHandler(function(res){
       if(!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
       showToast(keputusan+' berhasil disimpan','success');
       loadApprovalPanel();
     })
-    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .approveItem(tipe, rowIndex, keputusan, nik);
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); });
+
+  if (tipe === 'edit_lembur'){
+    runner.approveEditRequest(rowIndex, keputusan, nik, '');
+  } else {
+    runner.approveItem(tipe, rowIndex, keputusan, nik);
+  }
 }
 
 function checkTtdSetup(){

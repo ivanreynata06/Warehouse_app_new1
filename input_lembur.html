@@ -377,7 +377,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
       <!-- TAB: INPUT LEMBUR -->
       <div class="tab-panel active" id="panel-lembur">
         <div class="grid-2">
-          <div class="card">
+          <div class="card" id="form-lembur-panel">
             <div class="card-hdr"><div class="card-title"><i data-lucide="pencil-line" style="width:12px;"></i>Form Lembur</div></div>
             <div class="form-grid">
               <div class="form-field span2">
@@ -686,17 +686,34 @@ function renderTabelLembur(){
   document.getElementById('badge-riwayat-lembur').textContent = lemburList.length + ' entri';
   if(!lemburList.length){ tb.innerHTML=''; document.getElementById('empty-lembur').style.display='flex'; return; }
   document.getElementById('empty-lembur').style.display='none';
+  var myNik = window.WH_SESSION ? window.WH_SESSION.nik : '';
   tb.innerHTML = lemburList.map(function(l){
     var kat = (karyawanList.find(function(k){return k.kode===l.kode;})||{}).kategori || '';
     var chip = kat==='Internal' ? '<span class="chip chip-internal">Internal</span>' : '<span class="chip chip-os">OS</span>';
     var liburTag = l.isHariLibur ? ' <span class="chip chip-libur" title="'+(l.hariLiburLabel||'')+'">Tgl Merah</span>' : '';
+
+    var isOwner = myNik && l.kode === myNik;
+    var isPendingReq = l.editReqStatus === 'Pending';
+    var pendingTag = isPendingReq ? ' <span class="chip" style="background:rgba(59,130,246,.15);color:#93c5fd;">Menunggu approval</span>' : '';
+
+    var actions = '';
+    if (isOwner && !isPendingReq){
+      actions =
+        '<button class="btn-del" onclick="mulaiEditLembur('+l.rowIndex+')" title="Edit" style="margin-right:2px;"><i data-lucide="pencil" style="width:12px;"></i></button>'+
+        '<button class="btn-del" onclick="hapusLembur('+l.rowIndex+')" title="Hapus"><i data-lucide="trash-2" style="width:12px;"></i></button>';
+    } else if (isOwner && isPendingReq){
+      actions = '<span style="font-size:9.5px;color:var(--text-muted);">Menunggu TL</span>';
+    } else {
+      actions = '<span title="Cuma pemilik catatan yang bisa edit/hapus" style="color:var(--text-muted);"><i data-lucide="lock" style="width:12px;"></i></span>';
+    }
+
     return '<tr>'+
       '<td>'+fmtTglShort(l.tanggal)+'</td>'+
-      '<td>'+l.nama+' '+chip+liburTag+'</td>'+
+      '<td>'+l.nama+' '+chip+liburTag+pendingTag+'</td>'+
       '<td style="font-family:var(--font-mono);font-size:9.5px;">'+l.jamMulai+'\u2013'+l.jamSelesai+'</td>'+
       '<td style="font-weight:700;color:var(--accent-gold2);">'+l.totalJam+'j</td>'+
       '<td style="color:var(--text-muted);font-size:9.5px;">'+(l.keterangan||'\u2014')+'</td>'+
-      '<td><button class="btn-del" onclick="hapusLembur('+l.rowIndex+')" title="Hapus"><i data-lucide="trash-2" style="width:12px;"></i></button></td>'+
+      '<td>'+actions+'</td>'+
     '</tr>';
   }).join('');
   if(typeof lucide!=='undefined') lucide.createIcons();
@@ -885,6 +902,52 @@ renderAktivitasPills();
   }
 })();
 
+var editingLemburRowIndex = null; // null = mode tambah baru, angka = sedang edit baris ini
+
+function mulaiEditLembur(rowIndex){
+  var l = lemburList.find(function(x){ return x.rowIndex === rowIndex; });
+  if(!l) return;
+  editingLemburRowIndex = rowIndex;
+  document.getElementById('lm-mulai').value = l.jamMulai;
+  document.getElementById('lm-selesai').value = l.jamSelesai;
+  document.getElementById('lm-kategori').value = l.kategoriLembur || '';
+  aktivitasTerpilih = (l.keterangan||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  renderAktivitasPills();
+  updateDurasiPreview();
+
+  var btn = document.getElementById('btn-submit-lembur');
+  btn.innerHTML = '<i data-lucide="save" style="width:14px;"></i> Update Lembur';
+  if(typeof lucide!=='undefined') lucide.createIcons();
+
+  var cancelBtn = document.getElementById('btn-batal-edit-lembur');
+  if(!cancelBtn){
+    cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.id = 'btn-batal-edit-lembur';
+    cancelBtn.className = 'btn-export';
+    cancelBtn.style.cssText = 'margin-top:8px;width:100%;background:rgba(255,255,255,.06);color:var(--text-muted);';
+    cancelBtn.textContent = 'Batal Edit';
+    cancelBtn.onclick = batalEditLembur;
+    btn.insertAdjacentElement('afterend', cancelBtn);
+  }
+  cancelBtn.style.display = '';
+  document.getElementById('form-lembur-panel').scrollIntoView({behavior:'smooth', block:'start'});
+  showToast('Mode edit: ubah data lalu klik Update Lembur','info');
+}
+
+function batalEditLembur(){
+  editingLemburRowIndex = null;
+  document.getElementById('lm-mulai').value=''; document.getElementById('lm-selesai').value='';
+  document.getElementById('lm-kategori').value='';
+  aktivitasTerpilih = []; renderAktivitasPills();
+  document.getElementById('durasi-preview').style.display='none';
+  var btn = document.getElementById('btn-submit-lembur');
+  btn.innerHTML = '<i data-lucide="save" style="width:14px;"></i> Simpan Lembur';
+  if(typeof lucide!=='undefined') lucide.createIcons();
+  var cancelBtn = document.getElementById('btn-batal-edit-lembur');
+  if(cancelBtn) cancelBtn.style.display = 'none';
+}
+
 function submitLembur(){
   var kode = window.WH_SESSION ? window.WH_SESSION.nik : '';
   var namaUser = window.WH_SESSION ? window.WH_SESSION.nama : '';
@@ -896,12 +959,34 @@ function submitLembur(){
 
   if(!kode){ showToast('Sesi login tidak ditemukan, silakan login ulang','error'); return; }
   if(!kategoriLembur){ showToast('Pilih kategori lembur dulu','error'); return; }
-  if(!tanggal){ showToast('Isi tanggal dulu','error'); return; }
   if(!mulai || !selesai){ showToast('Isi jam mulai dan selesai','error'); return; }
 
   var k = karyawanList.find(function(x){ return x.kode===kode; }) || { nama: namaUser };
   var btn = document.getElementById('btn-submit-lembur');
   btn.disabled = true; btn.style.opacity='.6';
+
+  if (editingLemburRowIndex){
+    google.script.run
+      .withSuccessHandler(function(res){
+        btn.disabled=false; btn.style.opacity='1';
+        if(!res || !res.success){ showToast('Gagal update: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
+        if (res.applied){
+          showToast('Catatan lembur berhasil diupdate','success');
+        } else if (res.needsApproval){
+          showToast('Catatan sudah lebih dari 24 jam -- pengajuan edit dikirim ke TL untuk approval','info');
+        }
+        batalEditLembur();
+        clearApiCache(); loadLemburAbsensi();
+      })
+      .withFailureHandler(function(err){
+        btn.disabled=false; btn.style.opacity='1';
+        showToast('Gagal update: '+(err&&err.message?err.message:'cek koneksi'),'error');
+      })
+      .submitEditLembur(editingLemburRowIndex, kode, { jamMulai: mulai, jamSelesai: selesai, keterangan: ket, kategoriLembur: kategoriLembur });
+    return;
+  }
+
+  if(!tanggal){ btn.disabled=false; btn.style.opacity='1'; showToast('Isi tanggal dulu','error'); return; }
 
   google.script.run
     .withSuccessHandler(function(res){
@@ -933,14 +1018,19 @@ function submitLembur(){
 
 function hapusLembur(rowIndex){
   if(!confirm('Hapus catatan lembur ini?')) return;
+  var kode = window.WH_SESSION ? window.WH_SESSION.nik : '';
   google.script.run
     .withSuccessHandler(function(res){
       if(!res || !res.success){ showToast('Gagal hapus: '+(res&&res.error?res.error:''),'error'); return; }
-      showToast('Catatan dihapus','success');
+      if (res.applied){
+        showToast('Catatan dihapus','success');
+      } else if (res.needsApproval){
+        showToast('Catatan sudah lebih dari 24 jam -- pengajuan hapus dikirim ke TL untuk approval','info');
+      }
       clearApiCache(); loadLemburAbsensi();
     })
     .withFailureHandler(function(err){ showToast('Gagal hapus: '+(err&&err.message?err.message:''),'error'); })
-    .deleteLembur(rowIndex);
+    .deleteLembur(rowIndex, kode);
 }
 
 // ================================================================
