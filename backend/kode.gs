@@ -43,6 +43,8 @@ var API_FUNCTIONS = {
   getKaryawanList         : getKaryawanList,
   getKategoriLemburList   : getKategoriLemburList,
   getLemburKategoriBulanan: getLemburKategoriBulanan,
+  getLemburKategoriTrend6Bulan: getLemburKategoriTrend6Bulan,
+  getOvertimeTrend6Bulan  : getOvertimeTrend6Bulan,
   saveLembur              : saveLembur,
   getLemburList           : getLemburList,
   deleteLembur            : deleteLembur,
@@ -3206,6 +3208,49 @@ function getLemburList(filter) {
 // Total jam lembur per kategori untuk SATU bulan -- dipanggil berulang
 // dari Monitoring FTE (6x, satu per bulan) untuk bikin grafik tren,
 // persis pola yang sudah dipakai grafik "Tren Over Time %".
+// Versi BATCH dari getLemburKategoriBulanan -- hitung total per kategori
+// untuk 6 BULAN SEKALIGUS dalam SATU kali baca sheet (bukan 6x baca
+// terpisah kayak sebelumnya). Ini yang bikin Monitoring FTE lambat --
+// grafik tren kategori manggil server 6x berurutan padahal bisa 1x saja.
+function getLemburKategoriTrend6Bulan(bulanAkhir, tahunAkhir) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet LEMBUR_LOG belum ada.' };
+    var data = sh.getDataRange().getValues();
+
+    // Siapkan 6 bucket bulan (bulanAkhir mundur 5 bulan)
+    var months = [];
+    for (var i = 5; i >= 0; i--) {
+      var d = new Date(Number(tahunAkhir), Number(bulanAkhir) - 1 - i, 1);
+      var key = d.getFullYear() + '-' + (d.getMonth() + 1);
+      var totals = {};
+      KATEGORI_LEMBUR_LIST.forEach(function (k) { totals[k.kode] = 0; });
+      months.push({ key: key, bulan: d.getMonth() + 1, tahun: d.getFullYear(), totals: totals });
+    }
+    var byKey = {};
+    months.forEach(function (m) { byKey[m.key] = m; });
+
+    for (var i2 = 1; i2 < data.length; i2++) {
+      var r = data[i2];
+      if (!r[1]) continue;
+      var tgl = new Date(r[1]);
+      var key = tgl.getFullYear() + '-' + (tgl.getMonth() + 1);
+      var bucket = byKey[key];
+      if (!bucket) continue; // di luar 6 bulan yang diminta
+      var kat = String(r[12] || '').trim();
+      if (!bucket.totals.hasOwnProperty(kat)) kat = 'lain';
+      bucket.totals[kat] += Number(r[6]) || 0;
+    }
+
+    var results = months.map(function (m) {
+      Object.keys(m.totals).forEach(function (k) { m.totals[k] = Math.round(m.totals[k] * 100) / 100; });
+      return m.totals;
+    });
+    return { success: true, results: results };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 function getLemburKategoriBulanan(bulan, tahun) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -3671,6 +3716,45 @@ function _getHariLiburSet(bulan, tahun) {
 }
 
 // ---- FUNGSI UTAMA: rekap FTE (internal) + rekap lembur OS sebulan ----
+// Versi BATCH untuk grafik "Tren Over Time % — 6 Bulan Terakhir" -- baca
+// karyawan/lembur/absensi CUMA SEKALI (bukan 6x seperti sebelumnya),
+// lalu hitung overtime% tiap bulan dari data yang sudah di-memori.
+function getOvertimeTrend6Bulan(bulanAkhir, tahunAkhir) {
+  try {
+    var karyawanRes = getKaryawanList();
+    if (!karyawanRes.success) return karyawanRes;
+    var karyawanInternal = karyawanRes.data.filter(function (k) { return k.aktif && k.kategori === 'Internal'; });
+    var jumlahKaryawan = karyawanInternal.length;
+
+    var lemburRes = getLemburList({}); // semua data, sekali baca
+    var semuaLembur = lemburRes.success ? lemburRes.data : [];
+
+    var months = [];
+    for (var i = 5; i >= 0; i--) {
+      var d = new Date(Number(tahunAkhir), Number(bulanAkhir) - 1 - i, 1);
+      months.push({ bulan: d.getMonth() + 1, tahun: d.getFullYear() });
+    }
+
+    var kodeInternal = {};
+    karyawanInternal.forEach(function (k) { kodeInternal[k.kode] = 1; });
+
+    var results = months.map(function (m) {
+      var totalLemburInternal = semuaLembur
+        .filter(function (l) {
+          var t = new Date(l.tanggal);
+          return kodeInternal[l.kode] && (t.getMonth() + 1) === m.bulan && t.getFullYear() === m.tahun;
+        })
+        .reduce(function (a, l) { return a + l.totalJam; }, 0);
+
+      var fteLemburTotal = jumlahKaryawan > 0 ? (totalLemburInternal / FTE_STANDAR_JAM_BULAN) : 0;
+      var overtimePct = jumlahKaryawan > 0 ? Math.round((fteLemburTotal / jumlahKaryawan) * 10000) / 100 : 0;
+      return overtimePct;
+    });
+
+    return { success: true, results: results };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 function getAbsensiFTEData(bulan, tahun) {
   try {
     bulan = Number(bulan); tahun = Number(tahun);

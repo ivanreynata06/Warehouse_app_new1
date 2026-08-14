@@ -339,7 +339,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
       <div class="grid-2c">
         <div class="card">
           <div class="card-hdr">
-            <div class="card-title"><i data-lucide="line-chart" style="width:12px;"></i>Tren Over Time % — 6 Bulan Terakhir</div>
+            <div class="card-title"><i data-lucide="line-chart" style="width:13px;color:#d4af37;"></i>Tren Over Time % — 6 Bulan Terakhir</div>
             <span class="card-badge badge-gold">Target &lt; 6%</span>
           </div>
           <div class="chart-wrap"><canvas id="chart-ot-trend"></canvas></div>
@@ -358,7 +358,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 
       <div class="card" style="min-height:280px;">
         <div class="card-hdr">
-          <div class="card-title"><i data-lucide="bar-chart-4" style="width:12px;"></i>Tren Kategori Lembur — 6 Bulan Terakhir</div>
+          <div class="card-title"><i data-lucide="bar-chart-4" style="width:13px;color:#d4af37;"></i>Tren Kategori Lembur — 6 Bulan Terakhir</div>
           <span class="card-badge badge-blue">Jam Lembur</span>
         </div>
         <div class="chart-wrap" id="chart-kategori-wrap" style="height:220px;position:relative;">
@@ -729,17 +729,15 @@ function loadTrendChart(){
     var d = new Date(curTahun, curBulan-1-i, 1);
     months.push({bulan:d.getMonth()+1, tahun:d.getFullYear(), label:NM[d.getMonth()+1].substring(0,3)+' '+String(d.getFullYear()).slice(2)});
   }
-  var results = [];
-  var pending = months.length;
-  months.forEach(function(m, idx){
-    google.script.run
-      .withSuccessHandler(function(res){
-        results[idx] = (res&&res.success)? res.internal.overtimePct : null;
-        pending--; if(pending<=0) renderChart(months, results);
-      })
-      .withFailureHandler(function(){ results[idx]=null; pending--; if(pending<=0) renderChart(months, results); })
-      .getAbsensiFTEData(m.bulan, m.tahun);
-  });
+  // Dulu manggil server 6x berurutan (1x per bulan) -- sekarang cukup 1x
+  // panggilan, backend yang hitung semua 6 bulan sekaligus dari 1x baca sheet.
+  google.script.run
+    .withSuccessHandler(function(res){
+      var results = (res&&res.success) ? res.results : months.map(function(){return null;});
+      renderChart(months, results);
+    })
+    .withFailureHandler(function(){ renderChart(months, months.map(function(){return null;})); })
+    .getOvertimeTrend6Bulan(curBulan, curTahun);
 }
 
 function renderChart(months, results){
@@ -783,14 +781,14 @@ function renderChart(months, results){
 //  seperti loadTrendChart/renderChart di atas.
 // ================================================================
 var KATEGORI_LEMBUR_CHART_DEF = [
-  { kode:'loading',      label:'Loading / Muat',          warna:'#10b981' },
-  { kode:'preparation',  label:'Preparation / Persiapan', warna:'#3b82f6' },
-  { kode:'putaway',      label:'Putaway / Penyimpanan',   warna:'#8b5cf6' },
-  { kode:'receiving',    label:'Receiving / Bongkar',     warna:'#f59e0b' },
-  { kode:'stock',        label:'Stock / Inventory',       warna:'#06b6d4' },
-  { kode:'checking',     label:'Checking / Administrasi', warna:'#ec4899' },
-  { kode:'housekeeping', label:'Housekeeping / 5S',       warna:'#84cc16' },
-  { kode:'lain',         label:'Lain-lain',               warna:'#6b7280' }
+  { kode:'loading',      label:'Loading / Muat',          warna:'#2dd4bf' },
+  { kode:'preparation',  label:'Preparation / Persiapan', warna:'#60a5fa' },
+  { kode:'putaway',      label:'Putaway / Penyimpanan',   warna:'#a78bfa' },
+  { kode:'receiving',    label:'Receiving / Bongkar',     warna:'#f4d675' },
+  { kode:'stock',        label:'Stock / Inventory',       warna:'#22d3ee' },
+  { kode:'checking',     label:'Checking / Administrasi', warna:'#f472b6' },
+  { kode:'housekeeping', label:'Housekeeping / 5S',       warna:'#a3e635' },
+  { kode:'lain',         label:'Lain-lain',               warna:'#64748b' }
 ];
 
 function loadKategoriTrendChart(){
@@ -799,17 +797,13 @@ function loadKategoriTrendChart(){
     var d = new Date(curTahun, curBulan-1-i, 1);
     months.push({bulan:d.getMonth()+1, tahun:d.getFullYear(), label:NM[d.getMonth()+1].substring(0,3)+' '+String(d.getFullYear()).slice(2)});
   }
-  var results = [];
-  var pending = months.length;
-  months.forEach(function(m, idx){
-    google.script.run
-      .withSuccessHandler(function(res){
-        results[idx] = (res&&res.success) ? res.totals : null;
-        pending--; if(pending<=0) renderKategoriChart(months, results);
-      })
-      .withFailureHandler(function(){ results[idx]=null; pending--; if(pending<=0) renderKategoriChart(months, results); })
-      .getLemburKategoriBulanan(m.bulan, m.tahun);
-  });
+  google.script.run
+    .withSuccessHandler(function(res){
+      var results = (res&&res.success) ? res.results : months.map(function(){return null;});
+      renderKategoriChart(months, results);
+    })
+    .withFailureHandler(function(){ renderKategoriChart(months, months.map(function(){return null;})); })
+    .getLemburKategoriTrend6Bulan(curBulan, curTahun);
 }
 
 function renderKategoriChart(months, results){
@@ -841,7 +835,11 @@ function renderKategoriChart(months, results){
       label: k.label,
       data: results.map(function(r){ return r ? (r[k.kode]||0) : 0; }),
       backgroundColor: k.warna,
-      borderRadius: 3,
+      hoverBackgroundColor: k.warna,
+      borderRadius: {topLeft:4, topRight:4, bottomLeft:0, bottomRight:0},
+      borderSkipped: false,
+      barPercentage: 0.62,
+      categoryPercentage: 0.72,
       stack: 'lembur'
     };
   });
@@ -852,10 +850,21 @@ function renderKategoriChart(months, results){
     data:{ labels: months.map(function(m){return m.label;}), datasets: datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ position:'bottom', labels:{ color:tickCol, font:{size:8.5}, boxWidth:9, padding:8 } } },
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ position:'bottom', labels:{ color:tickCol, font:{size:9,family:"'Inter',sans-serif",weight:'600'}, boxWidth:8, boxHeight:8, usePointStyle:true, pointStyle:'circle', padding:12 } },
+        tooltip:{
+          backgroundColor: isDark ? 'rgba(18,18,31,.96)' : 'rgba(255,255,255,.98)',
+          titleColor: '#d4af37', titleFont:{size:11,weight:'700',family:"'Outfit',sans-serif"},
+          bodyColor: tickCol, bodyFont:{size:10.5,family:"'Inter',sans-serif"},
+          borderColor:'rgba(212,175,55,.25)', borderWidth:1,
+          padding:10, boxPadding:5, cornerRadius:8, displayColors:true,
+          callbacks:{ label:function(ctx){ return ' '+ctx.dataset.label+': '+ctx.parsed.y+' jam'; } }
+        }
+      },
       scales:{
-        x:{ stacked:true, grid:{display:false}, ticks:{color:tickCol, font:{size:8.5}} },
-        y:{ stacked:true, grid:{color:gridCol}, ticks:{color:tickCol, font:{size:8.5}, callback:function(v){return v+'j';}}, beginAtZero:true }
+        x:{ stacked:true, grid:{display:false}, ticks:{color:tickCol, font:{size:9,family:"'Inter',sans-serif",weight:'600'}} },
+        y:{ stacked:true, grid:{color:gridCol, drawTicks:false}, border:{display:false}, ticks:{color:tickCol, font:{size:9,family:"'Inter',sans-serif"}, callback:function(v){return v+'j';}, padding:6}, beginAtZero:true }
       }
     }
   });
