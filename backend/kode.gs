@@ -63,6 +63,7 @@ var API_FUNCTIONS = {
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
+  editLemburByTL          : editLemburByTL,
   uploadTlSignature       : uploadTlSignature,
   hasTlSignature          : hasTlSignature,
   // Upload Data Harian (Stock / Outbound / Inbound)
@@ -3370,6 +3371,56 @@ function approveItem(tipe, rowIndex, keputusan, approverNik) {
     sh.getRange(rowIndex, catatanCol).setValue(catatan);
 
     return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  EDIT LEMBUR OLEH TL — dipanggil dari panel approval (fte_dashboard)
+//  saat TL mendapati input jam/tanggal lembur karyawan tidak sesuai
+//  (mis. beda dengan jam keluar sebenarnya) SEBELUM catatan itu
+//  di-Setujui/Tolak. TL langsung menimpa nilainya di LEMBUR_LOG.
+//
+//  Beda dengan submitEditLembur()/approveEditRequest(): itu alur
+//  pengajuan edit oleh KARYAWAN atas catatan yang sudah lama/sudah
+//  diproses, dan tetap butuh approval TL secara terpisah. Di sini
+//  catatannya masih berstatus Pending sehingga TL berwenang
+//  mengoreksi langsung tanpa alur pengajuan tambahan.
+// ================================================================
+// tanggalBaru: 'YYYY-MM-DD'. jamMulaiBaru/jamSelesaiBaru: 'HH:MM'.
+function editLemburByTL(rowIndex, tanggalBaru, jamMulaiBaru, jamSelesaiBaru, keteranganBaru, approverNik) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet ' + SH_LEMBUR_LOG + ' tidak ditemukan.' };
+    if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid / sudah tidak ada.' };
+
+    var statusSekarang = String(sh.getRange(rowIndex, 10).getValue() || 'Pending'); // kolom J
+    if (statusSekarang !== 'Pending') {
+      return { success: false, error: 'Catatan ini statusnya sudah "' + statusSekarang + '" -- tidak bisa diedit lewat panel approval lagi.' };
+    }
+
+    var m1 = _timeStrToMinutes(jamMulaiBaru);
+    var m2 = _timeStrToMinutes(jamSelesaiBaru);
+    if (m1 == null || m2 == null) return { success: false, error: 'Format jam tidak valid (harus HH:MM).' };
+    var durMin = m2 - m1;
+    if (durMin <= 0) durMin += 24 * 60; // lembur lewat tengah malam
+    var durJam = durMin / 60;
+    if (durJam > 4) durJam -= 1; // potongan jam istirahat, konsisten dgn input awal (saveLembur/submitEditLembur)
+    durJam = Math.round(durJam * 100) / 100;
+
+    var tglDate = new Date(String(tanggalBaru) + 'T00:00:00');
+    if (isNaN(tglDate.getTime())) return { success: false, error: 'Format tanggal tidak valid (harus YYYY-MM-DD).' };
+
+    sh.getRange(rowIndex, 2).setValue(tglDate);                                   // B: Tanggal
+    sh.getRange(rowIndex, 5, 1, 3).setValues([[jamMulaiBaru, jamSelesaiBaru, durJam]]); // E,F,G
+    if (keteranganBaru != null) sh.getRange(rowIndex, 8).setValue(keteranganBaru); // H: Keterangan
+
+    var catatanLama = String(sh.getRange(rowIndex, 12).getValue() || ''); // L: Catatan
+    var jejak = '[Diedit TL (' + (approverNik || '-') + ') sebelum approve -> ' +
+      _fmtYMD(tglDate) + ', ' + jamMulaiBaru + '-' + jamSelesaiBaru + ']';
+    sh.getRange(rowIndex, 12).setValue((catatanLama ? catatanLama + ' ' : '') + jejak);
+
+    return { success: true, totalJam: durJam };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
