@@ -3857,6 +3857,29 @@ function getAbsensiFTEData(bulan, tahun) {
     var osList = perOrang.filter(function (p) { return p.kategori === 'OS'; });
     var totalJamLemburOS = Math.round(osList.reduce(function (a, p) { return a + p.totalJamLembur; }, 0) * 100) / 100;
 
+    // ------------------------------------------------------------
+    //  PRODUKTIVITAS (Kg/FTE & Ton/FTE) — rumus PERSIS sama seperti
+    //  sheet "OPR" (kolom Q/R/S baris 14-15) & sheet "PRODUKTIFITY":
+    //   1. Jumlah Kiriman + Penerimaan (Kg) = (Total Pengiriman
+    //      Pipa+Fitting bulan ini + Total Penerimaan Pipa+Fitting
+    //      bulan ini) / 2   -- persis pola kolom F di PRODUKTIFITY
+    //      (=((Penerimaan)+(Pengiriman))/2), dijumlahkan sebulan penuh.
+    //   2. Produktivitas (Kg/FTE) = Jumlah Kiriman+Penerimaan / Total FTE
+    //   3. Produktivitas (Ton/FTE) = Produktivitas (Kg/FTE) / 1000
+    //      -- ini metrik INTI (headline) Monitoring FTE.
+    //  Sumber data: DASHBOARD_KIRIM (outbound) & DASHBOARD_PRODUKSI
+    //  (inbound), sudah gabungan Pipa + Fitting (field .total dari
+    //  readTransaksi), pada rentang tanggal bulan yang sama dgn lembur.
+    // ------------------------------------------------------------
+    var ssProd     = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var rangeProd  = buildIODateRange({ bulan: bulan, tahun: tahun });
+    var totalKirim = readTransaksi(ssProd, SH_KIRIM, rangeProd).total;       // Pengiriman Pipa+Fitting
+    var totalTerima= readTransaksi(ssProd, SH_PRODUKSI, rangeProd).total;   // Penerimaan Pipa+Fitting
+
+    var jumlahKirimTerima = Math.round(((totalKirim + totalTerima) / 2) * 100) / 100;
+    var produktivitasKgFTE  = totalFTE > 0 ? Math.round((jumlahKirimTerima / totalFTE) * 100) / 100 : 0;
+    var produktivitasTonFTE = Math.round((produktivitasKgFTE / 1000) * 100) / 100;
+
     return {
       success: true,
       bulan: bulan, tahun: tahun,
@@ -3868,6 +3891,11 @@ function getAbsensiFTEData(bulan, tahun) {
         totalFTE: totalFTE,
         overtimePct: overtimePctTotal,
         tercapai: overtimePctTotal <= 6,
+        totalPengiriman: Math.round(totalKirim * 100) / 100,
+        totalPenerimaan: Math.round(totalTerima * 100) / 100,
+        jumlahKirimTerima: jumlahKirimTerima,
+        produktivitasKgFTE: produktivitasKgFTE,
+        produktivitasTonFTE: produktivitasTonFTE,
         perOrang: internalList
       },
       os: {

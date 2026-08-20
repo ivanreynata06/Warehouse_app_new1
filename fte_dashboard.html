@@ -98,9 +98,16 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .page-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--text-main);}
 .page-sub{font-size:9.5px;color:var(--text-muted);margin-top:1px;}
 
-.hero-row{display:grid;grid-template-columns:280px 1fr;gap:12px;flex-shrink:0;}
+.hero-row{display:grid;grid-template-columns:280px 220px 1fr;gap:12px;flex-shrink:0;}
 .hero-gauge-card{background:linear-gradient(160deg,#1c1c2a,#161620);border:1px solid rgba(212,175,55,.25);border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;overflow:hidden;}
 .hero-gauge-card::before{content:'';position:absolute;top:-40%;left:-20%;width:180%;height:180%;background:radial-gradient(circle,rgba(212,175,55,.08),transparent 60%);pointer-events:none;}
+/* Produktivitas (Ton/FTE) -- metrik INTI Monitoring FTE, ditonjolkan sejajar dengan gauge Overtime */
+.hero-produktivitas-card{background:linear-gradient(160deg,#132420,#0f1a18);border:1px solid rgba(34,197,94,.3);border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;text-align:center;}
+.hero-produktivitas-card::before{content:'';position:absolute;top:-40%;left:-20%;width:180%;height:180%;background:radial-gradient(circle,rgba(34,197,94,.1),transparent 60%);pointer-events:none;}
+.hero-produktivitas-label{font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;}
+.hero-produktivitas-val{font-family:var(--font-display);font-size:34px;font-weight:800;color:#4ade80;line-height:1;margin:4px 0;}
+.hero-produktivitas-sub{font-size:9px;color:var(--text-muted);}
+.hero-produktivitas-breakdown{font-size:8.5px;color:var(--text-muted);margin-top:2px;border-top:1px solid var(--border-color);padding-top:6px;width:100%;}
 .hero-gauge-label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;display:flex;align-items:center;gap:5px;z-index:1;}
 .hero-gauge-svg{width:100%;max-width:210px;z-index:1;}
 .hero-gauge-status{display:flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:9.5px;font-weight:700;z-index:1;}
@@ -116,6 +123,8 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .kpi-card.c-blue::before{background:linear-gradient(90deg,var(--accent-blue),#60a5fa);}
 .kpi-card.c-green::before{background:linear-gradient(90deg,var(--accent-green),#34d399);}
 .kpi-card.c-purple::before{background:linear-gradient(90deg,var(--accent-purple),#a78bfa);}
+.kpi-card.c-cyan::before{background:linear-gradient(90deg,#06b6d4,#67e8f9);}
+.kpi-card.c-orange::before{background:linear-gradient(90deg,#f59e0b,#fbbf24);}
 .kpi-label{font-size:8.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;font-weight:600;display:flex;align-items:center;gap:5px;}
 .kpi-val{font-family:var(--font-display);font-size:21px;font-weight:700;line-height:1;margin-bottom:3px;letter-spacing:-.5px;}
 .kpi-val.c-gold{color:var(--accent-gold2);}
@@ -192,6 +201,7 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 
 body.theme-light{--bg-main:#eef1f8;--bg-sidebar:#ffffff;--bg-card:#ffffff;--bg-card-hover:#f6f8fc;--text-main:#101a30;--text-muted:#5a6785;--border-color:#dfe4ee;}
 body.theme-light .hero-gauge-card{background:linear-gradient(160deg,#ffffff,#f8f6ee);}
+body.theme-light .hero-produktivitas-card{background:linear-gradient(160deg,#ffffff,#eefcf3);}
 body.theme-light .loading-overlay{background:rgba(238,240,245,.92);}
 body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 
@@ -310,6 +320,16 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <div class="hero-gauge-note">Target Over Time Karyawan &lt; 6% (standar 173 jam/bulan)</div>
         </div>
 
+        <!-- ═══ METRIK INTI Monitoring FTE: Produktivitas (Ton/FTE) ═══ -->
+        <div class="hero-produktivitas-card">
+          <div class="hero-produktivitas-label"><i data-lucide="gauge" style="width:11px;"></i>Produktivitas</div>
+          <div class="hero-produktivitas-val" id="kpi-produktivitasTon">—</div>
+          <div class="hero-produktivitas-sub">Ton / FTE bulan ini</div>
+          <div class="hero-produktivitas-breakdown">
+            <span id="kpi-produktivitaskg">—</span> Kg/FTE &nbsp;•&nbsp; <span id="kpi-kirimterima">—</span> Kg kirim+terima
+          </div>
+        </div>
+
         <div class="kpi-row">
           <div class="kpi-card c-gold">
             <div class="kpi-label"><i data-lucide="users" style="width:10px;"></i>Jumlah Karyawan</div>
@@ -330,6 +350,16 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <div class="kpi-label"><i data-lucide="trending-up" style="width:10px;"></i>Total FTE</div>
             <div class="kpi-val c-green" id="kpi-totalfte">—</div>
             <div class="kpi-sub">Karyawan + FTE Lembur</div>
+          </div>
+          <div class="kpi-card c-cyan">
+            <div class="kpi-label"><i data-lucide="truck" style="width:10px;"></i>Kiriman + Penerimaan</div>
+            <div class="kpi-val c-cyan" id="kpi-kirimterima-kg">—</div>
+            <div class="kpi-sub">Kg, rata-rata bulan ini (Pipa+Fitting)</div>
+          </div>
+          <div class="kpi-card c-orange">
+            <div class="kpi-label"><i data-lucide="zap" style="width:10px;"></i>Produktivitas Kg/FTE</div>
+            <div class="kpi-val c-orange" id="kpi-produktivitaskg-kpi">—</div>
+            <div class="kpi-sub">Kiriman+Penerimaan / Total FTE</div>
           </div>
         </div>
       </div>
@@ -767,6 +797,21 @@ function renderKPI(){
   document.getElementById('kpi-jamlembur').textContent = d.totalJamLembur.toLocaleString('id-ID',{maximumFractionDigits:1})+'j';
   document.getElementById('kpi-ftelembur').textContent = d.fteLembur.toLocaleString('id-ID',{maximumFractionDigits:3});
   document.getElementById('kpi-totalfte').textContent = d.totalFTE.toLocaleString('id-ID',{maximumFractionDigits:3});
+
+  // Jumlah Kiriman + Penerimaan (Kg), Produktivitas Kg/FTE & Ton/FTE --
+  // rumus persis sama seperti sheet OPR (kolom Q/R/S baris 14-15):
+  //   Jumlah Kiriman+Penerimaan = (Total Pengiriman + Total Penerimaan) / 2
+  //   Produktivitas Kg/FTE      = Jumlah Kiriman+Penerimaan / Total FTE
+  //   Produktivitas Ton/FTE     = Produktivitas Kg/FTE / 1000  (metrik inti)
+  var kirimTerimaTxt = d.jumlahKirimTerima.toLocaleString('id-ID',{maximumFractionDigits:2});
+  var kgFteTxt       = d.produktivitasKgFTE.toLocaleString('id-ID',{maximumFractionDigits:2});
+  var tonFteTxt       = d.produktivitasTonFTE.toLocaleString('id-ID',{maximumFractionDigits:2});
+
+  document.getElementById('kpi-kirimterima-kg').textContent = kirimTerimaTxt;
+  document.getElementById('kpi-produktivitaskg-kpi').textContent = kgFteTxt;
+  document.getElementById('kpi-produktivitasTon').textContent = tonFteTxt;
+  document.getElementById('kpi-produktivitaskg').textContent = kgFteTxt;
+  document.getElementById('kpi-kirimterima').textContent = kirimTerimaTxt;
 }
 
 function initials(nama){
