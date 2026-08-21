@@ -66,6 +66,9 @@ var API_FUNCTIONS = {
   adminResetPassword      : adminResetPassword,
   adminSetAktif           : adminSetAktif,
   adminEditUser           : adminEditUser,
+  adminSetFonnteToken     : adminSetFonnteToken,
+  adminGetFonnteStatus    : adminGetFonnteStatus,
+  adminSetFonnteApproverWa: adminSetFonnteApproverWa,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -2920,6 +2923,70 @@ function adminEditUser(actorNik, nik, namaBaru, roleBaru) {
 }
 
 // ================================================================
+//  TOKEN FONNTE (WhatsApp) -- diisi lewat panel admin, TIDAK perlu
+//  buka Apps Script editor / Script Properties manual lagi.
+// ------------------------------------------------------------
+//  - Token per-karyawan (device WA pengirim notif): disimpan di
+//    Script Property "FONNTE_TOKEN_<NIK>".
+//  - Nomor approver per-departemen/plant (boleh beda2 per departemen):
+//    disimpan di "FONNTE_APPROVER_WA_<WORKSPACE_KEY>". Kalau kosong,
+//    otomatis fallback ke "FONNTE_APPROVER_WA" (satu nomor utk semua
+//    plant) -- lihat sendWaNotifLembur()/reminder di atas.
+//  Satu Script Properties store ini DIPAKAI BERSAMA oleh semua plant
+//  (satu deployment Apps Script), jadi aman diisi dari plant mana pun,
+//  tidak akan tabrakan selama NIK unik per karyawan.
+// ================================================================
+function adminSetFonnteToken(actorNik, nik, token) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur token WA.' };
+    nik = String(nik || '').trim().toUpperCase();
+    token = String(token || '').trim();
+    if (!nik) return { success: false, error: 'NIK wajib diisi.' };
+    var props = PropertiesService.getScriptProperties();
+    if (!token) { props.deleteProperty('FONNTE_TOKEN_' + nik); return { success: true, cleared: true }; }
+    props.setProperty('FONNTE_TOKEN_' + nik, token);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Status token per NIK -- TIDAK mengembalikan token aslinya (sekali
+// disimpan, cukup lihat status "sudah/belum diisi" saja, sama seperti
+// prinsip password yang di-hash: tidak perlu ditampilkan ulang).
+function adminGetFonnteStatus(actorNik) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    var props = PropertiesService.getScriptProperties();
+    var all = props.getProperties();
+    var tokenNiks = {};
+    Object.keys(all).forEach(function (k) {
+      if (k.indexOf('FONNTE_TOKEN_') === 0) tokenNiks[k.substring('FONNTE_TOKEN_'.length)] = true;
+    });
+    return {
+      success: true,
+      tokenNiks: tokenNiks,
+      approverWaWorkspace: props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) ? 'diisi' : '',
+      approverWaUmum: props.getProperty('FONNTE_APPROVER_WA') ? 'diisi' : '',
+      workspace: ACTIVE_WORKSPACE
+    };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Nomor approver WA khusus workspace aktif saat ini (dept/plant yg
+// sedang login). Kosongkan (isi string kosong) utk hapus & fallback
+// ke nomor umum FONNTE_APPROVER_WA.
+function adminSetFonnteApproverWa(actorNik, nomorWa) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur nomor approver WA.' };
+    nomorWa = String(nomorWa || '').trim();
+    var props = PropertiesService.getScriptProperties();
+    var key = 'FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE;
+    if (!nomorWa) { props.deleteProperty(key); return { success: true, cleared: true }; }
+    props.setProperty(key, nomorWa);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
 //  SEEDER AKUN — daftarkan BANYAK akun sekaligus dalam 1x Run, supaya
 //  tidak perlu bolak-balik edit 1 baris setAkunPasswordHelper().
 //
@@ -3281,7 +3348,10 @@ function saveLembur(data) {
 // ================================================================
 function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
   var props   = PropertiesService.getScriptProperties();
-  var target  = props.getProperty('FONNTE_APPROVER_WA');
+  // Nomor approver: coba versi khusus workspace ini dulu (FONNTE_APPROVER_WA_<WORKSPACE>,
+  // supaya tiap plant/departemen bisa punya approver WA berbeda), baru fallback
+  // ke FONNTE_APPROVER_WA umum (dipakai kalau semua plant approver-nya sama).
+  var target  = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
   // Token pengirim: coba punya karyawan ybs dulu, baru fallback ke token umum.
   var token   = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
   if (!token || !target) {
@@ -3615,7 +3685,7 @@ function _remindPendingApprovalsWorkspaceAktif() {
 
   var props  = PropertiesService.getScriptProperties();
   var token  = props.getProperty('FONNTE_TOKEN');
-  var target = props.getProperty('FONNTE_APPROVER_WA');
+  var target = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
   if (!token || !target) {
     Logger.log('FONNTE_TOKEN / FONNTE_APPROVER_WA belum di-set -- reminder dilewati untuk ' + ACTIVE_WORKSPACE);
     return;

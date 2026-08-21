@@ -225,6 +225,25 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <button class="btn-primary" onclick="openTambahModal()"><i data-lucide="user-plus" style="width:13px;"></i>Tambah User</button>
       </div>
 
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="message-circle" style="width:12px;"></i>Notifikasi WhatsApp (Fonnte) — Departemen Ini</div>
+        </div>
+        <div class="modal-note" style="margin:0;">
+          Nomor WA yang menerima notifikasi approval lembur/cuti untuk departemen yang sedang login ini. Kalau dikosongkan, otomatis pakai nomor WA umum (kalau ada). Token WA pengirim per-karyawan diatur lewat tombol <b>Token WA</b> di masing-masing baris user pada tabel di bawah.
+        </div>
+        <div class="modal-field two-col" style="max-width:420px;">
+          <div>
+            <label for="approver-wa">Nomor WA Approver (format 628xxxxxxxxxx)</label>
+            <input type="text" id="approver-wa" placeholder="628123456789">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-modal-save" onclick="submitApproverWa()">Simpan</button>
+          <span id="approver-wa-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
+        </div>
+      </div>
+
       <div class="card" style="min-height:200px;">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="users" style="width:12px;"></i>Daftar User</div>
@@ -331,6 +350,25 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeModal('modal-reset')">Batal</button>
       <button class="btn-modal-save" onclick="submitResetPassword()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL — Token WA (Fonnte) per karyawan ═══ -->
+<div class="modal-backdrop" id="modal-wa">
+  <div class="modal-box">
+    <h3><i data-lucide="message-circle" style="width:14px;"></i>Token WA (Fonnte)</h3>
+    <div class="modal-sub" id="wa-nik-label">—</div>
+    <div class="modal-field">
+      <label for="wa-token">Token Device Fonnte</label>
+      <input type="text" id="wa-token" placeholder="Kosongkan untuk hapus token">
+    </div>
+    <div class="modal-note">
+      Ini token device WhatsApp <b>milik karyawan ini sendiri</b> (dari akun Fonnte-nya), dipakai untuk mengirim notifikasi lembur/cuti ke approver. Dapatkan dari dashboard Fonnte karyawan tsb (fonnte.com → Device → Token). Kosongkan lalu Simpan untuk menghapus.
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-wa')">Batal</button>
+      <button class="btn-modal-save" onclick="submitWaToken()">Simpan</button>
     </div>
   </div>
 </div>
@@ -447,6 +485,7 @@ function renderUserTable(){
         '<button class="btn-export btn-lihat" data-idx="'+idx+'" data-act="lihat">Lihat</button>'+
         '<button class="btn-export btn-edit" data-idx="'+idx+'" data-act="edit">Edit</button>'+
         '<button class="btn-export btn-reset" data-idx="'+idx+'" data-act="reset">Reset Pwd</button>'+
+        '<button class="btn-export" style="background:linear-gradient(135deg,#059669,#10b981);" data-idx="'+idx+'" data-act="wa">Token WA</button>'+
         '<button class="btn-export '+(u.aktif?'btn-toggle-on':'btn-toggle-off')+'" data-idx="'+idx+'" data-act="toggle">'+(u.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
       '</div></td>'+
     '</tr>';
@@ -459,6 +498,7 @@ function renderUserTable(){
       if (act === 'lihat') openLihatModal(u);
       else if (act === 'edit') openEditModal(u);
       else if (act === 'reset') openResetModal(u);
+      else if (act === 'wa') openWaModal(u);
       else if (act === 'toggle') doToggleAktif(u);
     });
   });
@@ -566,9 +606,57 @@ function doToggleAktif(u){
     .adminSetAktif(actorNik, u.nik, aktifBaru);
 }
 
+// ---- Token WA (Fonnte) per karyawan ----
+var __waNik = null;
+function openWaModal(u){
+  __waNik = u.nik;
+  document.getElementById('wa-nik-label').textContent = u.nik + ' — ' + u.nama;
+  document.getElementById('wa-token').value = '';
+  document.getElementById('modal-wa').classList.add('open');
+}
+function submitWaToken(){
+  var token = document.getElementById('wa-token').value.trim();
+  showToast('Menyimpan token WA...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(res.cleared ? 'Token WA dihapus' : 'Token WA berhasil disimpan','success');
+      closeModal('modal-wa');
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetFonnteToken(actorNik, __waNik, token);
+}
+
+// ---- Nomor WA Approver (per departemen/plant yang sedang login) ----
+function loadFonnteStatus(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success) return;
+      document.getElementById('approver-wa-status').textContent =
+        res.approverWaWorkspace ? 'Nomor khusus departemen ini sudah diisi.' :
+        (res.approverWaUmum ? 'Belum ada nomor khusus -- memakai nomor WA umum.' : 'Belum ada nomor WA approver yang diisi.');
+    })
+    .withFailureHandler(function(){})
+    .adminGetFonnteStatus(actorNik);
+}
+function submitApproverWa(){
+  var nomor = document.getElementById('approver-wa').value.trim();
+  showToast('Menyimpan nomor approver...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(res.cleared ? 'Nomor khusus dihapus, kembali ke nomor umum' : 'Nomor approver disimpan','success');
+      document.getElementById('approver-wa').value = '';
+      loadFonnteStatus();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetFonnteApproverWa(actorNik, nomor);
+}
+
 document.addEventListener('DOMContentLoaded', function(){
   if(typeof lucide!=='undefined') lucide.createIcons();
   loadUsers();
+  setTimeout(loadFonnteStatus, 300); // tunggu actorNik terisi dari loadUsers()
 });
 </script>
 
