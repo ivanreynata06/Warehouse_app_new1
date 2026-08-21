@@ -183,6 +183,11 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
 .spinner{width:30px;height:30px;border:3px solid var(--border2);border-top-color:var(--green);
   border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
+/* Logo loading seragam dgn halaman lain (residance_time/input_lembur/fte_dashboard/dst) */
+.rucika-logo-wrap{position:relative;width:200px;height:90px;border-radius:45px;background:linear-gradient(135deg,#1e5fae,#2563eb 50%,#1e5fae);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 8px 30px rgba(37,99,235,.4);animation:logoFloat 2.4s ease-in-out infinite;}
+@keyframes logoFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.rucika-text{font-weight:800;font-size:24px;letter-spacing:1px;color:#fff;z-index:2;}
+.rucika-tagline{font-style:italic;font-size:9px;color:#cfe8ff;z-index:2;margin-top:1px;}
 .hidden-upload{display:none;}
 
 /* FOTO LIGHTBOX & HOVER ZOOM */
@@ -377,7 +382,10 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
 </div>
 
 <div class="loading-overlay" id="loading-overlay">
-  <div class="spinner"></div>
+  <div class="rucika-logo-wrap">
+    <span class="rucika-text">RUCIKA</span>
+    <span class="rucika-tagline">Dimana air mengalir sampai jauh</span>
+  </div>
   <span style="font-size:10px;color:var(--txt2);">Memuat data...</span>
 </div>
 

@@ -166,6 +166,20 @@
       });
     }
 
+    // ---- Tombol "Logout" -- disisipkan otomatis di SEMUA halaman ----
+    // Sebelumnya cuma ada di 2 dari 9 halaman (ditulis manual, gampang
+    // kelewat kalau bikin halaman baru). Sekarang selalu ada dimana pun,
+    // konsisten, tanpa perlu edit tiap file satu-satu.
+    if (document.getElementById('sidebar') && !document.querySelector('[onclick*="whLogout"]')) {
+      var logoutItem = document.createElement('div');
+      logoutItem.id = 'mitem-logout';
+      logoutItem.className = 'mitem';
+      logoutItem.setAttribute('onclick', 'whLogout()');
+      logoutItem.innerHTML = '<i data-lucide="log-out" style="width:12px;flex-shrink:0;"></i><span>Logout</span>';
+      document.getElementById('sidebar').appendChild(logoutItem);
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
     // ---- Grup menu "Monitoring" ----
     // Menggabungkan Monitoring Stock, Monitoring Kanban, dan Monitoring FTE
     // (dulunya Monitoring FTE nempel di dalam grup "Transaksi") jadi satu

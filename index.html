@@ -363,6 +363,11 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
 .spinner3d::before,.spinner3d::after{content:'';position:absolute;inset:0;border-radius:50%;
   border:3px solid transparent;border-top-color:var(--rc-cyan);animation:spin3d 1s linear infinite;}
 .spinner3d::after{border-top-color:var(--rc-cyan2);opacity:.5;animation-duration:1.4s;animation-direction:reverse;}
+/* Logo loading seragam dgn halaman lain (residance_time/input_lembur/fte_dashboard/dst) */
+.rucika-logo-wrap{position:relative;width:200px;height:90px;border-radius:45px;background:linear-gradient(135deg,#1e5fae,#2563eb 50%,#1e5fae);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 8px 30px rgba(37,99,235,.4);animation:logoFloat 2.4s ease-in-out infinite;}
+@keyframes logoFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.rucika-text{font-weight:800;font-size:24px;letter-spacing:1px;color:#fff;z-index:2;}
+.rucika-tagline{font-style:italic;font-size:9px;color:#cfe8ff;z-index:2;margin-top:1px;}
 @keyframes spin3d{to{transform:rotate(360deg);}}
 .loading-txt{font-size:11px;color:var(--txt2);font-weight:600;letter-spacing:.3px;}
 
@@ -397,7 +402,7 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
 <div class="shell">
 
   <!-- ═══════════════════════════════════════════ SIDEBAR ═══════════════════════════════════════════ -->
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
     <div class="sb-logo">
       <img src="./assets/img/rucika-logo.png" alt="Rucika">
       <div class="sb-appname"><span class="dot3d"></span>Control Tower</div>
@@ -830,7 +835,10 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
 
 <!-- LOADING -->
 <div class="loading-overlay" id="loading-overlay">
-  <div class="spinner3d"></div>
+  <div class="rucika-logo-wrap">
+    <span class="rucika-text">RUCIKA</span>
+    <span class="rucika-tagline">Dimana air mengalir sampai jauh</span>
+  </div>
   <div class="loading-txt" id="loading-txt">Memuat data...</div>
 </div>
 

@@ -37,9 +37,10 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:var(--font-body);ba
 
 .loading-overlay{position:fixed;inset:0;background:rgba(13,13,25,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;backdrop-filter:blur(4px);}
 .loading-overlay.show{display:flex;}
-.rucika-logo-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;}
-.rucika-text{font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:2px;color:var(--accent-gold);}
-.rucika-tagline{font-size:9px;color:var(--text-muted);}
+.rucika-logo-wrap{position:relative;width:200px;height:90px;border-radius:45px;background:linear-gradient(135deg,#1e5fae,#2563eb 50%,#1e5fae);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 8px 30px rgba(37,99,235,.4);animation:logoFloat 2.4s ease-in-out infinite;}
+@keyframes logoFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.rucika-text{font-family:var(--font-display);font-weight:800;font-size:24px;letter-spacing:1px;color:#fff;z-index:2;}
+.rucika-tagline{font-family:var(--font-body);font-style:italic;font-size:9px;color:#cfe8ff;z-index:2;margin-top:1px;}
 .loading-text{font-size:11px;color:var(--text-muted);}
 
 .sidebar{width:var(--sidebar-w);background:var(--bg-sidebar);border-right:1px solid var(--border-color);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;transition:margin-left .25s;}
@@ -234,11 +235,14 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <div class="modal-note" style="margin:0;">
           Akun ini bisa menambah/kelola user di <b>departemen/plant lain</b>, termasuk departemen yang <b>belum ada TL/akun sama sekali</b> — cocok untuk buatkan akun TL pertama sebuah departemen baru. Kalau sudah dibuatkan, TL tsb login sendiri dan kelola bawahannya lewat menu Kelola User seperti biasa (otomatis terbatas ke departemennya sendiri).
         </div>
-        <div class="modal-field two-col" style="max-width:420px;">
+        <div class="modal-field two-col" style="max-width:420px;align-items:flex-end;">
           <div>
             <label for="select-workspace">Departemen / Plant</label>
             <select id="select-workspace" onchange="onWorkspaceSwitch()"></select>
           </div>
+        </div>
+        <div>
+          <button class="btn-export" style="background:linear-gradient(135deg,#d4af37,#f4d675);color:#1a1a10;" onclick="openTambahDeptModal()"><i data-lucide="plus-circle" style="width:11px;vertical-align:-2px;"></i> Tambah Departemen/Plant Baru</button>
         </div>
       </div>
 
@@ -390,6 +394,33 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
   </div>
 </div>
 
+<!-- ═══ MODAL — Tambah Departemen/Plant Baru (khusus Super Admin) ═══ -->
+<div class="modal-backdrop" id="modal-tambah-dept">
+  <div class="modal-box">
+    <h3><i data-lucide="building-2" style="width:14px;"></i>Tambah Departemen/Plant Baru</h3>
+    <div class="modal-field">
+      <label for="dept-plant-label">Nama Plant</label>
+      <input type="text" id="dept-plant-label" placeholder="mis. Cibitung, Karawang">
+    </div>
+    <div class="modal-field">
+      <label for="dept-dept-label">Nama Departemen</label>
+      <input type="text" id="dept-dept-label" placeholder="mis. Warehouse Sparepart">
+    </div>
+    <div class="modal-field">
+      <label style="display:flex;align-items:center;gap:6px;font-weight:400;text-transform:none;letter-spacing:0;">
+        <input type="checkbox" id="dept-include-rekap" style="width:auto;"> Sertakan menu Rekap Muatan untuk departemen ini
+      </label>
+    </div>
+    <div class="modal-note">
+      Ini akan membuat <b>spreadsheet baru</b> (salinan struktur dari Warehouse Fitting Import, data transaksi dikosongkan) dan langsung mengaktifkannya — tanpa perlu deploy ulang Apps Script. Prosesnya makan waktu beberapa detik. Setelah selesai, departemen ini otomatis muncul di dropdown & bisa langsung ditambahkan user pertamanya (biasanya TL).
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-tambah-dept')">Batal</button>
+      <button class="btn-modal-save" onclick="submitTambahDept()">Buat Departemen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 var PAGE_MAP = {
   ''                : 'index.html',
@@ -508,6 +539,33 @@ function onWorkspaceSwitch(){
   document.getElementById('page-sub').textContent =
     'Mengelola: ' + (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : chosen);
   loadUsers();
+}
+
+// ---- Tambah Departemen/Plant Baru (Super Admin) ----
+function openTambahDeptModal(){
+  document.getElementById('dept-plant-label').value = '';
+  document.getElementById('dept-dept-label').value = '';
+  document.getElementById('dept-include-rekap').checked = false;
+  document.getElementById('modal-tambah-dept').classList.add('open');
+}
+function submitTambahDept(){
+  var plantLabel = document.getElementById('dept-plant-label').value.trim();
+  var deptLabel = document.getElementById('dept-dept-label').value.trim();
+  var includeRekap = document.getElementById('dept-include-rekap').checked;
+  if (!plantLabel || !deptLabel){ showToast('Nama Plant dan Nama Departemen wajib diisi','error'); return; }
+  showLoading(true, 'Membuat spreadsheet departemen baru... (beberapa detik)');
+  google.script.run
+    .withSuccessHandler(function(res){
+      showLoading(false);
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Departemen "'+plantLabel+' — '+deptLabel+'" berhasil dibuat!','success');
+      closeModal('modal-tambah-dept');
+      currentTargetWorkspace = res.workspaceKey;
+      superAdminPanelLoaded = false; // paksa dropdown reload supaya departemen baru muncul
+      loadUsers();
+    })
+    .withFailureHandler(function(err){ showLoading(false); showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminProvisionNewDepartment(actorNik, plantLabel, plantLabel, deptLabel, deptLabel, includeRekap);
 }
 
 function renderUserTable(){

@@ -70,6 +70,7 @@ var API_FUNCTIONS = {
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
+  adminProvisionNewDepartment: adminProvisionNewDepartment,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -190,6 +191,36 @@ var WORKSPACE_MAP = {
 };
 var DEFAULT_WORKSPACE = 'cibitung_fitting_import'; // fallback kalau request lama belum kirim param workspace
 var ACTIVE_WORKSPACE = DEFAULT_WORKSPACE; // ditimpa tiap request oleh handleApiRequest
+
+// Nama tampilan tiap departemen/plant, dipakai di dropdown Panel Admin.
+var WORKSPACE_LABELS = {
+  'cibitung_fitting_import': 'Cibitung — Warehouse Fitting Import',
+  'cibitung_fitting_rucika': 'Cibitung — Fitting Rucika',
+  'cibitung_pipa_rucika'   : 'Cibitung — Pipa Rucika',
+  'cibitung_sparepart'     : 'Cibitung — Sparepart'
+};
+
+// ------------------------------------------------------------
+//  Departemen/plant TAMBAHAN yang dibuat lewat Panel Admin (Super Admin
+//  > Kelola Departemen Lain > + Tambah Departemen Baru) -- disimpan di
+//  Script Properties (bukan hardcode di WORKSPACE_MAP di atas) supaya
+//  BISA LANGSUNG DIPAKAI tanpa perlu edit kode + deploy ulang. Digabung
+//  otomatis ke WORKSPACE_MAP & WORKSPACE_LABELS di sini, jadi SELURUH
+//  kode lain yang baca WORKSPACE_MAP (loginUser, trigger harian, panel
+//  admin, dst) otomatis "melihat" departemen baru ini juga, di mana pun
+//  dipakainya -- tidak perlu ubah satu-satu.
+// ------------------------------------------------------------
+(function _mergeExtraWorkspaces() {
+  try {
+    var extraJson = PropertiesService.getScriptProperties().getProperty('WORKSPACE_REGISTRY_EXTRA');
+    if (!extraJson) return;
+    var extra = JSON.parse(extraJson); // { key: { id: '...', label: '...' } }
+    Object.keys(extra).forEach(function (key) {
+      WORKSPACE_MAP[key] = extra[key].id;
+      WORKSPACE_LABELS[key] = extra[key].label;
+    });
+  } catch (e) { /* JSON korup -- abaikan, jangan sampai bikin seluruh app error */ }
+})();
 
 function resolveWorkspaceKey(workspace) {
   workspace = String(workspace || '').trim();
@@ -2822,14 +2853,6 @@ function _isSuperAdmin(actorNik) {
   return SUPER_ADMIN_NIK.indexOf(String(actorNik || '').trim().toUpperCase()) !== -1;
 }
 
-// Nama tampilan tiap departemen/plant, dipakai di dropdown Panel Admin.
-var WORKSPACE_LABELS = {
-  'cibitung_fitting_import': 'Cibitung — Warehouse Fitting Import',
-  'cibitung_fitting_rucika': 'Cibitung — Fitting Rucika',
-  'cibitung_pipa_rucika'   : 'Cibitung — Pipa Rucika',
-  'cibitung_sparepart'     : 'Cibitung — Sparepart'
-};
-
 // Buka Spreadsheet AKUN_LOGIN yang tepat untuk aksi admin ini:
 //  - Kalau actor SUPER ADMIN dan targetWorkspace diisi & valid -> buka
 //    spreadsheet departemen TUJUAN itu (lintas departemen).
@@ -2864,6 +2887,56 @@ function getWorkspaceListForAdmin(actorNik) {
     });
   });
   return { success: true, data: out, currentWorkspace: ACTIVE_WORKSPACE };
+}
+
+// ------------------------------------------------------------
+//  TAMBAH DEPARTEMEN/PLANT BARU -- lewat Panel Admin, TANPA perlu buka
+//  Apps Script editor / edit WORKSPACE_MAP / deploy ulang.
+// ------------------------------------------------------------
+//  Sebelumnya alurnya: jalankan provisionDepartmentSpreadsheet() manual
+//  di Apps Script editor -> copy Spreadsheet ID hasilnya -> tempel ke
+//  WORKSPACE_MAP di kode -> Deploy ulang. Sekarang cukup 1 klik dari web:
+//  fungsi ini yang menjalankan provisionDepartmentSpreadsheet() DAN
+//  langsung menyimpan hasilnya ke registry (Script Properties) yang
+//  otomatis digabung ke WORKSPACE_MAP setiap request (lihat
+//  _mergeExtraWorkspaces() di dekat definisi WORKSPACE_MAP) -- jadi
+//  departemen baru LANGSUNG bisa dipakai login & dikelola, tanpa deploy.
+//  Khusus SUPER ADMIN (lihat SUPER_ADMIN_NIK).
+function adminProvisionNewDepartment(actorNik, plantKey, plantLabel, deptKey, deptLabel, includeRekapMuatan) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin yang boleh menambah departemen/plant baru.' };
+    plantKey = String(plantKey || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    deptKey = String(deptKey || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    plantLabel = String(plantLabel || '').trim();
+    deptLabel = String(deptLabel || '').trim();
+    if (!plantKey || !deptKey || !plantLabel || !deptLabel) {
+      return { success: false, error: 'Nama Plant dan Nama Departemen wajib diisi.' };
+    }
+    var workspaceKey = plantKey + '_' + deptKey;
+    if (WORKSPACE_MAP[workspaceKey]) {
+      return { success: false, error: 'Departemen ini sudah ada (key: ' + workspaceKey + '). Pilih nama lain, atau pakai yang sudah ada lewat dropdown.' };
+    }
+
+    // Bikin spreadsheet baru (copy struktur dari Fitting Import, sheet
+    // transaksional dikosongkan) -- fungsi lama ini tidak diubah sama
+    // sekali, cuma dipanggil dari sini.
+    var hasil = provisionDepartmentSpreadsheet(plantLabel + ' - ' + deptLabel, !!includeRekapMuatan);
+    if (!hasil || !hasil.success) return { success: false, error: 'Gagal membuat spreadsheet baru.' };
+
+    // Simpan ke registry Script Properties supaya langsung aktif tanpa deploy ulang.
+    var props = PropertiesService.getScriptProperties();
+    var extraJson = props.getProperty('WORKSPACE_REGISTRY_EXTRA');
+    var extra = extraJson ? JSON.parse(extraJson) : {};
+    extra[workspaceKey] = { id: hasil.spreadsheetId, label: plantLabel + ' — ' + deptLabel };
+    props.setProperty('WORKSPACE_REGISTRY_EXTRA', JSON.stringify(extra));
+
+    // Langsung aktifkan juga di memori proses saat ini (supaya kalau actor
+    // lanjut Tambah User detik itu juga tanpa reload, sudah kebaca).
+    WORKSPACE_MAP[workspaceKey] = hasil.spreadsheetId;
+    WORKSPACE_LABELS[workspaceKey] = plantLabel + ' — ' + deptLabel;
+
+    return { success: true, workspaceKey: workspaceKey, spreadsheetUrl: hasil.url };
+  } catch (err) { return { success: false, error: err.message }; }
 }
 
 // Daftar SEMUA akun (TANPA password/hash) untuk ditampilkan di tabel
