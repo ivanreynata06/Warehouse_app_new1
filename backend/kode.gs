@@ -69,6 +69,7 @@ var API_FUNCTIONS = {
   adminSetFonnteToken     : adminSetFonnteToken,
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
+  getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -2802,15 +2803,80 @@ function _actorIsFullAccess(actorNik) {
   return false;
 }
 
+// ------------------------------------------------------------
+//  SUPER ADMIN -- LINTAS DEPARTEMEN/PLANT
+// ------------------------------------------------------------
+//  Cuma NIK di daftar ini yang boleh mengelola user di departemen LAIN
+//  (bukan cuma departemen tempat dia login). Dipakai khusus untuk kasus
+//  "buka departemen baru yang belum ada TL-nya sama sekali" -- super
+//  admin bisa langsung buatkan akun TL pertama departemen itu dari
+//  Panel Admin, TANPA perlu login dulu ke departemen itu (yang memang
+//  belum bisa, karena belum ada akun sama sekali di sana).
+//  TL biasa (bukan super admin) TETAP cuma bisa kelola departemennya
+//  sendiri seperti biasa -- parameter targetWorkspace diabaikan untuk
+//  mereka.
+// ------------------------------------------------------------
+var SUPER_ADMIN_NIK = ['PEG22111246']; // Ivan Reynata
+
+function _isSuperAdmin(actorNik) {
+  return SUPER_ADMIN_NIK.indexOf(String(actorNik || '').trim().toUpperCase()) !== -1;
+}
+
+// Nama tampilan tiap departemen/plant, dipakai di dropdown Panel Admin.
+var WORKSPACE_LABELS = {
+  'cibitung_fitting_import': 'Cibitung — Warehouse Fitting Import',
+  'cibitung_fitting_rucika': 'Cibitung — Fitting Rucika',
+  'cibitung_pipa_rucika'   : 'Cibitung — Pipa Rucika',
+  'cibitung_sparepart'     : 'Cibitung — Sparepart'
+};
+
+// Buka Spreadsheet AKUN_LOGIN yang tepat untuk aksi admin ini:
+//  - Kalau actor SUPER ADMIN dan targetWorkspace diisi & valid -> buka
+//    spreadsheet departemen TUJUAN itu (lintas departemen).
+//  - Selain itu (TL biasa, atau super admin tanpa pilih departemen lain)
+//    -> tetap pakai departemen tempat dia sendiri sedang login (aman,
+//    tidak bisa "nyasar" ke departemen lain tanpa izin eksplisit).
+// Return { ss, workspaceKey, error }.
+function _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace) {
+  if (targetWorkspace && _isSuperAdmin(actorNik)) {
+    var targetId = WORKSPACE_MAP[targetWorkspace];
+    if (!targetId) return { error: 'Departemen "' + targetWorkspace + '" belum di-provision (belum ada spreadsheet-nya).' };
+    try {
+      return { ss: SpreadsheetApp.openById(targetId), workspaceKey: targetWorkspace };
+    } catch (e) {
+      return { error: 'Gagal membuka spreadsheet departemen tujuan: ' + e.message };
+    }
+  }
+  return { ss: SpreadsheetApp.openById(SPREADSHEET_ID), workspaceKey: ACTIVE_WORKSPACE };
+}
+
+// Daftar departemen/plant yang boleh dipilih -- HANYA dikembalikan
+// untuk super admin (TL biasa tidak perlu/tidak boleh tahu daftar ini
+// dari Panel Admin, mereka cuma kelola departemennya sendiri).
+function getWorkspaceListForAdmin(actorNik) {
+  if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Bukan super admin.' };
+  var out = [];
+  Object.keys(WORKSPACE_MAP).forEach(function (key) {
+    out.push({
+      key: key,
+      label: WORKSPACE_LABELS[key] || key,
+      provisioned: !!WORKSPACE_MAP[key]
+    });
+  });
+  return { success: true, data: out, currentWorkspace: ACTIVE_WORKSPACE };
+}
+
 // Daftar SEMUA akun (TANPA password/hash) untuk ditampilkan di tabel
 // panel admin. NIK sengaja tidak disensor -- itu identitas publik
 // (kartu karyawan), yang dirahasiakan hanya PasswordHash-nya.
-function getAkunList(actorNik) {
+function getAkunList(actorNik, targetWorkspace) {
   try {
     if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh membuka panel ini.' };
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var ss = tgt.ss;
     var sh = ss.getSheetByName(SH_AKUN_LOGIN);
-    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+    if (!sh) return { success: true, data: [], workspaceKey: tgt.workspaceKey, belumAdaAkun: true };
     var data = sh.getDataRange().getValues();
     var out = [];
     for (var i = 1; i < data.length; i++) {
@@ -2827,14 +2893,14 @@ function getAkunList(actorNik) {
       });
     }
     out.sort(function (a, b) { return a.nama < b.nama ? -1 : (a.nama > b.nama ? 1 : 0); });
-    return { success: true, data: out };
+    return { success: true, data: out, workspaceKey: tgt.workspaceKey };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
 // Tambah akun baru. NIK karyawan outsourcing HARUS diawali "PEG" supaya
 // otomatis terdeteksi kategori OS (konsisten dengan aturan lama di
 // dokumentasi -- selain itu otomatis dianggap Internal).
-function adminTambahUser(actorNik, nik, nama, role, passwordAwal) {
+function adminTambahUser(actorNik, nik, nama, role, passwordAwal, targetWorkspace) {
   try {
     if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh menambah user.' };
     nik = String(nik || '').trim().toUpperCase();
@@ -2843,9 +2909,19 @@ function adminTambahUser(actorNik, nik, nama, role, passwordAwal) {
     if (!nik || !nama || !role || !passwordAwal) return { success: false, error: 'NIK, Nama, Role, dan Password awal wajib diisi.' };
     if (String(passwordAwal).length < 6) return { success: false, error: 'Password awal minimal 6 karakter.' };
 
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var ss = tgt.ss;
     var sh = ss.getSheetByName(SH_AKUN_LOGIN);
-    if (!sh) { setupAkunLoginSheet(); sh = ss.getSheetByName(SH_AKUN_LOGIN); }
+    if (!sh) {
+      // Departemen baru yang belum pernah ada akun sama sekali -- buat
+      // sheet AKUN_LOGIN-nya di tempat (bukan lewat setupAkunLoginSheet()
+      // supaya tidak salah sasaran ke SPREADSHEET_ID punya departemen
+      // actor sendiri kalau ini aksi lintas-departemen oleh super admin).
+      sh = ss.insertSheet(SH_AKUN_LOGIN);
+      sh.getRange(1, 1, 1, 5).setValues([['NIK', 'Nama', 'Role', 'PasswordHash', 'Aktif']]);
+      sh.setFrozenRows(1);
+    }
     var data = sh.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
       if (String(data[i][0]).toUpperCase() === nik) {
@@ -2859,12 +2935,13 @@ function adminTambahUser(actorNik, nik, nama, role, passwordAwal) {
 
 // Reset/ganti password akun yang sudah ada (dipakai juga untuk kasus
 // karyawan lupa sandi).
-function adminResetPassword(actorNik, nik, passwordBaru) {
+function adminResetPassword(actorNik, nik, passwordBaru, targetWorkspace) {
   try {
     if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh reset password.' };
     if (!passwordBaru || String(passwordBaru).length < 6) return { success: false, error: 'Password baru minimal 6 karakter.' };
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var sh = tgt.ss.getSheetByName(SH_AKUN_LOGIN);
     if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
     var data = sh.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
@@ -2880,14 +2957,15 @@ function adminResetPassword(actorNik, nik, passwordBaru) {
 // Aktifkan / nonaktifkan akun (login diblokir kalau Aktif=FALSE, tapi
 // riwayat data karyawan tsb -- lembur, cuti, dll -- tetap tersimpan
 // utuh, sama seperti cara manual lama).
-function adminSetAktif(actorNik, nik, aktifBaru) {
+function adminSetAktif(actorNik, nik, aktifBaru, targetWorkspace) {
   try {
     if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh menonaktifkan/mengaktifkan user.' };
     if (String(actorNik) === String(nik) && !aktifBaru) {
       return { success: false, error: 'Tidak bisa menonaktifkan akun sendiri yang sedang login.' };
     }
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var sh = tgt.ss.getSheetByName(SH_AKUN_LOGIN);
     if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
     var data = sh.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
@@ -2902,14 +2980,15 @@ function adminSetAktif(actorNik, nik, aktifBaru) {
 
 // Edit Nama/Role (dulu harus edit langsung di sel Spreadsheet -- ini
 // versi web-nya, tetap opsional dipakai lewat panel admin).
-function adminEditUser(actorNik, nik, namaBaru, roleBaru) {
+function adminEditUser(actorNik, nik, namaBaru, roleBaru, targetWorkspace) {
   try {
     if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh edit user.' };
     namaBaru = String(namaBaru || '').trim();
     roleBaru = String(roleBaru || '').trim();
     if (!namaBaru || !roleBaru) return { success: false, error: 'Nama dan Role wajib diisi.' };
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var sh = tgt.ss.getSheetByName(SH_AKUN_LOGIN);
     if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
     var data = sh.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
