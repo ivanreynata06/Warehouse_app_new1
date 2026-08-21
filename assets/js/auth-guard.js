@@ -35,6 +35,19 @@
   // 'index' = key menu utk Monitoring Stock, lihat PAGE_MAP di index.html)
   var HIDDEN_NAV_KEYS_RESTRICTED = ['kanban', 'index'];
 
+  // ---- Departemen/Plant selain Fitting Import (Cibitung) ----
+  // Sengaja dibatasi jauh lebih sempit daripada Fitting Import: HANYA
+  // Monitoring FTE, Monitoring Stock, dan Input Lembur -- berlaku untuk
+  // SEMUA role (bukan cuma role terbatas), karena menu lain (Control
+  // Tower, Kanban, Rekap Muatan, Loading Time, Upload Data Harian) belum
+  // relevan/di-provision untuk departemen itu. Aturan/algoritma lain
+  // (approval, FTE, dst) TETAP SAMA seperti Fitting Import -- yang beda
+  // cuma menu yang tersedia. Kalau nanti ada permintaan menu tambahan
+  // (mis. Control Tower) untuk departemen tertentu, longgarkan di sini.
+  var isFittingImport = workspace === 'cibitung_fitting_import';
+  var ALLOWED_FILES_OTHER_DEPT = ['monitoring_stock.html', 'input_lembur.html', 'fte_dashboard.html', 'admin_users.html', 'login.html', ''];
+  var HIDDEN_NAV_KEYS_OTHER_DEPT = ['wh_control_tower', 'kanban', 'residance', 'rekap', 'upload'];
+
   // "Upload Data Harian" SENGAJA dibatasi lebih ketat daripada menu admin
   // lain: HANYA boleh diakses TL, atau 2 orang admin spesifik ini (dicek
   // lewat NIK, bukan nama, supaya tidak salah kalau ada nama yang mirip).
@@ -53,14 +66,26 @@
     fullAccess: fullAccess,
     isTL: isTL,
     canUploadData: canUploadData,
+    isFittingImport: isFittingImport,
     // Rekap Muatan sengaja CUMA ada di departemen Fitting Import (sheet-nya
     // tidak di-provision di departemen lain) -- boleh dilihat SEMUA role
     // (termasuk Technician), asal masih di departemen Fitting Import.
-    hasRekapMuatan: workspace === 'cibitung_fitting_import'
+    hasRekapMuatan: isFittingImport
   };
 
+  // ---- Departemen selain Fitting Import: batasi ke 3 halaman inti ----
+  // Dicek PALING AWAL (sebelum aturan role) karena berlaku untuk SEMUA
+  // role -- bukan cuma role terbatas.
+  if (!isFittingImport) {
+    var hereFileDept = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    if (ALLOWED_FILES_OTHER_DEPT.indexOf(hereFileDept) === -1) {
+      window.location.replace('./monitoring_stock.html');
+      return;
+    }
+  }
+
   // Role terbatas coba buka halaman yang tidak diizinkan -> tendang ke Control Tower
-  if (!fullAccess) {
+  if (isFittingImport && !fullAccess) {
     var hereFile = (window.location.pathname.split('/').pop() || '').toLowerCase();
     // Rekap Muatan BUKAN halaman "admin-only" -- boleh dibuka role apa pun
     // (termasuk Technician) SELAMA workspace-nya memang punya Rekap Muatan
@@ -70,6 +95,16 @@
     if (window.WH_SESSION.hasRekapMuatan) allowedNow.push('rekap_muatan.html');
     if (allowedNow.indexOf(hereFile) === -1) {
       window.location.replace('./index.html');
+      return;
+    }
+  }
+
+  // Panel Admin (Kelola User) -- khusus TL/Admin, berlaku di SEMUA
+  // departemen. Role terbatas coba buka langsung lewat URL -> tendang.
+  if (!fullAccess) {
+    var hereFileAdmin = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    if (hereFileAdmin === 'admin_users.html') {
+      window.location.replace(isFittingImport ? './index.html' : './monitoring_stock.html');
       return;
     }
   }
@@ -86,12 +121,40 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    if (!window.WH_SESSION.fullAccess) {
+    // ---- Departemen selain Fitting Import: sembunyikan menu di luar
+    //      3 menu inti (Monitoring FTE, Monitoring Stock, Input Lembur) ----
+    if (!window.WH_SESSION.isFittingImport) {
+      HIDDEN_NAV_KEYS_OTHER_DEPT.forEach(function (key) {
+        document.querySelectorAll('[onclick*="\'' + key + '\'"]').forEach(function (el) {
+          el.style.display = 'none';
+        });
+      });
+    }
+
+    if (window.WH_SESSION.isFittingImport && !window.WH_SESSION.fullAccess) {
       HIDDEN_NAV_KEYS_RESTRICTED.forEach(function (key) {
         document.querySelectorAll('[onclick*="\'' + key + '\'"]').forEach(function (el) {
           el.style.display = 'none';
         });
       });
+    }
+
+    // ---- Menu "Kelola User" (Panel Admin) -- disisipkan otomatis di
+    //      SEMUA halaman untuk TL/Admin, berlaku di SEMUA departemen.
+    //      Pakai location.href langsung (bukan navTo()) supaya tidak
+    //      perlu edit PAGE_MAP di tiap halaman satu-satu. ----
+    if (window.WH_SESSION.fullAccess) {
+      var sidebarEl = document.getElementById('sidebar');
+      var hereFileNow = (window.location.pathname.split('/').pop() || '').toLowerCase();
+      if (sidebarEl && !document.getElementById('mitem-kelola-user')) {
+        var adminItem = document.createElement('div');
+        adminItem.id = 'mitem-kelola-user';
+        adminItem.className = 'mitem' + (hereFileNow === 'admin_users.html' ? ' active' : '');
+        adminItem.setAttribute('onclick', "location.href='./admin_users.html?v='+(window.SITE_VERSION||Date.now())");
+        adminItem.innerHTML = '<i data-lucide="shield" style="width:12px;flex-shrink:0;"></i><span>Kelola User</span>';
+        sidebarEl.appendChild(adminItem);
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
     }
 
     // Sembunyikan menu "Upload Data Harian" untuk siapa pun selain TL

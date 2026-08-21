@@ -473,11 +473,19 @@
             sessionStorage.setItem('wh_role', res.role);
           } catch (err) {}
 
+          // Landing page default: Control Tower (index.html) HANYA ada di
+          // departemen Fitting Import. Departemen/plant lain dibatasi ke 3
+          // menu inti (Monitoring Stock, Input Lembur, Monitoring FTE) --
+          // jadi landing page default-nya jadi Monitoring Stock, bukan
+          // Control Tower (yang sekarang diblokir auth-guard.js untuk
+          // workspace selain cibitung_fitting_import).
+          var isFittingImportWs = (res.workspace === 'cibitung_fitting_import');
+          var landingPage = isFittingImportWs ? './index.html' : './monitoring_stock.html';
+
           // Khusus TL: kalau ada lembur/cuti/pengajuan edit yang masih
           // menunggu approval, langsung arahkan ke Monitoring FTE (bukan
-          // Control Tower seperti biasa) + kasih peringatan. Kalau tidak
-          // ada yang perlu di-approve, jalan seperti biasa ke Control
-          // Tower.
+          // landing page seperti biasa) + kasih peringatan. Kalau tidak
+          // ada yang perlu di-approve, jalan seperti biasa ke landing page.
           var roleUpper = String(res.role || '').trim().toUpperCase();
           if (roleUpper === 'TL') {
             google.script.run
@@ -486,19 +494,19 @@
                   try { sessionStorage.setItem('wh_pending_approval_count', String(cek.jumlah)); } catch (e) {}
                   window.location.href = './fte_dashboard.html';
                 } else {
-                  window.location.href = './index.html';
+                  window.location.href = landingPage;
                 }
               })
               .withFailureHandler(function () {
-                // Kalau gagal cek, tetap lanjut ke Control Tower seperti biasa
+                // Kalau gagal cek, tetap lanjut ke landing page seperti biasa
                 // supaya tidak menghalangi login walau pengecekan gagal.
-                window.location.href = './index.html';
+                window.location.href = landingPage;
               })
               .getPendingApprovalCount();
             return;
           }
 
-          window.location.href = './index.html';
+          window.location.href = landingPage;
         })
         .withFailureHandler(function (err) {
           setLoading(false);

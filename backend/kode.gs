@@ -60,6 +60,12 @@ var API_FUNCTIONS = {
   // Multi-workspace (Plant & Departemen)
   loginUser               : loginUser,
   provisionDepartmentSpreadsheet: provisionDepartmentSpreadsheet,
+  // Panel Admin — Manajemen User (tambah/reset password/nonaktifkan lewat web)
+  getAkunList             : getAkunList,
+  adminTambahUser         : adminTambahUser,
+  adminResetPassword      : adminResetPassword,
+  adminSetAktif           : adminSetAktif,
+  adminEditUser           : adminEditUser,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -2768,6 +2774,149 @@ function setAkunPasswordHelper(nik, nama, role, passwordPlain) {
   }
   sh.appendRow([nik, nama, role, hash, true]);
   Logger.log('Akun ' + nik + ' ditambahkan.');
+}
+
+// ================================================================
+//  PANEL ADMIN — MANAJEMEN USER (web, tanpa sentuh Apps Script editor)
+// ------------------------------------------------------------
+//  Dipanggil dari admin_users.html. Hanya boleh dipakai oleh role
+//  TL/Admin (dicek juga di frontend lewat WH_SESSION.fullAccess, TAPI
+//  divalidasi ULANG di sini/backend supaya tidak bisa dilewati dengan
+//  panggil API langsung). actorNik = NIK yang sedang login (pelaku
+//  aksi), dipakai untuk validasi otorisasi & jejak audit.
+// ================================================================
+function _actorIsFullAccess(actorNik) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+  if (!sh) return false;
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(actorNik)) {
+      var role = String(data[i][2] || '').toUpperCase();
+      return role === 'TL' || role.indexOf('ADMIN') !== -1;
+    }
+  }
+  return false;
+}
+
+// Daftar SEMUA akun (TANPA password/hash) untuk ditampilkan di tabel
+// panel admin. NIK sengaja tidak disensor -- itu identitas publik
+// (kartu karyawan), yang dirahasiakan hanya PasswordHash-nya.
+function getAkunList(actorNik) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh membuka panel ini.' };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+    var data = sh.getDataRange().getValues();
+    var out = [];
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (!r[0]) continue;
+      out.push({
+        rowIndex: i + 1,
+        nik: String(r[0]),
+        nama: String(r[1] || ''),
+        role: String(r[2] || ''),
+        aktif: r[4] === true || String(r[4]).toUpperCase() === 'TRUE',
+        kategori: /^PEG/i.test(String(r[0])) ? 'OS' : 'Internal',
+        adaTandaTangan: !!String(r[5] || '')
+      });
+    }
+    out.sort(function (a, b) { return a.nama < b.nama ? -1 : (a.nama > b.nama ? 1 : 0); });
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Tambah akun baru. NIK karyawan outsourcing HARUS diawali "PEG" supaya
+// otomatis terdeteksi kategori OS (konsisten dengan aturan lama di
+// dokumentasi -- selain itu otomatis dianggap Internal).
+function adminTambahUser(actorNik, nik, nama, role, passwordAwal) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh menambah user.' };
+    nik = String(nik || '').trim().toUpperCase();
+    nama = String(nama || '').trim();
+    role = String(role || '').trim();
+    if (!nik || !nama || !role || !passwordAwal) return { success: false, error: 'NIK, Nama, Role, dan Password awal wajib diisi.' };
+    if (String(passwordAwal).length < 6) return { success: false, error: 'Password awal minimal 6 karakter.' };
+
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) { setupAkunLoginSheet(); sh = ss.getSheetByName(SH_AKUN_LOGIN); }
+    var data = sh.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]).toUpperCase() === nik) {
+        return { success: false, error: 'NIK ' + nik + ' sudah terdaftar. Pakai aksi "Reset Password" kalau mau ganti sandinya.' };
+      }
+    }
+    sh.appendRow([nik, nama, role, _hashPassword(passwordAwal), true]);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Reset/ganti password akun yang sudah ada (dipakai juga untuk kasus
+// karyawan lupa sandi).
+function adminResetPassword(actorNik, nik, passwordBaru) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh reset password.' };
+    if (!passwordBaru || String(passwordBaru).length < 6) return { success: false, error: 'Password baru minimal 6 karakter.' };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+    var data = sh.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(nik)) {
+        sh.getRange(i + 1, 4).setValue(_hashPassword(passwordBaru));
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'NIK ' + nik + ' tidak ditemukan.' };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Aktifkan / nonaktifkan akun (login diblokir kalau Aktif=FALSE, tapi
+// riwayat data karyawan tsb -- lembur, cuti, dll -- tetap tersimpan
+// utuh, sama seperti cara manual lama).
+function adminSetAktif(actorNik, nik, aktifBaru) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh menonaktifkan/mengaktifkan user.' };
+    if (String(actorNik) === String(nik) && !aktifBaru) {
+      return { success: false, error: 'Tidak bisa menonaktifkan akun sendiri yang sedang login.' };
+    }
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+    var data = sh.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(nik)) {
+        sh.getRange(i + 1, 5).setValue(!!aktifBaru);
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'NIK ' + nik + ' tidak ditemukan.' };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Edit Nama/Role (dulu harus edit langsung di sel Spreadsheet -- ini
+// versi web-nya, tetap opsional dipakai lewat panel admin).
+function adminEditUser(actorNik, nik, namaBaru, roleBaru) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh edit user.' };
+    namaBaru = String(namaBaru || '').trim();
+    roleBaru = String(roleBaru || '').trim();
+    if (!namaBaru || !roleBaru) return { success: false, error: 'Nama dan Role wajib diisi.' };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+    var data = sh.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(nik)) {
+        sh.getRange(i + 1, 2, 1, 2).setValues([[namaBaru, roleBaru]]);
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'NIK ' + nik + ' tidak ditemukan.' };
+  } catch (err) { return { success: false, error: err.message }; }
 }
 
 // ================================================================

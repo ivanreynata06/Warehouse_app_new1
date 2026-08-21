@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
+<script src="./assets/js/auth-guard.js?v=20260821a"></script>
+<script src="./assets/js/config.js?v=20260722d"></script>
+<script src="./assets/js/api-shim.js?v=20260722d"></script>
+<script src="./assets/js/sw-register.js?v=20260722d"></script>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kelola User — Admin</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0b1020">
+<link rel="icon" href="./assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest" defer></script>
+<style>
+:root {
+  --bg-main:#0f0f1a; --bg-sidebar:#161622; --bg-card:#1c1c2a; --bg-card-hover:#202033;
+  --text-main:#e8eaf0; --text-muted:#9da3b8;
+  --accent-blue:#3b82f6; --accent-orange:#f59e0b; --accent-green:#10b981;
+  --accent-red:#ef4444; --accent-purple:#8b5cf6; --accent-cyan:#06b6d4;
+  --accent-amber:#f59e0b; --accent-yellow:#eab308;
+  --accent-gold:#d4af37; --accent-gold2:#f4d675;
+  --border-color:#2c2c42; --ppr-green:#22c55e;
+  --sidebar-w:200px; --font-scale:1;
+  --font-display:'Outfit',sans-serif; --font-body:'Inter',sans-serif; --font-mono:'JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;width:100%;overflow:hidden;font-family:var(--font-body);background:var(--bg-main);color:var(--text-main);font-size:calc(clamp(10px,0.95vw,12px)*var(--font-scale));-webkit-font-smoothing:antialiased;}
+.app-shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
+
+.loading-overlay{position:fixed;inset:0;background:rgba(13,13,25,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;backdrop-filter:blur(4px);}
+.loading-overlay.show{display:flex;}
+.rucika-logo-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.rucika-text{font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:2px;color:var(--accent-gold);}
+.rucika-tagline{font-size:9px;color:var(--text-muted);}
+.loading-text{font-size:11px;color:var(--text-muted);}
+
+.sidebar{width:var(--sidebar-w);background:var(--bg-sidebar);border-right:1px solid var(--border-color);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;transition:margin-left .25s;}
+body.sidebar-hidden .sidebar{margin-left:calc(-1*var(--sidebar-w));}
+.sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:14px 12px;gap:8px;}
+.logo{display:flex;align-items:center;gap:8px;}
+.logo img{width:26px;height:26px;object-fit:contain;}
+.logo-name{font-family:var(--font-display);font-size:11px;font-weight:700;}
+.logo-sub{font-size:8.5px;color:var(--text-muted);}
+.btn-tog{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;border-radius:6px;}
+.btn-tog:hover{background:var(--bg-card-hover);}
+.sidebar-divider{height:1px;background:var(--border-color);margin:4px 12px;}
+.sec-title{font-size:8px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);padding:8px 14px 4px;font-weight:700;}
+.mitem{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:10.5px;color:var(--text-muted);cursor:pointer;border-left:2px solid transparent;transition:background .12s,color .12s;}
+.mitem:hover{background:var(--bg-card-hover);color:var(--text-main);}
+.mitem.active{background:rgba(212,175,55,.1);color:var(--accent-gold);border-left-color:var(--accent-gold);font-weight:600;}
+.mgroup-hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;font-size:10.5px;color:var(--text-muted);cursor:pointer;}
+.mgroup-hdr-left{display:flex;align-items:center;gap:8px;}
+.mgroup .chev{transition:transform .2s;flex-shrink:0;}
+.mgroup.open .chev{transform:rotate(90deg);}
+.mgroup-body{max-height:0;overflow:hidden;transition:max-height .2s;}
+.mgroup.open .mgroup-body{max-height:300px;}
+.mgroup-body .mitem{padding-left:30px;}
+
+.main-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.navbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border-color);flex-shrink:0;gap:12px;}
+.nav-left{display:flex;align-items:center;gap:10px;}
+.btn-menu{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:5px;border-radius:6px;}
+.btn-menu:hover{background:var(--bg-card-hover);}
+.nav-title{font-family:var(--font-display);font-size:13px;font-weight:700;}
+.nav-sub{font-size:8.5px;color:var(--text-muted);}
+.nav-right{display:flex;align-items:center;gap:10px;}
+.nav-divider{width:1px;height:20px;background:var(--border-color);}
+.btn-theme{display:flex;align-items:center;gap:5px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:5px 10px;color:var(--text-muted);cursor:pointer;font-size:9.5px;font-family:var(--font-body);}
+.btn-theme:hover{background:var(--bg-card-hover);}
+.nav-icon{background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:6px;color:var(--text-muted);cursor:pointer;}
+.nav-icon:hover{background:var(--bg-card-hover);color:var(--text-main);}
+
+.content-wrap{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px;}
+.page-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+.page-header-left{display:flex;align-items:center;gap:10px;}
+.page-icon{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent-gold),var(--accent-gold2));display:flex;align-items:center;justify-content:center;color:#1a1a10;flex-shrink:0;}
+.page-title{font-family:var(--font-display);font-size:15px;font-weight:800;}
+.page-sub{font-size:10px;color:var(--text-muted);}
+
+.btn-primary{display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--accent-gold),var(--accent-gold2));border:none;color:#1a1a10;cursor:pointer;padding:9px 16px;border-radius:9px;font-family:var(--font-body);font-size:11px;font-weight:700;}
+.btn-primary:hover{filter:brightness(1.08);}
+
+.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.card-title{display:flex;align-items:center;gap:7px;font-family:var(--font-display);font-size:11.5px;font-weight:700;}
+.card-badge{font-size:9px;padding:3px 9px;border-radius:20px;font-weight:700;}
+.badge-gold{background:rgba(212,175,55,.15);color:var(--accent-gold);}
+.badge-blue{background:rgba(59,130,246,.15);color:#93c5fd;}
+.badge-purple{background:rgba(139,92,246,.15);color:#c4b5fd;}
+.badge-green{background:rgba(16,185,129,.15);color:#6ee7b7;}
+.badge-red{background:rgba(239,68,68,.15);color:#fca5a5;}
+
+.table-wrap{overflow:auto;max-height:calc(100vh - 220px);}
+table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
+.data-table thead th{position:sticky;top:0;background:var(--bg-card);text-align:left;padding:7px 8px;color:var(--text-muted);font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid var(--border-color);z-index:1;}
+.data-table tbody td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);}
+.data-table tbody tr:hover{background:rgba(255,255,255,.025);}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;}
+.chip-aktif{background:rgba(16,185,129,.15);color:#6ee7b7;}
+.chip-nonaktif{background:rgba(239,68,68,.15);color:#fca5a5;}
+.chip-os{background:rgba(139,92,246,.12);color:#c4b5fd;}
+.chip-internal{background:rgba(59,130,246,.12);color:#93c5fd;}
+
+.btn-export-group{display:flex;gap:5px;flex-wrap:wrap;}
+.btn-export{border:none;color:#fff;cursor:pointer;padding:5px 10px;border-radius:7px;font-family:var(--font-body);font-size:9px;font-weight:700;white-space:nowrap;}
+.btn-export:hover{filter:brightness(1.1);}
+.btn-lihat{background:linear-gradient(135deg,#3b82f6,#60a5fa);}
+.btn-edit{background:linear-gradient(135deg,#f59e0b,#d97706);}
+.btn-reset{background:linear-gradient(135deg,#8b5cf6,#a78bfa);}
+.btn-toggle-on{background:linear-gradient(135deg,#dc2626,#b91c1c);}
+.btn-toggle-off{background:linear-gradient(135deg,#16a34a,#22c55e);}
+
+.modal-backdrop{position:fixed;inset:0;background:rgba(8,8,16,.7);z-index:1900;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+.modal-backdrop.open{display:flex;}
+.modal-box{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:18px 20px;width:340px;max-width:92vw;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 50px rgba(0,0,0,.5);max-height:88vh;overflow-y:auto;}
+.modal-box h3{font-family:var(--font-display);font-size:13px;margin:0 0 2px;color:var(--text-main);display:flex;align-items:center;gap:7px;}
+.modal-sub{font-size:9.5px;color:var(--text-muted);margin:-6px 0 4px;}
+.modal-field{display:flex;flex-direction:column;gap:4px;}
+.modal-field label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600;}
+.modal-field input,.modal-field select,.modal-field textarea{background:var(--bg-main);border:1px solid var(--border-color);border-radius:7px;padding:8px 9px;color:var(--text-main);font-family:var(--font-body);font-size:11.5px;}
+.modal-note{font-size:9.5px;color:var(--text-muted);background:rgba(255,255,255,.03);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;line-height:1.5;}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
+.btn-modal-cancel{background:transparent;border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;}
+.btn-modal-save{background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;}
+.detail-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border-color);font-size:10.5px;}
+.detail-row span:first-child{color:var(--text-muted);}
+
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:40px 10px;color:var(--text-muted);}
+.empty-state-sub{font-size:10px;text-align:center;max-width:320px;}
+
+.toast{position:fixed;bottom:18px;right:18px;background:#1a1a28;border:1px solid var(--border-color);border-radius:9px;padding:9px 15px;font-size:10.5px;z-index:2000;animation:slideUp .3s ease;display:flex;align-items:center;gap:7px;box-shadow:0 8px 28px rgba(0,0,0,.5);}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.toast-success{border-left:3px solid var(--accent-green);}
+.toast-info{border-left:3px solid var(--accent-blue);}
+.toast-error{border-left:3px solid var(--accent-red);}
+
+body.theme-light{--bg-main:#eef1f8;--bg-sidebar:#ffffff;--bg-card:#ffffff;--bg-card-hover:#f6f8fc;--text-main:#101a30;--text-muted:#5a6785;--border-color:#dfe4ee;}
+body.theme-light .loading-overlay{background:rgba(238,240,245,.92);}
+body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
+
+@media (max-width:860px){
+  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:60;box-shadow:10px 0 30px rgba(0,0,0,.45);}
+}
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="rucika-logo-wrap">
+    <span class="rucika-text">RUCIKA</span>
+    <span class="rucika-tagline">Dimana air mengalir sampai jauh</span>
+  </div>
+  <div class="loading-text" id="loading-txt">Memuat data user...</div>
+</div>
+
+<div class="app-shell">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <img src="./assets/img/rucika-logo.png" alt="Rucika">
+        <div>
+          <div class="logo-name">Admin</div>
+          <div class="logo-sub">Kelola User</div>
+        </div>
+      </div>
+      <button class="btn-tog" onclick="toggleSidebar()"><i data-lucide="chevron-left" style="width:12px;"></i></button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sec-title">Menu Utama</div>
+    <div class="mitem" onclick="navTo('wh_control_tower')"><i data-lucide="layout-dashboard" style="width:12px;flex-shrink:0;"></i><span>Dashboard WH Import</span></div>
+    <div class="mitem" onclick="navTo('index')"><i data-lucide="package" style="width:12px;flex-shrink:0;"></i><span>Monitoring Stock, Inbound &amp; Outbound</span></div>
+    <div class="mitem" onclick="navTo('kanban')"><i data-lucide="layout-grid" style="width:12px;flex-shrink:0;"></i><span>Monitoring Kanban</span></div>
+    <div class="mitem" onclick="navTo('rekap')"><i data-lucide="truck" style="width:12px;flex-shrink:0;"></i><span>Rekap Muatan</span></div>
+    <div class="mitem" onclick="navTo('residance')"><i data-lucide="timer" style="width:12px;flex-shrink:0;"></i><span>Loading Time Pengiriman</span></div>
+    <div class="mitem" onclick="navTo('upload')"><i data-lucide="upload" style="width:12px;flex-shrink:0;"></i><span>Upload Data Harian</span></div>
+    <div class="sidebar-divider"></div>
+    <div class="mgroup open">
+      <div class="mgroup-hdr" onclick="this.parentElement.classList.toggle('open')">
+        <div class="mgroup-hdr-left"><i data-lucide="repeat" style="width:12px;flex-shrink:0;"></i><span>Transaksi</span></div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+      <div class="mgroup-body">
+        <div class="mitem" onclick="navTo('input_lembur')"><i data-lucide="clock" style="width:11px;flex-shrink:0;"></i><span>Input Lembur</span></div>
+        <div class="mitem" onclick="navTo('fte_dashboard')"><i data-lucide="bar-chart-3" style="width:11px;flex-shrink:0;"></i><span>Monitoring FTE</span></div>
+      </div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sec-title">Sistem</div>
+    <div class="mitem active" id="mitem-kelola-user"><i data-lucide="shield" style="width:12px;flex-shrink:0;"></i><span>Kelola User</span></div>
+    <div class="mitem" onclick="whLogout()"><i data-lucide="log-out" style="width:12px;flex-shrink:0;"></i><span>Logout</span></div>
+  </div>
+
+  <div class="main-right">
+    <div class="navbar">
+      <div class="nav-left">
+        <button class="btn-menu" onclick="toggleSidebar()"><i data-lucide="menu" style="width:13px;"></i></button>
+        <div>
+          <div class="nav-title">Kelola User</div>
+          <div class="nav-sub">Admin — Tambah / Edit / Reset Password / Nonaktifkan</div>
+        </div>
+      </div>
+      <div class="nav-right">
+        <button class="nav-icon" onclick="loadUsers()" title="Refresh"><i data-lucide="refresh-cw" style="width:13px;"></i></button>
+        <button class="btn-theme" id="theme-btn" onclick="toggleTheme()"><i data-lucide="moon" style="width:11px;" id="theme-icon"></i><span id="theme-label">Dark</span></button>
+      </div>
+    </div>
+
+    <div class="content-wrap">
+      <div class="page-header">
+        <div class="page-header-left">
+          <div class="page-icon"><i data-lucide="shield" style="width:17px;"></i></div>
+          <div>
+            <div class="page-title">Kelola User</div>
+            <div class="page-sub" id="page-sub">Tambah akun baru, reset password, atau nonaktifkan akun — tanpa buka Apps Script editor.</div>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="openTambahModal()"><i data-lucide="user-plus" style="width:13px;"></i>Tambah User</button>
+      </div>
+
+      <div class="card" style="min-height:200px;">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="users" style="width:12px;"></i>Daftar User</div>
+          <span class="card-badge badge-gold" id="badge-total">0 user</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>NIK</th><th>Nama</th><th>Role</th><th>Kategori</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="tbody-users"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="empty-users" style="display:none;">
+          <i data-lucide="users" style="width:26px;"></i>
+          <div class="empty-state-sub">Belum ada user, atau gagal memuat. Coba klik Refresh.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL — Tambah User ═══ -->
+<div class="modal-backdrop" id="modal-tambah">
+  <div class="modal-box">
+    <h3><i data-lucide="user-plus" style="width:14px;"></i>Tambah User Baru</h3>
+    <div class="modal-field">
+      <label for="tambah-nik">NIK</label>
+      <input type="text" id="tambah-nik" placeholder="mis. PEG25112999 (OS) atau 2106999 (Internal)">
+    </div>
+    <div class="modal-field">
+      <label for="tambah-nama">Nama</label>
+      <input type="text" id="tambah-nama" placeholder="Nama lengkap karyawan">
+    </div>
+    <div class="modal-field">
+      <label for="tambah-role">Role</label>
+      <input type="text" id="tambah-role" list="daftar-role" placeholder="mis. Technician I, TL, Admin Wh Fitting">
+      <datalist id="daftar-role">
+        <option value="TL"></option>
+        <option value="Technician I"></option>
+        <option value="Admin Wh Fitting"></option>
+      </datalist>
+    </div>
+    <div class="modal-field">
+      <label for="tambah-pwd">Password Awal</label>
+      <input type="text" id="tambah-pwd" placeholder="Minimal 6 karakter">
+    </div>
+    <div class="modal-note">NIK diawali <b>PEG</b> otomatis terdeteksi kategori <b>OS</b> (outsourcing); selain itu otomatis <b>Internal</b> — sama seperti aturan lama.</div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-tambah')">Batal</button>
+      <button class="btn-modal-save" onclick="submitTambahUser()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL — Lihat Detail User ═══ -->
+<div class="modal-backdrop" id="modal-lihat">
+  <div class="modal-box">
+    <h3><i data-lucide="user" style="width:14px;"></i>Detail User</h3>
+    <div class="detail-row"><span>NIK</span><span id="lihat-nik">—</span></div>
+    <div class="detail-row"><span>Nama</span><span id="lihat-nama">—</span></div>
+    <div class="detail-row"><span>Role</span><span id="lihat-role">—</span></div>
+    <div class="detail-row"><span>Kategori</span><span id="lihat-kategori">—</span></div>
+    <div class="detail-row"><span>Status</span><span id="lihat-status">—</span></div>
+    <div class="detail-row"><span>Tanda Tangan TL</span><span id="lihat-ttd">—</span></div>
+    <div class="modal-note">
+      <i data-lucide="lock" style="width:11px;vertical-align:-1px;"></i>
+      Password TIDAK bisa ditampilkan di sini — password disimpan sebagai hash (SHA-256) yang sengaja tidak bisa dibalik ke teks asli, bahkan oleh sistem sendiri. Ini demi keamanan akun. Kalau perlu, pakai tombol <b>Reset Password</b> untuk mengganti dengan password baru.
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-lihat')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL — Edit Nama/Role ═══ -->
+<div class="modal-backdrop" id="modal-edit">
+  <div class="modal-box">
+    <h3><i data-lucide="pencil" style="width:14px;"></i>Edit User</h3>
+    <div class="modal-sub" id="edit-nik-label">—</div>
+    <div class="modal-field">
+      <label for="edit-nama">Nama</label>
+      <input type="text" id="edit-nama">
+    </div>
+    <div class="modal-field">
+      <label for="edit-role">Role</label>
+      <input type="text" id="edit-role" list="daftar-role">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-edit')">Batal</button>
+      <button class="btn-modal-save" onclick="submitEditUser()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL — Reset Password ═══ -->
+<div class="modal-backdrop" id="modal-reset">
+  <div class="modal-box">
+    <h3><i data-lucide="key-round" style="width:14px;"></i>Reset Password</h3>
+    <div class="modal-sub" id="reset-nik-label">—</div>
+    <div class="modal-field">
+      <label for="reset-pwd">Password Baru</label>
+      <input type="text" id="reset-pwd" placeholder="Minimal 6 karakter">
+    </div>
+    <div class="modal-note">Password lama otomatis tidak berlaku lagi setelah disimpan. Beritahu password baru ini ke karyawan yang bersangkutan secara langsung/pribadi.</div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-reset')">Batal</button>
+      <button class="btn-modal-save" onclick="submitResetPassword()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var PAGE_MAP = {
+  ''                : 'index.html',
+  'index'           : 'monitoring_stock.html',
+  'kanban'          : 'kanban.html',
+  'rekap'           : 'rekap_muatan.html',
+  'wh_control_tower': 'index.html',
+  'residance'       : 'residance_time.html',
+  'input_lembur'    : 'input_lembur.html',
+  'fte_dashboard'   : 'fte_dashboard.html',
+  'upload'          : 'upload_data.html'
+};
+function navTo(page){
+  var t = PAGE_MAP[page || ''] || 'index.html';
+  t += '?v=' + (window.SITE_VERSION||Date.now());
+  window.location.href = t;
+}
+function toggleSidebar(){
+  document.body.classList.toggle('sidebar-hidden');
+  localStorage.setItem('lembur_sidebar_hidden', document.body.classList.contains('sidebar-hidden') ? '1':'0');
+}
+if (window.innerWidth <= 860 || localStorage.getItem('lembur_sidebar_hidden')==='1') {
+  document.body.classList.add('sidebar-hidden');
+}
+function toggleTheme(){
+  var isLight = document.body.classList.toggle('theme-light');
+  localStorage.setItem('lembur_theme', isLight?'light':'dark');
+  updateThemeBtn(isLight);
+}
+function updateThemeBtn(isLight){
+  document.getElementById('theme-icon').setAttribute('data-lucide', isLight?'sun':'moon');
+  document.getElementById('theme-label').textContent = isLight?'Light':'Dark';
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+(function(){ if(localStorage.getItem('lembur_theme')==='light'){ document.body.classList.add('theme-light'); } })();
+
+function showToast(msg, type){
+  var t = document.createElement('div');
+  t.className = 'toast toast-'+(type||'info');
+  var icon = type==='success'?'check-circle':type==='error'?'x-circle':'info';
+  t.innerHTML = '<i data-lucide="'+icon+'" style="width:13px;"></i><span>'+msg+'</span>';
+  document.body.appendChild(t);
+  if(typeof lucide!=='undefined') lucide.createIcons();
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ t.remove(); },300); }, 3200);
+}
+function showLoading(v, txt){
+  document.getElementById('loading-overlay').classList.toggle('show', !!v);
+  if(txt) document.getElementById('loading-txt').textContent = txt;
+}
+function escHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+var userListCache = [];
+var actorNik = '';
+
+function loadUsers(){
+  actorNik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  if (!window.WH_SESSION || !window.WH_SESSION.fullAccess) {
+    showToast('Akses ditolak -- halaman ini khusus TL/Admin.', 'error');
+    setTimeout(function(){ window.location.href = './index.html'; }, 1200);
+    return;
+  }
+  showLoading(true, 'Memuat daftar user...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      showLoading(false);
+      if (!res || !res.success) {
+        showToast('Gagal memuat: '+(res&&res.error?res.error:'tidak diketahui'),'error');
+        document.getElementById('empty-users').style.display = 'flex';
+        return;
+      }
+      userListCache = res.data || [];
+      renderUserTable();
+    })
+    .withFailureHandler(function(err){
+      showLoading(false);
+      showToast('Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi'),'error');
+      document.getElementById('empty-users').style.display = 'flex';
+    })
+    .getAkunList(actorNik);
+}
+
+function renderUserTable(){
+  var tb = document.getElementById('tbody-users');
+  document.getElementById('badge-total').textContent = userListCache.length + ' user';
+  if (!userListCache.length){
+    tb.innerHTML = '';
+    document.getElementById('empty-users').style.display = 'flex';
+    return;
+  }
+  document.getElementById('empty-users').style.display = 'none';
+  tb.innerHTML = userListCache.map(function(u, idx){
+    var statusChip = u.aktif
+      ? '<span class="chip chip-aktif"><i data-lucide="check" style="width:9px;"></i>Aktif</span>'
+      : '<span class="chip chip-nonaktif"><i data-lucide="x" style="width:9px;"></i>Nonaktif</span>';
+    var katChip = u.kategori === 'OS'
+      ? '<span class="chip chip-os">OS</span>'
+      : '<span class="chip chip-internal">Internal</span>';
+    return '<tr>'+
+      '<td style="font-family:var(--font-mono);">'+escHtml(u.nik)+'</td>'+
+      '<td>'+escHtml(u.nama)+'</td>'+
+      '<td>'+escHtml(u.role)+'</td>'+
+      '<td>'+katChip+'</td>'+
+      '<td>'+statusChip+'</td>'+
+      '<td><div class="btn-export-group">'+
+        '<button class="btn-export btn-lihat" data-idx="'+idx+'" data-act="lihat">Lihat</button>'+
+        '<button class="btn-export btn-edit" data-idx="'+idx+'" data-act="edit">Edit</button>'+
+        '<button class="btn-export btn-reset" data-idx="'+idx+'" data-act="reset">Reset Pwd</button>'+
+        '<button class="btn-export '+(u.aktif?'btn-toggle-on':'btn-toggle-off')+'" data-idx="'+idx+'" data-act="toggle">'+(u.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
+      '</div></td>'+
+    '</tr>';
+  }).join('');
+  tb.querySelectorAll('button[data-act]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var idx = Number(btn.dataset.idx), act = btn.dataset.act;
+      var u = userListCache[idx];
+      if (!u) return;
+      if (act === 'lihat') openLihatModal(u);
+      else if (act === 'edit') openEditModal(u);
+      else if (act === 'reset') openResetModal(u);
+      else if (act === 'toggle') doToggleAktif(u);
+    });
+  });
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+
+// ---- Tambah User ----
+function openTambahModal(){
+  document.getElementById('tambah-nik').value = '';
+  document.getElementById('tambah-nama').value = '';
+  document.getElementById('tambah-role').value = '';
+  document.getElementById('tambah-pwd').value = '';
+  document.getElementById('modal-tambah').classList.add('open');
+}
+function submitTambahUser(){
+  var nik = document.getElementById('tambah-nik').value.trim().toUpperCase();
+  var nama = document.getElementById('tambah-nama').value.trim();
+  var role = document.getElementById('tambah-role').value.trim();
+  var pwd = document.getElementById('tambah-pwd').value;
+  if (!nik || !nama || !role || !pwd){ showToast('Semua field wajib diisi','error'); return; }
+  if (pwd.length < 6){ showToast('Password awal minimal 6 karakter','error'); return; }
+  showToast('Menyimpan user baru...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('User '+nama+' berhasil ditambahkan','success');
+      closeModal('modal-tambah');
+      loadUsers();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminTambahUser(actorNik, nik, nama, role, pwd);
+}
+
+// ---- Lihat Detail ----
+function openLihatModal(u){
+  document.getElementById('lihat-nik').textContent = u.nik;
+  document.getElementById('lihat-nama').textContent = u.nama;
+  document.getElementById('lihat-role').textContent = u.role;
+  document.getElementById('lihat-kategori').textContent = u.kategori;
+  document.getElementById('lihat-status').textContent = u.aktif ? 'Aktif' : 'Nonaktif';
+  document.getElementById('lihat-ttd').textContent = u.adaTandaTangan ? 'Sudah upload' : 'Belum upload';
+  document.getElementById('modal-lihat').classList.add('open');
+}
+
+// ---- Edit Nama/Role ----
+var __editNik = null;
+function openEditModal(u){
+  __editNik = u.nik;
+  document.getElementById('edit-nik-label').textContent = u.nik;
+  document.getElementById('edit-nama').value = u.nama;
+  document.getElementById('edit-role').value = u.role;
+  document.getElementById('modal-edit').classList.add('open');
+}
+function submitEditUser(){
+  var nama = document.getElementById('edit-nama').value.trim();
+  var role = document.getElementById('edit-role').value.trim();
+  if (!nama || !role){ showToast('Nama dan Role wajib diisi','error'); return; }
+  showToast('Menyimpan perubahan...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('User berhasil diperbarui','success');
+      closeModal('modal-edit');
+      loadUsers();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminEditUser(actorNik, __editNik, nama, role);
+}
+
+// ---- Reset Password ----
+var __resetNik = null;
+function openResetModal(u){
+  __resetNik = u.nik;
+  document.getElementById('reset-nik-label').textContent = u.nik + ' — ' + u.nama;
+  document.getElementById('reset-pwd').value = '';
+  document.getElementById('modal-reset').classList.add('open');
+}
+function submitResetPassword(){
+  var pwd = document.getElementById('reset-pwd').value;
+  if (!pwd || pwd.length < 6){ showToast('Password baru minimal 6 karakter','error'); return; }
+  showToast('Menyimpan password baru...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Password berhasil direset','success');
+      closeModal('modal-reset');
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminResetPassword(actorNik, __resetNik, pwd);
+}
+
+// ---- Aktifkan / Nonaktifkan ----
+function doToggleAktif(u){
+  var aktifBaru = !u.aktif;
+  var label = aktifBaru ? 'mengaktifkan' : 'menonaktifkan';
+  if (!confirm('Yakin mau '+label+' akun '+u.nama+' ('+u.nik+')?')) return;
+  showToast('Memproses...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Akun '+u.nama+' berhasil '+(aktifBaru?'diaktifkan':'dinonaktifkan'),'success');
+      loadUsers();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetAktif(actorNik, u.nik, aktifBaru);
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  if(typeof lucide!=='undefined') lucide.createIcons();
+  loadUsers();
+});
+</script>
+
+</body>
+</html>
