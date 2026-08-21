@@ -97,10 +97,18 @@ var API_FUNCTIONS = {
 var CACHEABLE_ACTIONS = {
   getGroupList: true, getDashboardData: true, getOutboundData: true,
   getInboundData: true, getKanbanData: true, getRekapMuatanData: true,
-  getPhotos: true, getStockTrendBatch: true, getIOTrendBatch: true
+  getPhotos: true, getStockTrendBatch: true, getIOTrendBatch: true,
+  // Monitoring FTE ikut disini karena sejak nambah data Produktivitas
+  // (Kg/FTE, Ton/FTE), fungsinya scan penuh sheet DASHBOARD_KIRIM &
+  // DASHBOARD_PRODUKSI (bisa 10.000+ baris) SETIAP kali halaman dibuka
+  // -- lambat & tidak perlu, karena datanya agregat bulanan yang wajar
+  // kalau agak nge-lag beberapa menit (bukan angka real-time per detik).
+  getAbsensiFTEData: true
 };
 // TTL per fungsi (detik). Default 90s buat dashboard umum.
-var CACHE_TTL_OVERRIDE = {};
+var CACHE_TTL_OVERRIDE = {
+  getAbsensiFTEData: 180 // 3 menit -- data bulanan, aman agak lebih lama drpd default
+};
 var CACHE_TTL_DEFAULT = 90;
 
 function doGet(e) {
@@ -3104,9 +3112,15 @@ function adminSetFonnteToken(actorNik, nik, token) {
 // Status token per NIK -- TIDAK mengembalikan token aslinya (sekali
 // disimpan, cukup lihat status "sudah/belum diisi" saja, sama seperti
 // prinsip password yang di-hash: tidak perlu ditampilkan ulang).
-function adminGetFonnteStatus(actorNik) {
+function adminGetFonnteStatus(actorNik, targetWorkspace) {
   try {
     if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    // Kalau Super Admin sedang lihat departemen LAIN (lewat dropdown di
+    // Panel Admin), cek status utk departemen itu -- BUKAN departemen
+    // tempat dia sendiri login. Sebelumnya bug ini bikin status ikut
+    // departemen actor sendiri terus, jadi kelihatan "sudah diisi" padahal
+    // yang dicek/diisi departemen lain yg masih kosong.
+    var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
     var props = PropertiesService.getScriptProperties();
     var all = props.getProperties();
     var tokenNiks = {};
@@ -3116,22 +3130,24 @@ function adminGetFonnteStatus(actorNik) {
     return {
       success: true,
       tokenNiks: tokenNiks,
-      approverWaWorkspace: props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) ? 'diisi' : '',
+      approverWaWorkspace: props.getProperty('FONNTE_APPROVER_WA_' + workspaceKey) ? 'diisi' : '',
       approverWaUmum: props.getProperty('FONNTE_APPROVER_WA') ? 'diisi' : '',
-      workspace: ACTIVE_WORKSPACE
+      workspace: workspaceKey
     };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
-// Nomor approver WA khusus workspace aktif saat ini (dept/plant yg
-// sedang login). Kosongkan (isi string kosong) utk hapus & fallback
-// ke nomor umum FONNTE_APPROVER_WA.
-function adminSetFonnteApproverWa(actorNik, nomorWa) {
+// Nomor approver WA khusus SATU departemen/plant (bisa yang lagi login,
+// bisa departemen LAIN kalau Super Admin lagi pilih dari dropdown).
+// Kosongkan (isi string kosong) utk hapus & fallback ke nomor umum
+// FONNTE_APPROVER_WA.
+function adminSetFonnteApproverWa(actorNik, nomorWa, targetWorkspace) {
   try {
     if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur nomor approver WA.' };
     nomorWa = String(nomorWa || '').trim();
+    var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
     var props = PropertiesService.getScriptProperties();
-    var key = 'FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE;
+    var key = 'FONNTE_APPROVER_WA_' + workspaceKey;
     if (!nomorWa) { props.deleteProperty(key); return { success: true, cleared: true }; }
     props.setProperty(key, nomorWa);
     return { success: true };

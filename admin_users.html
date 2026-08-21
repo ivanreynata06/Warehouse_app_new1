@@ -539,6 +539,7 @@ function onWorkspaceSwitch(){
   document.getElementById('page-sub').textContent =
     'Mengelola: ' + (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : chosen);
   loadUsers();
+  loadFonnteStatus(); // status nomor approver WA harus ikut departemen yang dipilih, bukan departemen login sendiri
 }
 
 // ---- Tambah Departemen/Plant Baru (Super Admin) ----
@@ -746,7 +747,7 @@ function loadFonnteStatus(){
         (res.approverWaUmum ? 'Belum ada nomor khusus -- memakai nomor WA umum.' : 'Belum ada nomor WA approver yang diisi.');
     })
     .withFailureHandler(function(){})
-    .adminGetFonnteStatus(actorNik);
+    .adminGetFonnteStatus(actorNik, currentTargetWorkspace);
 }
 function submitApproverWa(){
   var nomor = document.getElementById('approver-wa').value.trim();
@@ -759,7 +760,7 @@ function submitApproverWa(){
       loadFonnteStatus();
     })
     .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .adminSetFonnteApproverWa(actorNik, nomor);
+    .adminSetFonnteApproverWa(actorNik, nomor, currentTargetWorkspace);
 }
 
 document.addEventListener('DOMContentLoaded', function(){
