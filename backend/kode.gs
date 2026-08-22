@@ -26,6 +26,7 @@ var API_FUNCTIONS = {
   getKanbanData           : getKanbanData,
   getRekapMuatanData      : getRekapMuatanData,
   getResidenceTimeData    : getResidenceTimeData,
+  getLoadingTimeAnalytics : getLoadingTimeAnalytics,
   getPendingRows          : getPendingRows,
   getStockTrendBatch      : getStockTrendBatch,
   getIOTrendBatch         : getIOTrendBatch,
@@ -103,11 +104,13 @@ var CACHEABLE_ACTIONS = {
   // DASHBOARD_PRODUKSI (bisa 10.000+ baris) SETIAP kali halaman dibuka
   // -- lambat & tidak perlu, karena datanya agregat bulanan yang wajar
   // kalau agak nge-lag beberapa menit (bukan angka real-time per detik).
-  getAbsensiFTEData: true
+  getAbsensiFTEData: true,
+  getLoadingTimeAnalytics: true
 };
 // TTL per fungsi (detik). Default 90s buat dashboard umum.
 var CACHE_TTL_OVERRIDE = {
-  getAbsensiFTEData: 180 // 3 menit -- data bulanan, aman agak lebih lama drpd default
+  getAbsensiFTEData: 180, // 3 menit -- data bulanan, aman agak lebih lama drpd default
+  getLoadingTimeAnalytics: 180
 };
 var CACHE_TTL_DEFAULT = 90;
 
@@ -463,6 +466,138 @@ function getResidenceTimeData(filter) {
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+// ================================================================
+//  ANALISIS LOADING TIME: anomali durasi muat per jenis kendaraan +
+//  potensi lembur dari mobil yang mulai dimuat di atas jam 16:00.
+// ------------------------------------------------------------
+//  1) ANOMALI DURASI: kelompokkan kiriman yang SUDAH SELESAI (Waktu
+//     Mulai & Waktu Selesai keduanya terisi) per Jenis Kendaraan,
+//     hitung rata-rata durasi muat per jenis. Kiriman yang durasinya
+//     >1,5x rata-rata jenisnya ditandai "lebih lama dari biasanya",
+//     dan yang <0,5x rata-rata ditandai "lebih cepat dari biasanya"
+//     (potensi salah catat waktu / kasus tidak biasa yang layak dicek).
+//     Kendaraan dengan <3 data bulan itu dilewati (belum cukup sampel
+//     buat dibilang "rata-rata").
+//  2) POTENSI LEMBUR: kiriman yang checker klik "Mulai Muat" di atas
+//     jam 16:00 -- makin sore mulai muat, makin besar risiko checker/tim
+//     muat pulang telat (lembur) karena prosesnya baru selesai malam.
+// ================================================================
+function getLoadingTimeAnalytics(bulan, tahun) {
+  try {
+    bulan = Number(bulan); tahun = Number(tahun);
+
+    var scriptCacheLt = CacheService.getScriptCache();
+    var cacheKeyLt = 'loadingTimeAnalytics_' + ACTIVE_WORKSPACE + '_' + tahun + '_' + bulan;
+    var cachedLt = scriptCacheLt.get(cacheKeyLt);
+    if (cachedLt) return JSON.parse(cachedLt);
+
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(SH_PENGIRIMAN);
+    if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan.' };
+
+    var data = sheet.getDataRange().getValues();
+    var rowsBulanIni = [];
+
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var spm = String(row[4] || '').trim();
+      if (!spm) continue;
+      var tglRaw = row[0];
+      if (!tglRaw) continue;
+      var tgl = new Date(tglRaw);
+      if ((tgl.getMonth() + 1) !== bulan || tgl.getFullYear() !== tahun) continue;
+
+      var jenis = String(row[6] || '').trim() || '(Tidak diisi)';
+      var mulaiStr = _fmtTime(row[7]);
+      var selesaiStr = _fmtTime(row[8]);
+      var mulaiMin = _timeStrToMinutes(mulaiStr);
+      var selesaiMin = _timeStrToMinutes(selesaiStr);
+
+      rowsBulanIni.push({
+        tanggal: _fmtYMD(tgl), agen: String(row[1] || '').trim(), spm: spm,
+        nopol: String(row[5] || '').trim(), jenisKendaraan: jenis,
+        waktuMulai: mulaiStr, waktuSelesai: selesaiStr,
+        mulaiMin: mulaiMin, selesaiMin: selesaiMin
+      });
+    }
+
+    // ---- 1) ANOMALI DURASI per jenis kendaraan ----
+    var durasiPerJenis = {}; // { jenis: [ {rec, durasiMenit} ] }
+    rowsBulanIni.forEach(function (r) {
+      if (r.mulaiMin == null || r.selesaiMin == null) return; // belum selesai, lewati
+      var durasi = r.selesaiMin - r.mulaiMin;
+      if (durasi < 0) durasi += 24 * 60; // lewat tengah malam
+      if (durasi <= 0) return; // data tidak masuk akal, lewati
+      if (!durasiPerJenis[r.jenisKendaraan]) durasiPerJenis[r.jenisKendaraan] = [];
+      durasiPerJenis[r.jenisKendaraan].push({ rec: r, durasiMenit: durasi });
+    });
+
+    var ringkasanPerJenis = [];
+    var anomaliList = [];
+    Object.keys(durasiPerJenis).forEach(function (jenis) {
+      var list = durasiPerJenis[jenis];
+      var rataRata = list.reduce(function (a, x) { return a + x.durasiMenit; }, 0) / list.length;
+      ringkasanPerJenis.push({
+        jenisKendaraan: jenis,
+        jumlahData: list.length,
+        rataRataMenit: Math.round(rataRata)
+      });
+      if (list.length < 3) return; // sampel terlalu sedikit, jangan tandai anomali
+      list.forEach(function (x) {
+        var rasio = x.durasiMenit / rataRata;
+        if (rasio >= 1.5) {
+          anomaliList.push({
+            tanggal: x.rec.tanggal, agen: x.rec.agen, spm: x.rec.spm, nopol: x.rec.nopol,
+            jenisKendaraan: jenis, waktuMulai: x.rec.waktuMulai, waktuSelesai: x.rec.waktuSelesai,
+            durasiMenit: x.durasiMenit, rataRataJenisMenit: Math.round(rataRata),
+            tipe: 'lebih_lama', keterangan: 'Durasi muat ' + Math.round(rasio * 10) / 10 + 'x lebih lama dari rata-rata ' + jenis + ' (' + Math.round(rataRata) + ' menit)'
+          });
+        } else if (rasio <= 0.5) {
+          anomaliList.push({
+            tanggal: x.rec.tanggal, agen: x.rec.agen, spm: x.rec.spm, nopol: x.rec.nopol,
+            jenisKendaraan: jenis, waktuMulai: x.rec.waktuMulai, waktuSelesai: x.rec.waktuSelesai,
+            durasiMenit: x.durasiMenit, rataRataJenisMenit: Math.round(rataRata),
+            tipe: 'lebih_cepat', keterangan: 'Durasi muat jauh lebih cepat dari rata-rata ' + jenis + ' (' + Math.round(rataRata) + ' menit) -- cek kemungkinan salah catat jam'
+          });
+        }
+      });
+    });
+    anomaliList.sort(function (a, b) { return a.tanggal < b.tanggal ? 1 : -1; }); // terbaru dulu
+
+    // ---- 2) POTENSI LEMBUR: mulai muat di atas jam 16:00 ----
+    var BATAS_JAM_LEMBUR = 16 * 60; // 16:00
+    var potensiLembur = rowsBulanIni
+      .filter(function (r) { return r.mulaiMin != null && r.mulaiMin >= BATAS_JAM_LEMBUR; })
+      .map(function (r) {
+        return {
+          tanggal: r.tanggal, agen: r.agen, spm: r.spm, nopol: r.nopol,
+          jenisKendaraan: r.jenisKendaraan, waktuMulai: r.waktuMulai, waktuSelesai: r.waktuSelesai,
+          selisihMenitDariJam16: r.mulaiMin - BATAS_JAM_LEMBUR
+        };
+      })
+      .sort(function (a, b) { return a.tanggal < b.tanggal ? 1 : -1; });
+
+    var hasilLt = {
+      success: true,
+      bulan: bulan, tahun: tahun,
+      totalDataBulanIni: rowsBulanIni.length,
+      ringkasanPerJenis: ringkasanPerJenis,
+      anomali: anomaliList,
+      potensiLembur: potensiLembur,
+      jumlahAnomali: anomaliList.length,
+      jumlahPotensiLembur: potensiLembur.length
+    };
+
+    try {
+      var nowLt = new Date();
+      var isBulanBerjalanLt = (tahun === nowLt.getFullYear() && bulan === (nowLt.getMonth() + 1));
+      scriptCacheLt.put(cacheKeyLt, JSON.stringify(hasilLt), isBulanBerjalanLt ? 180 : 21600);
+    } catch (cacheErrLt) { /* gagal cache tidak masalah */ }
+
+    return hasilLt;
+  } catch (err) { return { success: false, error: err.message }; }
 }
 
 // ================================================================

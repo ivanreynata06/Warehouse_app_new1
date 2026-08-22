@@ -128,6 +128,10 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
   padding:5px 10px;border-radius:7px;font-family:'Inter',sans-serif;font-size:9px;font-weight:700;
   display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;}
 .btn-export-sm:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(34,197,94,.35);}
+/* Filter periode Riwayat Lembur -- supaya bisa lihat backdate (bulan lalu) */
+.periode-select-mini{display:flex;align-items:center;gap:4px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:7px;padding:2px 5px;}
+.periode-select-mini select{background:none;border:none;color:var(--text-main);font-size:9.5px;font-family:'Inter',sans-serif;outline:none;cursor:pointer;padding:2px 3px;}
+.periode-select-mini select option{background:var(--bg-card);color:var(--text-main);}
 
 /* Tombol "+ Tambah" aktivitas -- dibuat lebih hidup: gradient, ikon "+"
    berputar saat hover, sedikit "mantul" saat ditekan. */
@@ -438,10 +442,15 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             </button>
           </div>
 
-          <div class="card">
+          <div class="card" id="riwayat-lembur-card">
             <div class="card-hdr">
-              <div class="card-title"><i data-lucide="list" style="width:12px;"></i>Riwayat Lembur Bulan Ini</div>
-              <div style="display:flex;align-items:center;gap:6px;">
+              <div class="card-title"><i data-lucide="list" style="width:12px;"></i>Riwayat Lembur</div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <div class="periode-select-mini">
+                  <i data-lucide="calendar" style="width:10px;color:var(--text-muted);"></i>
+                  <select id="sel-riwayat-bulan" onchange="onRiwayatPeriodeChange()"></select>
+                  <select id="sel-riwayat-tahun" onchange="onRiwayatPeriodeChange()"></select>
+                </div>
                 <span class="card-badge badge-gold" id="badge-riwayat-lembur">0 entri</span>
                 <button class="btn-export-sm" onclick="exportLemburExcel()" title="Export rekap lembur (Internal &amp; OS) ke Excel">
                   <i data-lucide="file-spreadsheet" style="width:11px;"></i>Export Excel
@@ -501,7 +510,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 
           <div class="card">
             <div class="card-hdr">
-              <div class="card-title"><i data-lucide="list" style="width:12px;"></i>Riwayat Ketidakhadiran Bulan Ini</div>
+              <div class="card-title"><i data-lucide="list" style="width:12px;"></i>Riwayat Ketidakhadiran</div>
               <span class="card-badge badge-blue" id="badge-riwayat-absensi">0 entri</span>
             </div>
             <div class="table-wrap">
@@ -579,9 +588,14 @@ function switchTab(name){
 
 // ================================================================
 //  Role-based restriction:
-//   - TL: tab "Input Lembur" disembunyikan (TL tidak input lembur lewat
-//     sini), cuma tab Ketidakhadiran -- dan jenisnya dibatasi Sakit/Mangkir
-//     saja (bukan Cuti Tahunan/Cuti Dokter, itu domain Technician).
+//   - TL: TIDAK input lembur lewat sini (formnya disembunyikan), TAPI
+//     tab "Input Lembur" & card Riwayat Lembur TETAP bisa dibuka/dilihat
+//     (read-only) -- termasuk backdate bulan lalu lewat filter periode
+//     di atas tabel. Sebelumnya tab ini di-hide TOTAL untuk TL, jadi
+//     Riwayat Lembur ikut hilang sama sekali -- sekarang cuma form
+//     inputnya yang disembunyikan, tabel riwayat tetap penuh & full-width.
+//     Tab Ketidakhadiran: jenisnya dibatasi Sakit/Mangkir saja (bukan
+//     Cuti Tahunan/Cuti Dokter, itu domain Technician).
 //   - Role lain (Technician dkk): tetap lihat kedua tab seperti biasa.
 //   - ?tab=cuti di URL -> otomatis buka tab Ketidakhadiran saat halaman
 //     dibuka (dipakai oleh menu "Pengajuan Cuti" yang beda dari "Input
@@ -592,8 +606,16 @@ function switchTab(name){
   var isTL = role === 'TL';
 
   if (isTL) {
-    var tabLemburBtn = document.querySelector('.tab-btn[data-tab="lembur"]');
-    if (tabLemburBtn) tabLemburBtn.style.display = 'none';
+    var formLemburPanel = document.getElementById('form-lembur-panel');
+    if (formLemburPanel) formLemburPanel.style.display = 'none';
+    var riwayatCard = document.getElementById('riwayat-lembur-card');
+    if (riwayatCard) riwayatCard.style.gridColumn = '1 / -1'; // full-width, form-nya sudah tidak ada
+    var tabLemburBtnLabel = document.querySelector('.tab-btn[data-tab="lembur"] span, .tab-btn[data-tab="lembur"]');
+    if (tabLemburBtnLabel) {
+      // Ganti label supaya jelas ini read-only riwayat, bukan form input
+      var btnEl = document.querySelector('.tab-btn[data-tab="lembur"]');
+      if (btnEl) btnEl.innerHTML = '<i data-lucide="list" style="width:12px;"></i>Riwayat Lembur';
+    }
     // Catatan: TL boleh ajukan SEMUA jenis (Sakit, Cuti Dokter, Cuti
     // Tahunan, Mangkir) untuk dirinya sendiri lewat menu "Pengajuan Cuti"
     // -- tidak dibatasi lagi, supaya TL juga bisa ambil cuti tahunan.
@@ -627,6 +649,7 @@ function todayStr(){ var n=new Date(); return n.getFullYear()+'-'+p2(n.getMonth(
 //  LOAD DATA
 // ================================================================
 function loadAll(){
+  populatePeriodeRiwayat();
   showLoading(true, 'Memuat data karyawan...');
   google.script.run
     .withSuccessHandler(function(res){
@@ -637,6 +660,35 @@ function loadAll(){
     })
     .withFailureHandler(function(err){ showToast('Gagal memuat data karyawan: '+(err&&err.message?err.message:'cek koneksi'),'error'); showLoading(false); })
     .getKaryawanList();
+}
+
+// ---- Filter periode Riwayat Lembur -- supaya bisa lihat backdate (bulan lalu) ----
+var bulanNamaSelect=['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+function populatePeriodeRiwayat(){
+  var selB = document.getElementById('sel-riwayat-bulan');
+  var selT = document.getElementById('sel-riwayat-tahun');
+  if(!selB || !selT) return;
+  selB.innerHTML = '';
+  for(var b=1;b<=12;b++){
+    var o = document.createElement('option');
+    o.value = b; o.textContent = bulanNamaSelect[b];
+    if(b===curBulan) o.selected = true;
+    selB.appendChild(o);
+  }
+  selT.innerHTML = '';
+  var thnSekarang = _now.getFullYear();
+  for(var t=thnSekarang; t>=thnSekarang-2; t--){
+    var ot = document.createElement('option');
+    ot.value = t; ot.textContent = t;
+    if(t===curTahun) ot.selected = true;
+    selT.appendChild(ot);
+  }
+}
+function onRiwayatPeriodeChange(){
+  curBulan = Number(document.getElementById('sel-riwayat-bulan').value);
+  curTahun = Number(document.getElementById('sel-riwayat-tahun').value);
+  showLoading(true, 'Memuat riwayat lembur...');
+  loadLemburAbsensi();
 }
 
 function populateKaryawanSelects(){

@@ -1151,6 +1151,55 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <!-- ROW D: Analisis Loading Time -- Anomali Durasi & Potensi Lembur -->
+      <div class="row-c">
+        <div class="card" style="overflow:hidden;">
+          <div class="card-hdr">
+            <div class="card-title"><i data-lucide="alert-triangle" style="width:11px;color:var(--accent-orange);"></i>Anomali Durasi Muat per Jenis Kendaraan</div>
+            <span class="card-badge badge-orange" id="lt-anomali-badge">0 anomali</span>
+          </div>
+          <div class="tbl-wrap" style="max-height:260px;">
+            <table id="tbl-anomali">
+              <thead><tr>
+                <th style="min-width:70px;">Tanggal</th>
+                <th style="min-width:80px;">Nopol</th>
+                <th style="min-width:90px;">Jenis</th>
+                <th style="min-width:60px;">Mulai</th>
+                <th style="min-width:60px;">Selesai</th>
+                <th style="min-width:70px;">Durasi</th>
+                <th style="min-width:140px;">Keterangan</th>
+              </tr></thead>
+              <tbody id="tbody-anomali"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="empty-anomali" style="display:none;padding:20px;text-align:center;color:var(--text-muted);font-size:10.5px;">
+            <i data-lucide="check-circle-2" style="width:22px;"></i><br>Tidak ada anomali durasi muat bulan ini
+          </div>
+        </div>
+
+        <div class="card" style="overflow:hidden;">
+          <div class="card-hdr">
+            <div class="card-title"><i data-lucide="alarm-clock" style="width:11px;color:var(--accent-red);"></i>Potensi Lembur (Mulai Muat &gt; 16:00)</div>
+            <span class="card-badge badge-red" id="lt-lembur-badge">0 unit</span>
+          </div>
+          <div class="tbl-wrap" style="max-height:260px;">
+            <table id="tbl-potensi-lembur">
+              <thead><tr>
+                <th style="min-width:70px;">Tanggal</th>
+                <th style="min-width:80px;">Nopol</th>
+                <th style="min-width:90px;">Jenis</th>
+                <th style="min-width:60px;">Mulai Muat</th>
+                <th style="min-width:90px;">Selisih dari 16:00</th>
+              </tr></thead>
+              <tbody id="tbody-potensi-lembur"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="empty-lembur" style="display:none;padding:20px;text-align:center;color:var(--text-muted);font-size:10.5px;">
+            <i data-lucide="check-circle-2" style="width:22px;"></i><br>Tidak ada mobil yang mulai dimuat di atas jam 16:00 bulan ini
+          </div>
+        </div>
+      </div>
+
     </div><!-- /content-wrap -->
   </div><!-- /main-right -->
 </div><!-- /app-shell -->
@@ -3311,6 +3360,60 @@ function renderDemoData(){
 }
 
 // ================================================================
+//  ANALISIS LOADING TIME: anomali durasi muat + potensi lembur
+//  (mobil mulai dimuat di atas jam 16:00). Bulan berjalan (saat ini).
+// ================================================================
+function loadLoadingTimeAnalytics(){
+  if(typeof google==='undefined'||!google.script) return; // mode demo, lewati
+  var now = new Date();
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.success){ return; }
+      renderAnomaliTable(res.anomali||[]);
+      renderPotensiLemburTable(res.potensiLembur||[]);
+    })
+    .withFailureHandler(function(){ /* diam saja -- fitur pelengkap, jangan ganggu halaman utama */ })
+    .getLoadingTimeAnalytics(now.getMonth()+1, now.getFullYear());
+}
+
+function renderAnomaliTable(list){
+  document.getElementById('lt-anomali-badge').textContent = list.length + ' anomali';
+  var tb = document.getElementById('tbody-anomali');
+  if(!list.length){ tb.innerHTML=''; document.getElementById('empty-anomali').style.display='block'; return; }
+  document.getElementById('empty-anomali').style.display='none';
+  tb.innerHTML = list.map(function(a){
+    var warna = a.tipe==='lebih_lama' ? 'var(--accent-red)' : 'var(--accent-orange)';
+    return '<tr>'+
+      '<td>'+a.tanggal+'</td>'+
+      '<td>'+a.nopol+'</td>'+
+      '<td>'+a.jenisKendaraan+'</td>'+
+      '<td>'+a.waktuMulai+'</td>'+
+      '<td>'+a.waktuSelesai+'</td>'+
+      '<td style="color:'+warna+';font-weight:700;">'+a.durasiMenit+' mnt</td>'+
+      '<td style="font-size:9.5px;color:var(--text-muted);">'+a.keterangan+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function renderPotensiLemburTable(list){
+  document.getElementById('lt-lembur-badge').textContent = list.length + ' unit';
+  var tb = document.getElementById('tbody-potensi-lembur');
+  if(!list.length){ tb.innerHTML=''; document.getElementById('empty-lembur').style.display='block'; return; }
+  document.getElementById('empty-lembur').style.display='none';
+  tb.innerHTML = list.map(function(p){
+    var jam = Math.floor(p.selisihMenitDariJam16/60), mnt = p.selisihMenitDariJam16%60;
+    var selisihTxt = (jam>0? jam+'j ':'') + mnt+'mnt setelah jam 16:00';
+    return '<tr>'+
+      '<td>'+p.tanggal+'</td>'+
+      '<td>'+p.nopol+'</td>'+
+      '<td>'+p.jenisKendaraan+'</td>'+
+      '<td style="color:var(--accent-red);font-weight:700;">'+p.waktuMulai+'</td>'+
+      '<td style="font-size:9.5px;color:var(--text-muted);">'+selisihTxt+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+// ================================================================
 //  INIT
 // ================================================================
 var _safeHideTimer=setTimeout(function(){ hideLoading(); },800);
@@ -3319,6 +3422,7 @@ document.addEventListener('DOMContentLoaded',function(){
   loadPendingFromStorage();   // restore pending dari sesi sebelumnya
   loadCancelledFromStorage(); // restore cancelled dari sesi sebelumnya
   loadData();
+  loadLoadingTimeAnalytics();
   setInterval(updateActiveTimers,1000);
   function tryLucide(attempt){
     if(typeof lucide!=='undefined'){ lucide.createIcons(); }

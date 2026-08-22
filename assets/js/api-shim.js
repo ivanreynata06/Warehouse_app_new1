@@ -63,7 +63,7 @@
     getOutboundData: 1, getInboundData: 1, getKanbanData: 1,
     getRekapMuatanData: 1, getPhotos: 1, getStockTrendBatch: 1,
     getIOTrendBatch: 1, getAbsensiFTEData: 1, getLemburList: 1,
-    getAbsensiList: 1
+    getAbsensiList: 1, getLoadingTimeAnalytics: 1
   };
 
   // getResidenceTimeData dipakai di 2 tempat dengan kebutuhan berbeda:
