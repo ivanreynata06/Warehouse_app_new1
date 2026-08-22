@@ -88,6 +88,10 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .btn-theme:hover{background:rgba(59,130,246,.1);color:var(--accent-blue);border-color:rgba(59,130,246,.4);}
 .periode-select{display:flex;align-items:center;gap:5px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:7px;padding:3px 5px;}
 .periode-select select{background:none;border:none;color:var(--text-main);font-size:10px;font-family:var(--font-body);outline:none;cursor:pointer;padding:2px 4px;}
+/* Browser render dropdown popup <option> pakai style bawaan sendiri
+   (bukan warna .periode-select) -- tanpa ini, teks bulan jadi gelap di
+   atas background gelap saat dropdown dibuka & sulit dibaca. */
+.periode-select select option{background:var(--bg-card);color:var(--text-main);}
 
 .content-wrap{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:16px;}
 .content-wrap::-webkit-scrollbar{width:5px;} .content-wrap::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
@@ -98,22 +102,20 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .page-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--text-main);}
 .page-sub{font-size:9.5px;color:var(--text-muted);margin-top:1px;}
 
-.hero-row{display:grid;grid-template-columns:280px 220px 1fr;gap:12px;flex-shrink:0;}
-.hero-gauge-card{background:linear-gradient(160deg,#1c1c2a,#161620);border:1px solid rgba(212,175,55,.25);border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;overflow:hidden;}
-.hero-gauge-card::before{content:'';position:absolute;top:-40%;left:-20%;width:180%;height:180%;background:radial-gradient(circle,rgba(212,175,55,.08),transparent 60%);pointer-events:none;}
-/* Produktivitas (Ton/FTE) -- metrik INTI Monitoring FTE, ditonjolkan sejajar dengan gauge Overtime */
+.hero-row{display:grid;grid-template-columns:300px 1fr;gap:12px;flex-shrink:0;}
+/* Produktivitas (Ton/FTE) -- SATU-SATUNYA metrik inti Monitoring FTE
+   (gauge Overtime% dihapus dari tampilan atas permintaan). */
 .hero-produktivitas-card{background:linear-gradient(160deg,#132420,#0f1a18);border:1px solid rgba(34,197,94,.3);border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;text-align:center;}
 .hero-produktivitas-card::before{content:'';position:absolute;top:-40%;left:-20%;width:180%;height:180%;background:radial-gradient(circle,rgba(34,197,94,.1),transparent 60%);pointer-events:none;}
+.hero-produktivitas-status{display:flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;padding:3px 11px;border-radius:20px;margin-top:2px;}
+.hero-produktivitas-status.tercapai{background:rgba(34,197,94,.15);color:#4ade80;}
+.hero-produktivitas-status.belum{background:rgba(239,68,68,.15);color:#f87171;}
+.hero-produktivitas-target{font-size:9px;color:var(--text-muted);margin-top:1px;}
+.hero-produktivitas-insight{font-size:8.5px;color:var(--text-muted);line-height:1.55;margin-top:9px;border-top:1px solid var(--border-color);padding-top:9px;text-align:left;}
 .hero-produktivitas-label{font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;}
 .hero-produktivitas-val{font-family:var(--font-display);font-size:34px;font-weight:800;color:#4ade80;line-height:1;margin:4px 0;}
 .hero-produktivitas-sub{font-size:9px;color:var(--text-muted);}
 .hero-produktivitas-breakdown{font-size:8.5px;color:var(--text-muted);margin-top:2px;border-top:1px solid var(--border-color);padding-top:6px;width:100%;}
-.hero-gauge-label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;display:flex;align-items:center;gap:5px;z-index:1;}
-.hero-gauge-svg{width:100%;max-width:210px;z-index:1;}
-.hero-gauge-status{display:flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:9.5px;font-weight:700;z-index:1;}
-.status-tercapai{background:rgba(16,185,129,.15);color:var(--accent-green);border:1px solid rgba(16,185,129,.3);}
-.status-belum{background:rgba(239,68,68,.15);color:var(--accent-red);border:1px solid rgba(239,68,68,.3);}
-.hero-gauge-note{font-size:8.5px;color:var(--text-muted);text-align:center;z-index:1;}
 
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
 .kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:11px 13px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;}
@@ -200,7 +202,6 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .toast-warning{border-left:3px solid var(--accent-gold2,#f2d98a);}
 
 body.theme-light{--bg-main:#eef1f8;--bg-sidebar:#ffffff;--bg-card:#ffffff;--bg-card-hover:#f6f8fc;--text-main:#101a30;--text-muted:#5a6785;--border-color:#dfe4ee;}
-body.theme-light .hero-gauge-card{background:linear-gradient(160deg,#ffffff,#f8f6ee);}
 body.theme-light .hero-produktivitas-card{background:linear-gradient(160deg,#ffffff,#eefcf3);}
 body.theme-light .loading-overlay{background:rgba(238,240,245,.92);}
 body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
@@ -297,37 +298,20 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
       </div>
 
       <div class="hero-row">
-        <div class="hero-gauge-card">
-          <div class="hero-gauge-label"><i data-lucide="target" style="width:10px;"></i>Overtime % vs Target</div>
-          <svg class="hero-gauge-svg" viewBox="0 0 240 152">
-            <path d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="rgba(120,140,180,.15)" stroke-width="16" stroke-linecap="round"/>
-            <path id="hero-gauge-arc" d="M 22 125 A 98 98 0 0 1 218 125" fill="none" stroke="url(#gaugeGrad)" stroke-width="16" stroke-linecap="round" stroke-dasharray="308" stroke-dashoffset="308" style="transition:stroke-dashoffset 1s cubic-bezier(.34,1.2,.64,1);"/>
-            <defs>
-              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#22c55e"/>
-                <stop offset="60%" stop-color="#d4af37"/>
-                <stop offset="100%" stop-color="#ef4444"/>
-              </linearGradient>
-            </defs>
-            <line id="hero-needle" x1="120" y1="125" x2="120" y2="35" stroke="var(--text-main)" stroke-width="2.5" stroke-linecap="round" opacity=".9" style="transform-origin:120px 125px;transform:rotate(-90deg);transition:transform .9s cubic-bezier(.34,1.2,.64,1);"/>
-            <circle cx="120" cy="125" r="7" fill="var(--bg-card)" stroke="var(--text-main)" stroke-width="2.5"/>
-            <text x="120" y="108" fill="var(--text-main)" font-size="26" font-weight="800" text-anchor="middle" id="hero-gauge-pct">0%</text>
-            <text x="16" y="138" fill="var(--text-muted)" font-size="9" text-anchor="middle">0%</text>
-            <text x="120" y="11" fill="var(--text-muted)" font-size="9" text-anchor="middle">6% (target)</text>
-            <text x="224" y="138" fill="var(--text-muted)" font-size="9" text-anchor="middle">12%</text>
-          </svg>
-          <div class="hero-gauge-status status-tercapai" id="hero-status"><i data-lucide="check-circle" style="width:11px;"></i><span>Memuat...</span></div>
-          <div class="hero-gauge-note">Target Over Time Karyawan &lt; 6% (standar 173 jam/bulan)</div>
-        </div>
-
-        <!-- ═══ METRIK INTI Monitoring FTE: Produktivitas (Ton/FTE) ═══ -->
+        <!-- ═══ SATU-SATUNYA metrik inti Monitoring FTE: Produktivitas (Ton/FTE) ═══
+             Gauge Overtime % vs Target dihapus dari tampilan atas permintaan --
+             datanya tetap dihitung di backend (dipakai di tempat lain kalau perlu),
+             cuma tidak lagi ditonjolkan di kartu utama halaman ini. -->
         <div class="hero-produktivitas-card">
           <div class="hero-produktivitas-label"><i data-lucide="gauge" style="width:11px;"></i>Produktivitas</div>
           <div class="hero-produktivitas-val" id="kpi-produktivitasTon">—</div>
           <div class="hero-produktivitas-sub">Ton / FTE bulan ini</div>
+          <div class="hero-produktivitas-status" id="hero-produktivitas-status"><i data-lucide="check-circle" style="width:10px;"></i><span>Memuat...</span></div>
+          <div class="hero-produktivitas-target">Target: <b id="kpi-produktivitas-target">62,3</b> Ton/FTE</div>
           <div class="hero-produktivitas-breakdown">
             <span id="kpi-produktivitaskg">—</span> Kg/FTE &nbsp;•&nbsp; <span id="kpi-kirimterima">—</span> Kg kirim+terima
           </div>
+          <div class="hero-produktivitas-insight" id="hero-produktivitas-insight">Memuat insight...</div>
         </div>
 
         <div class="kpi-row">
@@ -756,7 +740,7 @@ function uploadTtdTl(){
 
 function renderAll(){
   document.getElementById('page-sub').textContent = 'Full Time Equivalent karyawan internal & rekap lembur outsourcing \u2014 '+NM[curBulan]+' '+curTahun;
-  renderHeroGauge();
+  renderProduktivitasStatus();
   renderKPI();
   renderTabelInternal();
   renderTabelOS();
@@ -765,29 +749,20 @@ function renderAll(){
   loadKategoriTrendChart();
 }
 
-function renderHeroGauge(){
+function renderProduktivitasStatus(){
   var d = fteData.internal;
-  var pct = d.overtimePct || 0;
-  var pctClamped = Math.min(pct, 12);
-  var frac = pctClamped/12;
-  document.getElementById('hero-gauge-pct').textContent = pct.toLocaleString('id-ID',{maximumFractionDigits:2})+'%';
-
-  var arc = document.getElementById('hero-gauge-arc');
-  var totalLen = 308;
-  arc.style.strokeDashoffset = totalLen - (totalLen*frac);
-
-  var needle = document.getElementById('hero-needle');
-  var angle = -90 + (frac*180);
-  needle.style.transform = 'rotate('+angle+'deg)';
-
-  var statusEl = document.getElementById('hero-status');
-  if(d.tercapai){
-    statusEl.className = 'hero-gauge-status status-tercapai';
-    statusEl.innerHTML = '<i data-lucide="check-circle" style="width:11px;"></i><span>Target Tercapai</span>';
+  var statusEl = document.getElementById('hero-produktivitas-status');
+  if (d.produktivitasTercapai){
+    statusEl.className = 'hero-produktivitas-status tercapai';
+    statusEl.innerHTML = '<i data-lucide="check-circle" style="width:10px;"></i><span>Target Tercapai</span>';
   } else {
-    statusEl.className = 'hero-gauge-status status-belum';
-    statusEl.innerHTML = '<i data-lucide="alert-triangle" style="width:11px;"></i><span>Melebihi Target</span>';
+    statusEl.className = 'hero-produktivitas-status belum';
+    statusEl.innerHTML = '<i data-lucide="alert-triangle" style="width:10px;"></i><span>Di Bawah Target</span>';
   }
+  document.getElementById('kpi-produktivitas-target').textContent =
+    (d.produktivitasTarget||62.3).toLocaleString('id-ID',{maximumFractionDigits:1});
+  document.getElementById('hero-produktivitas-insight').textContent =
+    d.insightProduktivitas || '';
   if(typeof lucide!=='undefined') lucide.createIcons();
 }
 

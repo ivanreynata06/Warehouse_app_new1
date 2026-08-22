@@ -4197,6 +4197,19 @@ function getAbsensiFTEData(bulan, tahun) {
   try {
     bulan = Number(bulan); tahun = Number(tahun);
 
+    // ---- CACHE MANUAL (di dalam ACTIVE_WORKSPACE) -- terpisah dari
+    // cache generik di callWithServerCache() (yang cuma 180s flat utk
+    // SEMUA bulan). Di sini durasinya disesuaikan: bulan yang SUDAH
+    // LEWAT datanya sudah final/tidak berubah lagi -> aman di-cache 6
+    // jam (persis pola yang sudah dipakai getRekapMuatanData, supaya
+    // Monitoring FTE terasa secepat Rekap Muatan waktu buka bulan lama).
+    // Bulan BERJALAN tetap 3 menit saja supaya input hari ini/kemarin
+    // tetap kelihatan update.
+    var scriptCacheFte = CacheService.getScriptCache();
+    var cacheKeyFte = 'absensiFte_' + ACTIVE_WORKSPACE + '_' + tahun + '_' + bulan;
+    var cachedFte = scriptCacheFte.get(cacheKeyFte);
+    if (cachedFte) return JSON.parse(cachedFte);
+
     var karyawanRes = getKaryawanList();
     if (!karyawanRes.success) return karyawanRes;
     var karyawan = karyawanRes.data.filter(function (k) { return k.aktif; });
@@ -4267,7 +4280,25 @@ function getAbsensiFTEData(bulan, tahun) {
     var produktivitasKgFTE  = totalFTE > 0 ? Math.round((jumlahKirimTerima / totalFTE) * 100) / 100 : 0;
     var produktivitasTonFTE = Math.round((produktivitasKgFTE / 1000) * 100) / 100;
 
-    return {
+    // ------------------------------------------------------------
+    //  INSIGHT PRODUKTIVITAS -- kenapa naik/turun/di bawah target,
+    //  dikaitkan dgn jam lembur & ketidakhadiran (mangkir) bulan ini.
+    //  Target 62,3 Ton/FTE sesuai KPI "Produktivity Pipa (FTE)" di
+    //  sheet OPR (baris 14, kolom E).
+    // ------------------------------------------------------------
+    var PRODUKTIVITAS_TARGET_TON_FTE = 62.3;
+    var produktivitasTercapai = produktivitasTonFTE >= PRODUKTIVITAS_TARGET_TON_FTE;
+    var totalJamLemburSemua = Math.round((totalJamLemburInternal + totalJamLemburOS) * 100) / 100;
+    var jumlahMangkirTotal = absensi.filter(function (a) { return a.status === 'Mangkir'; }).length;
+    var insightProduktivitas =
+      'Produktivitas bulan ini ' + (produktivitasTercapai ? 'sudah melewati' : 'masih di bawah') +
+      ' target ' + PRODUKTIVITAS_TARGET_TON_FTE + ' Ton/FTE. ' +
+      'Turut dipengaruhi oleh total ' + totalJamLemburSemua + ' jam lembur karyawan (Internal + OS)' +
+      (jumlahMangkirTotal > 0
+        ? ' dan ' + jumlahMangkirTotal + ' kali ketidakhadiran tanpa keterangan (mangkir) bulan ini -- makin banyak lembur & makin sedikit karyawan aktif hadir, makin tinggi beban kerja per FTE, sehingga angka produktivitas per FTE ikut terdorong naik.'
+        : ' -- tidak ada ketidakhadiran tanpa keterangan (mangkir) bulan ini.');
+
+    var hasilFte = {
       success: true,
       bulan: bulan, tahun: tahun,
       target: { overtimePctMax: 6 },
@@ -4283,6 +4314,11 @@ function getAbsensiFTEData(bulan, tahun) {
         jumlahKirimTerima: jumlahKirimTerima,
         produktivitasKgFTE: produktivitasKgFTE,
         produktivitasTonFTE: produktivitasTonFTE,
+        produktivitasTarget: PRODUKTIVITAS_TARGET_TON_FTE,
+        produktivitasTercapai: produktivitasTercapai,
+        totalJamLemburSemua: totalJamLemburSemua,
+        jumlahMangkir: jumlahMangkirTotal,
+        insightProduktivitas: insightProduktivitas,
         perOrang: internalList
       },
       os: {
@@ -4292,6 +4328,17 @@ function getAbsensiFTEData(bulan, tahun) {
       },
       hariLiburBulanIni: hariLiburBulanIni
     };
+
+    // Simpan ke cache manual: 3 menit kalau bulan berjalan (data masih
+    // sering berubah), 6 jam kalau bulan yang sudah lewat (final, tidak
+    // berubah lagi) -- pola sama persis dgn getRekapMuatanData().
+    try {
+      var nowFte = new Date();
+      var isBulanBerjalan = (tahun === nowFte.getFullYear() && bulan === (nowFte.getMonth() + 1));
+      scriptCacheFte.put(cacheKeyFte, JSON.stringify(hasilFte), isBulanBerjalan ? 180 : 21600);
+    } catch (cacheErrFte) { /* gagal cache tidak masalah, tetap return data */ }
+
+    return hasilFte;
   } catch (err) { return { success: false, error: err.message }; }
 }
 
