@@ -4416,21 +4416,24 @@ function getAbsensiFTEData(bulan, tahun) {
     var produktivitasTonFTE = Math.round((produktivitasKgFTE / 1000) * 100) / 100;
 
     // ------------------------------------------------------------
-    //  INSIGHT PRODUKTIVITAS -- kenapa naik/turun/di bawah target,
+    //  INSIGHT PRODUKTIVITAS -- kenapa naik/turun/melebihi target,
     //  dikaitkan dgn jam lembur & ketidakhadiran (mangkir) bulan ini.
-    //  Target 62,3 Ton/FTE sesuai KPI "Produktivity Pipa (FTE)" di
-    //  sheet OPR (baris 14, kolom E).
+    //  Target 62,3 Ton/FTE adalah BATAS ATAS (bukan batas bawah):
+    //  angka di BAWAH/SAMA DENGAN target = Tercapai (beban kerja per
+    //  FTE masih wajar). Angka yang MELEBIHI target = Tidak Tercapai
+    //  (beban kerja per FTE kelebihan -- biasanya karena FTE efektif
+    //  berkurang akibat lembur tinggi & banyak yang tidak hadir).
     // ------------------------------------------------------------
     var PRODUKTIVITAS_TARGET_TON_FTE = 62.3;
-    var produktivitasTercapai = produktivitasTonFTE >= PRODUKTIVITAS_TARGET_TON_FTE;
+    var produktivitasTercapai = produktivitasTonFTE <= PRODUKTIVITAS_TARGET_TON_FTE;
     var totalJamLemburSemua = Math.round((totalJamLemburInternal + totalJamLemburOS) * 100) / 100;
     var jumlahMangkirTotal = absensi.filter(function (a) { return a.status === 'Mangkir'; }).length;
     var insightProduktivitas =
-      'Produktivitas bulan ini ' + (produktivitasTercapai ? 'sudah melewati' : 'masih di bawah') +
-      ' target ' + PRODUKTIVITAS_TARGET_TON_FTE + ' Ton/FTE. ' +
+      'Produktivitas bulan ini ' + (produktivitasTercapai ? 'masih di bawah/sesuai' : 'sudah melebihi') +
+      ' target ' + PRODUKTIVITAS_TARGET_TON_FTE + ' Ton/FTE' + (produktivitasTercapai ? ' (baik).' : ' (beban kerja per FTE kelebihan).') + ' ' +
       'Turut dipengaruhi oleh total ' + totalJamLemburSemua + ' jam lembur karyawan (Internal + OS)' +
       (jumlahMangkirTotal > 0
-        ? ' dan ' + jumlahMangkirTotal + ' kali ketidakhadiran tanpa keterangan (mangkir) bulan ini -- makin banyak lembur & makin sedikit karyawan aktif hadir, makin tinggi beban kerja per FTE, sehingga angka produktivitas per FTE ikut terdorong naik.'
+        ? ' dan ' + jumlahMangkirTotal + ' kali ketidakhadiran tanpa keterangan (mangkir) bulan ini -- makin banyak lembur & makin sedikit karyawan aktif hadir, makin sedikit FTE efektif, sehingga angka produktivitas per FTE ikut terdorong naik' + (produktivitasTercapai ? '.' : ' hingga melewati target.')
         : ' -- tidak ada ketidakhadiran tanpa keterangan (mangkir) bulan ini.');
 
     var hasilFte = {
