@@ -1029,6 +1029,40 @@
 // ================================================================
 lucide.createIcons();
 
+// ----------------------------------------------------------------
+//  Departemen selain Fitting Import: dashboard disederhanakan --
+//  ganti judul jadi "Dashboard Inbound dan Outbound", sembunyikan
+//  card Total Tonase Stok & Total Stock Pipa/Fitting PPR (departemen
+//  lain tidak tracking stok lewat sistem ini), dan card Outbound/
+//  Inbound cukup tampil angka GLOBAL saja tanpa breakdown Pipa/Fitting
+//  (departemen lain belum tentu jual/produksi keduanya).
+// ----------------------------------------------------------------
+(function simplifyDashboardForOtherDept(){
+  if (!window.WH_SESSION || window.WH_SESSION.isFittingImport !== false) return; // Fitting Import -> biarkan seperti biasa
+
+  var titleEl = document.querySelector('.dash-title');
+  if (titleEl) titleEl.textContent = 'Dashboard Inbound dan Outbound';
+  document.title = 'Dashboard Inbound dan Outbound';
+
+  // Sembunyikan SELURUH kolom 1 (Total Tonase Stok + Total Stock Pipa/Fitting
+  // PPR) -- bukan cuma card di dalamnya, supaya tidak menyisakan kolom grid
+  // kosong. Grid disesuaikan jadi 2 kolom (Outbound & Inbound + Item Fast
+  // Moving) mengisi penuh lebar layar.
+  var col1El = document.querySelector('.col1');
+  if (col1El) col1El.style.display = 'none';
+  var dashBodyEl = document.querySelector('.dash-body');
+  if (dashBodyEl) dashBodyEl.style.gridTemplateColumns = 'minmax(0,1fr) minmax(0,1fr)';
+
+  // Sembunyikan baris breakdown Pipa/Fitting di card Outbound & Inbound
+  // (angka & grafik trennya sama-sama berbasis split Pipa/Fitting -- tanpa
+  // breakdown itu datanya jadi tidak lengkap utk digambar), sisakan cuma
+  // angka total global yang sudah ada di bagian atas tiap card.
+  document.querySelectorAll('.io-summary').forEach(function(el){ el.style.display = 'none'; });
+  document.querySelectorAll('.lc-wrap').forEach(function(el){ el.style.display = 'none'; });
+  document.querySelectorAll('.lc-dates').forEach(function(el){ el.style.display = 'none'; });
+  document.querySelectorAll('.lc-legend').forEach(function(el){ el.style.display = 'none'; });
+})();
+
 const NM_BULAN = ['','Januari','Februari','Maret','April','Mei','Juni',
                   'Juli','Agustus','September','Oktober','November','Desember'];
 const today   = new Date();
