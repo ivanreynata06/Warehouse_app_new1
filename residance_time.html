@@ -434,6 +434,16 @@ canvas{width:100%!important;height:100%!important;}
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:1000;backdrop-filter:blur(4px);}
 .modal-overlay.open{display:flex;animation:fadeIn .2s ease;}
+.kemarin-pending-row{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:9px;padding:9px 11px;display:flex;flex-direction:column;gap:6px;}
+.kemarin-pending-row .kpr-info{font-size:10.5px;color:var(--text-main);}
+.kemarin-pending-row .kpr-info b{color:var(--accent-red);}
+.kemarin-pending-row .kpr-sub{font-size:9px;color:var(--text-muted);}
+.kemarin-pending-row .kpr-actions{display:flex;gap:6px;}
+.kpr-btn{flex:1;border:none;color:#fff;cursor:pointer;padding:6px 8px;border-radius:7px;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:4px;}
+.kpr-btn-fitting{background:linear-gradient(135deg,#0e7490,var(--accent-cyan));}
+.kpr-btn-batal{background:linear-gradient(135deg,#b91c1c,var(--accent-red));}
+.push-start-btn.locked{opacity:.4;cursor:not-allowed;filter:grayscale(.6);}
+.push-start-note{font-size:8.5px;color:var(--accent-red);text-align:center;margin-top:4px;}
 @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 .modal-box{background:#1a1a28;border:1px solid var(--border-color);border-radius:14px;padding:20px;width:340px;animation:scaleIn .2s ease;box-shadow:0 20px 60px rgba(0,0,0,.5);}
 @keyframes scaleIn{from{transform:scale(.92);opacity:0;}to{transform:scale(1);opacity:1;}}
@@ -1047,7 +1057,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           </div>
           <div class="push-start-area">
             <div style="display:flex;flex-direction:column;align-items:center;gap:5px;">
-              <button class="push-start-btn" onclick="openAddModal()" aria-label="Mulai Muat">
+              <button class="push-start-btn" id="push-start-btn" onclick="openAddModal()" aria-label="Mulai Muat">
                 <span class="psb-ring psb-ring-1"></span><span class="psb-ring psb-ring-2"></span><span class="psb-ring psb-ring-3"></span>
                 <span class="psb-face">
                   <span class="psb-loading">LOADING</span>
@@ -1058,7 +1068,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
                   <span class="psb-stop">STOP</span>
                 </span>
               </button>
-              <div style="font-size:8px;color:var(--text-muted);text-align:center;">Klik untuk mulai muat</div>
+              <div style="font-size:8px;color:var(--text-muted);text-align:center;" id="push-start-hint">Klik untuk mulai muat</div>
               <div class="link-fitting" onclick="openFittingModal()"><i data-lucide="package-check" style="width:9px;"></i>Kiriman Ikut Fitting Rucika</div>
             </div>
           </div>
@@ -1237,6 +1247,23 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 </div>
 
 <!-- MODAL: KIRIMAN IKUT FITTING RUCIKA -->
+<!-- MODAL: KIRIMAN KEMARIN MASIH MENUNGGU -- blocking, tidak bisa mulai muat hari ini sampai selesai -->
+<div class="modal-overlay" id="modal-kemarin-pending">
+  <div class="modal-box" style="width:400px;max-width:92vw;max-height:85vh;overflow-y:auto;">
+    <div class="modal-icon" style="background:linear-gradient(135deg,rgba(239,68,68,.3),rgba(239,68,68,.1));border-color:rgba(239,68,68,.3);">
+      <i data-lucide="alert-octagon" style="width:16px;color:var(--accent-red);"></i>
+    </div>
+    <div class="modal-title" style="color:var(--accent-red);">Kiriman Kemarin Belum Selesai</div>
+    <div class="modal-hint" style="margin:-4px 0 12px;">
+      Masih ada <b id="kemarin-pending-count" style="color:var(--accent-red);">0</b> kiriman dari <b>kemarin</b> yang statusnya masih menunggu. Selesaikan dulu (tandai <b>Ikut Fitting</b> atau <b>Batalkan</b>) sebelum bisa mulai muat kiriman hari ini.
+    </div>
+    <div id="list-kemarin-pending" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn-modal-cancel" onclick="checkKemarinPending()"><i data-lucide="refresh-cw" style="width:11px;"></i> Cek Ulang</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-fitting">
   <div class="modal-box">
     <div class="modal-icon" style="background:linear-gradient(135deg,rgba(6,182,212,.3),rgba(6,182,212,.1));border-color:rgba(6,182,212,.3);">
@@ -3008,7 +3035,13 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 //  ACTIVE LOAD CONTROLS
 // ================================================================
 var pendingRowsData=[];
+var isKemarinPendingLocked=false;
 function openAddModal(){
+  if(isKemarinPendingLocked){
+    showToast('⚠️ Selesaikan dulu kiriman kemarin yang masih menunggu (Ikut Fitting/Batal) sebelum mulai muat hari ini.','error');
+    checkKemarinPending(); // buka lagi modalnya biar checker langsung bisa selesaikan
+    return;
+  }
   document.getElementById('inp-jenis').value='';
   document.getElementById('auto-preview').style.display='none';
   var sel=document.getElementById('inp-pending');
@@ -3414,6 +3447,90 @@ function renderPotensiLemburTable(list){
 }
 
 // ================================================================
+//  KIRIMAN KEMARIN YANG MASIH MENUNGGU -- checker WAJIB selesaikan
+//  (Ikut Fitting atau Batalkan) dulu sebelum bisa mulai muat kiriman
+//  HARI INI. Supaya tidak ada kiriman kemarin yang "hilang"/terlupa
+//  begitu saja saat hari berganti.
+// ================================================================
+var kemarinPendingData=[];
+function checkKemarinPending(){
+  if(typeof google==='undefined'||!google.script){ setKemarinPendingLocked(false); return; } // mode demo, jangan kunci
+  google.script.run
+    .withSuccessHandler(function(res){
+      var rows = (res && res.success && res.rows) ? res.rows : [];
+      kemarinPendingData = rows;
+      if(rows.length){
+        renderKemarinPendingList(rows);
+        document.getElementById('kemarin-pending-count').textContent = rows.length;
+        setKemarinPendingLocked(true);
+        openModal('modal-kemarin-pending');
+      } else {
+        setKemarinPendingLocked(false);
+        closeModal('modal-kemarin-pending');
+      }
+    })
+    .withFailureHandler(function(){ /* gagal cek -- jangan sampai kiriman hari ini ikut kekunci gara2 koneksi */ setKemarinPendingLocked(false); })
+    .getPendingRowsKemarin();
+}
+function setKemarinPendingLocked(locked){
+  isKemarinPendingLocked = locked;
+  var btn = document.getElementById('push-start-btn');
+  var hint = document.getElementById('push-start-hint');
+  if(!btn) return;
+  if(locked){
+    btn.classList.add('locked');
+    if(hint) hint.innerHTML = '<span class="push-start-note">⚠️ Selesaikan kiriman kemarin dulu</span>';
+  } else {
+    btn.classList.remove('locked');
+    if(hint) hint.textContent = 'Klik untuk mulai muat';
+  }
+}
+function renderKemarinPendingList(rows){
+  var wrap = document.getElementById('list-kemarin-pending');
+  wrap.innerHTML = rows.map(function(r,idx){
+    return '<div class="kemarin-pending-row">'+
+      '<div class="kpr-info"><b>'+escHtml(r.spm)+'</b> — '+escHtml(r.agen)+'</div>'+
+      '<div class="kpr-sub">'+escHtml(r.nopol||'-')+' · '+escHtml(r.jenisKendaraan||'-')+' · '+escHtml(r.tanggal)+' · Status: '+escHtml(r.statusSaatIni)+'</div>'+
+      '<div class="kpr-actions">'+
+        '<button class="kpr-btn kpr-btn-fitting" onclick="resolveKemarinFitting('+idx+')"><i data-lucide="package-check" style="width:10px;"></i>Ikut Fitting</button>'+
+        '<button class="kpr-btn kpr-btn-batal" onclick="resolveKemarinBatal('+idx+')"><i data-lucide="x-circle" style="width:10px;"></i>Batal</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+function resolveKemarinFitting(idx){
+  var r = kemarinPendingData[idx];
+  if(!r) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(res && res.success){
+        showToast('✅ SPM '+r.spm+' (kemarin) ditandai Ikut Fitting','success');
+        clearApiCache(); checkKemarinPending(); loadData();
+      } else {
+        showToast('❌ Gagal: '+(res&&res.error?res.error:'tidak diketahui'),'error');
+      }
+    })
+    .withFailureHandler(function(err){ showToast('❌ Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .setIkutFittingRucika(r.rowIndex);
+}
+function resolveKemarinBatal(idx){
+  var r = kemarinPendingData[idx];
+  if(!r) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(res && res.success){
+        showToast('✅ SPM '+r.spm+' (kemarin) dibatalkan','warning');
+        clearApiCache(); checkKemarinPending(); loadData();
+      } else {
+        showToast('❌ Gagal: '+(res&&res.error?res.error:'tidak diketahui'),'error');
+      }
+    })
+    .withFailureHandler(function(err){ showToast('❌ Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .setStatusBatal(r.rowIndex, 'Sisa kiriman kemarin - tidak terpakai', '');
+}
+
+// ================================================================
 //  INIT
 // ================================================================
 var _safeHideTimer=setTimeout(function(){ hideLoading(); },800);
@@ -3423,6 +3540,7 @@ document.addEventListener('DOMContentLoaded',function(){
   loadCancelledFromStorage(); // restore cancelled dari sesi sebelumnya
   loadData();
   loadLoadingTimeAnalytics();
+  checkKemarinPending();
   setInterval(updateActiveTimers,1000);
   function tryLucide(attempt){
     if(typeof lucide!=='undefined'){ lucide.createIcons(); }

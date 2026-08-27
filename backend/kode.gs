@@ -28,6 +28,7 @@ var API_FUNCTIONS = {
   getResidenceTimeData    : getResidenceTimeData,
   getLoadingTimeAnalytics : getLoadingTimeAnalytics,
   getPendingRows          : getPendingRows,
+  getPendingRowsKemarin   : getPendingRowsKemarin,
   getStockTrendBatch      : getStockTrendBatch,
   getIOTrendBatch         : getIOTrendBatch,
   setWaktuMulai           : setWaktuMulai,
@@ -638,6 +639,59 @@ function getPendingRows() {
         spm      : spm,
         agen     : agen,
         nopol    : nopol
+      });
+    }
+
+    return { success: true, rows: pending };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ================================================================
+//  Daftar kiriman KEMARIN yang statusnya masih "menunggu" (sudah
+//  didaftar PIC tapi belum di-mulai-muat / belum Ikut Fitting / belum
+//  dibatalkan) -- dipakai untuk MENGUNCI tombol "Mulai Muat" hari ini
+//  sampai semua sisa kiriman kemarin diberi keputusan (Ikut Fitting
+//  atau Batal). Supaya tidak ada kiriman yang "ketinggalan"/terlupa
+//  begitu saja saat hari berganti.
+// ================================================================
+function getPendingRowsKemarin() {
+  try {
+    var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(SH_PENGIRIMAN);
+    if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+
+    var data      = sheet.getDataRange().getValues();
+    var kemarin   = new Date(); kemarin.setDate(kemarin.getDate() - 1); kemarin.setHours(0,0,0,0);
+    var pending   = [];
+
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var spm        = String(row[4] || '').trim();   // E = No. SPM
+      var agen       = String(row[1] || '').trim();   // B = Nama Agen
+      var nopol      = String(row[5] || '').trim();   // F = Nopol
+      var jenis      = String(row[6] || '').trim();   // G = Jenis Kendaraan
+      var waktuMulai = row[7];                          // H = Waktu Mulai
+      var statusJ    = String(row[9] || '').trim();    // J = Status (Batal/Pending/dst)
+
+      if (!spm || !agen) continue;                    // baris belum diisi PIC, lewati
+      if (waktuMulai) continue;                        // sudah mulai muat / Ikut Fitting, lewati
+      if (statusJ.toUpperCase().indexOf('BATAL') === 0) continue; // sudah dibatalkan, lewati
+
+      var tglRaw = row[0];
+      var tgl    = tglRaw ? new Date(tglRaw) : null;
+      if (tgl) tgl.setHours(0,0,0,0);
+      if (!tgl || tgl.getTime() !== kemarin.getTime()) continue; // hanya kiriman KEMARIN
+
+      pending.push({
+        rowIndex : i + 1,
+        tanggal  : _fmtYMD(tgl),
+        spm      : spm,
+        agen     : agen,
+        nopol    : nopol,
+        jenisKendaraan: jenis,
+        statusSaatIni: statusJ || 'Menunggu'
       });
     }
 
