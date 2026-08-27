@@ -45,8 +45,12 @@
   // cuma menu yang tersedia. Kalau nanti ada permintaan menu tambahan
   // (mis. Control Tower) untuk departemen tertentu, longgarkan di sini.
   var isFittingImport = workspace === 'cibitung_fitting_import';
-  var ALLOWED_FILES_OTHER_DEPT = ['monitoring_stock.html', 'input_lembur.html', 'fte_dashboard.html', 'admin_users.html', 'login.html', ''];
-  var HIDDEN_NAV_KEYS_OTHER_DEPT = ['wh_control_tower', 'kanban', 'residance', 'rekap', 'upload'];
+  var ALLOWED_FILES_OTHER_DEPT = ['monitoring_stock.html', 'input_lembur.html', 'fte_dashboard.html', 'admin_users.html', 'upload_data.html', 'login.html', ''];
+  var HIDDEN_NAV_KEYS_OTHER_DEPT = ['wh_control_tower', 'kanban', 'residance', 'rekap'];
+  // Upload Data Harian: SEKARANG diizinkan untuk departemen lain juga
+  // (sebelumnya diblokir total), tapi khusus tab Outbound & Inbound --
+  // tab Stock tetap KHUSUS Fitting Import (dicek juga di dalam
+  // upload_data.html sendiri lewat window.WH_SESSION.isFittingImport).
 
   // "Upload Data Harian" SENGAJA dibatasi lebih ketat daripada menu admin
   // lain: HANYA boleh diakses TL, atau 2 orang admin spesifik ini (dicek

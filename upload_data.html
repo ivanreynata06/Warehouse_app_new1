@@ -43,6 +43,10 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
   transition:width .25s ease, min-width .25s ease, padding .25s ease, opacity .15s ease;}
 .sidebar.collapsed{width:0;min-width:0;padding:0;overflow:hidden;opacity:0;border:none;}
 .sidebar.collapsed *{display:none;}
+/* Terkunci selama upload berjalan -- mencegah pindah menu tanpa sengaja */
+.sidebar.upload-locked{position:relative;}
+.sidebar.upload-locked .mitem,.sidebar.upload-locked .mgroup-hdr{opacity:.35;pointer-events:none;filter:grayscale(.7);}
+.upload-lock-banner{display:none;align-items:center;gap:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:9px;padding:9px 12px;font-size:10.5px;color:#fbbf24;margin-bottom:10px;}
 .toggle-sidebar-btn{position:fixed;left:calc(var(--sidebar-w) + 0px);top:14px;z-index:200;
   background:var(--bg2);border:1px solid var(--border);border-radius:0 8px 8px 0;
   padding:6px 5px;cursor:pointer;display:flex;align-items:center;justify-content:center;
@@ -239,6 +243,10 @@ table.preview-table tr.row-valid td{color:var(--txt);}
   </div>
 
   <div class="content">
+    <div class="upload-lock-banner" id="upload-lock-banner">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span>Upload sedang berjalan -- menu di sidebar terkunci sementara supaya kamu tidak sengaja pindah halaman & data tidak ter-timpa/tidak lengkap. Tunggu sampai proses selesai (jangan tutup/refresh tab ini juga).</span>
+    </div>
     <div class="tabs">
       <button class="tab-btn active" id="tabbtn-stock" onclick="switchTab('stock')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
@@ -412,10 +420,48 @@ var PAGE_MAP = {
   'upload'          : 'upload_data.html'
 };
 function navTo(pg){
+  if (window._uploadInProgress){
+    showToastGlobal('⚠️ Upload sedang berjalan -- tunggu sampai selesai sebelum pindah menu, supaya data tidak ter-timpa/tidak lengkap.');
+    return;
+  }
   var t = PAGE_MAP[pg || ''] || 'index.html';
   t += '?v=' + (window.SITE_VERSION||Date.now());
   if(window.top!==window.self) window.top.location.href=t; else window.location.href=t;
 }
+// ================================================================
+//  KUNCI NAVIGASI SELAMA UPLOAD BERLANGSUNG -- supaya user tidak
+//  sengaja/lupa pindah menu di tengah proses upload (Excel besar
+//  bisa makan waktu beberapa menit), yang bisa bikin sebagian data
+//  ke-upload dan sebagian lagi tidak (data jadi tidak valid/dobel).
+//  Catatan: proses upload TETAP berhenti kalau tab/halaman betul-betul
+//  ditutup/direfresh (batasan browser, tidak bisa dihindari) -- makanya
+//  ada JUGA peringatan beforeunload di bawah sebagai lapisan terakhir.
+// ================================================================
+window._uploadInProgress = false;
+function setUploadLockUI(locked){
+  var sb = document.getElementById('sidebar');
+  if (sb) sb.classList.toggle('upload-locked', locked);
+  var banner = document.getElementById('upload-lock-banner');
+  if (banner) banner.style.display = locked ? 'flex' : 'none';
+}
+function showToastGlobal(msg){
+  if (typeof showStatus === 'function') {
+    // fallback sederhana: tampilkan sbg alert kecil di pojok kalau tidak ada toast generik
+  }
+  var t = document.createElement('div');
+  t.className = 'toast toast-warning';
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:18px;right:18px;background:#1a1a28;border:1px solid rgba(245,158,11,.4);border-left:3px solid #f59e0b;border-radius:9px;padding:10px 15px;font-size:11px;color:#fff;z-index:3000;box-shadow:0 8px 28px rgba(0,0,0,.5);max-width:320px;';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ t.remove(); },300); }, 3800);
+}
+window.addEventListener('beforeunload', function(e){
+  if (window._uploadInProgress){
+    e.preventDefault();
+    e.returnValue = 'Upload sedang berjalan. Kalau halaman ditutup/direfresh sekarang, sebagian data mungkin belum tersimpan.';
+    return e.returnValue;
+  }
+});
 function toggleSidebar(){
   var sb=document.getElementById('sidebar'), btn=document.getElementById('toggle-btn'), ic=document.getElementById('toggle-icon');
   sb.classList.toggle('collapsed'); btn.classList.toggle('collapsed');
@@ -444,6 +490,22 @@ function switchTab(name){
     document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
   });
 }
+
+// ================================================================
+//  Departemen selain Fitting Import: upload Stock TIDAK relevan
+//  (stok per plant beda sistemnya) -- cuma tampilkan Outbound & Inbound.
+// ================================================================
+(function restrictStockTabForOtherDept(){
+  if (window.WH_SESSION && window.WH_SESSION.isFittingImport === false) {
+    var stockBtn = document.getElementById('tabbtn-stock');
+    var stockPanel = document.getElementById('tab-stock');
+    if (stockBtn) stockBtn.style.display = 'none';
+    if (stockPanel) stockPanel.classList.remove('active');
+    switchTab('outbound'); // default landing tab jadi Outbound, bukan Stock
+    var subEl = document.querySelector('.topbar-sub');
+    if (subEl) subEl.textContent = 'Outbound (Kirim) & Inbound (Produksi) — otomatis update ke Monitoring Stock';
+  }
+})();
 
 // ================================================================
 //  KONFIGURASI PER TAB: kolom, backend function, label
@@ -738,6 +800,8 @@ function submitData(tab){
   }
 
   btn.disabled = true; spin.style.display = 'inline-block';
+  window._uploadInProgress = true;
+  setUploadLockUI(true);
 
   if (tab === 'stock'){
     var tglEl = document.getElementById('tanggal-stock');
@@ -753,11 +817,13 @@ function submitData(tab){
           startBatchUpload();
         } else {
           spin.style.display='none'; lbl.textContent='Upload ke Sistem'; btn.disabled=false;
+          window._uploadInProgress = false; setUploadLockUI(false);
           showStatus(tab,'err','Gagal menghapus data lama: '+(res&&res.error?res.error:'tidak diketahui')+'. Upload dibatalkan supaya data tidak dobel.');
         }
       })
       .withFailureHandler(function(err){
         spin.style.display='none'; lbl.textContent='Upload ke Sistem'; btn.disabled=false;
+        window._uploadInProgress = false; setUploadLockUI(false);
         showStatus(tab,'err','Gagal terhubung ke server saat membersihkan data lama: '+(err&&err.message?err.message:'cek koneksi.'));
       })
       .clearStockDataForDate(tglVal);
@@ -778,6 +844,7 @@ function submitData(tab){
       document.getElementById('sync-now-wrap-'+tab).style.display = 'flex';
       try { clearApiCache(); } catch(e){}
       btn.disabled = false;
+      window._uploadInProgress = false; setUploadLockUI(false);
 
       var SHEET_NAME = { stock:'DASHBOARD_STOCK', outbound:'DASHBOARD_KIRIM', inbound:'DASHBOARD_PRODUKSI' }[tab];
       var TGL_COL_IDX = { stock:10, outbound:5, inbound:5 }[tab];
@@ -834,6 +901,7 @@ function submitData(tab){
             showStatus(tab,'err','Batch '+(batchIdx+1)+' gagal setelah '+MAX_RETRY+'x dicoba ulang: ' + (res && res.error ? res.error : 'kesalahan tidak diketahui') +
               (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan, tidak perlu diulang -- upload lagi HANYA sisa data yang belum masuk.)' : ''));
             btn.disabled = false;
+            window._uploadInProgress = false; setUploadLockUI(false);
           }
         })
         .withFailureHandler(function(err){
@@ -846,6 +914,7 @@ function submitData(tab){
             showStatus(tab,'err','Gagal terhubung ke server di batch '+(batchIdx+1)+' setelah '+MAX_RETRY+'x dicoba ulang: ' + (err && err.message ? err.message : 'cek koneksi.') +
               (totalOk>0 ? ' ('+totalOk+' baris sebelumnya SUDAH tersimpan.)' : ''));
             btn.disabled = false;
+            window._uploadInProgress = false; setUploadLockUI(false);
           }
         });
       runner[cfg.fn](...callArgs);
