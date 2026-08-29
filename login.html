@@ -297,7 +297,8 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <input id="pwd" name="pwd" type="password" placeholder="Masukkan kata sandi" required autocomplete="current-password" style="padding-right:44px;">
             <button type="button" class="pwd-toggle" id="pwdToggle" aria-label="Tampilkan kata sandi">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="pwdToggleIconEye"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="pwdToggleIconEyeOff" style="display:none;"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.86 21.86 0 0 1 5.06-6.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.86 21.86 0 0 1-3.22 4.66M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </button>
           </div>
         </div>
@@ -401,11 +402,28 @@
       }
     });
 
-    // Toggle show/hide password
-    document.getElementById('pwdToggle').addEventListener('click', () => {
-      const pwd = document.getElementById('pwd');
-      pwd.type = pwd.type === 'password' ? 'text' : 'password';
-    });
+    // Toggle show/hide password -- dibungkus IIFE + try/catch sendiri
+    // (independen dari bagian script lain) supaya kalaupun ada error di
+    // tempat lain pada halaman ini, tombol lihat password tetap jalan.
+    // Juga ganti ikon mata terbuka/tercoret supaya ada feedback visual
+    // yang jelas saat diklik (sebelumnya ikonnya diam saja, kelihatan
+    // seperti tidak berfungsi walau sebenarnya password-nya sudah kebuka).
+    (function () {
+      try {
+        var toggleBtn = document.getElementById('pwdToggle');
+        var pwdInput = document.getElementById('pwd');
+        var iconEye = document.getElementById('pwdToggleIconEye');
+        var iconEyeOff = document.getElementById('pwdToggleIconEyeOff');
+        if (!toggleBtn || !pwdInput) return;
+        toggleBtn.addEventListener('click', function () {
+          var isHidden = pwdInput.type === 'password';
+          pwdInput.type = isHidden ? 'text' : 'password';
+          toggleBtn.setAttribute('aria-label', isHidden ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi');
+          if (iconEye) iconEye.style.display = isHidden ? 'none' : 'block';
+          if (iconEyeOff) iconEyeOff.style.display = isHidden ? 'block' : 'none';
+        });
+      } catch (e) { /* jangan sampai error di sini ganggu proses login utama */ }
+    })();
 
     // NIK boleh huruf+angka (akun outsourcing pakai format PEGxxxxxxxx),
     // bukan cuma angka lagi. Huruf otomatis di-kapital biar konsisten

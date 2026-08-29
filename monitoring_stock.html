@@ -1053,6 +1053,11 @@ lucide.createIcons();
   var dashBodyEl = document.querySelector('.dash-body');
   if (dashBodyEl) dashBodyEl.style.gridTemplateColumns = 'minmax(0,1fr) minmax(0,1fr)';
 
+  // Sembunyikan bar status Kanban (Pipa PPR / Fitting PPR) -- kanban stok
+  // ini konsep khusus Fitting Import, departemen lain tidak pakai.
+  var kanbanBarEl = document.getElementById('kanbanBar');
+  if (kanbanBarEl) kanbanBarEl.style.display = 'none';
+
   // Sembunyikan baris breakdown Pipa/Fitting di card Outbound & Inbound
   // (angka & grafik trennya sama-sama berbasis split Pipa/Fitting -- tanpa
   // breakdown itu datanya jadi tidak lengkap utk digambar), sisakan cuma
