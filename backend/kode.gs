@@ -3989,7 +3989,16 @@ function editLemburByTL(rowIndex, tanggalBaru, jamMulaiBaru, jamSelesaiBaru, ket
 
     sh.getRange(rowIndex, 2).setValue(tglDate);                                   // B: Tanggal
     sh.getRange(rowIndex, 5, 1, 3).setValues([[jamMulaiBaru, jamSelesaiBaru, durJam]]); // E,F,G
-    if (keteranganBaru != null) sh.getRange(rowIndex, 8).setValue(keteranganBaru); // H: Keterangan
+    // PENTING: cek "!= null" TIDAK menangkap string kosong '' -- kalau
+    // textarea Keterangan di modal TL kebetulan kosong saat disubmit
+    // (misal race condition render/prefill, atau device lemot), baris ini
+    // akan MENIMPA Keterangan yang sudah diisi user jadi KOSONG TOTAL --
+    // inilah kemungkinan besar penyebab keterangan hilang saat print SPL.
+    // Sekarang: kalau keteranganBaru KOSONG, JANGAN timpa -- pertahankan
+    // apa yang sudah ada. TL yang betul-betul mau mengosongkan Keterangan
+    // harus isi tanda seperti "-" secara sengaja, bukan biarkan kosong.
+    var ketTrim = String(keteranganBaru == null ? '' : keteranganBaru).trim();
+    if (ketTrim) sh.getRange(rowIndex, 8).setValue(ketTrim); // H: Keterangan
 
     var catatanLama = String(sh.getRange(rowIndex, 12).getValue() || ''); // L: Catatan
     var jejak = '[Diedit TL (' + (approverNik || '-') + ') sebelum approve -> ' +
