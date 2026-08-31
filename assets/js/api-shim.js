@@ -58,12 +58,18 @@
   // hasilnya action-sensitive / berubah cepat / bisa menyesatkan kalau basi
   // (contoh nyata: getPendingApprovals menampilkan "0 menunggu" basi
   // padahal sudah ada pengajuan baru masuk).
+  //
+  // CATATAN: getLemburList & getAbsensiList SENGAJA TIDAK dimasukkan ke
+  // sini walau kelihatannya "cuma daftar riwayat" -- keduanya membawa
+  // status approval (editReqStatus, dst) yang HARUS selalu fresh. Kalau
+  // di-cache, TL yang sudah approve/tolak pengajuan edit lembur akan
+  // tetap terlihat "Menunggu approval" di Riwayat Lembur sampai cache-nya
+  // basi (bug nyata yang pernah kejadian, jangan diulang).
   var CACHEABLE_FRONTEND = {
     getKaryawanList: 1, getGroupList: 1, getDashboardData: 1,
     getOutboundData: 1, getInboundData: 1, getKanbanData: 1,
     getRekapMuatanData: 1, getPhotos: 1, getStockTrendBatch: 1,
-    getIOTrendBatch: 1, getAbsensiFTEData: 1, getLemburList: 1,
-    getAbsensiList: 1, getLoadingTimeAnalytics: 1
+    getIOTrendBatch: 1, getAbsensiFTEData: 1, getLoadingTimeAnalytics: 1
   };
 
   // getResidenceTimeData dipakai di 2 tempat dengan kebutuhan berbeda:
