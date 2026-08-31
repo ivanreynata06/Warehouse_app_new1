@@ -4206,15 +4206,31 @@ function submitEditLembur(rowIndex, nikRequester, newData) {
     if (durJam > 4) durJam -= 1;
     durJam = Math.round(durJam * 100) / 100;
 
-    if (cek.masihBaru) {
-      // Masih baru -> langsung terapkan perubahan, tidak perlu approval.
+    // ------------------------------------------------------------
+    //  Kalau JAM KERJA (jamMulai/jamSelesai) TIDAK berubah -- cuma
+    //  Keterangan/Kategori yang diedit -- TERAPKAN LANGSUNG, tanpa
+    //  approval TL, WALAUPUN catatannya sudah lebih dari 24 jam.
+    //  Aturan approval TL cuma berlaku kalau JAM KERJA-nya berubah,
+    //  karena itu yang mempengaruhi Total Jam Lembur/perhitungan FTE.
+    //  Keterangan cuma catatan tambahan, tidak berdampak ke angka.
+    // ------------------------------------------------------------
+    var jamLama = sh.getRange(rowIndex, 5, 1, 2).getValues()[0]; // E,F: JamMulai, JamSelesai saat ini
+    var jamMulaiLama = String(jamLama[0] || '').trim();
+    var jamSelesaiLama = String(jamLama[1] || '').trim();
+    var jamTidakBerubah = (jamMulaiLama === String(newData.jamMulai || '').trim())
+                        && (jamSelesaiLama === String(newData.jamSelesai || '').trim());
+
+    if (cek.masihBaru || jamTidakBerubah) {
+      // Masih baru (<24 jam), ATAU jam kerja tidak berubah -> langsung
+      // terapkan perubahan, tidak perlu approval.
       sh.getRange(rowIndex, 5, 1, 3).setValues([[newData.jamMulai, newData.jamSelesai, durJam]]); // E,F,G
       sh.getRange(rowIndex, 8).setValue(newData.keterangan || ''); // H
       sh.getRange(rowIndex, 13).setValue(newData.kategoriLembur || ''); // M
       return { success: true, applied: true };
     }
 
-    // Sudah lebih dari 24 jam -- simpan sebagai pengajuan, TL yang approve.
+    // Jam kerja BERUBAH dan catatannya sudah lebih dari 24 jam -- simpan
+    // sebagai pengajuan, TL yang approve.
     sh.getRange(rowIndex, 14, 1, 4).setValues([[ // kolom N-Q
       'Pending',
       JSON.stringify({ action: 'edit', jamMulai: newData.jamMulai, jamSelesai: newData.jamSelesai, totalJam: durJam, keterangan: newData.keterangan || '', kategoriLembur: newData.kategoriLembur || '' }),
