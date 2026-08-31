@@ -4215,8 +4215,16 @@ function submitEditLembur(rowIndex, nikRequester, newData) {
     //  Keterangan cuma catatan tambahan, tidak berdampak ke angka.
     // ------------------------------------------------------------
     var jamLama = sh.getRange(rowIndex, 5, 1, 2).getValues()[0]; // E,F: JamMulai, JamSelesai saat ini
-    var jamMulaiLama = String(jamLama[0] || '').trim();
-    var jamSelesaiLama = String(jamLama[1] || '').trim();
+    // PENTING: nilai mentah dari sheet bisa berupa Date object atau angka
+    // pecahan (format waktu Google Sheets), BUKAN cuma string "13:00" --
+    // makanya HARUS dinormalisasi lewat _fmtTime() dulu (sama seperti cara
+    // baca jam di getLemburList() dkk) sebelum dibandingkan dengan string
+    // "HH:MM" polos yang dikirim dari form. Sebelumnya dibandingkan mentah
+    // (String(dateObject) vs "13:00") -- HAMPIR SELALU tidak pernah sama
+    // walau user sama sekali tidak mengubah jam, jadi tetap dianggap
+    // "jam berubah" dan tetap masuk approval TL walau cuma edit keterangan.
+    var jamMulaiLama = _fmtTime(jamLama[0]);
+    var jamSelesaiLama = _fmtTime(jamLama[1]);
     var jamTidakBerubah = (jamMulaiLama === String(newData.jamMulai || '').trim())
                         && (jamSelesaiLama === String(newData.jamSelesai || '').trim());
 
