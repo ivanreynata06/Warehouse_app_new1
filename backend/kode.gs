@@ -4686,7 +4686,12 @@ function _buildSPLDocument(kode, bulan, tahun) {
     body.replaceText('\\{\\{AWAL' + n + '\\}\\}', vAwal);
     body.replaceText('\\{\\{AKHIR' + n + '\\}\\}', vAkhir);
     body.replaceText('\\{\\{TOTAL' + n + '\\}\\}', vTotal);
-    body.replaceText('\\{\\{KET' + n + '\\}\\}', vKet);
+    // PENTING: replaceText() Apps Script memperlakukan argumen kedua
+    // (replacement) sebagai pola dgn dukungan backreference $1,$2,dst --
+    // kalau Keterangan user kebetulan mengandung karakter "$" (mis. nominal
+    // uang), itu bisa salah diartikan / bikin teksnya hilang/berubah.
+    // "$" harus di-escape jadi "$$" dulu supaya dianggap literal.
+    body.replaceText('\\{\\{KET' + n + '\\}\\}', String(vKet).replace(/\$/g, '$$$$'));
   }
 
   // ---- Tanda tangan digital TL ----
