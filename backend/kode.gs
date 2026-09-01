@@ -251,9 +251,38 @@ function resolveWorkspaceSpreadsheetId(workspaceKey) {
 // (klik Refresh, atau beberapa orang buka dashboard bersamaan) dalam
 // jendela CACHE_TTL_SECONDS langsung dijawab dari cache (instan),
 // tidak perlu baca ulang spreadsheet tiap kali.
+//
+// PENTING -- cache-busting lewat "versi": kalau ada upload/hapus data
+// baru (Stock/Outbound/Inbound), _bumpDataCacheVersion() dipanggil dan
+// menaikkan angka versi utk workspace itu. Versi ini ikut jadi bagian
+// dari cache key -- begitu versi naik, SEMUA cache lama (utk kombinasi
+// filter apa pun: harian/bulanan/tahunan) otomatis "basi"/tidak
+// terpakai lagi TANPA perlu tahu/enumerasi persis key mana saja yang
+// harus dihapus. Sebelumnya TIDAK ADA mekanisme ini sama sekali -- jadi
+// setelah upload/hapus data, dashboard bisa tetap menampilkan angka
+// lama sampai TTL (90 detik) habis sendiri, dan karena tiap kombinasi
+// filter (mis. "Bulanan Agustus" vs "Harian 01-31 Agustus") punya cache
+// key TERPISAH, salah satu bisa kebetulan sudah fresh sementara yang
+// lain masih basi -- selisih angka yang membingungkan padahal rentang
+// tanggalnya sama persis.
+function _getDataCacheVersion() {
+  var cache = CacheService.getScriptCache();
+  var key = 'dataCacheVer::' + ACTIVE_WORKSPACE;
+  var v = cache.get(key);
+  return v || '0';
+}
+function _bumpDataCacheVersion() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'dataCacheVer::' + ACTIVE_WORKSPACE;
+    var v = parseInt(cache.get(key) || '0', 10) + 1;
+    cache.put(key, String(v), 21600); // 6 jam -- cukup lama, jarang perlu reset manual
+  } catch (e) { /* gagal bump cache version tidak boleh sampai gagalkan proses upload */ }
+}
+
 function callWithServerCache(action, args) {
   var cache    = CacheService.getScriptCache();
-  var cacheKey = 'api::' + ACTIVE_WORKSPACE + '::' + action + '::' + JSON.stringify(args);
+  var cacheKey = 'api::' + ACTIVE_WORKSPACE + '::v' + _getDataCacheVersion() + '::' + action + '::' + JSON.stringify(args);
 
   try {
     var cached = cache.get(cacheKey);
@@ -1642,6 +1671,7 @@ function clearStockDataForDate(tanggal) {
       sheet.deleteRows(blocks[k][0], blocks[k][1]);
     }
 
+    _bumpDataCacheVersion(); // supaya dashboard tidak nampilin angka lama (lihat callWithServerCache)
     return { success: true, dihapus: rowsToDelete.length };
   } catch (err) {
     return { success: false, error: err.message };
@@ -1724,6 +1754,7 @@ function appendStockData(rows, tanggal) {
     // spreadsheet (jalan sendiri di background begitu baris ini masuk).
     // Backup permanen ke Supabase tetap sesuai jadwal arsip bulanan
     // (tanggal 2 tiap bulan) yang sudah terpasang sebelumnya.
+    _bumpDataCacheVersion(); // supaya dashboard tidak nampilin angka lama (lihat callWithServerCache)
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
@@ -1759,6 +1790,7 @@ function _appendKirimProduksi(rows, sheetName) {
     sheet.getRange(startRow, 1, out.length, 6).setValues(out);
     // Sama seperti Stock: tidak ditunggu sync-nya di sini, biar cepat.
     // Trigger onEdit + arsip bulanan otomatis yang menangani sync/backup.
+    _bumpDataCacheVersion(); // supaya dashboard tidak nampilin angka lama (lihat callWithServerCache)
     return { success: true, jumlah: out.length };
   } catch (err) {
     return { success: false, error: err.message };
