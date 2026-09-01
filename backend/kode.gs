@@ -355,6 +355,20 @@ function onEdit(e) {
     return;
   }
 
+  // -- Sheet-sheet sumber data Monitoring FTE (LEMBUR_LOG, KARYAWAN_LEMBUR,
+  //     ABSENSI_LOG, HARI_LIBUR, DASHBOARD_KIRIM, DASHBOARD_PRODUKSI) --
+  //     kalau ada yang diedit LANGSUNG di sheet (bukan lewat form di
+  //     aplikasi), cache manual di getAbsensiFTEData/getOvertimeTrend6Bulan/
+  //     getLemburKategoriTrend6Bulan HARUS langsung basi, jangan nunggu TTL
+  //     (3 menit/6 jam) habis sendiri -- terutama utk bulan yang sudah
+  //     lewat (cache 6 jam), yang paling sering jadi sumber "kok masih data
+  //     lama" begitu ada koreksi manual di spreadsheet.
+  var FTE_SOURCE_SHEETS = ['LEMBUR_LOG', 'KARYAWAN_LEMBUR', 'ABSENSI_LOG', 'HARI_LIBUR', 'DASHBOARD_KIRIM', 'DASHBOARD_PRODUKSI'];
+  if (FTE_SOURCE_SHEETS.indexOf(shName) !== -1) {
+    _bumpDataCacheVersion();
+    return;
+  }
+
   // -- PENGIRIMAN: kolom B (Nama Agen) diisi ? isi tanggal hari ini di kolom A --
   if (shName === "PENGIRIMAN") {
     var range    = e.range;
@@ -3655,6 +3669,41 @@ var KATEGORI_LEMBUR_LIST = [
 ];
 function getKategoriLemburList() { return { success: true, data: KATEGORI_LEMBUR_LIST }; }
 
+// ================================================================
+//  DIAGNOSTIK -- jalankan manual dari Apps Script editor (pilih fungsi
+//  ini di dropdown lalu klik Run) kalau grafik "Tren Kategori Lembur"
+//  kelihatan salah (mis. kategori yang sudah diisi "Checking" malah
+//  kehitung "Lain-lain"). Fungsi ini TIDAK mengubah data apa pun --
+//  cuma nge-print (Logger.log / View > Logs) baris mana saja di
+//  LEMBUR_LOG yang kolom M (Kategori Lembur)-nya KOSONG atau isinya
+//  tidak cocok dengan kode manapun di KATEGORI_LEMBUR_LIST -- baris
+//  itulah yang otomatis dianggap "Lain-lain". Penyebab paling umum:
+//  entri lama yang diinput SEBELUM fitur kategori ada (kolom M memang
+//  belum pernah diisi), bukan bug di kode.
+// ================================================================
+function auditKategoriLemburKosong(tahun) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+  if (!sh) { Logger.log('Sheet LEMBUR_LOG tidak ditemukan.'); return; }
+  var data = sh.getDataRange().getValues();
+  var kodeValid = {};
+  KATEGORI_LEMBUR_LIST.forEach(function (k) { kodeValid[k.kode.toLowerCase()] = 1; });
+
+  var bermasalah = [];
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    if (!r[1]) continue;
+    var tgl = new Date(r[1]);
+    if (tahun && tgl.getFullYear() != Number(tahun)) continue;
+    var katRaw = String(r[12] || '').trim();
+    if (!katRaw || !kodeValid[katRaw.toLowerCase()]) {
+      bermasalah.push('Baris ' + (i + 1) + ' | Tanggal: ' + _fmtYMD(tgl) + ' | Kode: ' + r[2] + ' | Nama: ' + r[3] + ' | Isi kolom M saat ini: "' + katRaw + '"');
+    }
+  }
+  Logger.log('Total baris LEMBUR_LOG dgn kategori kosong/tidak dikenali' + (tahun ? ' (tahun ' + tahun + ')' : '') + ': ' + bermasalah.length);
+  bermasalah.forEach(function (line) { Logger.log(line); });
+}
+
 function saveLembur(data) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -3823,10 +3872,24 @@ function getLemburList(filter) {
 // grafik tren kategori manggil server 6x berurutan padahal bisa 1x saja.
 function getLemburKategoriTrend6Bulan(bulanAkhir, tahunAkhir) {
   try {
+    // Sama seperti getOvertimeTrend6Bulan -- sebelumnya TIDAK di-cache,
+    // baca ulang seluruh LEMBUR_LOG setiap buka Monitoring FTE.
+    var scriptCacheKat = CacheService.getScriptCache();
+    var cacheKeyKat = 'katTrend6_' + ACTIVE_WORKSPACE + '_v' + _getDataCacheVersion() + '_' + tahunAkhir + '_' + bulanAkhir;
+    var cachedKat = scriptCacheKat.get(cacheKeyKat);
+    if (cachedKat) return JSON.parse(cachedKat);
+
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sh = ss.getSheetByName(SH_LEMBUR_LOG);
     if (!sh) return { success: false, error: 'Sheet LEMBUR_LOG belum ada.' };
     var data = sh.getDataRange().getValues();
+
+    // Peta kode kategori TERNORMALISASI (trim + lowercase) -> kode asli,
+    // supaya selisih spasi/huruf besar-kecil di kolom M tidak bikin
+    // kategori yang sudah benar (mis. "Checking" atau " checking ")
+    // salah jatuh ke bucket "Lain-lain".
+    var kodeNormMap = {};
+    KATEGORI_LEMBUR_LIST.forEach(function (k) { kodeNormMap[k.kode.toLowerCase()] = k.kode; });
 
     // Siapkan 6 bucket bulan (bulanAkhir mundur 5 bulan)
     var months = [];
@@ -3847,8 +3910,8 @@ function getLemburKategoriTrend6Bulan(bulanAkhir, tahunAkhir) {
       var key = tgl.getFullYear() + '-' + (tgl.getMonth() + 1);
       var bucket = byKey[key];
       if (!bucket) continue; // di luar 6 bulan yang diminta
-      var kat = String(r[12] || '').trim();
-      if (!bucket.totals.hasOwnProperty(kat)) kat = 'lain';
+      var katRaw = String(r[12] || '').trim();
+      var kat = kodeNormMap[katRaw.toLowerCase()] || 'lain';
       bucket.totals[kat] += Number(r[6]) || 0;
     }
 
@@ -3856,7 +3919,13 @@ function getLemburKategoriTrend6Bulan(bulanAkhir, tahunAkhir) {
       Object.keys(m.totals).forEach(function (k) { m.totals[k] = Math.round(m.totals[k] * 100) / 100; });
       return m.totals;
     });
-    return { success: true, results: results };
+    var hasilKat = { success: true, results: results };
+    try {
+      var nowKat = new Date();
+      var isBulanBerjalanKat = (Number(tahunAkhir) === nowKat.getFullYear() && Number(bulanAkhir) === (nowKat.getMonth() + 1));
+      scriptCacheKat.put(cacheKeyKat, JSON.stringify(hasilKat), isBulanBerjalanKat ? 180 : 21600);
+    } catch (cacheErrKat) { /* gagal cache tidak masalah, tetap return data */ }
+    return hasilKat;
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -3869,14 +3938,16 @@ function getLemburKategoriBulanan(bulan, tahun) {
 
     var totals = {};
     KATEGORI_LEMBUR_LIST.forEach(function (k) { totals[k.kode] = 0; });
+    var kodeNormMap2 = {};
+    KATEGORI_LEMBUR_LIST.forEach(function (k) { kodeNormMap2[k.kode.toLowerCase()] = k.kode; });
 
     for (var i = 1; i < data.length; i++) {
       var r = data[i];
       if (!r[1]) continue;
       var tgl = new Date(r[1]);
       if ((tgl.getMonth() + 1) != Number(bulan) || tgl.getFullYear() != Number(tahun)) continue;
-      var kat = String(r[12] || '').trim();
-      if (!totals.hasOwnProperty(kat)) kat = 'lain'; // data lama sebelum fitur ini ada / kategori kosong
+      var katRaw = String(r[12] || '').trim();
+      var kat = kodeNormMap2[katRaw.toLowerCase()] || 'lain'; // data lama sebelum fitur ini ada / kategori kosong/tidak dikenal
       totals[kat] += Number(r[6]) || 0;
     }
     Object.keys(totals).forEach(function (k) { totals[k] = Math.round(totals[k] * 100) / 100; });
@@ -4413,6 +4484,18 @@ function _getHariLiburSet(bulan, tahun) {
 // lalu hitung overtime% tiap bulan dari data yang sudah di-memori.
 function getOvertimeTrend6Bulan(bulanAkhir, tahunAkhir) {
   try {
+    // Sebelumnya fungsi ini TIDAK di-cache sama sekali -- setiap kali
+    // Monitoring FTE dibuka, sheet LEMBUR_LOG dibaca PENUH (semua histori,
+    // bukan cuma 6 bulan) via getLemburList({}). Ini salah satu penyebab
+    // utama loading lama. Sekarang dicache dgn pola sama seperti
+    // getAbsensiFTEData: 3 menit kalau bulan akhir = bulan berjalan, 6 jam
+    // kalau bulan akhir sudah lewat, dan otomatis basi begitu ada
+    // upload/edit data (lihat _getDataCacheVersion()/onEdit).
+    var scriptCacheOt = CacheService.getScriptCache();
+    var cacheKeyOt = 'otTrend6_' + ACTIVE_WORKSPACE + '_v' + _getDataCacheVersion() + '_' + tahunAkhir + '_' + bulanAkhir;
+    var cachedOt = scriptCacheOt.get(cacheKeyOt);
+    if (cachedOt) return JSON.parse(cachedOt);
+
     var karyawanRes = getKaryawanList();
     if (!karyawanRes.success) return karyawanRes;
     var karyawanInternal = karyawanRes.data.filter(function (k) { return k.aktif && k.kategori === 'Internal'; });
@@ -4443,7 +4526,13 @@ function getOvertimeTrend6Bulan(bulanAkhir, tahunAkhir) {
       return overtimePct;
     });
 
-    return { success: true, results: results };
+    var hasilOt = { success: true, results: results };
+    try {
+      var nowOt = new Date();
+      var isBulanBerjalanOt = (Number(tahunAkhir) === nowOt.getFullYear() && Number(bulanAkhir) === (nowOt.getMonth() + 1));
+      scriptCacheOt.put(cacheKeyOt, JSON.stringify(hasilOt), isBulanBerjalanOt ? 180 : 21600);
+    } catch (cacheErrOt) { /* gagal cache tidak masalah, tetap return data */ }
+    return hasilOt;
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -4459,8 +4548,12 @@ function getAbsensiFTEData(bulan, tahun) {
     // Monitoring FTE terasa secepat Rekap Muatan waktu buka bulan lama).
     // Bulan BERJALAN tetap 3 menit saja supaya input hari ini/kemarin
     // tetap kelihatan update.
+    // Cache key ikut sertakan _getDataCacheVersion() -- begitu ada
+    // upload data (Stock/Outbound/Inbound) ATAU edit manual langsung
+    // di salah satu sheet sumber FTE (lihat onEdit -> FTE_SOURCE_SHEETS),
+    // versinya naik dan key ini otomatis basi walau TTL belum habis.
     var scriptCacheFte = CacheService.getScriptCache();
-    var cacheKeyFte = 'absensiFte_' + ACTIVE_WORKSPACE + '_' + tahun + '_' + bulan;
+    var cacheKeyFte = 'absensiFte_' + ACTIVE_WORKSPACE + '_v' + _getDataCacheVersion() + '_' + tahun + '_' + bulan;
     var cachedFte = scriptCacheFte.get(cacheKeyFte);
     if (cachedFte) return JSON.parse(cachedFte);
 
@@ -4544,16 +4637,23 @@ function getAbsensiFTEData(bulan, tahun) {
     //  berkurang akibat lembur tinggi & banyak yang tidak hadir).
     // ------------------------------------------------------------
     var PRODUKTIVITAS_TARGET_TON_FTE = 62.3;
-    var produktivitasTercapai = produktivitasTonFTE <= PRODUKTIVITAS_TARGET_TON_FTE;
-    var totalJamLemburSemua = Math.round((totalJamLemburInternal + totalJamLemburOS) * 100) / 100;
-    var jumlahMangkirTotal = absensi.filter(function (a) { return a.status === 'Mangkir'; }).length;
+    // Target 62,3 Ton/FTE adalah BATAS BAWAH (bukan batas atas): angka
+    // di BAWAH target = belum tercapai (produktivitas per FTE kurang
+    // dari yang diharapkan). Angka SAMA DENGAN/DI ATAS target = tercapai.
+    var produktivitasTercapai = produktivitasTonFTE >= PRODUKTIVITAS_TARGET_TON_FTE;
+    var totalJamLemburSemua = Math.round((totalJamLemburInternal + totalJamLemburOS) * 100) / 100; // dipakai di tempat lain (bukan Internal saja)
+    // Mangkir yang dihitung utk insight kartu Produktivitas HARUS cuma
+    // karyawan Internal -- kartu ini metrik khusus karyawan, bukan OS.
+    var kodeInternalSet = {};
+    internalList.forEach(function (p) { kodeInternalSet[p.kode] = 1; });
+    var jumlahMangkirTotal = absensi.filter(function (a) { return a.status === 'Mangkir' && kodeInternalSet[a.kode]; }).length;
     var insightProduktivitas =
-      'Produktivitas bulan ini ' + (produktivitasTercapai ? 'masih di bawah/sesuai' : 'sudah melebihi') +
-      ' target ' + PRODUKTIVITAS_TARGET_TON_FTE + ' Ton/FTE' + (produktivitasTercapai ? ' (baik).' : ' (beban kerja per FTE kelebihan).') + ' ' +
-      'Turut dipengaruhi oleh total ' + totalJamLemburSemua + ' jam lembur karyawan (Internal + OS)' +
+      'Produktivitas bulan ini ' + (produktivitasTercapai ? 'sudah mencapai/melebihi' : 'masih di bawah') +
+      ' target ' + PRODUKTIVITAS_TARGET_TON_FTE + ' Ton/FTE' + (produktivitasTercapai ? ' (baik).' : ' (belum tercapai).') + ' ' +
+      'Turut dipengaruhi oleh total ' + totalJamLemburInternal + ' jam lembur karyawan internal' +
       (jumlahMangkirTotal > 0
-        ? ' dan ' + jumlahMangkirTotal + ' kali ketidakhadiran tanpa keterangan (mangkir) bulan ini -- makin banyak lembur & makin sedikit karyawan aktif hadir, makin sedikit FTE efektif, sehingga angka produktivitas per FTE ikut terdorong naik' + (produktivitasTercapai ? '.' : ' hingga melewati target.')
-        : ' -- tidak ada ketidakhadiran tanpa keterangan (mangkir) bulan ini.');
+        ? ' dan ' + jumlahMangkirTotal + ' kali ketidakhadiran tanpa keterangan (mangkir) karyawan internal bulan ini -- makin banyak lembur & makin sedikit karyawan aktif hadir, makin sedikit FTE efektif, sehingga angka produktivitas per FTE ikut terdorong turun' + (produktivitasTercapai ? '.' : ' hingga di bawah target.')
+        : ' -- tidak ada ketidakhadiran tanpa keterangan (mangkir) karyawan internal bulan ini.');
 
     var hasilFte = {
       success: true,
