@@ -1796,7 +1796,13 @@ function _appendKirimProduksi(rows, sheetName) {
     var out = rows.map(function (r) {
       return [
         r[0] || '', r[1] || '', r[2] || '', r[3] || '',
-        _parseTanggalFleksibel(r[4]), _parseAngkaFleksibel(r[5])
+        _parseTanggalFleksibel(r[4]), Math.abs(_parseAngkaFleksibel(r[5]))
+        // Math.abs() -- sumber Excel kadang bawa tanda minus (mis. baris
+        // retur/adjustment), tapi utk perhitungan tonase/FTE nilainya
+        // harus tetap POSITIF (angkanya sama, cuma tanda minusnya yang
+        // dihilangkan). Kalau tandanya kebawa, total Outbound/Inbound
+        // dan produktivitas per FTE ikut jadi minus, padahal aslinya
+        // cuma soal tanda, bukan datanya salah.
       ];
     });
 
@@ -1809,6 +1815,41 @@ function _appendKirimProduksi(rows, sheetName) {
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+// ================================================================
+//  Perbaiki data LAMA yang sudah kadung ke-upload dengan tanda minus
+//  (sebelum fix Math.abs() di _appendKirimProduksi di atas dipasang).
+//  Jalankan MANUAL 1x dari Apps Script editor (pilih fungsi ini di
+//  dropdown, klik Run) kalau totalnya masih kelihatan minus di
+//  dashboard walau sudah deploy versi terbaru. TIDAK mengubah baris
+//  yang nilainya sudah positif -- cuma balik tanda baris yang < 0 di
+//  kolom F (Total Weight) SH_KIRIM & SH_PRODUKSI jadi positif (angka
+//  sama, tanda minus dihilangkan).
+// ================================================================
+function perbaikiTonaseNegatif(sheetName) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) { Logger.log('Sheet ' + sheetName + ' tidak ditemukan.'); return; }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('Sheet ' + sheetName + ' kosong.'); return; }
+  var range  = sheet.getRange(2, 6, lastRow - 1, 1); // kolom F, mulai baris 2
+  var values = range.getValues();
+  var diperbaiki = 0;
+  for (var i = 0; i < values.length; i++) {
+    var v = parseFloat(values[i][0]);
+    if (!isNaN(v) && v < 0) { values[i][0] = Math.abs(v); diperbaiki++; }
+  }
+  if (diperbaiki > 0) range.setValues(values);
+  _bumpDataCacheVersion();
+  Logger.log(sheetName + ': ' + diperbaiki + ' baris dgn Total Weight negatif sudah dibalik jadi positif.');
+}
+
+// Wrapper siap-Run: perbaiki SH_KIRIM (Outbound/Pengiriman) DAN
+// SH_PRODUKSI (Inbound/Penerimaan) sekaligus dalam satu klik Run.
+function perbaikiTonaseNegatifSemua() {
+  perbaikiTonaseNegatif(SH_KIRIM);
+  perbaikiTonaseNegatif(SH_PRODUKSI);
 }
 
 function readTransaksi(ss, sheetName, range) {
