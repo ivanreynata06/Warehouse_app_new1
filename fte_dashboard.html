@@ -35,6 +35,7 @@
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;width:100%;overflow:hidden;font-family:var(--font-body);background:var(--bg-main);color:var(--text-main);font-size:calc(clamp(10px,0.95vw,12px)*var(--font-scale));-webkit-font-smoothing:antialiased;}
+body{background-image:radial-gradient(circle at 15% 0%,rgba(212,175,55,.05),transparent 40%),radial-gradient(circle at 85% 100%,rgba(59,130,246,.05),transparent 45%);background-attachment:fixed;}
 .app-shell{display:flex;height:100vh;width:100vw;overflow:hidden;}
 
 .loading-overlay{position:fixed;inset:0;background:rgba(13,13,25,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;backdrop-filter:blur(4px);}
@@ -96,48 +97,58 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .content-wrap{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:16px;}
 .content-wrap::-webkit-scrollbar{width:5px;} .content-wrap::-webkit-scrollbar-thumb{background:var(--border-color);border-radius:3px;}
 
-.page-header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;}
-.page-header-left{display:flex;align-items:center;gap:10px;}
-.page-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,rgba(212,175,55,.28),rgba(212,175,55,.08));border:1px solid rgba(212,175,55,.35);display:flex;align-items:center;justify-content:center;color:var(--accent-gold);flex-shrink:0;}
-.page-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--text-main);}
-.page-sub{font-size:9.5px;color:var(--text-muted);margin-top:1px;}
+.page-header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border-color);position:relative;}
+.page-header::after{content:'';position:absolute;left:0;bottom:-1px;width:64px;height:2px;background:linear-gradient(90deg,var(--accent-gold),var(--accent-gold2));border-radius:2px;}
+.page-header-left{display:flex;align-items:center;gap:11px;}
+.page-icon{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,rgba(212,175,55,.3),rgba(212,175,55,.06));border:1px solid rgba(212,175,55,.4);display:flex;align-items:center;justify-content:center;color:var(--accent-gold2);flex-shrink:0;box-shadow:0 4px 14px rgba(212,175,55,.15),inset 0 1px 0 rgba(255,255,255,.08);}
+.page-title{font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--text-main);letter-spacing:.2px;}
+.page-sub{font-size:9.5px;color:var(--text-muted);margin-top:2px;letter-spacing:.2px;}
 
 .hero-row{display:grid;grid-template-columns:300px 1fr;gap:12px;flex-shrink:0;}
 /* Produktivitas (Ton/FTE) -- SATU-SATUNYA metrik inti Monitoring FTE
    (gauge Overtime% dihapus dari tampilan atas permintaan). */
-.hero-produktivitas-card{background:linear-gradient(160deg,#132420,#0f1a18);border:1px solid rgba(34,197,94,.3);border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;text-align:center;}
-.hero-produktivitas-card::before{content:'';position:absolute;top:-40%;left:-20%;width:180%;height:180%;background:radial-gradient(circle,rgba(34,197,94,.1),transparent 60%);pointer-events:none;}
-.hero-produktivitas-status{display:flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;padding:3px 11px;border-radius:20px;margin-top:2px;}
-.hero-produktivitas-status.tercapai{background:rgba(34,197,94,.15);color:#4ade80;}
-.hero-produktivitas-status.belum{background:rgba(239,68,68,.15);color:#f87171;}
-.hero-produktivitas-target{font-size:9px;color:var(--text-muted);margin-top:1px;}
-.hero-produktivitas-insight{font-size:8.5px;color:var(--text-muted);line-height:1.55;margin-top:9px;border-top:1px solid var(--border-color);padding-top:9px;text-align:left;}
-.hero-produktivitas-label{font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;}
-.hero-produktivitas-val{font-family:var(--font-display);font-size:34px;font-weight:800;color:#4ade80;line-height:1;margin:4px 0;}
+.hero-produktivitas-card{background:linear-gradient(160deg,#152a25,#0e1a17 60%,#0c1614);border:1px solid rgba(34,197,94,.28);border-radius:16px;padding:18px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.04);}
+.hero-produktivitas-card::before{content:'';position:absolute;top:-40%;left:-20%;width:180%;height:180%;background:radial-gradient(circle,rgba(34,197,94,.12),transparent 60%);pointer-events:none;}
+.hero-produktivitas-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(74,222,128,.6),transparent);}
+.hero-produktivitas-status{display:flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;padding:4px 13px;border-radius:20px;margin-top:3px;letter-spacing:.3px;}
+.hero-produktivitas-status.tercapai{background:rgba(34,197,94,.16);color:#4ade80;border:1px solid rgba(74,222,128,.3);box-shadow:0 0 16px rgba(34,197,94,.18);}
+.hero-produktivitas-status.belum{background:rgba(239,68,68,.16);color:#f87171;border:1px solid rgba(248,113,113,.3);box-shadow:0 0 16px rgba(239,68,68,.18);}
+.hero-produktivitas-target{font-size:9px;color:var(--text-muted);margin-top:2px;}
+.hero-produktivitas-insight{font-size:8.5px;color:var(--text-muted);line-height:1.6;margin-top:10px;border-top:1px solid rgba(255,255,255,.07);padding-top:10px;text-align:left;}
+.hero-produktivitas-label{font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.7px;font-weight:700;}
+.hero-produktivitas-val{font-family:var(--font-display);font-size:38px;font-weight:800;background:linear-gradient(180deg,#6ee7a0,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1;margin:5px 0;letter-spacing:-.5px;text-shadow:0 0 30px rgba(52,211,153,.25);}
 .hero-produktivitas-sub{font-size:9px;color:var(--text-muted);}
-.hero-produktivitas-breakdown{font-size:8.5px;color:var(--text-muted);margin-top:2px;border-top:1px solid var(--border-color);padding-top:6px;width:100%;}
+.hero-produktivitas-breakdown{font-size:8.5px;color:var(--text-muted);margin-top:2px;border-top:1px solid rgba(255,255,255,.07);padding-top:7px;width:100%;}
+/* Varian "belum tercapai" -- kartu berubah dari hijau (sukses) ke amber
+   (perhatian) supaya status target langsung terlihat jelas tanpa perlu
+   baca badge/teksnya dulu. */
+.hero-produktivitas-card.belum{background:linear-gradient(160deg,#2a2013,#1a150e 60%,#16120c);border-color:rgba(245,158,11,.28);}
+.hero-produktivitas-card.belum::before{background:radial-gradient(circle,rgba(245,158,11,.12),transparent 60%);}
+.hero-produktivitas-card.belum::after{background:linear-gradient(90deg,transparent,rgba(251,191,36,.6),transparent);}
+.hero-produktivitas-card.belum .hero-produktivitas-val{background:linear-gradient(180deg,#fcd34d,#f59e0b);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 30px rgba(245,158,11,.25);}
 
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
-.kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:11px 13px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;}
-.kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.32);}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;border-radius:10px 10px 0 0;}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:11px;padding:12px 14px;position:relative;overflow:hidden;transition:transform .18s,box-shadow .18s,border-color .18s;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.35);border-color:rgba(212,175,55,.25);}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;border-radius:11px 11px 0 0;}
 .kpi-card.c-gold::before{background:linear-gradient(90deg,var(--accent-gold),var(--accent-gold2));}
 .kpi-card.c-blue::before{background:linear-gradient(90deg,var(--accent-blue),#60a5fa);}
 .kpi-card.c-green::before{background:linear-gradient(90deg,var(--accent-green),#34d399);}
 .kpi-card.c-purple::before{background:linear-gradient(90deg,var(--accent-purple),#a78bfa);}
 .kpi-card.c-cyan::before{background:linear-gradient(90deg,#06b6d4,#67e8f9);}
 .kpi-card.c-orange::before{background:linear-gradient(90deg,#f59e0b,#fbbf24);}
-.kpi-label{font-size:8.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;font-weight:600;display:flex;align-items:center;gap:5px;}
-.kpi-val{font-family:var(--font-display);font-size:21px;font-weight:700;line-height:1;margin-bottom:3px;letter-spacing:-.5px;}
+.kpi-label{font-size:8.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px;font-weight:700;display:flex;align-items:center;gap:5px;}
+.kpi-val{font-family:var(--font-display);font-size:22px;font-weight:700;line-height:1;margin-bottom:4px;letter-spacing:-.6px;}
 .kpi-val.c-gold{color:var(--accent-gold2);}
 .kpi-val.c-blue{color:var(--accent-blue);}
 .kpi-val.c-green{color:var(--accent-green);}
 .kpi-val.c-purple{color:var(--accent-purple);}
 .kpi-sub{font-size:9px;color:var(--text-muted);}
 
-.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:13px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;flex-shrink:0;}
+.card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:14px 15px;display:flex;flex-direction:column;gap:9px;overflow:hidden;flex-shrink:0;box-shadow:0 6px 18px rgba(0,0,0,.2);}
 .card-hdr{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:6px;}
-.card-title{font-family:var(--font-display);font-size:11px;font-weight:700;color:var(--text-main);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;}
+.card-title{font-family:var(--font-display);font-size:11.5px;font-weight:700;color:var(--text-main);text-transform:uppercase;letter-spacing:.7px;display:flex;align-items:center;gap:6px;}
+.card-title i,.card-title svg{color:var(--accent-gold2);}
 .card-badge{font-size:8px;padding:2px 7px;border-radius:20px;font-weight:600;}
 .badge-gold{background:rgba(212,175,55,.15);color:var(--accent-gold2);border:1px solid rgba(212,175,55,.3);}
 .badge-blue{background:rgba(59,130,246,.15);color:var(--accent-blue);border:1px solid rgba(59,130,246,.25);}
@@ -147,9 +158,10 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .chart-wrap{position:relative;height:170px;}
 
 table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
-.data-table thead th{position:sticky;top:0;background:var(--bg-card);text-align:left;padding:7px 8px;color:var(--text-muted);font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;border-bottom:1px solid var(--border-color);z-index:1;}
+.data-table thead th{position:sticky;top:0;background:var(--bg-card);text-align:left;padding:8px 8px;color:var(--accent-gold2);font-size:8.5px;text-transform:uppercase;letter-spacing:.7px;font-weight:700;border-bottom:1.5px solid rgba(212,175,55,.25);z-index:1;}
 .data-table tbody td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);}
-.data-table tbody tr:hover{background:rgba(255,255,255,.025);}
+.data-table tbody tr{transition:background .12s;}
+.data-table tbody tr:hover{background:rgba(212,175,55,.05);}
 .table-wrap{max-height:230px;overflow-y:auto;}
 .table-wrap::-webkit-scrollbar{width:4px;} .table-wrap::-webkit-scrollbar-thumb{background:var(--border-color);}
 .name-cell{display:flex;align-items:center;gap:7px;}
@@ -302,7 +314,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
              Gauge Overtime % vs Target dihapus dari tampilan atas permintaan --
              datanya tetap dihitung di backend (dipakai di tempat lain kalau perlu),
              cuma tidak lagi ditonjolkan di kartu utama halaman ini. -->
-        <div class="hero-produktivitas-card">
+        <div class="hero-produktivitas-card" id="hero-produktivitas-card">
           <div class="hero-produktivitas-label"><i data-lucide="gauge" style="width:11px;"></i>Produktivitas</div>
           <div class="hero-produktivitas-val" id="kpi-produktivitasTon">—</div>
           <div class="hero-produktivitas-sub">Ton / FTE bulan ini</div>
@@ -752,12 +764,15 @@ function renderAll(){
 function renderProduktivitasStatus(){
   var d = fteData.internal;
   var statusEl = document.getElementById('hero-produktivitas-status');
+  var cardEl = document.getElementById('hero-produktivitas-card');
   if (d.produktivitasTercapai){
     statusEl.className = 'hero-produktivitas-status tercapai';
     statusEl.innerHTML = '<i data-lucide="check-circle" style="width:10px;"></i><span>Target Tercapai</span>';
+    if (cardEl) cardEl.classList.remove('belum');
   } else {
     statusEl.className = 'hero-produktivitas-status belum';
     statusEl.innerHTML = '<i data-lucide="alert-triangle" style="width:10px;"></i><span>Di Bawah Target</span>';
+    if (cardEl) cardEl.classList.add('belum');
   }
   document.getElementById('kpi-produktivitas-target').textContent =
     (d.produktivitasTarget||62.3).toLocaleString('id-ID',{maximumFractionDigits:1});
@@ -904,13 +919,13 @@ function renderChart(months, results){
 // ================================================================
 var KATEGORI_LEMBUR_CHART_DEF = [
   { kode:'loading',      label:'Loading / Muat',          warna:'#2dd4bf' },
-  { kode:'preparation',  label:'Preparation / Persiapan', warna:'#60a5fa' },
-  { kode:'putaway',      label:'Putaway / Penyimpanan',   warna:'#a78bfa' },
-  { kode:'receiving',    label:'Receiving / Bongkar',     warna:'#f4d675' },
-  { kode:'stock',        label:'Stock / Inventory',       warna:'#22d3ee' },
-  { kode:'checking',     label:'Checking / Administrasi', warna:'#f472b6' },
-  { kode:'housekeeping', label:'Housekeeping / 5S',       warna:'#a3e635' },
-  { kode:'lain',         label:'Lain-lain',               warna:'#64748b' }
+  { kode:'preparation',  label:'Preparation / Persiapan', warna:'#5b8def' },
+  { kode:'putaway',      label:'Putaway / Penyimpanan',   warna:'#9f7aea' },
+  { kode:'receiving',    label:'Receiving / Bongkar',     warna:'#d4af37' },
+  { kode:'stock',        label:'Stock / Inventory',       warna:'#22c1d6' },
+  { kode:'checking',     label:'Checking / Administrasi', warna:'#e879a8' },
+  { kode:'housekeeping', label:'Housekeeping / 5S',       warna:'#8bc34a' },
+  { kode:'lain',         label:'Lain-lain',               warna:'#5a6785' }
 ];
 
 function loadKategoriTrendChart(){
