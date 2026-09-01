@@ -2845,6 +2845,41 @@ function syncWorkspaceToSupabase(workspaceKey) {
     return getInboundData({ bulan: bulanIni, tahun: tahunIni });
   });
 
+  // ---- BULAN SEBELUMNYA (mis. September edit -> refresh snapshot
+  // Agustus juga) -- PENTING: snapshot bulanan Supabase awalnya cuma
+  // di-refresh utk "bulan berjalan" (bulanIni di atas). Begitu tanggal
+  // sistem berganti ke bulan baru, bulan sebelumnya jadi "beku" -- kalau
+  // ada koreksi data manual di spreadsheet utk bulan yang SUDAH lewat
+  // (skenario umum: baru sadar ada salah input beberapa hari setelah
+  // tutup bulan), snapshot Supabase-nya TIDAK PERNAH ke-update lagi
+  // walau onSheetEditSync sudah jalan -- filter "Bulanan" jadi tampilkan
+  // angka lama sementara filter "Harian" (yang tidak di-precompute sama
+  // sekali, selalu live ke Apps Script) sudah benar -- selisih yang
+  // membingungkan persis seperti kasus Tonase Outbound Agustus. Sekarang
+  // bulan sebelumnya IKUT di-refresh tiap ada edit apa pun, memakai data
+  // yang SAMA dari batch tren 6 bulan (indeks kedua dari belakang) --
+  // tidak perlu baca sheet lagi/tambahan biaya eksekusi berarti.
+  var prevIdx = months6.length - 2; // -1 = bulan ini, -2 = bulan sebelumnya
+  var bulanPrev = months6[prevIdx].bulan, tahunPrev = months6[prevIdx].tahun;
+  put('stock:bulanan:' + tahunPrev + '-' + _pad2(+bulanPrev), function () {
+    if (stockTrendResult && stockTrendResult.success && stockTrendResult.results) {
+      return stockTrendResult.results[prevIdx];
+    }
+    return getDashboardData('bulanan', { bulan: bulanPrev, tahun: tahunPrev, group: '' });
+  });
+  put('outbound:bulanan:' + tahunPrev + '-' + _pad2(+bulanPrev), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) {
+      return ioTrendResult.results[prevIdx].out;
+    }
+    return getOutboundData({ bulan: bulanPrev, tahun: tahunPrev });
+  });
+  put('inbound:bulanan:' + tahunPrev + '-' + _pad2(+bulanPrev), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) {
+      return ioTrendResult.results[prevIdx].in;
+    }
+    return getInboundData({ bulan: bulanPrev, tahun: tahunPrev });
+  });
+
   // Kanban (harian hari ini + bulanan bulan ini)
   put('kanban:harian:' + todayStr, function () {
     return getKanbanData('harian', { dari: todayStr, sampai: todayStr });
