@@ -69,7 +69,8 @@
     getKaryawanList: 1, getGroupList: 1, getDashboardData: 1,
     getOutboundData: 1, getInboundData: 1, getKanbanData: 1,
     getRekapMuatanData: 1, getPhotos: 1, getStockTrendBatch: 1,
-    getIOTrendBatch: 1, getAbsensiFTEData: 1, getLoadingTimeAnalytics: 1
+    getIOTrendBatch: 1, getAbsensiFTEData: 1, getLoadingTimeAnalytics: 1,
+    getOvertimeTrend6Bulan: 1, getLemburKategoriTrend6Bulan: 1
   };
 
   // getResidenceTimeData dipakai di 2 tempat dengan kebutuhan berbeda:

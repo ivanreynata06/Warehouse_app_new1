@@ -165,6 +165,20 @@ table.preview-table tr.row-valid td{color:var(--txt);}
 .summary-line{font-size:11px;color:var(--txt2);display:flex;gap:14px;flex-wrap:wrap;}
 .summary-line b{color:var(--txt);}
 
+.btn-sm{padding:6px 12px;font-size:10.5px;}
+.btn-danger{background:rgba(239,68,68,.14);color:#fca5a5;border:1px solid rgba(239,68,68,.35);}
+.btn-danger:hover:not(:disabled){background:rgba(239,68,68,.22);}
+.upload-manage-panel{margin-top:8px;padding:12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg-card2);display:flex;flex-direction:column;gap:9px;}
+.manage-info{font-size:10.5px;color:var(--txt2);}
+.manage-info b{color:var(--txt);}
+.manage-date-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.manage-date-row input[type=date]{background:var(--bg-input,#12121e);color:var(--txt);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-size:11px;font-family:'Inter',sans-serif;}
+.manage-date-row span{font-size:10.5px;color:var(--txt3);}
+.manage-result{font-size:10.5px;padding:8px 10px;border-radius:6px;display:none;}
+.manage-result.show{display:block;}
+.manage-result.ok{background:var(--green-bg);color:var(--green);}
+.manage-result.err{background:var(--red-bg);color:#fca5a5;}
+
 .spinner-sm{width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
   border-radius:50%;animation:spin .7s linear infinite;display:none;}
 @keyframes spin{to{transform:rotate(360deg);}}
@@ -307,6 +321,19 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             </button>
             <div class="sync-result" id="sync-result-stock"></div>
           </div>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="toggleManagePanel('stock')">🗂️ Kelola Data Ter-upload</button>
+            <div class="upload-manage-panel" id="manage-panel-stock" style="display:none;">
+              <div class="manage-info" id="manage-info-stock">Memuat...</div>
+              <div class="manage-date-row">
+                <input type="date" id="manage-dari-stock">
+                <span>s/d</span>
+                <input type="date" id="manage-sampai-stock">
+                <button class="btn btn-danger btn-sm" onclick="hapusDataTanggal('stock')">Hapus Data di Rentang Ini</button>
+              </div>
+              <div class="manage-result" id="manage-result-stock"></div>
+            </div>
+          </div>
           <div class="summary-line" id="summary-stock"></div>
           <div class="preview-wrap" id="preview-wrap-stock" style="display:none;">
             <table class="preview-table" id="preview-table-stock"></table>
@@ -353,6 +380,19 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             </button>
             <div class="sync-result" id="sync-result-outbound"></div>
           </div>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="toggleManagePanel('outbound')">🗂️ Kelola Data Ter-upload</button>
+            <div class="upload-manage-panel" id="manage-panel-outbound" style="display:none;">
+              <div class="manage-info" id="manage-info-outbound">Memuat...</div>
+              <div class="manage-date-row">
+                <input type="date" id="manage-dari-outbound">
+                <span>s/d</span>
+                <input type="date" id="manage-sampai-outbound">
+                <button class="btn btn-danger btn-sm" onclick="hapusDataTanggal('outbound')">Hapus Data di Rentang Ini</button>
+              </div>
+              <div class="manage-result" id="manage-result-outbound"></div>
+            </div>
+          </div>
           <div class="summary-line" id="summary-outbound"></div>
           <div class="preview-wrap" id="preview-wrap-outbound" style="display:none;">
             <table class="preview-table" id="preview-table-outbound"></table>
@@ -398,6 +438,19 @@ table.preview-table tr.row-valid td{color:var(--txt);}
               <span id="sync-lbl-inbound">🔄 Sync Sekarang (cek status)</span>
             </button>
             <div class="sync-result" id="sync-result-inbound"></div>
+          </div>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="toggleManagePanel('inbound')">🗂️ Kelola Data Ter-upload</button>
+            <div class="upload-manage-panel" id="manage-panel-inbound" style="display:none;">
+              <div class="manage-info" id="manage-info-inbound">Memuat...</div>
+              <div class="manage-date-row">
+                <input type="date" id="manage-dari-inbound">
+                <span>s/d</span>
+                <input type="date" id="manage-sampai-inbound">
+                <button class="btn btn-danger btn-sm" onclick="hapusDataTanggal('inbound')">Hapus Data di Rentang Ini</button>
+              </div>
+              <div class="manage-result" id="manage-result-inbound"></div>
+            </div>
           </div>
           <div class="summary-line" id="summary-inbound"></div>
           <div class="preview-wrap" id="preview-wrap-inbound" style="display:none;">
@@ -590,6 +643,92 @@ function tampilkanWarningTakTerkategori(tab, items){
     '<ul>'+listHtml+lebih+'</ul>'+
     'Kalau nama item ini memang barang Pipa/Fitting, kata kuncinya perlu ditambahkan ke daftar kategori di backend.';
   el.style.display = 'block';
+}
+
+// ================================================================
+//  KELOLA DATA TER-UPLOAD -- lihat rentang tanggal yang sudah ada &
+//  hapus data di rentang tertentu (buat kasus lupa sudah upload
+//  sampai tanggal berapa, atau mau upload ulang krn ada yg salah).
+// ================================================================
+function toggleManagePanel(tab){
+  var panel = document.getElementById('manage-panel-'+tab);
+  if (!panel) return;
+  var showing = panel.style.display !== 'none';
+  panel.style.display = showing ? 'none' : 'block';
+  if (!showing) muatRentangTanggal(tab); // selalu refresh tiap dibuka, biar tidak basi
+}
+
+function ddmmyyyyToInputDate(s){ // "31/08/2026" -> "2026-08-31" (format <input type=date>)
+  if (!s) return '';
+  var p = s.split('/');
+  return p.length===3 ? (p[2]+'-'+p[1]+'-'+p[0]) : '';
+}
+function inputDateToDDMMYYYY(s){ // "2026-08-31" -> "31/08/2026"
+  if (!s) return '';
+  var p = s.split('-');
+  return p.length===3 ? (p[2]+'/'+p[1]+'/'+p[0]) : '';
+}
+
+function muatRentangTanggal(tab){
+  var infoEl = document.getElementById('manage-info-'+tab);
+  infoEl.textContent = 'Memuat...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){
+        infoEl.textContent = 'Gagal memuat: ' + (res && res.error || 'error tidak diketahui');
+        return;
+      }
+      if (!res.totalBaris){
+        infoEl.innerHTML = 'Belum ada data di sheet ini.';
+        return;
+      }
+      infoEl.innerHTML = 'Data ter-upload: <b>' + res.tanggalPertama + '</b> s/d <b>' + res.tanggalTerakhir +
+        '</b> (' + res.totalBaris.toLocaleString('id-ID') + ' baris)';
+      // Isi default rentang tanggal input = seluruh rentang data yang ada,
+      // biar gampang tinggal sesuaikan kalau cuma mau hapus sebagian.
+      var dariInput = document.getElementById('manage-dari-'+tab);
+      var sampaiInput = document.getElementById('manage-sampai-'+tab);
+      if (dariInput && !dariInput.value) dariInput.value = ddmmyyyyToInputDate(res.tanggalPertama);
+      if (sampaiInput && !sampaiInput.value) sampaiInput.value = ddmmyyyyToInputDate(res.tanggalTerakhir);
+    })
+    .withFailureHandler(function(err){
+      infoEl.textContent = 'Gagal memuat: ' + err;
+    })
+    .getRentangTanggalUpload(tab);
+}
+
+function hapusDataTanggal(tab){
+  var dari = document.getElementById('manage-dari-'+tab).value;
+  var sampai = document.getElementById('manage-sampai-'+tab).value;
+  var resultEl = document.getElementById('manage-result-'+tab);
+  if (!dari || !sampai){
+    resultEl.className = 'manage-result show err';
+    resultEl.textContent = 'Isi tanggal dari & sampai dulu.';
+    return;
+  }
+  var dariDDMMYYYY = inputDateToDDMMYYYY(dari);
+  var sampaiDDMMYYYY = inputDateToDDMMYYYY(sampai);
+  var label = { stock:'Monitoring Stock', outbound:'Outbound/Pengiriman', inbound:'Inbound/Penerimaan' }[tab];
+  if (!confirm('Yakin hapus SEMUA data ' + label + ' dari ' + dariDDMMYYYY + ' s/d ' + sampaiDDMMYYYY + '?\n\nTindakan ini TIDAK BISA dibatalkan.')) return;
+
+  resultEl.className = 'manage-result show';
+  resultEl.textContent = 'Menghapus...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){
+        resultEl.className = 'manage-result show err';
+        resultEl.textContent = 'Gagal: ' + (res && res.error || 'error tidak diketahui');
+        return;
+      }
+      resultEl.className = 'manage-result show ok';
+      resultEl.textContent = '✅ ' + res.dihapus + ' baris berhasil dihapus.';
+      muatRentangTanggal(tab); // refresh ringkasan
+    })
+    .withFailureHandler(function(err){
+      resultEl.className = 'manage-result show err';
+      resultEl.textContent = 'Gagal: ' + err;
+    })
+    .hapusDataUploadByTanggal(tab, dariDDMMYYYY, sampaiDDMMYYYY);
 }
 
 // ================================================================

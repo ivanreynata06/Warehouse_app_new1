@@ -1693,12 +1693,12 @@ function clearStockDataForDate(tanggal) {
 }
 
 // ================================================================
-//  Hapus data DASHBOARD_KIRIM/DASHBOARD_PRODUKSI dalam rentang tanggal
-//  tertentu (kolom E = Effective Date). Dipakai kalau ada batch upload
-//  yang perlu dihapus & diupload ulang bersih (mis. sebelum fix tanda
-//  Outbound/Inbound dipasang). TIDAK menyentuh bulan/tanggal lain.
+//  Hapus data dalam rentang tanggal tertentu -- versi generik dipakai
+//  Stock/Kirim/Produksi sekalian, supaya dari halaman Upload Data user
+//  bisa hapus data yang salah/lupa tanpa perlu buka Apps Script editor.
+//  colIdx: nomor kolom (1-based) yang berisi tanggal transaksi.
 // ================================================================
-function hapusDataKirimProduksiByTanggal(sheetName, dariDDMMYYYY, sampaiDDMMYYYY) {
+function _hapusDataByTanggalRange(sheetName, colIdx, dariDDMMYYYY, sampaiDDMMYYYY) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(sheetName);
@@ -1712,13 +1712,13 @@ function hapusDataKirimProduksiByTanggal(sheetName, dariDDMMYYYY, sampaiDDMMYYYY
     if (!(dari instanceof Date) || isNaN(dari.getTime()) || !(sampai instanceof Date) || isNaN(sampai.getTime())) {
       return { success: false, error: 'Tanggal dari/sampai tidak valid.' };
     }
-    dari.setHours(0,0,0,0);
-    sampai.setHours(23,59,59,999);
+    dari.setHours(0, 0, 0, 0);
+    sampai.setHours(23, 59, 59, 999);
 
-    var colE = sheet.getRange(2, 5, lastRow - 1, 1).getValues();
+    var colVals = sheet.getRange(2, colIdx, lastRow - 1, 1).getValues();
     var rowsToDelete = [];
-    for (var i = 0; i < colE.length; i++) {
-      var v = colE[i][0];
+    for (var i = 0; i < colVals.length; i++) {
+      var v = colVals[i][0];
       if (!v) continue;
       var d = (v instanceof Date) ? v : new Date(v);
       if (isNaN(d.getTime())) continue;
@@ -1749,15 +1749,58 @@ function hapusDataKirimProduksiByTanggal(sheetName, dariDDMMYYYY, sampaiDDMMYYYY
   }
 }
 
-// Wrapper siap-Run: hapus data Agustus 2026 di DASHBOARD_PRODUKSI
-// (kemungkinan sudah kadung ke-upload dgn tanda TERBALIK gara-gara fix
-// negasi yg salah kepakai utk Inbound juga). Jalankan ini, cek Logs
-// (harus muncul "dihapus: 1505" -- sesuai jumlah baris prod.xlsx),
-// baru upload ULANG prod.xlsx lewat menu Upload Data setelah deploy
-// versi kode.gs yang sudah diperbaiki.
-function hapusDataProduksiAgustus2026() {
-  var hasil = hapusDataKirimProduksiByTanggal(SH_PRODUKSI, '01/08/2026', '31/08/2026');
-  Logger.log(JSON.stringify(hasil));
+// Dipanggil dari halaman Upload Data (tombol "Hapus Data" per tab) --
+// dariDDMMYYYY/sampaiDDMMYYYY format "DD/MM/YYYY".
+function hapusDataUploadByTanggal(tab, dariDDMMYYYY, sampaiDDMMYYYY) {
+  var MAP = {
+    stock:    { sheet: SH_STOCK,    kolom: 10 }, // kolom J
+    outbound: { sheet: SH_KIRIM,    kolom: 5  }, // kolom E
+    inbound:  { sheet: SH_PRODUKSI, kolom: 5  }  // kolom E
+  };
+  var cfg = MAP[tab];
+  if (!cfg) return { success: false, error: 'Tab tidak dikenali: ' + tab };
+  return _hapusDataByTanggalRange(cfg.sheet, cfg.kolom, dariDDMMYYYY, sampaiDDMMYYYY);
+}
+
+// Ringkasan rentang tanggal data yang sudah ter-upload -- dipakai
+// halaman Upload Data supaya user bisa lihat "data sudah sampai
+// tanggal berapa" tanpa perlu buka spreadsheet manual.
+function getRentangTanggalUpload(tab) {
+  var MAP = {
+    stock:    { sheet: SH_STOCK,    kolom: 10 },
+    outbound: { sheet: SH_KIRIM,    kolom: 5  },
+    inbound:  { sheet: SH_PRODUKSI, kolom: 5  }
+  };
+  var cfg = MAP[tab];
+  if (!cfg) return { success: false, error: 'Tab tidak dikenali: ' + tab };
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(cfg.sheet);
+    if (!sheet) return { success: false, error: 'Sheet ' + cfg.sheet + ' tidak ditemukan.' };
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, totalBaris: 0, tanggalPertama: null, tanggalTerakhir: null };
+
+    var colVals = sheet.getRange(2, cfg.kolom, lastRow - 1, 1).getValues();
+    var minDate = null, maxDate = null, totalBaris = 0;
+    for (var i = 0; i < colVals.length; i++) {
+      var v = colVals[i][0];
+      if (!v) continue;
+      var d = (v instanceof Date) ? v : new Date(v);
+      if (isNaN(d.getTime())) continue;
+      totalBaris++;
+      if (!minDate || d.getTime() < minDate.getTime()) minDate = d;
+      if (!maxDate || d.getTime() > maxDate.getTime()) maxDate = d;
+    }
+    var tz = Session.getScriptTimeZone();
+    return {
+      success: true,
+      totalBaris: totalBaris,
+      tanggalPertama: minDate ? Utilities.formatDate(minDate, tz, 'dd/MM/yyyy') : null,
+      tanggalTerakhir: maxDate ? Utilities.formatDate(maxDate, tz, 'dd/MM/yyyy') : null
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 }
 
 
@@ -3018,6 +3061,37 @@ function syncWorkspaceToSupabase(workspaceKey) {
   // Rekap Muatan bulan ini
   put('rekap:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
     return getRekapMuatanData({ mode: 'bulanan', bulan: bulanIni, tahun: tahunIni });
+  });
+
+  // ---- Monitoring FTE (kartu Produktivitas + tren 6 bulan) --
+  // sebelumnya SELALU dihitung LIVE tiap buka halaman (beberapa
+  // pembacaan sheet penuh: KARYAWAN_LEMBUR, LEMBUR_LOG, ABSENSI_LOG,
+  // DASHBOARD_KIRIM, DASHBOARD_PRODUKSI, dipanggil sampai 3x sendiri-
+  // sendiri utk getAbsensiFTEData + getOvertimeTrend6Bulan +
+  // getLemburKategoriTrend6Bulan) -- itu penyebab utama Monitoring FTE
+  // kerasa lambat. Sekarang di-precompute di sini juga (bulan ini +
+  // bulan sebelumnya, sama seperti Stock/Outbound/Inbound), dan
+  // otomatis ke-refresh tiap ada edit apa pun (lewat onSheetEditSync
+  // yang sudah ada) -- TIDAK mengganggu update data sama sekali,
+  // cuma "menyalin" hasil hitungan yang sama ke Supabase supaya
+  // halaman baca dari sana dulu (jauh lebih cepat), baru fallback ke
+  // Apps Script kalau snapshotnya belum ada.
+  //
+  // TIDAK termasuk: getLemburList/getAbsensiList (dipakai Riwayat
+  // Lembur & approval TL) -- SENGAJA TETAP LIVE, jangan diprecompute/
+  // di-cache, krn harus selalu real-time (lihat catatan di
+  // assets/js/api-shim.js).
+  put('fte:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getAbsensiFTEData(bulanIni, tahunIni);
+  });
+  put('fte:bulanan:' + tahunPrev + '-' + _pad2(+bulanPrev), function () {
+    return getAbsensiFTEData(bulanPrev, tahunPrev);
+  });
+  put('ot_trend6:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getOvertimeTrend6Bulan(bulanIni, tahunIni);
+  });
+  put('kat_trend6:' + tahunIni + '-' + _pad2(+bulanIni), function () {
+    return getLemburKategoriTrend6Bulan(bulanIni, tahunIni);
   });
 
   // Widget ringkasan "Loading Time Avg" di Control Tower (READ-ONLY,

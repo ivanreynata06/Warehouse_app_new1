@@ -80,6 +80,26 @@
       if (fnName === 'getStockTrendBatch') return 'stock_trend:6mo';
       if (fnName === 'getIOTrendBatch') return 'io_trend:6mo';
 
+      // Monitoring FTE (kartu Produktivitas + tren 6 bulan) -- getLemburList/
+      // getAbsensiList SENGAJA TIDAK termasuk di sini (lihat catatan di
+      // api-shim.js), cuma data agregat (bukan status per-item) yang aman
+      // di-precompute.
+      if (fnName === 'getAbsensiFTEData') {
+        var fb = args[0], ft = args[1];
+        if (fb && ft) return 'fte:bulanan:' + ft + '-' + pad2(fb);
+        return null;
+      }
+      if (fnName === 'getOvertimeTrend6Bulan') {
+        var otb = args[0], ott = args[1];
+        if (otb && ott) return 'ot_trend6:' + ott + '-' + pad2(otb);
+        return null;
+      }
+      if (fnName === 'getLemburKategoriTrend6Bulan') {
+        var ktb = args[0], ktt = args[1];
+        if (ktb && ktt) return 'kat_trend6:' + ktt + '-' + pad2(ktb);
+        return null;
+      }
+
       // Widget ringkasan "Loading Time Avg" di Control Tower (read-only).
       // CATATAN: file ini SENGAJA tidak dimuat di residance_time.html
       // (halaman Loading Time interaktif), jadi tidak akan pernah
