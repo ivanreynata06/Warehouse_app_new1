@@ -1227,7 +1227,7 @@ function getKategoriStockFallback(descE) {
   var desc = normStr(descE);
   if (!desc) return null;
   var fittingKw = ['ELBOW','REDUC','EQUAL','COUPL','COUP','VALVE','SOCK','UNION',
-                   'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT',
+                   'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT','FLANGE',
                    'KELEN REDU','KLN REDU','KELEN EQUA','KLN EQUA',
                    'KELEN ELBO','KLN ELBO','KELEN COUP','KLN COUP',
                    'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN'];
@@ -1248,7 +1248,7 @@ function getKategoriStockFallback(descE) {
 function getKategoriTransaksi(descC, descD) {
   var desc = normStr(descC) + ' ' + normStr(descD);
   var fittingKw = ['ELBOW','REDUC','EQUAL','COUPL','COUP','VALVE','SOCK','UNION',
-                   'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT',
+                   'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT','FLANGE',
                    'KELEN REDU','KLN REDU','KELEN EQUA','KLN EQUA',
                    'KELEN ELBO','KLN ELBO','KELEN COUP','KLN COUP',
                    'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN'];

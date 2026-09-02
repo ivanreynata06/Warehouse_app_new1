@@ -139,6 +139,10 @@ textarea.paste-area::placeholder{color:var(--txt3);}
 .status-msg.err{background:var(--red-bg);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
 .status-msg.info{background:var(--blue-bg);color:#93c5fd;border:1px solid rgba(59,130,246,.3);}
 
+.uncategorized-warn{font-size:10.5px;padding:9px 12px;border-radius:8px;background:rgba(245,158,11,.1);color:#fcd34d;border:1px solid rgba(245,158,11,.3);line-height:1.6;}
+.uncategorized-warn b{color:#fde68a;}
+.uncategorized-warn ul{margin:5px 0 0 16px;padding:0;}
+
 .sync-now-wrap{display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
 .sync-result{font-size:10.5px;font-family:var(--font-mono);white-space:pre-wrap;background:var(--bg-card2);
   border:1px solid var(--border2);border-radius:8px;padding:10px 12px;display:none;max-height:220px;overflow-y:auto;}
@@ -341,6 +345,7 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             <button class="btn btn-secondary" onclick="clearTab('outbound')">Bersihkan</button>
           </div>
           <div class="status-msg" id="status-outbound"></div>
+          <div class="uncategorized-warn" id="uncat-warn-outbound" style="display:none;"></div>
           <div class="sync-now-wrap" id="sync-now-wrap-outbound" style="display:none;">
             <button class="btn btn-secondary" onclick="handleSyncNow('outbound')">
               <span class="spinner-sm" id="sync-spin-outbound"></span>
@@ -386,6 +391,7 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             <button class="btn btn-secondary" onclick="clearTab('inbound')">Bersihkan</button>
           </div>
           <div class="status-msg" id="status-inbound"></div>
+          <div class="uncategorized-warn" id="uncat-warn-inbound" style="display:none;"></div>
           <div class="sync-now-wrap" id="sync-now-wrap-inbound" style="display:none;">
             <button class="btn btn-secondary" onclick="handleSyncNow('inbound')">
               <span class="spinner-sm" id="sync-spin-inbound"></span>
@@ -532,6 +538,59 @@ var TAB_CONFIG = {
 };
 
 var PARSED_ROWS = { stock: null, outbound: null, inbound: null };
+
+// ================================================================
+//  DETEKSI ITEM YANG TIDAK KEKATEGORI (Pipa PPR / Fitting PPR)
+//  Cermin dari getKategoriTransaksi() di backend/kode.gs -- kalau
+//  keyword di backend diubah, keyword di sini WAJIB ikut disamakan
+//  supaya deteksi tidak salah/basi.
+// ================================================================
+var FITTING_KEYWORDS = ['ELBOW','REDUC','EQUAL','COUPL','COUP','VALVE','SOCK','UNION',
+  'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT','FLANGE',
+  'KELEN REDU','KLN REDU','KELEN EQUA','KLN EQUA',
+  'KELEN ELBO','KLN ELBO','KELEN COUP','KLN COUP',
+  'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN'];
+
+function isKategoriTransaksiDikenali(descC, descD){
+  var desc = (String(descC||'')+' '+String(descD||'')).toUpperCase();
+  var isFitting = FITTING_KEYWORDS.some(function(k){ return desc.indexOf(k) !== -1; });
+  var isPipa = !isFitting && (desc.indexOf('PIPE') !== -1 || desc.indexOf('PIPA') !== -1);
+  return isFitting || isPipa;
+}
+
+// Cek batch yang baru diupload (rows format: [ItemNumber, DrawingCode,
+// Description, Description2, EffectiveDate, TotalWeight]) -- kembalikan
+// daftar item unik yang tidak kekategori + total berat yang kena imbas,
+// supaya kelihatan langsung tanpa perlu Van analisa manual kayak sebelumnya.
+function cekItemTakTerkategori(rows){
+  var map = {}; // key: deskripsi gabungan -> {desc, kode, totalBerat, jumlahBaris}
+  rows.forEach(function(r){
+    var descC = r[2], descD = r[3];
+    if (isKategoriTransaksiDikenali(descC, descD)) return;
+    var key = String(descC||'').trim() + ' ' + String(descD||'').trim();
+    if (!map[key]) map[key] = { desc: key.trim(), kode: r[0], totalBerat: 0, jumlahBaris: 0 };
+    map[key].totalBerat += Math.abs(parseFloat(r[5])) || 0;
+    map[key].jumlahBaris += 1;
+  });
+  return Object.keys(map).map(function(k){ return map[k]; });
+}
+
+function tampilkanWarningTakTerkategori(tab, items){
+  var el = document.getElementById('uncat-warn-'+tab);
+  if (!el) return;
+  if (!items || !items.length){ el.style.display = 'none'; return; }
+  var totalBerat = items.reduce(function(a,it){ return a+it.totalBerat; }, 0);
+  var listHtml = items.slice(0, 10).map(function(it){
+    return '<li>'+it.desc+' — '+it.jumlahBaris+' baris, '+it.totalBerat.toLocaleString('id-ID',{maximumFractionDigits:2})+' kg</li>';
+  }).join('');
+  var lebih = items.length > 10 ? '<li>...dan '+(items.length-10)+' item lain</li>' : '';
+  el.innerHTML = '⚠️ <b>'+items.length+' item tidak masuk kategori Pipa PPR / Fitting PPR</b> (total '+
+    totalBerat.toLocaleString('id-ID',{maximumFractionDigits:2})+' kg tidak terhitung di kartu Pipa/Fitting, '+
+    'tapi TETAP tersimpan lengkap di sheet -- cuma tidak masuk rincian per-kategori):'+
+    '<ul>'+listHtml+lebih+'</ul>'+
+    'Kalau nama item ini memang barang Pipa/Fitting, kata kuncinya perlu ditambahkan ke daftar kategori di backend.';
+  el.style.display = 'block';
+}
 
 // ================================================================
 //  PARSE: terima paste dari Excel (tab-separated) ATAU CSV (koma)
@@ -802,6 +861,8 @@ function submitData(tab){
   btn.disabled = true; spin.style.display = 'inline-block';
   window._uploadInProgress = true;
   setUploadLockUI(true);
+  var uncatWarnEl = document.getElementById('uncat-warn-'+tab);
+  if (uncatWarnEl) uncatWarnEl.style.display = 'none';
 
   if (tab === 'stock'){
     var tglEl = document.getElementById('tanggal-stock');
@@ -848,6 +909,12 @@ function submitData(tab){
 
       var SHEET_NAME = { stock:'DASHBOARD_STOCK', outbound:'DASHBOARD_KIRIM', inbound:'DASHBOARD_PRODUKSI' }[tab];
       var TGL_COL_IDX = { stock:10, outbound:5, inbound:5 }[tab];
+
+      // Cek item yang tidak kekategori SEBELUM rows di-clear oleh clearTab() --
+      // cuma relevan utk Outbound/Inbound (Stock pakai kategori beda/kolom Drawing).
+      if (tab === 'outbound' || tab === 'inbound'){
+        tampilkanWarningTakTerkategori(tab, cekItemTakTerkategori(rows));
+      }
 
       showStatus(tab,'ok','Berhasil! '+totalOk+' baris terkirim. Memverifikasi ke sheet...');
 
