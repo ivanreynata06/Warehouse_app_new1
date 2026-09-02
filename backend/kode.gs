@@ -1796,13 +1796,17 @@ function _appendKirimProduksi(rows, sheetName) {
     var out = rows.map(function (r) {
       return [
         r[0] || '', r[1] || '', r[2] || '', r[3] || '',
-        _parseTanggalFleksibel(r[4]), Math.abs(_parseAngkaFleksibel(r[5]))
-        // Math.abs() -- sumber Excel kadang bawa tanda minus (mis. baris
-        // retur/adjustment), tapi utk perhitungan tonase/FTE nilainya
-        // harus tetap POSITIF (angkanya sama, cuma tanda minusnya yang
-        // dihilangkan). Kalau tandanya kebawa, total Outbound/Inbound
-        // dan produktivitas per FTE ikut jadi minus, padahal aslinya
-        // cuma soal tanda, bukan datanya salah.
+        _parseTanggalFleksibel(r[4]), -1 * _parseAngkaFleksibel(r[5])
+        // NEGASIKAN (kalikan -1), BUKAN Math.abs()!
+        // Konvensi sumber Excel: MINUS = kiriman/penerimaan normal (barang
+        // keluar/masuk beneran), sedangkan POSITIF = retur/koreksi (barang
+        // yang batal terkirim, jadi HARUS mengurangi total, bukan menambah).
+        // Math.abs() salah karena memperlakukan baris retur (positif) sama
+        // seperti kiriman biasa -- ikut DITAMBAHKAN ke total, padahal
+        // seharusnya MENGURANGI. Dengan negasi: baris minus -> jadi
+        // positif (nambah total, benar), baris yg aslinya positif -> jadi
+        // negatif (ngurangin total, benar). Total akhir otomatis pas sama
+        // dengan |jumlah semua baris dgn tanda asli| dari file sumbernya.
       ];
     });
 
@@ -1818,38 +1822,46 @@ function _appendKirimProduksi(rows, sheetName) {
 }
 
 // ================================================================
-//  Perbaiki data LAMA yang sudah kadung ke-upload dengan tanda minus
-//  (sebelum fix Math.abs() di _appendKirimProduksi di atas dipasang).
-//  Jalankan MANUAL 1x dari Apps Script editor (pilih fungsi ini di
-//  dropdown, klik Run) kalau totalnya masih kelihatan minus di
-//  dashboard walau sudah deploy versi terbaru. TIDAK mengubah baris
-//  yang nilainya sudah positif -- cuma balik tanda baris yang < 0 di
-//  kolom F (Total Weight) SH_KIRIM & SH_PRODUKSI jadi positif (angka
-//  sama, tanda minus dihilangkan).
+//  Perbaiki data Agustus 2026 di SH_KIRIM yang SUDAH KADUNG di-upload
+//  pakai logika Math.abs() yang lama (salah) -- 5 baris yang harusnya
+//  MENGURANGI total (retur/koreksi) malah ikut kehitung nambah.
+//  Item+tanggal+berat di bawah ini persis diambil dari analisa file
+//  kirim.xlsx yang kamu upload. Jalankan MANUAL 1x dari Apps Script
+//  editor (pilih fungsi ini, klik Run) -- aman dijalankan walau baris
+//  ini kebetulan sudah benar (dicek dulu sebelum diubah, tidak akan
+//  diubah dua kali / salah timpa baris lain).
 // ================================================================
-function perbaikiTonaseNegatif(sheetName) {
+function perbaikiAnomaliRetutKirimAgustus2026() {
+  var target = [
+    { kode: '10301010020004', tanggalDDMMYYYY: '12/08/2026', berat: 70.89 },
+    { kode: '20304103020000', tanggalDDMMYYYY: '12/08/2026', berat: 2.65 },
+    { kode: '20304109020000', tanggalDDMMYYYY: '12/08/2026', berat: 1.5 },
+    { kode: '20304101020000', tanggalDDMMYYYY: '12/08/2026', berat: 0.33 },
+    { kode: '20304106020001', tanggalDDMMYYYY: '12/08/2026', berat: 0.99 }
+  ];
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = ss.getSheetByName(sheetName);
-  if (!sheet) { Logger.log('Sheet ' + sheetName + ' tidak ditemukan.'); return; }
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) { Logger.log('Sheet ' + sheetName + ' kosong.'); return; }
-  var range  = sheet.getRange(2, 6, lastRow - 1, 1); // kolom F, mulai baris 2
-  var values = range.getValues();
+  var sheet = ss.getSheetByName(SH_KIRIM);
+  if (!sheet) { Logger.log('Sheet ' + SH_KIRIM + ' tidak ditemukan.'); return; }
+  var data = sheet.getDataRange().getValues();
   var diperbaiki = 0;
-  for (var i = 0; i < values.length; i++) {
-    var v = parseFloat(values[i][0]);
-    if (!isNaN(v) && v < 0) { values[i][0] = Math.abs(v); diperbaiki++; }
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var kode = String(row[0] || '').trim();
+    var tglRow = toDate(row[4]);
+    var beratSekarang = parseFloat(row[5]);
+    if (isNaN(beratSekarang) || !tglRow) continue;
+    for (var t = 0; t < target.length; t++) {
+      var tgt = target[t];
+      if (kode === tgt.kode && fmtD(tglRow) === tgt.tanggalDDMMYYYY &&
+          Math.abs(Math.abs(beratSekarang) - tgt.berat) < 0.005) {
+        sheet.getRange(i + 1, 6).setValue(-tgt.berat); // paksa jadi NEGATIF (mengurangi total)
+        diperbaiki++;
+        break;
+      }
+    }
   }
-  if (diperbaiki > 0) range.setValues(values);
   _bumpDataCacheVersion();
-  Logger.log(sheetName + ': ' + diperbaiki + ' baris dgn Total Weight negatif sudah dibalik jadi positif.');
-}
-
-// Wrapper siap-Run: perbaiki SH_KIRIM (Outbound/Pengiriman) DAN
-// SH_PRODUKSI (Inbound/Penerimaan) sekaligus dalam satu klik Run.
-function perbaikiTonaseNegatifSemua() {
-  perbaikiTonaseNegatif(SH_KIRIM);
-  perbaikiTonaseNegatif(SH_PRODUKSI);
+  Logger.log('Baris anomali retur yang dibalik jadi negatif (mengurangi total): ' + diperbaiki + ' dari ' + target.length + ' yang dicari.');
 }
 
 function readTransaksi(ss, sheetName, range) {
