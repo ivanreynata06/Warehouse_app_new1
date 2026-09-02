@@ -1692,7 +1692,75 @@ function clearStockDataForDate(tanggal) {
   }
 }
 
-// Parser angka yang PINTAR: otomatis mendeteksi format ribuan/desimal,
+// ================================================================
+//  Hapus data DASHBOARD_KIRIM/DASHBOARD_PRODUKSI dalam rentang tanggal
+//  tertentu (kolom E = Effective Date). Dipakai kalau ada batch upload
+//  yang perlu dihapus & diupload ulang bersih (mis. sebelum fix tanda
+//  Outbound/Inbound dipasang). TIDAK menyentuh bulan/tanggal lain.
+// ================================================================
+function hapusDataKirimProduksiByTanggal(sheetName, dariDDMMYYYY, sampaiDDMMYYYY) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return { success: false, error: 'Sheet ' + sheetName + ' tidak ditemukan.' };
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, dihapus: 0 };
+
+    var dari = _parseTanggalFleksibel(dariDDMMYYYY);
+    var sampai = _parseTanggalFleksibel(sampaiDDMMYYYY);
+    if (!(dari instanceof Date) || isNaN(dari.getTime()) || !(sampai instanceof Date) || isNaN(sampai.getTime())) {
+      return { success: false, error: 'Tanggal dari/sampai tidak valid.' };
+    }
+    dari.setHours(0,0,0,0);
+    sampai.setHours(23,59,59,999);
+
+    var colE = sheet.getRange(2, 5, lastRow - 1, 1).getValues();
+    var rowsToDelete = [];
+    for (var i = 0; i < colE.length; i++) {
+      var v = colE[i][0];
+      if (!v) continue;
+      var d = (v instanceof Date) ? v : new Date(v);
+      if (isNaN(d.getTime())) continue;
+      if (d >= dari && d <= sampai) rowsToDelete.push(2 + i);
+    }
+    if (!rowsToDelete.length) return { success: true, dihapus: 0 };
+
+    rowsToDelete.sort(function (a, b) { return a - b; });
+    var blocks = [];
+    var blockStart = rowsToDelete[0], blockLen = 1;
+    for (var j = 1; j < rowsToDelete.length; j++) {
+      if (rowsToDelete[j] === blockStart + blockLen) {
+        blockLen++;
+      } else {
+        blocks.push([blockStart, blockLen]);
+        blockStart = rowsToDelete[j]; blockLen = 1;
+      }
+    }
+    blocks.push([blockStart, blockLen]);
+    for (var k = blocks.length - 1; k >= 0; k--) {
+      sheet.deleteRows(blocks[k][0], blocks[k][1]);
+    }
+
+    _bumpDataCacheVersion();
+    return { success: true, dihapus: rowsToDelete.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// Wrapper siap-Run: hapus data Agustus 2026 di DASHBOARD_PRODUKSI
+// (kemungkinan sudah kadung ke-upload dgn tanda TERBALIK gara-gara fix
+// negasi yg salah kepakai utk Inbound juga). Jalankan ini, cek Logs
+// (harus muncul "dihapus: 1505" -- sesuai jumlah baris prod.xlsx),
+// baru upload ULANG prod.xlsx lewat menu Upload Data setelah deploy
+// versi kode.gs yang sudah diperbaiki.
+function hapusDataProduksiAgustus2026() {
+  var hasil = hapusDataKirimProduksiByTanggal(SH_PRODUKSI, '01/08/2026', '31/08/2026');
+  Logger.log(JSON.stringify(hasil));
+}
+
+
 // baik gaya Indonesia/Eropa ("23.989,53") maupun gaya US ("23,989.53"),
 // supaya TIDAK ada nilai yang kepotong seperti bug sebelumnya (23.989,53
 // salah kebaca jadi cuma 23). Aturannya: pemisah yang muncul PALING
@@ -1778,15 +1846,24 @@ function appendStockData(rows, tanggal) {
 // rows: array of array, urutan kolom PERSIS:
 // [ItemNumber, DrawingCode, Description, Description2, EffectiveDate, TotalWeight]
 function appendOutboundData(rows) {
-  return _appendKirimProduksi(rows, SH_KIRIM);
+  // KIRIM (Outbound): konvensi sumbernya MINUS = kiriman normal,
+  // POSITIF = retur/koreksi -> NEGASIKAN (lihat komentar di
+  // _appendKirimProduksi) supaya totalnya benar.
+  return _appendKirimProduksi(rows, SH_KIRIM, true);
 }
 
 // Sama seperti appendOutboundData, tapi target sheetnya DASHBOARD_PRODUKSI
 function appendInboundData(rows) {
-  return _appendKirimProduksi(rows, SH_PRODUKSI);
+  // PRODUKSI (Inbound): konvensi sumbernya KEBALIKAN dari Kirim --
+  // MAYORITAS baris sudah POSITIF (produksi/penerimaan normal), cuma
+  // sebagian kecil MINUS (koreksi/retur ke supplier) yang MEMANG harus
+  // tetap minus supaya mengurangi total dgn benar. Makanya di sini
+  // TIDAK dinegasikan sama sekali -- disimpan APA ADANYA sesuai file
+  // sumber. (Ini beda dgn Outbound! Jangan disamakan lagi.)
+  return _appendKirimProduksi(rows, SH_PRODUKSI, false);
 }
 
-function _appendKirimProduksi(rows, sheetName) {
+function _appendKirimProduksi(rows, sheetName, negasikan) {
   try {
     if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -1794,19 +1871,16 @@ function _appendKirimProduksi(rows, sheetName) {
     if (!sheet) return { success: false, error: 'Sheet "' + sheetName + '" tidak ditemukan.' };
 
     var out = rows.map(function (r) {
+      var berat = _parseAngkaFleksibel(r[5]);
+      // negasikan=true (Outbound/Kirim): MINUS(kiriman normal)->POSITIF
+      //   (nambah total), POSITIF(retur)->MINUS (ngurangin total).
+      // negasikan=false (Inbound/Produksi): disimpan APA ADANYA, karena
+      //   konvensi sumbernya sudah benar dari sananya (mayoritas positif
+      //   = normal, minoritas minus = koreksi yg memang harus mengurangi).
+      if (negasikan) berat = -1 * berat;
       return [
         r[0] || '', r[1] || '', r[2] || '', r[3] || '',
-        _parseTanggalFleksibel(r[4]), -1 * _parseAngkaFleksibel(r[5])
-        // NEGASIKAN (kalikan -1), BUKAN Math.abs()!
-        // Konvensi sumber Excel: MINUS = kiriman/penerimaan normal (barang
-        // keluar/masuk beneran), sedangkan POSITIF = retur/koreksi (barang
-        // yang batal terkirim, jadi HARUS mengurangi total, bukan menambah).
-        // Math.abs() salah karena memperlakukan baris retur (positif) sama
-        // seperti kiriman biasa -- ikut DITAMBAHKAN ke total, padahal
-        // seharusnya MENGURANGI. Dengan negasi: baris minus -> jadi
-        // positif (nambah total, benar), baris yg aslinya positif -> jadi
-        // negatif (ngurangin total, benar). Total akhir otomatis pas sama
-        // dengan |jumlah semua baris dgn tanda asli| dari file sumbernya.
+        _parseTanggalFleksibel(r[4]), berat
       ];
     });
 
