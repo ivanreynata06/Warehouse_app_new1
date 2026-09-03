@@ -85,7 +85,11 @@ var API_FUNCTIONS = {
   getSheetStats           : getSheetStats,
   appendOutboundData      : appendOutboundData,
   appendInboundData       : appendInboundData,
-  manualSyncNow           : manualSyncNow
+  manualSyncNow           : manualSyncNow,
+  getRentangTanggalUpload : getRentangTanggalUpload,
+  hapusDataUploadByTanggal: hapusDataUploadByTanggal,
+  // TL: hapus lembur langsung + panel Lembur per Karyawan
+  hapusLemburByTL         : hapusLemburByTL
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -3858,6 +3862,41 @@ function provisionDepartmentSpreadsheet(namaDept, includeRekapMuatan) {
   Logger.log('LANGKAH SELANJUTNYA: copy ID di atas ke WORKSPACE_MAP, lalu deploy ulang.');
 
   return { success: true, spreadsheetId: newId, url: ss.getUrl() };
+}
+
+// ================================================================
+//  AUDIT ROLE DI SEMUA DEPARTEMEN/PLANT -- jalankan manual 1x dari
+//  Apps Script editor (pilih fungsi ini, klik Run, lihat View > Logs)
+//  buat cek cepat: siapa saja yang Role-nya "TL" (dapat akses approval
+//  + Upload Data Harian) di TIAP departemen/plant, tanpa perlu buka
+//  spreadsheet satu-satu. Kalau ada departemen yang TIDAK ADA satupun
+//  akun Role="TL", berarti panel Approval/Lembur-per-Karyawan/Upload
+//  Data memang TIDAK AKAN muncul untuk siapapun di departemen itu --
+//  itu bukan bug, tapi kolom Role di AKUN_LOGIN departemen itu perlu
+//  diisi "TL" (persis, tanpa spasi/kata tambahan) untuk akun yang tepat.
+// ================================================================
+function auditRoleSemuaWorkspace() {
+  Object.keys(WORKSPACE_MAP).forEach(function (wsKey) {
+    try {
+      var ss = SpreadsheetApp.openById(WORKSPACE_MAP[wsKey]);
+      var sh = ss.getSheetByName(SH_AKUN_LOGIN);
+      if (!sh) { Logger.log('[' + wsKey + '] sheet AKUN_LOGIN tidak ada.'); return; }
+      var data = sh.getDataRange().getValues();
+      Logger.log('=== ' + wsKey + ' ===');
+      var adaTL = false;
+      for (var i = 1; i < data.length; i++) {
+        var r = data[i];
+        if (!r[0]) continue;
+        var role = String(r[2] || '(kosong)');
+        var aktif = r[4] === false ? 'NONAKTIF' : 'aktif';
+        Logger.log('  ' + r[0] + ' | ' + r[1] + ' | Role="' + role + '" | ' + aktif);
+        if (role.trim().toUpperCase() === 'TL') adaTL = true;
+      }
+      if (!adaTL) Logger.log('  ⚠️ TIDAK ADA akun dengan Role="TL" di departemen ini -- panel Approval/Lembur-per-Karyawan/Upload Data tidak akan muncul untuk siapapun di sini.');
+    } catch (e) {
+      Logger.log('[' + wsKey + '] gagal dibaca: ' + e.message);
+    }
+  });
 }
 
 function getKaryawanList() {
