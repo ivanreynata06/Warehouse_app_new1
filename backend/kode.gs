@@ -4724,8 +4724,65 @@ function saveAbsensi(data) {
     var sh = ss.getSheetByName(SH_ABSENSI_LOG);
     if (!sh) return { success: false, error: 'Sheet ABSENSI_LOG belum ada. Jalankan setupLemburSheets() dulu.' };
     sh.appendRow([new Date(), data.tanggal, data.kode, data.nama || '', data.status, data.keterangan || '', data.inputOleh || '', 'Pending', '']);
-    return { success: true };
+
+    // ---- Notifikasi WhatsApp ke approver (khusus karyawan INTERNAL) ----
+    // Sama seperti saveLembur() -- dibungkus try/catch sendiri supaya
+    // kalau WA gagal terkirim, penyimpanan absensi TETAP dianggap sukses.
+    var waNotifSent = false;
+    var isInternal  = false;
+    try {
+      var kategori = _kategoriDariNIK(data.kode);
+      isInternal = (kategori === 'Internal');
+      if (isInternal) {
+        waNotifSent = sendWaNotifAbsensi(data.kode, data.nama || data.kode, data.tanggal, data.status, data.keterangan || '-');
+      }
+    } catch (notifErr) {
+      Logger.log('Gagal kirim notif WA absensi: ' + notifErr.message);
+    }
+
+    return { success: true, waNotifSent: waNotifSent, isInternal: isInternal };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  Kirim notifikasi WhatsApp (via Fonnte) ke approver ketika ada
+//  input ketidakhadiran karyawan INTERNAL baru -- SAMA PERSIS pola dan
+//  setup-nya dengan sendWaNotifLembur() (lihat komentar di sana),
+//  cuma beda isi pesan.
+// ================================================================
+function sendWaNotifAbsensi(kode, nama, tanggal, status, keterangan) {
+  var props  = PropertiesService.getScriptProperties();
+  var target = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
+  var token  = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
+  if (!token || !target) {
+    Logger.log('Token Fonnte untuk kode "'+kode+'" atau FONNTE_APPROVER_WA belum diisi -- notif WA absensi dilewati.');
+    return false;
+  }
+
+  var statusLabel = { Sakit: 'Sakit', CutiDokter: 'Cuti Dokter', CutiTahunan: 'Cuti Tahunan', Mangkir: 'Mangkir' };
+  var label = statusLabel[status] || status;
+  var isCuti = (status === 'CutiDokter' || status === 'CutiTahunan');
+
+  var pesan =
+    'Dengan nama ' + nama + ', NIK ' + kode + ', hari ini berhalangan ' + label +
+    (keterangan && keterangan !== '-' ? ' (' + keterangan + ')' : '') + '.' +
+    (isCuti ? '\n\nMohon untuk segera menginput cuti saya pada aplikasi Sunfish.' : '');
+
+  try {
+    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+      method: 'post',
+      headers: { Authorization: token },
+      payload: { target: target, message: pesan, countryCode: '62' },
+      muteHttpExceptions: true
+    });
+    var body = res.getContentText();
+    Logger.log('Fonnte response (absensi): ' + body);
+    var parsed = JSON.parse(body);
+    return parsed && parsed.status === true;
+  } catch (waErr) {
+    Logger.log('Fonnte fetch error (absensi): ' + waErr.message);
+    return false;
+  }
 }
 
 function getAbsensiList(filter) {

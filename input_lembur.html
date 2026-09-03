@@ -1109,6 +1109,15 @@ function submitAbsensi(){
       btn.disabled=false; btn.style.opacity='1';
       if(!res || !res.success){ showToast('Gagal simpan: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
       showToast('Ketidakhadiran '+(k?k.nama:'')+' tersimpan','success');
+      if(res.isInternal){
+        setTimeout(function(){
+          if(res.waNotifSent){
+            showToast('Notifikasi WA terkirim ke Pak Sandy untuk approval','success');
+          } else {
+            showToast('Ketidakhadiran tersimpan, tapi notifikasi WA ke Pak Sandy gagal terkirim (cek token Fonnte)','warning');
+          }
+        }, 600);
+      }
       document.getElementById('ab-ket').value='';
       clearApiCache(); loadLemburAbsensi();
     })
