@@ -380,6 +380,28 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <!-- ═══ LEMBUR PER KARYAWAN — cuma tampil untuk TL/Admin ═══ -->
+      <div class="card" id="card-lembur-pic" style="display:none;min-height:120px;overflow:visible;">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="user-search" style="width:12px;"></i>Lembur per Karyawan</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+          <select id="lp-pilih-karyawan" style="background:var(--bg-input,#12121e);color:var(--text-main);border:1px solid var(--border-color);border-radius:8px;padding:7px 10px;font-size:11px;min-width:220px;">
+            <option value="">-- Pilih karyawan --</option>
+          </select>
+          <input type="number" id="lp-bulan" min="1" max="12" placeholder="Bulan" style="width:70px;background:var(--bg-input,#12121e);color:var(--text-main);border:1px solid var(--border-color);border-radius:8px;padding:7px 8px;font-size:11px;">
+          <input type="number" id="lp-tahun" min="2020" max="2100" placeholder="Tahun" style="width:80px;background:var(--bg-input,#12121e);color:var(--text-main);border:1px solid var(--border-color);border-radius:8px;padding:7px 8px;font-size:11px;">
+          <button class="btn-export" onclick="muatLemburPerKaryawan()">Tampilkan</button>
+        </div>
+        <div id="lp-info" style="font-size:10.5px;color:var(--text-muted);margin-bottom:8px;"></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Tanggal</th><th>Jam</th><th>Total</th><th>Kategori</th><th>Keterangan</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="tbody-lembur-pic"><tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px;">Pilih karyawan &amp; klik Tampilkan</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ═══ MODAL — TL koreksi jam/tanggal lembur sebelum approve ═══ -->
       <div class="modal-backdrop" id="modal-edit-lembur">
         <div class="modal-box">
@@ -564,7 +586,9 @@ function loadAll(){
     // dipaksa 'block', flex-direction/gap di CSS jadi tidak berfungsi dan
     // kartu bisa terlihat "kepotong" walau isinya sebenarnya ada.
     document.getElementById('card-approval').style.display = '';
+    document.getElementById('card-lembur-pic').style.display = '';
     loadApprovalPanel();
+    isiDropdownKaryawanLP();
     checkTtdSetup();
 
     // Peringatan sekali-tampil kalau baru saja diarahkan ke sini dari
@@ -626,8 +650,8 @@ function loadApprovalPanel(){
           '<td style="font-size:11px;color:var(--text-muted);">'+detail+'</td>'+
           '<td><div class="btn-export-group">'+
             (a.tipe==='lembur' ? '<button class="btn-export btn-edit-item" data-idx="'+idx+'">Edit</button>' : '')+
-            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#16a34a,#22c55e);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-keputusan="Disetujui">Setujui</button>'+
-            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-keputusan="Ditolak">Tolak</button>'+
+            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#16a34a,#22c55e);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-kode="'+escHtml(a.kode)+'" data-tanggal="'+escHtml(a.tanggal)+'" data-keputusan="Disetujui">Setujui</button>'+
+            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-kode="'+escHtml(a.kode)+'" data-tanggal="'+escHtml(a.tanggal)+'" data-keputusan="Ditolak">Tolak</button>'+
           '</div></td>'+
         '</tr>';
       }).join('');
@@ -637,7 +661,7 @@ function loadApprovalPanel(){
       // sebagai string onclick langsung.
       tb.querySelectorAll('.btn-approve-item').forEach(function(btn){
         btn.addEventListener('click', function(){
-          doApprove(btn.dataset.tipe, Number(btn.dataset.row), btn.dataset.keputusan);
+          doApprove(btn.dataset.tipe, Number(btn.dataset.row), btn.dataset.keputusan, btn.dataset.kode, btn.dataset.tanggal);
         });
       });
       tb.querySelectorAll('.btn-edit-item').forEach(function(btn){
@@ -653,22 +677,131 @@ function loadApprovalPanel(){
     .getPendingApprovals();
 }
 
-function doApprove(tipe, rowIndex, keputusan){
+// kode/tanggal: fingerprint baris yg dilihat TL saat klik -- dicek ulang
+// oleh backend supaya tidak salah sasaran kalau daftar sudah basi
+// (lihat komentar approveItem/approveEditRequest di backend/kode.gs).
+function doApprove(tipe, rowIndex, keputusan, kode, tanggal){
   var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  // KUNCI semua tombol approve/tolak/edit di panel ini SEGERA begitu satu
+  // diklik -- mencegah klik beruntun ke rowIndex yang sudah basi kalau
+  // salah satu aksi (mis. approve hapus lembur) menggeser baris-baris di
+  // bawahnya SEBELUM daftar sempat refresh. Tombol baru aktif lagi
+  // setelah loadApprovalPanel() selesai render ulang dgn rowIndex baru.
+  document.querySelectorAll('#tbody-approval button').forEach(function(b){ b.disabled = true; });
   showToast('Memproses...','info');
   var runner = google.script.run
     .withSuccessHandler(function(res){
-      if(!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      if(!res || !res.success){
+        showToast('Gagal: '+(res&&res.error?res.error:''),'error');
+        document.querySelectorAll('#tbody-approval button').forEach(function(b){ b.disabled = false; });
+        return;
+      }
       showToast(keputusan+' berhasil disimpan','success');
       loadApprovalPanel();
     })
-    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); });
+    .withFailureHandler(function(err){
+      showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error');
+      document.querySelectorAll('#tbody-approval button').forEach(function(b){ b.disabled = false; });
+    });
 
   if (tipe === 'edit_lembur'){
-    runner.approveEditRequest(rowIndex, keputusan, nik, '');
+    runner.approveEditRequest(rowIndex, keputusan, nik, '', kode, tanggal);
   } else {
-    runner.approveItem(tipe, rowIndex, keputusan, nik);
+    runner.approveItem(tipe, rowIndex, keputusan, nik, kode, tanggal);
   }
+}
+
+// ================================================================
+//  LEMBUR PER KARYAWAN (TL) -- lihat & hapus langsung catatan lembur
+//  siapa saja, tanpa perlu alur pengajuan hapus dari karyawan dulu.
+// ================================================================
+var LP_LIST_CACHE = [];
+
+function isiDropdownKaryawanLP(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success) return;
+      var sel = document.getElementById('lp-pilih-karyawan');
+      var opts = res.data.map(function(k){
+        return '<option value="'+escHtml(k.kode)+'">'+escHtml(k.nama)+' ('+escHtml(k.kode)+')</option>';
+      }).join('');
+      sel.innerHTML = '<option value="">-- Pilih karyawan --</option>' + opts;
+    })
+    .getKaryawanList();
+  var now = new Date();
+  document.getElementById('lp-bulan').value = now.getMonth()+1;
+  document.getElementById('lp-tahun').value = now.getFullYear();
+}
+
+function muatLemburPerKaryawan(){
+  var kode = document.getElementById('lp-pilih-karyawan').value;
+  var bulan = document.getElementById('lp-bulan').value;
+  var tahun = document.getElementById('lp-tahun').value;
+  var infoEl = document.getElementById('lp-info');
+  var tb = document.getElementById('tbody-lembur-pic');
+  if (!kode){ infoEl.textContent = 'Pilih karyawan dulu.'; return; }
+
+  infoEl.textContent = 'Memuat...';
+  tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px;">Memuat...</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){
+        infoEl.textContent = 'Gagal memuat: ' + (res && res.error || '');
+        tb.innerHTML = '';
+        return;
+      }
+      LP_LIST_CACHE = res.data || [];
+      if (!LP_LIST_CACHE.length){
+        infoEl.textContent = 'Tidak ada catatan lembur untuk periode ini.';
+        tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px;">Tidak ada data</td></tr>';
+        return;
+      }
+      var totalJam = LP_LIST_CACHE.reduce(function(a,x){ return a+(x.totalJam||0); }, 0);
+      infoEl.innerHTML = LP_LIST_CACHE.length + ' catatan, total <b>' + totalJam.toLocaleString('id-ID',{maximumFractionDigits:2}) + ' jam</b>';
+      tb.innerHTML = LP_LIST_CACHE.map(function(x, idx){
+        var statusColor = x.approvalStatus==='Disetujui' ? 'var(--green,#22c55e)' : (x.approvalStatus==='Ditolak' ? '#f87171' : '#fbbf24');
+        return '<tr>'+
+          '<td>'+escHtml(x.tanggal)+'</td>'+
+          '<td>'+escHtml(x.jamMulai)+'–'+escHtml(x.jamSelesai)+'</td>'+
+          '<td>'+x.totalJam+' jam</td>'+
+          '<td>'+escHtml(x.kategoriLembur||'-')+'</td>'+
+          '<td style="font-size:11px;color:var(--text-muted);">'+escHtml(x.keterangan||'-')+'</td>'+
+          '<td style="color:'+statusColor+';">'+escHtml(x.approvalStatus)+'</td>'+
+          '<td><button class="btn-export btn-hapus-lp" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" data-idx="'+idx+'">Hapus</button></td>'+
+        '</tr>';
+      }).join('');
+      tb.querySelectorAll('.btn-hapus-lp').forEach(function(btn){
+        btn.addEventListener('click', function(){ hapusLemburDariPanel(Number(btn.dataset.idx)); });
+      });
+    })
+    .withFailureHandler(function(err){
+      infoEl.textContent = 'Gagal terhubung: ' + (err && err.message || '');
+      tb.innerHTML = '';
+    })
+    .getLemburList({ kode: kode, bulan: bulan, tahun: tahun });
+}
+
+function hapusLemburDariPanel(idx){
+  var item = LP_LIST_CACHE[idx];
+  if (!item) return;
+  if (!confirm('Hapus catatan lembur '+item.nama+' tanggal '+item.tanggal+' ('+item.jamMulai+'–'+item.jamSelesai+')?\n\nTindakan ini TIDAK BISA dibatalkan.')) return;
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  document.querySelectorAll('#tbody-lembur-pic button').forEach(function(b){ b.disabled = true; });
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){
+        showToast('Gagal hapus: '+(res&&res.error?res.error:''),'error');
+        document.querySelectorAll('#tbody-lembur-pic button').forEach(function(b){ b.disabled = false; });
+        return;
+      }
+      showToast('Catatan lembur berhasil dihapus','success');
+      muatLemburPerKaryawan(); // refresh, sekalian dapat rowIndex baru yg valid
+    })
+    .withFailureHandler(function(err){
+      showToast('Gagal hapus: '+(err&&err.message?err.message:'cek koneksi'),'error');
+      document.querySelectorAll('#tbody-lembur-pic button').forEach(function(b){ b.disabled = false; });
+    })
+    .hapusLemburByTL(item.rowIndex, item.kode, item.tanggal, nik);
 }
 
 // ================================================================

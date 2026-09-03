@@ -4059,6 +4059,35 @@ function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, ke
   }
 }
 
+// ================================================================
+//  HAPUS LEMBUR LANGSUNG OLEH TL -- beda dari alur approveEditRequest
+//  (yang cuma menyetujui PENGAJUAN hapus dari karyawan). Ini dipakai
+//  TL untuk menghapus catatan lembur SIAPA SAJA langsung dari panel
+//  "Lembur per Karyawan", tanpa perlu karyawan mengajukan dulu --
+//  mis. kalau ternyata ada input duplikat/salah kode karyawan.
+//  kodeCek/tanggalCek: fingerprint pengaman yg sama seperti approval,
+//  supaya tidak salah hapus baris kalau daftar di layar sudah basi.
+// ================================================================
+function hapusLemburByTL(rowIndex, kodeCek, tanggalCek, approverNik) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (!sh) return { success: false, error: 'Sheet ' + SH_LEMBUR_LOG + ' tidak ditemukan.' };
+    if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid / sudah tidak ada.' };
+
+    var row = sh.getRange(rowIndex, 2, 1, 2).getValues()[0]; // [Tanggal, Kode]
+    var tglBaris = row[0] ? _fmtYMD(new Date(row[0])) : '';
+    var kodeBaris = String(row[1] || '');
+    if (kodeCek && tanggalCek && (kodeBaris !== String(kodeCek) || tglBaris !== String(tanggalCek))) {
+      return { success: false, error: 'Daftar sudah berubah -- silakan refresh, lalu coba lagi. Tidak ada data yang terhapus.' };
+    }
+
+    sh.deleteRow(rowIndex);
+    _bumpDataCacheVersion();
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 function getLemburList(filter) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -4264,7 +4293,13 @@ function getPendingApprovals() {
 }
 
 // tipe: 'lembur' | 'cuti'  |  keputusan: 'Disetujui' | 'Ditolak'
-function approveItem(tipe, rowIndex, keputusan, approverNik) {
+// kodeCek/tanggalCek (YYYY-MM-DD): fingerprint dari baris yang DILIHAT
+// TL saat klik approve -- WAJIB cocok dgn baris di rowIndex SEKARANG,
+// supaya aman kalau ada penghapusan baris lain (dari approveEditRequest
+// aksi 'delete') yang bikin rowIndex lama jadi menunjuk baris berbeda.
+// Tanpa cek ini, approval bisa "kena" baris yang salah tanpa error --
+// itu penyebab bug "approve kadang tidak jalan/salah sasaran".
+function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheetName = tipe === 'cuti' ? SH_ABSENSI_LOG : SH_LEMBUR_LOG;
@@ -4276,6 +4311,13 @@ function approveItem(tipe, rowIndex, keputusan, approverNik) {
 
     var row = sh.getRange(rowIndex, 1, 1, 4).getValues()[0]; // [Timestamp, Tanggal, Kode, Nama]
     var kode = String(row[2] || ''), nama = String(row[3] || '');
+
+    if (kodeCek && tanggalCek) {
+      var tglBaris = row[1] ? _fmtYMD(new Date(row[1])) : '';
+      if (kode !== String(kodeCek) || tglBaris !== String(tanggalCek)) {
+        return { success: false, error: 'Daftar approval sudah berubah (ada aksi lain yang menggeser urutan baris) -- silakan refresh panel approval, lalu coba lagi. Tidak ada data yang berubah.' };
+      }
+    }
 
     sh.getRange(rowIndex, statusCol, 1, 2).setValues([[keputusan, approverNik || '']]);
 
@@ -4597,12 +4639,23 @@ function submitEditLembur(rowIndex, nikRequester, newData) {
 }
 
 // Dipanggil TL dari panel approval. keputusan: 'Disetujui' | 'Ditolak'.
-function approveEditRequest(rowIndex, keputusan, approverNik, catatan) {
+// kodeCek/tanggalCek: sama seperti di approveItem() -- fingerprint
+// pengaman terhadap rowIndex basi.
+function approveEditRequest(rowIndex, keputusan, approverNik, catatan, kodeCek, tanggalCek) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sh = ss.getSheetByName(SH_LEMBUR_LOG);
     if (!sh) return { success: false, error: 'Sheet tidak ditemukan' };
     if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid / sudah tidak ada.' };
+
+    if (kodeCek && tanggalCek) {
+      var rowCek = sh.getRange(rowIndex, 2, 1, 2).getValues()[0]; // [Tanggal, Kode]
+      var tglBarisCek = rowCek[0] ? _fmtYMD(new Date(rowCek[0])) : '';
+      var kodeBarisCek = String(rowCek[1] || '');
+      if (kodeBarisCek !== String(kodeCek) || tglBarisCek !== String(tanggalCek)) {
+        return { success: false, error: 'Daftar approval sudah berubah (ada aksi lain yang menggeser urutan baris) -- silakan refresh panel approval, lalu coba lagi. Tidak ada data yang berubah.' };
+      }
+    }
 
     var reqDataRaw = sh.getRange(rowIndex, 15).getValue(); // kolom O
     var reqData = {};
