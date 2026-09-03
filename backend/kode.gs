@@ -3942,6 +3942,55 @@ var KATEGORI_LEMBUR_LIST = [
   { kode: 'housekeeping',  label: 'Housekeeping / 5S',         warna: '#84cc16' },
   { kode: 'lain',          label: 'Lain-lain',                 warna: '#6b7280' }
 ];
+// ================================================================
+//  AUDIT SETUP WA GATEWAY DI SEMUA DEPARTEMEN/PLANT SEKALIGUS --
+//  jalankan manual dari Apps Script editor (pilih fungsi ini, Run,
+//  lihat View > Logs). Beda dari adminGetFonnteStatus() yang cuma
+//  bisa cek SATU departemen per panggilan (harus ganti dropdown di
+//  panel admin satu-satu) -- ini langsung cek SEMUA departemen di
+//  WORKSPACE_MAP dalam sekali jalan, supaya ketahuan departemen mana
+//  yang approver WA-nya belum diisi, dan karyawan mana yang token
+//  WA-nya belum ada (jadi notifikasi Lembur maupun Ketidakhadiran
+//  TIDAK akan terkirim utk karyawan itu, walau datanya tetap tersimpan
+//  normal -- notif WA cuma bonus, bukan syarat simpan).
+// ================================================================
+function auditFonnteSemuaWorkspace() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  var tokenNiks = {};
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf('FONNTE_TOKEN_') === 0) tokenNiks[k.substring('FONNTE_TOKEN_'.length)] = true;
+  });
+  var approverUmum = props.getProperty('FONNTE_APPROVER_WA') ? 'ADA (fallback umum)' : 'KOSONG';
+  Logger.log('FONNTE_APPROVER_WA (fallback umum, dipakai kalau approver per-departemen kosong): ' + approverUmum);
+  Logger.log('');
+
+  Object.keys(WORKSPACE_MAP).forEach(function (wsKey) {
+    Logger.log('=== ' + wsKey + ' ===');
+    var approverWs = props.getProperty('FONNTE_APPROVER_WA_' + wsKey);
+    Logger.log('  Nomor approver WA departemen ini: ' + (approverWs ? 'ADA (khusus)' : (approverUmum === 'ADA (fallback umum)' ? 'pakai fallback umum' : '❌ KOSONG -- notif WA tidak akan terkirim sama sekali utk departemen ini!')));
+
+    try {
+      var ss = SpreadsheetApp.openById(WORKSPACE_MAP[wsKey]);
+      var sh = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+      if (!sh) { Logger.log('  (sheet KARYAWAN_LEMBUR tidak ada)'); return; }
+      var data = sh.getDataRange().getValues();
+      var adaToken = 0, tanpaToken = [];
+      for (var i = 1; i < data.length; i++) {
+        var kode = String(data[i][0] || '').trim();
+        if (!kode) continue;
+        if (tokenNiks[kode]) adaToken++;
+        else tanpaToken.push(kode + ' (' + (data[i][1] || '-') + ')');
+      }
+      Logger.log('  Karyawan dengan token WA: ' + adaToken + ' | TANPA token: ' + tanpaToken.length);
+      if (tanpaToken.length) Logger.log('    Belum ada token: ' + tanpaToken.join(', '));
+    } catch (e) {
+      Logger.log('  Gagal baca sheet KARYAWAN_LEMBUR: ' + e.message);
+    }
+    Logger.log('');
+  });
+}
+
 function getKategoriLemburList() { return { success: true, data: KATEGORI_LEMBUR_LIST }; }
 
 // ================================================================
