@@ -3116,9 +3116,17 @@ function syncWorkspaceToSupabase(workspaceKey) {
     return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni });
   });
 
-  // Rekap Muatan bulan ini
+  // Rekap Muatan bulan ini + bulan sebelumnya -- sama seperti Stock/
+  // Outbound/Inbound, tanpa ini snapshot bulan yg sudah lewat (mis.
+  // Agustus, setelah masuk September) BEKU PERMANEN walau datanya
+  // sudah dikoreksi/diperbaiki di sheet (kasus nyata: total Kirim di
+  // Rekap Muatan Agustus masih nunjukin angka lama pakai tanda minus
+  // dari SEBELUM fix negasi Kirim/Outbound dipasang).
   put('rekap:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
     return getRekapMuatanData({ mode: 'bulanan', bulan: bulanIni, tahun: tahunIni });
+  });
+  put('rekap:bulanan:' + tahunPrev + '-' + _pad2(+bulanPrev), function () {
+    return getRekapMuatanData({ mode: 'bulanan', bulan: bulanPrev, tahun: tahunPrev });
   });
 
   // ---- Monitoring FTE (kartu Produktivitas + tren 6 bulan) --
