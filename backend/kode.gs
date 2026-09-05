@@ -282,6 +282,26 @@ function _bumpDataCacheVersion() {
     var v = parseInt(cache.get(key) || '0', 10) + 1;
     cache.put(key, String(v), 21600); // 6 jam -- cukup lama, jarang perlu reset manual
   } catch (e) { /* gagal bump cache version tidak boleh sampai gagalkan proses upload */ }
+
+  // ---- Tandai "ada perubahan menunggu di-sync ke Supabase" ----
+  // PENTING: trigger onSheetEditSync() (yang men-sync snapshot Supabase)
+  // TERPASANG SEBAGAI onEdit -- dan onEdit di Google Apps Script HANYA
+  // menyala untuk edit MANUAL langsung di UI Spreadsheet oleh manusia.
+  // Onedit TIDAK PERNAH menyala untuk perubahan yang dibuat SCRIPT itu
+  // sendiri (appendRow/setValues dari kode.gs) -- ini keterbatasan resmi
+  // Google Apps Script, bukan bug yang bisa diperbaiki di sisi onEdit-nya.
+  // Artinya: upload data, input lembur/absensi, dan approval TL (yang
+  // SEMUANYA jalan lewat kode, bukan diketik manual di sel) TIDAK PERNAH
+  // memicu sync Supabase lewat onSheetEditSync -- snapshot Supabase jadi
+  // basi terus sampai trigger harian (syncAllToSupabase, 1x/hari) datang.
+  // Makanya di sini kita tandai PENDING_SYNC secara EKSPLISIT setiap kali
+  // ada perubahan data lewat kode manapun -- checkPendingSyncs (trigger
+  // tiap 5 menit, sudah ada) akan menyusulkan sync-nya, jadi paling lama
+  // 5 menit snapshot Supabase sudah ikut ter-update, TANPA bergantung
+  // pada onEdit sama sekali.
+  try {
+    PropertiesService.getScriptProperties().setProperty('PENDING_SYNC_' + ACTIVE_WORKSPACE, '1');
+  } catch (e2) { /* jangan sampai gagalkan proses utama */ }
 }
 
 function callWithServerCache(action, args) {
@@ -2840,12 +2860,39 @@ function manualSyncNow(kind) {
     var log;
     if (kind === 'stock') log = syncStockOnly(ACTIVE_WORKSPACE);
     else if (kind === 'io') log = syncOutboundInboundOnly(ACTIVE_WORKSPACE);
+    else if (kind === 'fte') log = syncFteOnly(ACTIVE_WORKSPACE);
     else log = syncWorkspaceToSupabase(ACTIVE_WORKSPACE);
     var gagalCount = log.filter(function (l) { return l.indexOf('GAGAL') === 0; }).length;
     return { success: true, log: log, adaGagal: gagalCount > 0 };
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+// Sync khusus Monitoring FTE (Produktivitas, tren OT%, tren kategori
+// lembur) -- dipakai tombol "Sync Sekarang" di fte_dashboard.html.
+// Berbeda dari syncOutboundInboundOnly (yang juga refresh FTE tapi
+// cuma sisi Kirim/Produksi-nya) -- ini scoped KHUSUS FTE saja, jadi
+// mencakup efek dari Lembur/Absensi/Approval juga, bukan cuma upload
+// Outbound/Inbound.
+function syncFteOnly(workspaceKey) {
+  ACTIVE_WORKSPACE = workspaceKey;
+  SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+  var log = [];
+  var put = _syncPutHelper(workspaceKey, log);
+
+  var now = new Date();
+  var bulanIni = String(now.getMonth() + 1), tahunIni = String(now.getFullYear());
+  var d2 = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  var bulanPrev = String(d2.getMonth() + 1), tahunPrev = String(d2.getFullYear());
+
+  put('fte:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getAbsensiFTEData(bulanIni, tahunIni); });
+  put('fte:bulanan:' + tahunPrev + '-' + _pad2(+bulanPrev), function () { return getAbsensiFTEData(bulanPrev, tahunPrev); });
+  put('ot_trend6:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getOvertimeTrend6Bulan(bulanIni, tahunIni); });
+  put('kat_trend6:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getLemburKategoriTrend6Bulan(bulanIni, tahunIni); });
+
+  Logger.log(log.join('\n'));
+  return log;
 }
 
 // ================================================================
@@ -2936,6 +2983,13 @@ function syncOutboundInboundOnly(workspaceKey) {
   put('kanban:harian:' + todayStr, function () { return getKanbanData('harian', { dari: todayStr, sampai: todayStr }); });
   put('kanban:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni }); });
   put('rekap:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getRekapMuatanData({ mode: 'bulanan', bulan: bulanIni, tahun: tahunIni }); });
+
+  // FTE (Kiriman+Penerimaan, Produktivitas) langsung dipengaruhi upload
+  // Outbound/Inbound -- ikut disegarkan di sini juga (bulan ini + bulan
+  // sebelumnya), bukan cuma lewat sync penuh.
+  var bulanPrevIo = months6[months6.length - 2].bulan, tahunPrevIo = months6[months6.length - 2].tahun;
+  put('fte:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getAbsensiFTEData(bulanIni, tahunIni); });
+  put('fte:bulanan:' + tahunPrevIo + '-' + _pad2(+bulanPrevIo), function () { return getAbsensiFTEData(bulanPrevIo, tahunPrevIo); });
 
   Logger.log(log.join('\n'));
   return log;
@@ -4073,6 +4127,7 @@ function saveLembur(data) {
       Logger.log('Gagal kirim notif WA lembur: ' + notifErr.message);
     }
 
+    _bumpDataCacheVersion(); // data lembur berubah -> cache FTE basi + tandai perlu sync Supabase (lihat komentar di _bumpDataCacheVersion)
     return { success: true, totalJam: durJam, waNotifSent: waNotifSent, isInternal: isInternal };
   } catch (err) { return { success: false, error: err.message }; }
 }
@@ -4415,6 +4470,7 @@ function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek
     }
     sh.getRange(rowIndex, catatanCol).setValue(catatan);
 
+    _bumpDataCacheVersion();
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
 }
@@ -4712,6 +4768,7 @@ function submitEditLembur(rowIndex, nikRequester, newData) {
       sh.getRange(rowIndex, 5, 1, 3).setValues([[newData.jamMulai, newData.jamSelesai, durJam]]); // E,F,G
       sh.getRange(rowIndex, 8).setValue(newData.keterangan || ''); // H
       sh.getRange(rowIndex, 13).setValue(newData.kategoriLembur || ''); // M
+      _bumpDataCacheVersion();
       return { success: true, applied: true };
     }
 
@@ -4752,6 +4809,7 @@ function approveEditRequest(rowIndex, keputusan, approverNik, catatan, kodeCek, 
     if (keputusan === 'Disetujui') {
       if (reqData.action === 'delete') {
         sh.deleteRow(rowIndex);
+        _bumpDataCacheVersion();
         return { success: true };
       }
       if (reqData.action === 'edit') {
@@ -4763,6 +4821,7 @@ function approveEditRequest(rowIndex, keputusan, approverNik, catatan, kodeCek, 
 
     // Reset kolom pengajuan (baik disetujui-sudah-diterapkan maupun ditolak)
     sh.getRange(rowIndex, 14, 1, 4).setValues([[keputusan === 'Ditolak' ? 'Ditolak' : '', '', '', catatan || '']]);
+    _bumpDataCacheVersion();
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
 }
@@ -4789,6 +4848,7 @@ function saveAbsensi(data) {
       Logger.log('Gagal kirim notif WA absensi: ' + notifErr.message);
     }
 
+    _bumpDataCacheVersion();
     return { success: true, waNotifSent: waNotifSent, isInternal: isInternal };
   } catch (err) { return { success: false, error: err.message }; }
 }

@@ -120,6 +120,7 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 .hero-produktivitas-val{font-family:var(--font-display);font-size:38px;font-weight:800;background:linear-gradient(180deg,#6ee7a0,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1;margin:5px 0;letter-spacing:-.5px;text-shadow:0 0 30px rgba(52,211,153,.25);}
 .hero-produktivitas-sub{font-size:9px;color:var(--text-muted);}
 .hero-produktivitas-breakdown{font-size:8.5px;color:var(--text-muted);margin-top:2px;border-top:1px solid rgba(255,255,255,.07);padding-top:7px;width:100%;}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 /* Varian "belum tercapai" -- kartu berubah dari hijau (sukses) ke amber
    (perhatian) supaya status target langsung terlihat jelas tanpa perlu
    baca badge/teksnya dulu. */
@@ -311,6 +312,13 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <button class="btn-icon" title="Logout" onclick="whLogout()" style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:pointer;flex-shrink:0;">
           <i data-lucide="log-out" style="width:15px;"></i>
         </button>
+      </div>
+      <div id="fte-sync-wrap" style="display:flex;align-items:center;gap:8px;margin-top:-4px;margin-bottom:2px;">
+        <button class="btn-icon" title="Sync Sekarang (kalau angka terasa belum update)" onclick="syncFteSekarang()" style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:6px;color:var(--text-muted);cursor:pointer;font-size:10.5px;width:auto;height:auto;">
+          <i data-lucide="refresh-cw" style="width:12px;" id="fte-sync-icon"></i>
+          <span id="fte-sync-label">Sync Sekarang</span>
+        </button>
+        <span id="fte-sync-result" style="font-size:10px;color:var(--text-muted);"></span>
       </div>
 
       <div class="hero-row">
@@ -569,6 +577,45 @@ function onPeriodeChange(){
   curTahun = +document.getElementById('sel-tahun').value;
   clearApiCache();
   loadAll();
+}
+
+// Tombol "Sync Sekarang" -- paksa hitung ulang Produktivitas FTE +
+// tren OT%/kategori lembur dari sheet SEKARANG, lalu simpan ke Supabase
+// (bulan ini & bulan sebelumnya), dan langsung muat ulang tampilan.
+// Berguna kalau baru saja input lembur/absensi/upload Outbound-Inbound
+// tapi angkanya di layar masih kelihatan belum berubah (paling lama
+// nunggu 5 menit otomatis, tapi ini supaya bisa langsung tanpa nunggu).
+function syncFteSekarang(){
+  var icon = document.getElementById('fte-sync-icon');
+  var label = document.getElementById('fte-sync-label');
+  var resultEl = document.getElementById('fte-sync-result');
+  icon.style.animation = 'spin 1s linear infinite';
+  label.textContent = 'Menyinkronkan...';
+  resultEl.textContent = '';
+  google.script.run
+    .withSuccessHandler(function(res){
+      icon.style.animation = '';
+      label.textContent = 'Sync Sekarang';
+      if (!res || !res.success){
+        resultEl.textContent = 'Gagal: ' + (res && res.error || '');
+        resultEl.style.color = '#f87171';
+        return;
+      }
+      resultEl.textContent = '✅ Selesai, memuat ulang...';
+      resultEl.style.color = 'var(--accent-green)';
+      clearApiCache();
+      loadAll();
+      loadTrendChart();
+      loadKategoriTrendChart();
+      setTimeout(function(){ resultEl.textContent=''; }, 4000);
+    })
+    .withFailureHandler(function(err){
+      icon.style.animation = '';
+      label.textContent = 'Sync Sekarang';
+      resultEl.textContent = 'Gagal terhubung: ' + (err && err.message || '');
+      resultEl.style.color = '#f87171';
+    })
+    .manualSyncNow('fte');
 }
 
 function loadAll(){
