@@ -150,6 +150,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
 .pic-badge.on-track{background:var(--green-bg);color:var(--green);border:1px solid rgba(16,185,129,.3);}
 .pic-badge.below{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,.3);}
 .pic-badge.exceed{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(59,130,246,.3);}
+.pic-badge.no-target{background:var(--bg-card2,rgba(255,255,255,.06));color:var(--txt3,#8a8a9a);border:1px solid var(--border2,rgba(255,255,255,.12));}
 .pic-today-lbl{font-size:9px;color:var(--txt3);margin-left:auto;}
 .pic-today-val{font-family:var(--font-mono);font-size:10.5px;font-weight:600;color:var(--cyan);}
 .divider-row{height:1px;background:var(--border);margin:3px 0;}
@@ -285,7 +286,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
   <div class="topbar">
     <div>
       <div class="topbar-title">?? Monitoring Tonase Persiapan</div>
-      <div class="topbar-sub">REKAP MUATAN (Pipa) + REKAP MUATAN FITTING (Box) — Filter Bulanan</div>
+      <div class="topbar-sub">REKAP MUATAN (Pipa) + REKAP MUATAN FITTING (Kg) — Filter Bulanan</div>
     </div>
     <div class="topbar-right">
       <span class="live-clock" id="live-clock">--:--:--</span>
@@ -325,7 +326,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
       <div class="sum-card c-blue">
         <div class="sum-label">Total Persiapan Fitting</div>
         <div class="sum-val c-blue" id="sum-fitting">—</div>
-        <div class="sum-sub">Box (Doni + Iman + Wang)</div>
+        <div class="sum-sub">kg (Doni + Iman + Wang)</div>
       </div>
       <div class="sum-card c-amber">
         <div class="sum-label">Total Kiriman (I053)</div>
@@ -340,7 +341,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
       <div class="sum-card c-orange">
         <div class="sum-label">Target Fitting Bulan Ini</div>
         <div class="sum-val c-orange" id="sum-target-fitting">—</div>
-        <div class="sum-sub">Box (Doni+Iman+Wang)</div>
+        <div class="sum-sub">kg (Doni+Iman+Wang)</div>
       </div>
     </div>
 
@@ -375,7 +376,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
               <tr>
                 <th>PIC</th>
                 <th style="text-align:right;">Pipa (kg)</th>
-                <th style="text-align:right;">Fitting (Bx)</th>
+                <th style="text-align:right;">Fitting (kg)</th>
                 <th style="text-align:right;">% Pipa</th>
                 <th style="text-align:right;">% Fitting</th>
               </tr>
@@ -422,7 +423,7 @@ var PIC_INIT   = { DONI:'DO', IMAN:'IM', SAEPUL:'SA', SULIS:'SU', WANG:'WA' };
 
 // TARGET PER PIC
 var TARGET_PIPA    = { DONI:94514.26, IMAN:94514.26, SAEPUL:11119.32, SULIS:11119.32, WANG:0 };
-var TARGET_FITTING = { DONI:3511, IMAN:3511, SAEPUL:0, SULIS:0, WANG:5267 };
+var TARGET_FITTING = { DONI:0, IMAN:0, SAEPUL:0, SULIS:0, WANG:0 }; // tidak ada target -- kiriman fitting bukan ditentukan warehouse
 var HAS_FITTING    = { DONI:true, IMAN:true, SAEPUL:false, SULIS:false, WANG:true };
 var HAS_PIPA       = { DONI:true, IMAN:true, SAEPUL:true,  SULIS:true,  WANG:false };
 
@@ -607,13 +608,13 @@ function render(d){
   var lbl=d.periodeLabel||'-';
   setText('period-badge',lbl); setText('trend-badge',lbl);
   setText('sum-pipa', fmt(d.totalPipa));
-  setText('sum-fitting', fmtInt(d.totalFitting)+' Box');
+  setText('sum-fitting', fmt(d.totalFitting)+' kg');
   setText('sum-kiriman', fmt(d.totalKiriman));
   // Total target pipa = semua PIC yang punya target pipa
   var tgtPipa=PIC_LIST.reduce(function(a,p){ return a+(TARGET_PIPA[p]||0); },0);
   var tgtFit =PIC_LIST.reduce(function(a,p){ return a+(TARGET_FITTING[p]||0); },0);
   setText('sum-target-pipa', fmt(tgtPipa)+' kg');
-  setText('sum-target-fitting', fmtInt(tgtFit)+' Box');
+  setText('sum-target-fitting', fmt(tgtFit)+' kg');
   renderPicCards(d);
   renderTrendChart(d);
   renderRekapTable(d);
@@ -635,8 +636,11 @@ function renderPicCards(d){
     var pctFit =hasFit&&tgtFit>0   ? Math.min(Math.round(info.fitting/tgtFit*100),999) : null;
     // Badge berdasarkan pipa (atau fitting jika WANG)
     var mainPct = pic==='WANG' ? pctFit : pctPipa;
-    var badge   = mainPct>=100?'exceed':(mainPct>=80?'on-track':'below');
-    var badgeLbl= mainPct>=100?'? Tercapai':(mainPct>=80?'On Track':'Di Bawah Target');
+    var badge, badgeLbl;
+    if (mainPct===null){ badge='no-target'; badgeLbl='Tidak Ada Target'; }
+    else if (mainPct>=100){ badge='exceed'; badgeLbl='? Tercapai'; }
+    else if (mainPct>=80){ badge='on-track'; badgeLbl='On Track'; }
+    else { badge='below'; badgeLbl='Di Bawah Target'; }
     var todayPipa=(info.pipaHarian&&info.pipaHarian.length)?info.pipaHarian[info.pipaHarian.length-1]:0;
     var todayFit =(info.fittingHarian&&info.fittingHarian.length)?info.fittingHarian[info.fittingHarian.length-1]:0;
 
@@ -660,10 +664,10 @@ function renderPicCards(d){
     if(hasFit){
       statsHtml+=
         '<div class="pic-stat-row">'+
-          '<span class="pic-stat-lbl">Persiapan Fitting (Bx)</span>'+
+          '<span class="pic-stat-lbl">Persiapan Fitting (kg)</span>'+
           '<div style="text-align:right;">'+
-            '<div class="pic-stat-val" style="color:'+col+'">'+fmtInt(info.fitting)+'</div>'+
-            '<div class="pic-stat-target">Target: '+fmtInt(tgtFit)+' Box</div>'+
+            '<div class="pic-stat-val" style="color:'+col+'">'+fmt(info.fitting)+'</div>'+
+            '<div class="pic-stat-target">Target: '+fmt(tgtFit)+' kg</div>'+
           '</div>'+
         '</div>';
     }
@@ -680,7 +684,7 @@ function renderPicCards(d){
     if(hasFit&&pctFit!==null){
       progressHtml+=
         '<div class="pic-progress-wrap">'+
-          '<div class="pic-progress-label"><span>Fitting '+pctFit+'%</span><span>'+fmtInt(info.fitting)+' / '+fmtInt(tgtFit)+' Bx</span></div>'+
+          '<div class="pic-progress-label"><span>Fitting '+pctFit+'%</span><span>'+fmt(info.fitting)+' / '+fmt(tgtFit)+' kg</span></div>'+
           '<div class="pic-bar-bg"><div class="pic-bar-fill" id="bar-fit-'+pic+'" style="width:0%;background:'+col+'80"></div></div>'+
         '</div>';
     }
@@ -689,7 +693,7 @@ function renderPicCards(d){
     var todayHtml='';
     if(hasPipa) todayHtml+='<span class="pic-today-val" style="color:'+col+'">'+fmt(todayPipa)+' kg</span>';
     if(hasPipa&&hasFit) todayHtml+='<span style="color:var(--txt3);font-size:8px;"> | </span>';
-    if(hasFit)  todayHtml+='<span class="pic-today-val" style="color:'+col+'80">'+fmtInt(todayFit)+' Bx</span>';
+    if(hasFit)  todayHtml+='<span class="pic-today-val" style="color:'+col+'80">'+fmt(todayFit)+' kg</span>';
 
     var card=document.createElement('div');
     card.className='pic-card';
@@ -710,7 +714,7 @@ function renderPicCards(d){
       progressHtml+
       '<div class="pic-chart-wrap"><canvas id="minichart-'+pic+'"></canvas></div>'+
       '<div class="pic-footer">'+
-        '<span class="pic-badge '+(mainPct!==null?badge:'below')+'">'+badgeLbl+'</span>'+
+        '<span class="pic-badge '+badge+'">'+badgeLbl+'</span>'+
         '<span class="pic-today-lbl">Hari ini:</span>'+
         todayHtml+
       '</div>';
@@ -793,7 +797,7 @@ function renderRekapTable(d){
     return '<tr>'+
       '<td><span class="rek-name" style="color:'+col+'">'+pic+'</span></td>'+
       '<td class="num">'+(hasPipa?fmt(info.pipa):'-')+'</td>'+
-      '<td class="num" style="text-align:right;">'+(hasFit?fmtInt(info.fitting):'—')+'</td>'+
+      '<td class="num" style="text-align:right;">'+(hasFit?fmt(info.fitting):'—')+'</td>'+
       '<td style="text-align:right;">'+(pctPipa!==null?'<span class="rek-chip" style="background:var(--'+clsPipa+'-bg);color:var(--'+clsPipa+');border:1px solid var(--'+clsPipa+')40;">'+pctPipa+'%</span>':'—')+'</td>'+
       '<td style="text-align:right;">'+(pctFit!==null?'<span class="rek-chip" style="background:var(--'+clsFit+'-bg);color:var(--'+clsFit+');border:1px solid var(--'+clsFit+')40;">'+pctFit+'%</span>':'—')+'</td>'+
     '</tr>';

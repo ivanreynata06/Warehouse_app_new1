@@ -2280,7 +2280,20 @@ function getRekapMuatanData(params) {
       }
     }
 
-    // ---- Baca REKAP MUATAN FITTING: B=Tanggal, C=PIC, D=Total Box ----
+    // ---- Tonase Kiriman PIPA & FITTING dari DASHBOARD_KIRIM ----
+    // Gunakan readTransaksi (sama dengan kalkulasi outbound di dashboard stock)
+    // sehingga angka sync: kiriman pipa = outbound pipa di dashboard.
+    // Dipindah ke SINI (sebelum baca REKAP MUATAN FITTING) karena
+    // sekarang totalKirimanFitting dipakai utk hitung "sisa" Fitting.
+    var kirimData = readTransaksi(ss, SH_KIRIM, range);
+    var totalKiriman = kirimData.pipa || 0;   // hanya pipa (pipaGreen + pipaGrey)
+    var totalKirimanFitting = kirimData.fitting || 0; // fitting sungguhan (dasar hitung sisa DONI)
+
+    // ---- Baca REKAP MUATAN FITTING: B=Tanggal, C=PIC, D=Total Tonase (kg) ----
+    // CATATAN: sebelumnya kolom D ini diperlakukan sbg "Total Box" (unit
+    // pcs/box), sekarang diganti jadi TONASE (kg) -- pemicu/triger cara
+    // baca datanya (kolom B/C/D, per tanggal per PIC) TETAP SAMA, cuma
+    // satuannya yang berubah dari Box ke Kg.
     var shFit = ss.getSheetByName(SH_REKAP_FITTING);
     if (shFit) {
       var df = shFit.getDataRange().getValues();
@@ -2288,7 +2301,7 @@ function getRekapMuatanData(params) {
         var rowF=df[j];
         var tglF=toDate(rowF[1]);
         var picF=String(rowF[2]||'').trim().toUpperCase();
-        var box =parseFloat(rowF[3])||0;
+        var box =parseFloat(rowF[3])||0; // nama var "box" dipertahankan, isinya sekarang kg
         if (!tglF||!box) continue;
         if (range&&!inRange(tglF,range)) continue;
         var dkF=fmtD(tglF);
@@ -2302,12 +2315,44 @@ function getRekapMuatanData(params) {
       }
     }
 
-    // ---- Tonase Kiriman PIPA dari DASHBOARD_KIRIM ----
-    // Gunakan readTransaksi (sama dengan kalkulasi outbound di dashboard stock)
-    // sehingga angka sync: kiriman pipa = outbound pipa di dashboard
-    var kirimData = readTransaksi(ss, SH_KIRIM, range);
-    var totalKiriman = kirimData.pipa || 0;   // hanya pipa (pipaGreen + pipaGrey)
-    var totalKirimanFitting = kirimData.fitting || 0; // fitting untuk referensi Wang
+    // ---- Sisa tonase Fitting -> SEMUA masuk ke DONI ----
+    // Beda dari Pipa (sisa dibagi 2 ke DONI+IMAN), utk Fitting SEMUA
+    // sisa tonase (total kiriman fitting sungguhan dari DASHBOARD_KIRIM,
+    // dikurangi yang sudah tercatat eksplisit dari WANG & IMAN) masuk
+    // ke DONI. Kalau DONI juga sudah punya input manual di sheet, sisa
+    // ini DITAMBAHKAN ke input manual itu (bukan menggantikannya).
+    var totalFitTercatat = (picFitting['WANG']||0) + (picFitting['IMAN']||0);
+    var sisaFitting = Math.max(0, totalKirimanFitting - totalFitTercatat - (picFitting['DONI']||0));
+    if (sisaFitting > 0) {
+      picFitting['DONI'] = (picFitting['DONI']||0) + sisaFitting;
+      // Distribusi porsi "sisa" ke tren HARIAN DONI -- proporsional
+      // mengikuti pola kiriman fitting harian dari DASHBOARD_KIRIM
+      // (sama seperti pola yang dipakai utk sisa Pipa DONI/IMAN di atas),
+      // supaya grafik tren tidak flat 0 utk DONI padahal totalnya benar.
+      var kirimFitHarian = {};
+      var shKirimFitHar = ss.getSheetByName(SH_KIRIM);
+      if (shKirimFitHar) {
+        var dkFH = shKirimFitHar.getDataRange().getValues();
+        for (var hf = 1; hf < dkFH.length; hf++) {
+          var rowFH = dkFH[hf];
+          var tglFH = toDate(rowFH[4]);
+          if (!tglFH || !inRange(tglFH, range)) continue;
+          var katFH = getKategoriTransaksiV2(rowFH[1], rowFH[2], rowFH[3]);
+          if (katFH !== 'fittingGreen' && katFH !== 'fittingGrey') continue;
+          var wFH = parseFloat(rowFH[5]) || 0;
+          var dkeyFH = fmtD(tglFH);
+          kirimFitHarian[dkeyFH] = (kirimFitHarian[dkeyFH] || 0) + wFH;
+        }
+      }
+      var totalKirimFitHarianSum = Object.keys(kirimFitHarian).reduce(function(a, k) { return a + kirimFitHarian[k]; }, 0);
+      if (totalKirimFitHarianSum > 0) {
+        if (!fitHarian['DONI']) fitHarian['DONI'] = {};
+        Object.keys(kirimFitHarian).forEach(function(dk) {
+          var portion = sisaFitting * (kirimFitHarian[dk] / totalKirimFitHarianSum);
+          fitHarian['DONI'][dk] = (fitHarian['DONI'][dk] || 0) + portion;
+        });
+      }
+    }
 
     // Sisa = totalKiriman - totalSaepul - totalSulis
     // Sisa SELALU dibagi 2 ke DONI dan IMAN (input sendiri + sisa), agar total DONI+IMAN = totalKiriman-SS
