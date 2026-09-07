@@ -2990,6 +2990,16 @@ function syncStockOnly(workspaceKey) {
     }
     return getDashboardData('bulanan', { bulan: bulanIni, tahun: tahunIni, group: '' });
   });
+  // Bulan sebelumnya -- sama seperti fix di syncOutboundInboundOnly,
+  // supaya "Sync Sekarang" dari tab Stock juga membetulkan bulan yang
+  // sudah lewat, bukan cuma bulan berjalan.
+  var bulanPrevSt = months6[months6.length - 2].bulan, tahunPrevSt = months6[months6.length - 2].tahun;
+  put('stock:bulanan:' + tahunPrevSt + '-' + _pad2(+bulanPrevSt), function () {
+    if (stockTrendResult && stockTrendResult.success && stockTrendResult.results) {
+      return stockTrendResult.results[stockTrendResult.results.length - 2];
+    }
+    return getDashboardData('bulanan', { bulan: bulanPrevSt, tahun: tahunPrevSt, group: '' });
+  });
   put('stock:harian:' + todayStr, function () { return getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' }); });
   put('kanban:harian:' + todayStr, function () { return getKanbanData('harian', { dari: todayStr, sampai: todayStr }); });
   put('kanban:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni }); });
@@ -3015,6 +3025,8 @@ function syncOutboundInboundOnly(workspaceKey) {
     var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months6.push({ bulan: String(d.getMonth() + 1), tahun: String(d.getFullYear()) });
   }
+  var bulanPrevIo = months6[months6.length - 2].bulan, tahunPrevIo = months6[months6.length - 2].tahun;
+
   var ioTrendResult = null;
   put('io_trend:6mo', function () { ioTrendResult = getIOTrendBatch(months6); return ioTrendResult; });
   put('outbound:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
@@ -3025,14 +3037,28 @@ function syncOutboundInboundOnly(workspaceKey) {
     if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) return ioTrendResult.results[ioTrendResult.results.length - 1].in;
     return getInboundData({ bulan: bulanIni, tahun: tahunIni });
   });
+  // ---- Bulan SEBELUMNYA -- sebelumnya cuma di-cover di
+  // syncWorkspaceToSupabase() (sync penuh), TIDAK di sini (sync scoped
+  // yang dipakai tombol "Sync Sekarang" di Upload Data & Rekap Muatan)
+  // -- inilah penyebab bulan yang sudah lewat (mis. Agustus) tetap
+  // tidak ter-refresh walau sudah klik Sync Sekarang berkali-kali,
+  // padahal bulan berjalan (September) langsung benar.
+  put('outbound:bulanan:' + tahunPrevIo + '-' + _pad2(+bulanPrevIo), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) return ioTrendResult.results[ioTrendResult.results.length - 2].out;
+    return getOutboundData({ bulan: bulanPrevIo, tahun: tahunPrevIo });
+  });
+  put('inbound:bulanan:' + tahunPrevIo + '-' + _pad2(+bulanPrevIo), function () {
+    if (ioTrendResult && ioTrendResult.success && ioTrendResult.results) return ioTrendResult.results[ioTrendResult.results.length - 2].in;
+    return getInboundData({ bulan: bulanPrevIo, tahun: tahunPrevIo });
+  });
   put('kanban:harian:' + todayStr, function () { return getKanbanData('harian', { dari: todayStr, sampai: todayStr }); });
   put('kanban:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni }); });
   put('rekap:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getRekapMuatanData({ mode: 'bulanan', bulan: bulanIni, tahun: tahunIni }); });
+  put('rekap:bulanan:' + tahunPrevIo + '-' + _pad2(+bulanPrevIo), function () { return getRekapMuatanData({ mode: 'bulanan', bulan: bulanPrevIo, tahun: tahunPrevIo }); });
 
   // FTE (Kiriman+Penerimaan, Produktivitas) langsung dipengaruhi upload
   // Outbound/Inbound -- ikut disegarkan di sini juga (bulan ini + bulan
   // sebelumnya), bukan cuma lewat sync penuh.
-  var bulanPrevIo = months6[months6.length - 2].bulan, tahunPrevIo = months6[months6.length - 2].tahun;
   put('fte:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getAbsensiFTEData(bulanIni, tahunIni); });
   put('fte:bulanan:' + tahunPrevIo + '-' + _pad2(+bulanPrevIo), function () { return getAbsensiFTEData(bulanPrevIo, tahunPrevIo); });
 
