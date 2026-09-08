@@ -89,7 +89,11 @@ var API_FUNCTIONS = {
   getRentangTanggalUpload : getRentangTanggalUpload,
   hapusDataUploadByTanggal: hapusDataUploadByTanggal,
   // TL: hapus lembur langsung + panel Lembur per Karyawan
-  hapusLemburByTL         : hapusLemburByTL
+  hapusLemburByTL         : hapusLemburByTL,
+  // Jadwal Pengiriman Fitting -- sync otomatis dari sumber eksternal
+  adminSetJadwalPengirimanSumber: adminSetJadwalPengirimanSumber,
+  adminGetJadwalPengirimanSumberStatus: adminGetJadwalPengirimanSumberStatus,
+  syncJadwalPengirimanHarian: syncJadwalPengirimanHarian
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -4122,6 +4126,155 @@ function auditFonnteSemuaWorkspace() {
     }
     Logger.log('');
   });
+}
+
+// ================================================================
+//  JADWAL PENGIRIMAN FITTING — sinkron otomatis dari spreadsheet
+//  sumber eksternal, GANTI cara lama (IMPORTRANGE manual per sel).
+//  Spreadsheet sumber ganti tiap bulan (link baru tiap bulan) --
+//  makanya link-nya disimpan per-workspace di Script Properties, dan
+//  ada fungsi khusus utk TL/Admin update link-nya tiap awal bulan.
+//  Di DALAM spreadsheet sumber itu, tiap hari punya SHEET/TAB sendiri
+//  yang namanya cuma ANGKA TANGGAL (mis. "8" utk tanggal 8).
+// ================================================================
+
+// Ambil ID spreadsheet dari URL Google Sheets biasa
+// (https://docs.google.com/spreadsheets/d/<ID>/edit#gid=...) ATAU
+// terima langsung kalau yang dikasih memang sudah berupa ID mentah.
+function _extractSpreadsheetId(urlOrId) {
+  var s = String(urlOrId || '').trim();
+  var m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (m) return m[1];
+  return s; // asumsikan sudah ID mentah kalau tidak match pola URL
+}
+
+// TL/Admin panggil ini (lewat panel admin) tiap awal bulan begitu
+// spreadsheet Jadwal Pengiriman Fitting yang baru dibuat -- cukup
+// paste link-nya, TIDAK perlu edit Apps Script/Script Properties manual.
+function adminSetJadwalPengirimanSumber(actorNik, urlOrId, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur ini.' };
+    var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
+    var props = PropertiesService.getScriptProperties();
+    var key = 'JADWAL_PENGIRIMAN_FITTING_ID_' + workspaceKey;
+    var raw = String(urlOrId || '').trim();
+    if (!raw) { props.deleteProperty(key); return { success: true, cleared: true }; }
+    var id = _extractSpreadsheetId(raw);
+    // Validasi: coba buka -- kalau link salah/tidak ada akses, ketahuan
+    // di sini juga (bukan pas sync harian baru gagal).
+    try {
+      SpreadsheetApp.openById(id);
+    } catch (openErr) {
+      return { success: false, error: 'Tidak bisa buka spreadsheet ini -- cek link-nya benar & sudah di-share ke akun Apps Script. (' + openErr.message + ')' };
+    }
+    props.setProperty(key, id);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function adminGetJadwalPengirimanSumberStatus(actorNik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
+    var id = PropertiesService.getScriptProperties().getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + workspaceKey);
+    return { success: true, terisi: !!id, url: id ? ('https://docs.google.com/spreadsheets/d/' + id + '/edit') : '', workspace: workspaceKey };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Cari kolom "PPR/SITECH" dan "No.Pol" di 5 baris pertama sheet sumber
+// (bukan hardcode kolom, biar tahan kalau layout header sedikit
+// bergeser antar bulan). Return {colPPR, colNopol} (1-based) atau null.
+function _cariKolomJadwalSumber(sheet) {
+  var headerRange = sheet.getRange(1, 1, Math.min(5, sheet.getLastRow()), sheet.getLastColumn());
+  var vals = headerRange.getValues();
+  var colPPR = null, colNopol = null;
+  for (var r = 0; r < vals.length; r++) {
+    for (var c = 0; c < vals[r].length; c++) {
+      var cell = String(vals[r][c] || '').toUpperCase();
+      if (!colPPR && /PPR/.test(cell) && /SITECH/.test(cell)) colPPR = c + 1;
+      if (!colNopol && /NO\.?\s*POL/.test(cell)) colNopol = c + 1;
+    }
+  }
+  if (!colPPR || !colNopol) return null;
+  return { colPPR: colPPR, colNopol: colNopol };
+}
+
+// Baca daftar {spm, nopol} dari sheet sumber (tab bernama angka
+// tanggal, mis. "8") untuk 1 tanggal tertentu.
+function _bacaJadwalPPRDariSumber(tanggal) {
+  var id = PropertiesService.getScriptProperties().getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + ACTIVE_WORKSPACE);
+  if (!id) return { success: false, error: 'Link spreadsheet Jadwal Pengiriman Fitting bulan ini belum diisi. Isi dulu di panel admin.' };
+
+  var ssSumber;
+  try { ssSumber = SpreadsheetApp.openById(id); }
+  catch (e) { return { success: false, error: 'Gagal buka spreadsheet sumber: ' + e.message }; }
+
+  var namaTab = String(tanggal.getDate()); // "8", bukan "08"
+  var shSumber = ssSumber.getSheetByName(namaTab) || ssSumber.getSheetByName('0' + namaTab);
+  if (!shSumber) return { success: false, error: 'Tab "' + namaTab + '" tidak ditemukan di spreadsheet sumber -- cek apakah jadwal tanggal ini sudah dibuat.' };
+
+  var kolom = _cariKolomJadwalSumber(shSumber);
+  if (!kolom) return { success: false, error: 'Kolom "PPR/SITECH" atau "No.Pol" tidak ditemukan di sheet "' + namaTab + '" -- cek header-nya belum berubah.' };
+
+  var lastRow = shSumber.getLastRow();
+  if (lastRow < 3) return { success: true, data: [] };
+  var dataPPR = shSumber.getRange(3, kolom.colPPR, lastRow - 2, 1).getValues();
+  var dataNopol = shSumber.getRange(3, kolom.colNopol, lastRow - 2, 1).getValues();
+
+  var hasil = [];
+  for (var i = 0; i < dataPPR.length; i++) {
+    var spm = String(dataPPR[i][0] || '').trim();
+    if (!spm) continue;
+    hasil.push({ spm: spm, nopol: String(dataNopol[i][0] || '').trim() });
+  }
+  return { success: true, data: hasil };
+}
+
+// Dipanggil dari tombol "Sync Jadwal Hari Ini" di halaman Loading Time
+// -- baca jadwal PPR/SITECH hari ini dari sumber, buat baris BARU di
+// PENGIRIMAN utk tiap SPM yang BELUM ADA barisnya hari itu (dicek by
+// SPM+tanggal biar aman dipanggil berkali-kali/tidak dobel).
+function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
+  try {
+    var tanggal = tanggalDDMMYYYY ? _parseTanggalFleksibel(tanggalDDMMYYYY) : new Date();
+    tanggal.setHours(0, 0, 0, 0);
+
+    var bacaan = _bacaJadwalPPRDariSumber(tanggal);
+    if (!bacaan.success) return bacaan;
+
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(SH_PENGIRIMAN);
+    if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan.' };
+
+    // SPM yang SUDAH ada barisnya hari ini (biar tidak dobel kalau
+    // tombol sync dipencet berkali-kali)
+    var lastRow = sheet.getLastRow();
+    var spmSudahAda = {};
+    if (lastRow >= 2) {
+      var existing = sheet.getRange(2, 1, lastRow - 1, 5).getValues(); // A-E
+      existing.forEach(function (r) {
+        var tglRow = r[0] ? new Date(r[0]) : null;
+        if (!tglRow) return;
+        tglRow.setHours(0, 0, 0, 0);
+        if (tglRow.getTime() !== tanggal.getTime()) return;
+        var spmRow = String(r[4] || '').trim();
+        if (spmRow) spmSudahAda[spmRow] = true;
+      });
+    }
+
+    var barisBaru = bacaan.data
+      .filter(function (x) { return !spmSudahAda[x.spm]; })
+      .map(function (x) {
+        return [tanggal, '', '', '', x.spm, x.nopol, '', '', '', '']; // A..J, B(Agen)/C/D/G-J dikosongkan utk diisi PIC/operator spt biasa
+      });
+
+    if (barisBaru.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, barisBaru.length, 10).setValues(barisBaru);
+      _bumpDataCacheVersion();
+    }
+
+    return { success: true, dibuat: barisBaru.length, totalDiSumber: bacaan.data.length, dilewati: bacaan.data.length - barisBaru.length };
+  } catch (err) { return { success: false, error: err.message }; }
 }
 
 function getKategoriLemburList() { return { success: true, data: KATEGORI_LEMBUR_LIST }; }

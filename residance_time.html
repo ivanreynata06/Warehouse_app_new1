@@ -916,6 +916,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
         <div class="nav-divider"></div>
         <button class="nav-icon" onclick="clearApiCache();loadData()" data-tip="Refresh data"><i data-lucide="refresh-cw" style="width:13px;" id="refresh-icon"></i></button>
+        <button class="nav-icon" id="btn-sync-jadwal" onclick="syncJadwalHariIni()" data-tip="Sync Jadwal Hari Ini (dari spreadsheet Jadwal Pengiriman Fitting)" style="display:none;"><i data-lucide="calendar-sync" style="width:13px;"></i></button>
+        <button class="nav-icon" id="btn-setting-jadwal" onclick="openModalSettingJadwal()" data-tip="Setting Link Jadwal Bulan Ini" style="display:none;"><i data-lucide="settings" style="width:13px;"></i></button>
         <button class="nav-icon" data-tip="Notifikasi"><i data-lucide="bell" style="width:13px;"></i></button>
         <div class="font-ctrl" data-tip="Ukuran font">
           <button class="font-ctrl-btn" onclick="changeFontSize(-1)">A-</button>
@@ -1243,6 +1245,24 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
       <button class="btn-modal-cancel" onclick="closeModal('modal-add')">Batal</button>
       <button class="btn-modal-reset" onclick="resetAddModal()" data-tip="Bersihkan pilihan kalau salah klik"><i data-lucide="rotate-ccw" style="width:11px;"></i>Reset</button>
       <button class="btn-modal-ok" onclick="startLoad()"><i data-lucide="zap" style="width:12px;"></i>Mulai Loading Sekarang</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SETTING LINK JADWAL PENGIRIMAN FITTING (bulanan) -->
+<div class="modal-overlay" id="modal-setting-jadwal">
+  <div class="modal-box" style="width:440px;max-width:92vw;">
+    <div class="modal-icon"><i data-lucide="link" style="width:16px;color:var(--accent-blue);"></i></div>
+    <div class="modal-title">Link Jadwal Pengiriman Fitting</div>
+    <div class="modal-hint" style="margin-bottom:10px;">Spreadsheet sumber ganti tiap bulan -- paste link Google Sheets yang baru di sini setiap awal bulan. Tab per tanggal (mis. "8") di dalamnya akan otomatis dibaca sistem.</div>
+    <div class="modal-field">
+      <label>Link Spreadsheet Bulan Ini</label>
+      <input type="text" id="input-link-jadwal" placeholder="https://docs.google.com/spreadsheets/d/....">
+    </div>
+    <div id="status-link-jadwal" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-setting-jadwal')">Batal</button>
+      <button class="btn-modal-ok" id="btn-simpan-link-jadwal" onclick="simpanLinkJadwal()"><i data-lucide="save" style="width:12px;"></i>Simpan</button>
     </div>
   </div>
 </div>
@@ -3532,6 +3552,80 @@ function resolveKemarinBatal(idx){
 }
 
 // ================================================================
+//  JADWAL PENGIRIMAN FITTING -- sync otomatis dari spreadsheet sumber
+//  (GANTI cara lama IMPORTRANGE manual). Cuma TL/Admin yang lihat
+//  tombolnya (sama seperti akses Upload Data Harian).
+// ================================================================
+function initJadwalPengirimanUI(){
+  var sess = window.WH_SESSION;
+  var boleh = sess && (String(sess.role||'').trim().toUpperCase()==='TL' || sess.fullAccess);
+  if (!boleh) return;
+  var btnSync = document.getElementById('btn-sync-jadwal');
+  var btnSet  = document.getElementById('btn-setting-jadwal');
+  if (btnSync) btnSync.style.display = '';
+  if (btnSet)  btnSet.style.display  = '';
+}
+
+function openModalSettingJadwal(){
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  var statusEl = document.getElementById('status-link-jadwal');
+  statusEl.textContent = 'Memuat status...';
+  openModal('modal-setting-jadwal');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ statusEl.textContent = 'Gagal memuat: '+(res&&res.error||''); return; }
+      statusEl.textContent = res.terisi ? ('✅ Sudah diisi: '+res.url) : '⚠️ Belum diisi untuk bulan ini.';
+    })
+    .withFailureHandler(function(err){ statusEl.textContent = 'Gagal terhubung: '+(err&&err.message||''); })
+    .adminGetJadwalPengirimanSumberStatus(nik, '');
+}
+
+function simpanLinkJadwal(){
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  var link = document.getElementById('input-link-jadwal').value.trim();
+  var btn = document.getElementById('btn-simpan-link-jadwal');
+  var statusEl = document.getElementById('status-link-jadwal');
+  if (!link){ statusEl.textContent = 'Paste link spreadsheet dulu.'; return; }
+  btn.disabled = true; statusEl.textContent = 'Menyimpan & memvalidasi link...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled = false;
+      if (!res || !res.success){ statusEl.textContent = '❌ '+(res&&res.error||'Gagal simpan'); return; }
+      statusEl.textContent = '✅ Link tersimpan.';
+      document.getElementById('input-link-jadwal').value='';
+      setTimeout(function(){ closeModal('modal-setting-jadwal'); }, 1200);
+    })
+    .withFailureHandler(function(err){ btn.disabled=false; statusEl.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
+    .adminSetJadwalPengirimanSumber(nik, link, '');
+}
+
+function syncJadwalHariIni(){
+  var btn = document.getElementById('btn-sync-jadwal');
+  var icon = btn.querySelector('i');
+  if (icon) icon.style.animation = 'spin 1s linear infinite';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (icon) icon.style.animation = '';
+      if (!res || !res.success){
+        showToast('❌ Gagal sync jadwal: '+(res&&res.error||'tidak diketahui'),'error');
+        return;
+      }
+      if (res.dibuat > 0){
+        showToast('✅ '+res.dibuat+' kiriman baru ditambahkan dari jadwal ('+res.dilewati+' sudah ada sebelumnya)','success');
+      } else {
+        showToast('Tidak ada kiriman baru -- semua sudah tersinkron ('+res.totalDiSumber+' total di jadwal)','info');
+      }
+      clearApiCache();
+      loadData();
+    })
+    .withFailureHandler(function(err){
+      if (icon) icon.style.animation = '';
+      showToast('❌ Gagal terhubung: '+(err&&err.message||'cek koneksi'),'error');
+    })
+    .syncJadwalPengirimanHarian('');
+}
+
+// ================================================================
 //  INIT
 // ================================================================
 var _safeHideTimer=setTimeout(function(){ hideLoading(); },800);
@@ -3542,6 +3636,7 @@ document.addEventListener('DOMContentLoaded',function(){
   loadData();
   loadLoadingTimeAnalytics();
   checkKemarinPending();
+  initJadwalPengirimanUI();
   setInterval(updateActiveTimers,1000);
   function tryLucide(attempt){
     if(typeof lucide!=='undefined'){ lucide.createIcons(); }
