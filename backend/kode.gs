@@ -4181,22 +4181,26 @@ function adminGetJadwalPengirimanSumberStatus(actorNik, targetWorkspace) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
-// Cari kolom "PPR/SITECH" dan "No.Pol" di 5 baris pertama sheet sumber
+// Cari kolom "PPR/SITECH" dan "No.Pol" di 6 baris pertama sheet sumber
 // (bukan hardcode kolom, biar tahan kalau layout header sedikit
-// bergeser antar bulan). Return {colPPR, colNopol} (1-based) atau null.
+// bergeser antar bulan). Return {colPPR, colNopol, headerRow} atau null.
+// headerRow = baris PALING BAWAH dari kedua header yang ketemu --
+// data mulai dibaca SETELAH baris ini (bukan hardcode row 3 spt
+// sebelumnya, yang bisa salah baca teks header itu sendiri sbg data
+// kalau header-nya kebetulan cuma 1 baris, bukan 2 baris).
 function _cariKolomJadwalSumber(sheet) {
-  var headerRange = sheet.getRange(1, 1, Math.min(5, sheet.getLastRow()), sheet.getLastColumn());
+  var headerRange = sheet.getRange(1, 1, Math.min(6, sheet.getLastRow()), sheet.getLastColumn());
   var vals = headerRange.getValues();
-  var colPPR = null, colNopol = null;
+  var colPPR = null, colNopol = null, rowPPR = 0, rowNopol = 0;
   for (var r = 0; r < vals.length; r++) {
     for (var c = 0; c < vals[r].length; c++) {
       var cell = String(vals[r][c] || '').toUpperCase();
-      if (!colPPR && /PPR/.test(cell) && /SITECH/.test(cell)) colPPR = c + 1;
-      if (!colNopol && /NO\.?\s*POL/.test(cell)) colNopol = c + 1;
+      if (!colPPR && /PPR/.test(cell) && /SITECH/.test(cell)) { colPPR = c + 1; rowPPR = r + 1; }
+      if (!colNopol && /NO\.?\s*POL/.test(cell)) { colNopol = c + 1; rowNopol = r + 1; }
     }
   }
   if (!colPPR || !colNopol) return null;
-  return { colPPR: colPPR, colNopol: colNopol };
+  return { colPPR: colPPR, colNopol: colNopol, headerRow: Math.max(rowPPR, rowNopol) };
 }
 
 // Baca daftar {spm, nopol} dari sheet sumber (tab bernama angka
@@ -4216,15 +4220,21 @@ function _bacaJadwalPPRDariSumber(tanggal) {
   var kolom = _cariKolomJadwalSumber(shSumber);
   if (!kolom) return { success: false, error: 'Kolom "PPR/SITECH" atau "No.Pol" tidak ditemukan di sheet "' + namaTab + '" -- cek header-nya belum berubah.' };
 
+  var baseRow = kolom.headerRow + 1; // baris PERTAMA setelah header (bukan hardcode 3)
   var lastRow = shSumber.getLastRow();
-  if (lastRow < 3) return { success: true, data: [] };
-  var dataPPR = shSumber.getRange(3, kolom.colPPR, lastRow - 2, 1).getValues();
-  var dataNopol = shSumber.getRange(3, kolom.colNopol, lastRow - 2, 1).getValues();
+  if (lastRow < baseRow) return { success: true, data: [] };
+  var dataPPR = shSumber.getRange(baseRow, kolom.colPPR, lastRow - baseRow + 1, 1).getValues();
+  var dataNopol = shSumber.getRange(baseRow, kolom.colNopol, lastRow - baseRow + 1, 1).getValues();
 
   var hasil = [];
   for (var i = 0; i < dataPPR.length; i++) {
     var spm = String(dataPPR[i][0] || '').trim();
     if (!spm) continue;
+    // Jaga-jaga tambahan: kalau isinya PERSIS sama dengan teks header
+    // ("PPR / SITECH", "PPR/SITECH", dst -- kemungkinan header terbaca
+    // dobel/sheet punya baris header berulang), lewati baris ini.
+    var spmUpper = spm.toUpperCase().replace(/\s+/g, '');
+    if (/PPR.*SITECH/.test(spmUpper) || /SITECH.*PPR/.test(spmUpper)) continue;
     hasil.push({ spm: spm, nopol: String(dataNopol[i][0] || '').trim() });
   }
   return { success: true, data: hasil };
@@ -4275,6 +4285,31 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
 
     return { success: true, dibuat: barisBaru.length, totalDiSumber: bacaan.data.length, dilewati: bacaan.data.length - barisBaru.length };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  Bersihkan baris "sampah" di PENGIRIMAN yang sudah kadung terbuat
+//  gara-gara bug baca-header sebelum diperbaiki (kolom SPM isinya
+//  literal teks header spt "PPR / SITECH", bukan nomor SPM asli).
+//  Jalankan MANUAL 1x dari Apps Script editor kalau perlu. TIDAK
+//  menyentuh baris lain (cuma yang kolom SPM-nya cocok pola header).
+// ================================================================
+function bersihkanBarisSampahPengiriman() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(SH_PENGIRIMAN);
+  if (!sheet) { Logger.log('Sheet PENGIRIMAN tidak ditemukan.'); return; }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('Sheet kosong.'); return; }
+  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues(); // A-F
+  var rowsToDelete = [];
+  for (var i = 0; i < data.length; i++) {
+    var spm = String(data[i][4] || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (/PPR.*SITECH/.test(spm) || /SITECH.*PPR/.test(spm)) rowsToDelete.push(2 + i);
+  }
+  if (!rowsToDelete.length) { Logger.log('Tidak ada baris sampah ditemukan.'); return; }
+  for (var k = rowsToDelete.length - 1; k >= 0; k--) sheet.deleteRow(rowsToDelete[k]);
+  _bumpDataCacheVersion();
+  Logger.log(rowsToDelete.length + ' baris sampah dihapus (baris: ' + rowsToDelete.join(', ') + ').');
 }
 
 function getKategoriLemburList() { return { success: true, data: KATEGORI_LEMBUR_LIST }; }
