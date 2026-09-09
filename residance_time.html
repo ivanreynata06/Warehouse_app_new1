@@ -3610,11 +3610,12 @@ function resolveKemarinBatal(idx){
 // ================================================================
 function initJadwalPengirimanUI(){
   var sess = window.WH_SESSION;
-  // Pakai aturan akses YANG SAMA dgn Upload Data Harian (bukan cuma TL)
-  // -- supaya akun spt Saepul Ganni yang sudah punya akses Upload Data
-  // (lewat NIK khusus di UPLOAD_ALLOWED_NIK) otomatis ikut kebagian
-  // fitur sync jadwal ini juga, tidak perlu aturan akses terpisah.
-  var boleh = sess && sess.canUploadData;
+  // Akses KHUSUS utk fitur Jadwal Pengiriman ini saja -- SENGAJA
+  // TERPISAH dari aturan Upload Data Harian (canUploadData). Saepul
+  // Ganni butuh akses ini tapi role/akses lainnya TIDAK berubah.
+  var JADWAL_SYNC_ALLOWED_NIK = ['2165310']; // Saepul Ganni
+  var nikUpper = sess ? String(sess.nik||'').trim() : '';
+  var boleh = sess && (String(sess.role||'').trim().toUpperCase()==='TL' || sess.fullAccess || JADWAL_SYNC_ALLOWED_NIK.indexOf(nikUpper) !== -1);
   if (!boleh) return;
   var btnSync = document.getElementById('btn-sync-jadwal');
   var btnSet  = document.getElementById('btn-setting-jadwal');

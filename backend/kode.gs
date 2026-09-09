@@ -4154,12 +4154,22 @@ function _extractSpreadsheetId(urlOrId) {
   return s; // asumsikan sudah ID mentah kalau tidak match pola URL
 }
 
-// TL/Admin panggil ini (lewat panel admin) tiap awal bulan begitu
-// spreadsheet Jadwal Pengiriman Fitting yang baru dibuat -- cukup
-// paste link-nya, TIDAK perlu edit Apps Script/Script Properties manual.
+// Akses KHUSUS utk 2 fungsi Jadwal Pengiriman ini (Setting Link +
+// baca status) -- SENGAJA TERPISAH dari _actorIsFullAccess/aturan
+// Upload Data Harian. Saepul Ganni butuh akses ini tapi role/akses
+// lainnya TIDAK ikut berubah.
+var JADWAL_SYNC_ALLOWED_NIK = ['2165310']; // Saepul Ganni
+function _bolehAturJadwalPengiriman(actorNik) {
+  return _actorIsFullAccess(actorNik) || JADWAL_SYNC_ALLOWED_NIK.indexOf(String(actorNik || '').trim()) !== -1;
+}
+
+// TL/Admin (+ NIK khusus di JADWAL_SYNC_ALLOWED_NIK) panggil ini
+// (lewat panel admin) tiap awal bulan begitu spreadsheet Jadwal
+// Pengiriman Fitting yang baru dibuat -- cukup paste link-nya, TIDAK
+// perlu edit Apps Script/Script Properties manual.
 function adminSetJadwalPengirimanSumber(actorNik, urlOrId, targetWorkspace) {
   try {
-    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur ini.' };
+    if (!_bolehAturJadwalPengiriman(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur ini.' };
     var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
     var props = PropertiesService.getScriptProperties();
     var key = 'JADWAL_PENGIRIMAN_FITTING_ID_' + workspaceKey;
@@ -4180,7 +4190,7 @@ function adminSetJadwalPengirimanSumber(actorNik, urlOrId, targetWorkspace) {
 
 function adminGetJadwalPengirimanSumberStatus(actorNik, targetWorkspace) {
   try {
-    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    if (!_bolehAturJadwalPengiriman(actorNik)) return { success: false, error: 'Akses ditolak.' };
     var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
     var id = PropertiesService.getScriptProperties().getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + workspaceKey);
     return { success: true, terisi: !!id, url: id ? ('https://docs.google.com/spreadsheets/d/' + id + '/edit') : '', workspace: workspaceKey };
