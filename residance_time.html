@@ -1249,6 +1249,21 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
   </div>
 </div>
 
+<!-- MODAL: KARTU INFO "IKUT PIPA" -- tampil begitu SPM yg keterangannya
+     IKUT PIPA dipilih di dropdown, SEBELUM klik Mulai Loading. -->
+<div class="modal-overlay" id="modal-ikut-pipa">
+  <div class="modal-box" style="width:380px;max-width:92vw;">
+    <div class="modal-icon"><i data-lucide="alert-triangle" style="width:16px;color:var(--accent-orange,#f59e0b);"></i></div>
+    <div class="modal-title">Kiriman Ikut Pipa</div>
+    <div class="modal-hint" id="ikut-pipa-spm-text" style="font-size:12px;color:var(--text-main,#fff);margin:4px 0 10px;"></div>
+    <div class="modal-hint" style="margin-bottom:6px;">Apakah barang yang sudah dimuat sudah dicek oleh checker Pipa?</div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="jawabIkutPipa(false)"><i data-lucide="x" style="width:11px;"></i>Belum</button>
+      <button class="btn-modal-ok" onclick="jawabIkutPipa(true)" style="background:linear-gradient(135deg,#16a34a,#22c55e);"><i data-lucide="check" style="width:12px;"></i>Sudah, Lanjut</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: SETTING LINK JADWAL PENGIRIMAN FITTING (bulanan) -->
 <div class="modal-overlay" id="modal-setting-jadwal">
   <div class="modal-box" style="width:440px;max-width:92vw;">
@@ -3095,19 +3110,46 @@ function resetAddModal(){
   document.getElementById('inp-pending').value='';
   document.getElementById('inp-jenis').value='';
   document.getElementById('auto-preview').style.display='none';
+  ikutPipaConfirmedForSpm=null;
   showToast('?? Pilihan dibersihkan, silakan pilih ulang','info');
 }
+
+var ikutPipaConfirmedForSpm = null; // SPM yang sudah dikonfirmasi "sudah dicek checker Pipa" -- reset tiap ganti pilihan
 
 function onPendingChange(){
   var sel=document.getElementById('inp-pending');
   var idx=sel.value;
   var prev=document.getElementById('auto-preview');
-  if(idx===''){ prev.style.display='none'; return; }
+  if(idx===''){ prev.style.display='none'; ikutPipaConfirmedForSpm=null; return; }
   var r=pendingRowsData[parseInt(idx)];
-  document.getElementById('prev-spm').textContent='SPM: '+r.spm+(r.ikutPipa?' ⚠️ IKUT PIPA -- cek dulu ke checker Pipa':'');
+  document.getElementById('prev-spm').textContent='SPM: '+r.spm+(r.ikutPipa?' ⚠️ IKUT PIPA':'');
   document.getElementById('prev-nopol').textContent=r.nopol||'Nopol belum diisi';
   prev.style.display='flex';
   if(typeof lucide!=='undefined') lucide.createIcons();
+
+  // Kiriman "IKUT PIPA" -- munculkan kartu konfirmasi LANGSUNG begitu
+  // dipilih (bukan nunggu klik Mulai Loading), sesuai permintaan --
+  // checker langsung tahu & jawab sebelum lanjut isi jenis kendaraan.
+  if(r.ikutPipa && ikutPipaConfirmedForSpm!==r.spm){
+    document.getElementById('ikut-pipa-spm-text').textContent='SPM '+r.spm+(r.agen?' -- '+r.agen:'');
+    openModal('modal-ikut-pipa');
+  }
+}
+
+function jawabIkutPipa(sudahDicek){
+  closeModal('modal-ikut-pipa');
+  var sel=document.getElementById('inp-pending');
+  var idx=sel.value;
+  var r=idx!==''?pendingRowsData[parseInt(idx)]:null;
+  if(sudahDicek && r){
+    ikutPipaConfirmedForSpm=r.spm; // tandai sudah dikonfirmasi, tidak akan tanya lagi utk SPM yg sama
+  } else {
+    // "Belum" -- batalkan pilihan, checker harus cek ke Pipa dulu
+    sel.value='';
+    ikutPipaConfirmedForSpm=null;
+    document.getElementById('auto-preview').style.display='none';
+    showToast('Cek dulu ke checker Pipa sebelum pilih SPM ini.','info');
+  }
 }
 
 function startLoad(){
@@ -3119,14 +3161,15 @@ function startLoad(){
   if(!r){ showToast('?? Data tidak valid!','error'); return; }
   var spm=r.spm, agen=r.agen, nopol=r.nopol, row=r.rowIndex;
   if(activeLoads[spm]){ showToast('?? SPM ini sudah dalam proses!','error'); return; }
-  // Kiriman "IKUT PIPA" (fitting yang numpang di kendaraan pipa) --
-  // beda dari "Ikut Fitting" (klik sekali langsung selesai, tanpa
-  // proses muat sendiri): ini TETAP diproses muat spt biasa, tapi
-  // checker WAJIB konfirmasi dulu apakah barangnya sudah dicek oleh
-  // checker Pipa sebelum lanjut mulai muat.
-  if(r.ikutPipa){
-    var lanjut=confirm('⚠️ Kiriman ini IKUT PIPA (SPM '+spm+').\n\nApakah barang yang sudah dimuat sudah dicek oleh checker Pipa?\n\nOK = Sudah dicek, lanjutkan mulai muat.\nBatal = Belum, cek dulu ke checker Pipa.');
-    if(!lanjut){ showToast('Dibatalkan -- cek dulu ke checker Pipa sebelum mulai muat.','info'); return; }
+  // Kiriman "IKUT PIPA" -- konfirmasinya sudah ditanya lewat kartu modal
+  // saat SPM dipilih (onPendingChange/jawabIkutPipa). Kalau entah
+  // kenapa belum terkonfirmasi (mis. user reload halaman tanpa pilih
+  // ulang), tanya sekali lagi di sini sbg jaga-jaga -- jangan sampai
+  // lolos tanpa konfirmasi.
+  if(r.ikutPipa && ikutPipaConfirmedForSpm!==spm){
+    document.getElementById('ikut-pipa-spm-text').textContent='SPM '+spm+(agen?' -- '+agen:'');
+    openModal('modal-ikut-pipa');
+    return;
   }
   var startTime=new Date();
   closeModal('modal-add');
@@ -3567,7 +3610,11 @@ function resolveKemarinBatal(idx){
 // ================================================================
 function initJadwalPengirimanUI(){
   var sess = window.WH_SESSION;
-  var boleh = sess && (String(sess.role||'').trim().toUpperCase()==='TL' || sess.fullAccess);
+  // Pakai aturan akses YANG SAMA dgn Upload Data Harian (bukan cuma TL)
+  // -- supaya akun spt Saepul Ganni yang sudah punya akses Upload Data
+  // (lewat NIK khusus di UPLOAD_ALLOWED_NIK) otomatis ikut kebagian
+  // fitur sync jadwal ini juga, tidak perlu aturan akses terpisah.
+  var boleh = sess && sess.canUploadData;
   if (!boleh) return;
   var btnSync = document.getElementById('btn-sync-jadwal');
   var btnSet  = document.getElementById('btn-setting-jadwal');
