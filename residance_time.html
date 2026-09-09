@@ -3088,7 +3088,7 @@ function renderPendingOptions(){
   var sel=document.getElementById('inp-pending');
   if(!pendingRowsData.length){ sel.innerHTML='<option value="">Tidak ada agen menunggu muat</option>'; return; }
   sel.innerHTML='<option value="">- Pilih Agen -</option>'+
-    pendingRowsData.map(function(r,idx){ return '<option value="'+idx+'">'+escHtml(r.agen)+' \xb7 SPM '+escHtml(r.spm)+'</option>'; }).join('');
+    pendingRowsData.map(function(r,idx){ return '<option value="'+idx+'">'+escHtml(r.agen)+' \xb7 SPM '+escHtml(r.spm)+(r.ikutPipa?' ⚠️ IKUT PIPA':'')+'</option>'; }).join('');
 }
 
 function resetAddModal(){
@@ -3104,7 +3104,7 @@ function onPendingChange(){
   var prev=document.getElementById('auto-preview');
   if(idx===''){ prev.style.display='none'; return; }
   var r=pendingRowsData[parseInt(idx)];
-  document.getElementById('prev-spm').textContent='SPM: '+r.spm;
+  document.getElementById('prev-spm').textContent='SPM: '+r.spm+(r.ikutPipa?' ⚠️ IKUT PIPA -- cek dulu ke checker Pipa':'');
   document.getElementById('prev-nopol').textContent=r.nopol||'Nopol belum diisi';
   prev.style.display='flex';
   if(typeof lucide!=='undefined') lucide.createIcons();
@@ -3119,6 +3119,15 @@ function startLoad(){
   if(!r){ showToast('?? Data tidak valid!','error'); return; }
   var spm=r.spm, agen=r.agen, nopol=r.nopol, row=r.rowIndex;
   if(activeLoads[spm]){ showToast('?? SPM ini sudah dalam proses!','error'); return; }
+  // Kiriman "IKUT PIPA" (fitting yang numpang di kendaraan pipa) --
+  // beda dari "Ikut Fitting" (klik sekali langsung selesai, tanpa
+  // proses muat sendiri): ini TETAP diproses muat spt biasa, tapi
+  // checker WAJIB konfirmasi dulu apakah barangnya sudah dicek oleh
+  // checker Pipa sebelum lanjut mulai muat.
+  if(r.ikutPipa){
+    var lanjut=confirm('⚠️ Kiriman ini IKUT PIPA (SPM '+spm+').\n\nApakah barang yang sudah dimuat sudah dicek oleh checker Pipa?\n\nOK = Sudah dicek, lanjutkan mulai muat.\nBatal = Belum, cek dulu ke checker Pipa.');
+    if(!lanjut){ showToast('Dibatalkan -- cek dulu ke checker Pipa sebelum mulai muat.','info'); return; }
+  }
   var startTime=new Date();
   closeModal('modal-add');
   function commitLocal(){

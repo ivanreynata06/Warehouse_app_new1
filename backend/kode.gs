@@ -489,6 +489,7 @@ function getResidenceTimeData(filter) {
       var isPendingSheet = statusRaw.indexOf('PENDING')  === 0;
       var isTerkirimSheet= statusRaw.indexOf('TERKIRIM') === 0;
       var isGagalSheet   = statusRaw.indexOf('GAGAL') === 0;
+      var keterangan     = String(row[10] || '').trim(); // kolom K = Keterangan (dari sync Jadwal Pengiriman)
 
       var rec = {
         rowIndex        : i + 1,
@@ -506,7 +507,9 @@ function getResidenceTimeData(filter) {
         isPendingSheet  : isPendingSheet,
         isTerkirimSheet : isTerkirimSheet,
         isTerkirim      : isTerkirimSheet,
-        isGagalKirim    : isGagalSheet
+        isGagalKirim    : isGagalSheet,
+        keterangan      : keterangan,
+        ikutPipa        : /IKUT\s*PIPA/i.test(keterangan)
       };
 
       allRows.push(rec);
@@ -695,6 +698,7 @@ function getPendingRows() {
       var nopol      = String(row[5] || '').trim();   // F = Nopol
       var waktuMulai = row[7];                          // H = Waktu Mulai
       var statusBatal= String(row[9] || '').trim();    // J = Status Batal
+      var keterangan = String(row[10] || '').trim();   // K = Keterangan (dari sync Jadwal Pengiriman)
 
       if (!spm || !agen) continue;          // baris belum diisi PIC, lewati
       if (waktuMulai) continue;             // sudah mulai muat (atau sudah "Ikut Fitting"), lewati
@@ -709,7 +713,9 @@ function getPendingRows() {
         rowIndex : i + 1,
         spm      : spm,
         agen     : agen,
-        nopol    : nopol
+        nopol    : nopol,
+        keterangan: keterangan,
+        ikutPipa : /IKUT\s*PIPA/i.test(keterangan)
       });
     }
 
