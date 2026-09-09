@@ -4181,29 +4181,33 @@ function adminGetJadwalPengirimanSumberStatus(actorNik, targetWorkspace) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
-// Cari kolom "PPR/SITECH" dan "No.Pol" di 6 baris pertama sheet sumber
-// (bukan hardcode kolom, biar tahan kalau layout header sedikit
-// bergeser antar bulan). Return {colPPR, colNopol, headerRow} atau null.
-// headerRow = baris PALING BAWAH dari kedua header yang ketemu --
-// data mulai dibaca SETELAH baris ini (bukan hardcode row 3 spt
-// sebelumnya, yang bisa salah baca teks header itu sendiri sbg data
-// kalau header-nya kebetulan cuma 1 baris, bukan 2 baris).
+// Cari kolom "PPR/SITECH", "No.Pol", dan "NAMA" (nama tujuan/customer)
+// di 6 baris pertama sheet sumber (bukan hardcode kolom, biar tahan
+// kalau layout header sedikit bergeser antar bulan). Return
+// {colPPR, colNopol, colNama, headerRow} atau null.
+// headerRow = baris PALING BAWAH dari header yang ketemu -- data
+// mulai dibaca SETELAH baris ini (dinamis, bukan hardcode row 3).
 function _cariKolomJadwalSumber(sheet) {
   var headerRange = sheet.getRange(1, 1, Math.min(6, sheet.getLastRow()), sheet.getLastColumn());
   var vals = headerRange.getValues();
-  var colPPR = null, colNopol = null, rowPPR = 0, rowNopol = 0;
+  var colPPR = null, colNopol = null, colNama = null, rowPPR = 0, rowNopol = 0, rowNama = 0;
   for (var r = 0; r < vals.length; r++) {
     for (var c = 0; c < vals[r].length; c++) {
-      var cell = String(vals[r][c] || '').toUpperCase();
+      var cell = String(vals[r][c] || '').toUpperCase().trim();
       if (!colPPR && /PPR/.test(cell) && /SITECH/.test(cell)) { colPPR = c + 1; rowPPR = r + 1; }
       if (!colNopol && /NO\.?\s*POL/.test(cell)) { colNopol = c + 1; rowNopol = r + 1; }
+      // "NAMA" dicari PERSIS (bukan "mengandung NAMA") & ambil yg PALING
+      // KIRI/PERTAMA ketemu, krn kata ini muncul >1x di sheet sumber
+      // (kolom nama customer utama, DAN kolom "+ NAMA" tambahan di
+      // tengah tabel) -- yg pertama/paling kiri adalah nama customer utama.
+      if (!colNama && cell === 'NAMA') { colNama = c + 1; rowNama = r + 1; }
     }
   }
   if (!colPPR || !colNopol) return null;
-  return { colPPR: colPPR, colNopol: colNopol, headerRow: Math.max(rowPPR, rowNopol) };
+  return { colPPR: colPPR, colNopol: colNopol, colNama: colNama, headerRow: Math.max(rowPPR, rowNopol, rowNama) };
 }
 
-// Baca daftar {spm, nopol} dari sheet sumber (tab bernama angka
+// Baca daftar {spm, nopol, nama} dari sheet sumber (tab bernama angka
 // tanggal, mis. "8") untuk 1 tanggal tertentu.
 function _bacaJadwalPPRDariSumber(tanggal) {
   var id = PropertiesService.getScriptProperties().getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + ACTIVE_WORKSPACE);
@@ -4225,6 +4229,7 @@ function _bacaJadwalPPRDariSumber(tanggal) {
   if (lastRow < baseRow) return { success: true, data: [] };
   var dataPPR = shSumber.getRange(baseRow, kolom.colPPR, lastRow - baseRow + 1, 1).getValues();
   var dataNopol = shSumber.getRange(baseRow, kolom.colNopol, lastRow - baseRow + 1, 1).getValues();
+  var dataNama = kolom.colNama ? shSumber.getRange(baseRow, kolom.colNama, lastRow - baseRow + 1, 1).getValues() : null;
 
   var hasil = [];
   for (var i = 0; i < dataPPR.length; i++) {
@@ -4235,15 +4240,21 @@ function _bacaJadwalPPRDariSumber(tanggal) {
     // dobel/sheet punya baris header berulang), lewati baris ini.
     var spmUpper = spm.toUpperCase().replace(/\s+/g, '');
     if (/PPR.*SITECH/.test(spmUpper) || /SITECH.*PPR/.test(spmUpper)) continue;
-    hasil.push({ spm: spm, nopol: String(dataNopol[i][0] || '').trim() });
+    hasil.push({ spm: spm, nopol: String(dataNopol[i][0] || '').trim(), nama: dataNama ? String(dataNama[i][0] || '').trim() : '' });
   }
   return { success: true, data: hasil };
 }
 
 // Dipanggil dari tombol "Sync Jadwal Hari Ini" di halaman Loading Time
-// -- baca jadwal PPR/SITECH hari ini dari sumber, buat baris BARU di
-// PENGIRIMAN utk tiap SPM yang BELUM ADA barisnya hari itu (dicek by
-// SPM+tanggal biar aman dipanggil berkali-kali/tidak dobel).
+// -- baca jadwal PPR/SITECH hari ini dari sumber:
+//  - SPM yang BELUM ADA barisnya -> buat baris BARU (Agen diisi dari
+//    kolom NAMA di sumber, jadi "Tujuan" langsung terisi juga, tidak
+//    perlu diisi manual lagi).
+//  - SPM yang SUDAH ADA barisnya, tapi Nopol/Agen di PENGIRIMAN masih
+//    KOSONG dan sekarang sudah terisi di sumber -> baris yang sudah
+//    ada di-UPDATE (bukan cuma dilewati) -- ini menjawab kasus umum:
+//    jadwal awalnya dibuat sebelum Nopol/nama customer final, terisi
+//    belakangan di sumber, sistem otomatis nyusul begitu di-sync lagi.
 function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
   try {
     var tanggal = tanggalDDMMYYYY ? _parseTanggalFleksibel(tanggalDDMMYYYY) : new Date();
@@ -4256,34 +4267,56 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan.' };
 
-    // SPM yang SUDAH ada barisnya hari ini (biar tidak dobel kalau
-    // tombol sync dipencet berkali-kali)
+    // Baris yang SUDAH ada hari ini -- petakan SPM -> nomor baris asli,
+    // supaya bisa di-UPDATE (bukan cuma dicek ada/tidaknya).
     var lastRow = sheet.getLastRow();
-    var spmSudahAda = {};
+    var spmKeRow = {}; // { spm: rowNumber }
     if (lastRow >= 2) {
-      var existing = sheet.getRange(2, 1, lastRow - 1, 5).getValues(); // A-E
-      existing.forEach(function (r) {
+      var existing = sheet.getRange(2, 1, lastRow - 1, 6).getValues(); // A-F
+      existing.forEach(function (r, idx) {
         var tglRow = r[0] ? new Date(r[0]) : null;
         if (!tglRow) return;
         tglRow.setHours(0, 0, 0, 0);
         if (tglRow.getTime() !== tanggal.getTime()) return;
         var spmRow = String(r[4] || '').trim();
-        if (spmRow) spmSudahAda[spmRow] = true;
+        if (spmRow) spmKeRow[spmRow] = 2 + idx;
       });
     }
 
-    var barisBaru = bacaan.data
-      .filter(function (x) { return !spmSudahAda[x.spm]; })
-      .map(function (x) {
-        return [tanggal, '', '', '', x.spm, x.nopol, '', '', '', '']; // A..J, B(Agen)/C/D/G-J dikosongkan utk diisi PIC/operator spt biasa
-      });
+    var barisBaru = [];
+    var diupdate = 0;
+    bacaan.data.forEach(function (x) {
+      var rowNum = spmKeRow[x.spm];
+      if (!rowNum) {
+        // Belum ada -> siapkan baris baru. Agen(B) diisi dari nama
+        // customer di sumber, jadi kolom "Tujuan" di tampilan langsung
+        // terisi tanpa perlu PIC ketik manual lagi.
+        barisBaru.push([tanggal, x.nama || '', '', '', x.spm, x.nopol, '', '', '', '']);
+        return;
+      }
+      // Sudah ada -- cek apakah Agen(B)/Nopol(F) di sheet masih kosong
+      // tapi sekarang sudah terisi di sumber -> susulkan update-nya.
+      var currentRow = sheet.getRange(rowNum, 1, 1, 6).getValues()[0]; // A-F
+      var currentAgen = String(currentRow[1] || '').trim();
+      var currentNopol = String(currentRow[5] || '').trim();
+      var perluUpdate = false;
+      if (!currentAgen && x.nama) { sheet.getRange(rowNum, 2).setValue(x.nama); perluUpdate = true; }
+      if (!currentNopol && x.nopol) { sheet.getRange(rowNum, 6).setValue(x.nopol); perluUpdate = true; }
+      if (perluUpdate) diupdate++;
+    });
 
     if (barisBaru.length > 0) {
       sheet.getRange(sheet.getLastRow() + 1, 1, barisBaru.length, 10).setValues(barisBaru);
-      _bumpDataCacheVersion();
     }
+    if (barisBaru.length > 0 || diupdate > 0) _bumpDataCacheVersion();
 
-    return { success: true, dibuat: barisBaru.length, totalDiSumber: bacaan.data.length, dilewati: bacaan.data.length - barisBaru.length };
+    return {
+      success: true,
+      dibuat: barisBaru.length,
+      diupdate: diupdate,
+      totalDiSumber: bacaan.data.length,
+      dilewati: bacaan.data.length - barisBaru.length - diupdate
+    };
   } catch (err) { return { success: false, error: err.message }; }
 }
 

@@ -3610,10 +3610,13 @@ function syncJadwalHariIni(){
         showToast('❌ Gagal sync jadwal: '+(res&&res.error||'tidak diketahui'),'error');
         return;
       }
-      if (res.dibuat > 0){
-        showToast('✅ '+res.dibuat+' kiriman baru ditambahkan dari jadwal ('+res.dilewati+' sudah ada sebelumnya)','success');
+      if (res.dibuat > 0 || res.diupdate > 0){
+        var pesan = [];
+        if (res.dibuat > 0) pesan.push(res.dibuat+' baris baru');
+        if (res.diupdate > 0) pesan.push(res.diupdate+' baris diperbarui (Nopol/Tujuan yang tadinya kosong)');
+        showToast('✅ '+pesan.join(', ')+' -- sisanya sudah tersinkron','success');
       } else {
-        showToast('Tidak ada kiriman baru -- semua sudah tersinkron ('+res.totalDiSumber+' total di jadwal)','info');
+        showToast('Tidak ada perubahan -- semua sudah tersinkron ('+res.totalDiSumber+' total di jadwal)','info');
       }
       clearApiCache();
       loadData();
