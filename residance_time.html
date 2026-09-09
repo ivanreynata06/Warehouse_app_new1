@@ -1649,12 +1649,12 @@ function formatDurMin(m){
   return Math.floor(m/60)+'j '+(m%60)+'m';
 }
 
-function showToast(msg, type){
+function showToast(msg, type, durasiMs){
   var t=document.createElement('div');
   t.className='toast toast-'+(type||'info');
   t.textContent=msg;
   document.body.appendChild(t);
-  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ t.remove(); },300); }, 3200);
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(function(){ t.remove(); },300); }, durasiMs||3200);
 }
 
 // ================================================================
@@ -3617,6 +3617,15 @@ function syncJadwalHariIni(){
         showToast('✅ '+pesan.join(', ')+' -- sisanya sudah tersinkron','success');
       } else {
         showToast('Tidak ada perubahan -- semua sudah tersinkron ('+res.totalDiSumber+' total di jadwal)','info');
+      }
+      // Notifikasi TERPISAH & lebih mencolok utk PPR yang keterangannya
+      // "IKUT PIPA" -- PIC/checker perlu tahu ini TIDAK perlu proses
+      // muat Fitting sendiri (numpang di kendaraan Pipa).
+      if (res.ikutPipa && res.ikutPipa.length){
+        setTimeout(function(){
+          var daftar = res.ikutPipa.map(function(x){ return x.spm+(x.nama?' ('+x.nama+')':''); }).join(', ');
+          showToast('⚠️ '+res.ikutPipa.length+' SPM Fitting "IKUT PIPA" -- TIDAK perlu muat terpisah: '+daftar,'warning',7000);
+        }, 900);
       }
       clearApiCache();
       loadData();

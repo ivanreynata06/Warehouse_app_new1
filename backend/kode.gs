@@ -4181,16 +4181,17 @@ function adminGetJadwalPengirimanSumberStatus(actorNik, targetWorkspace) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
-// Cari kolom "PPR/SITECH", "No.Pol", dan "NAMA" (nama tujuan/customer)
-// di 6 baris pertama sheet sumber (bukan hardcode kolom, biar tahan
-// kalau layout header sedikit bergeser antar bulan). Return
-// {colPPR, colNopol, colNama, headerRow} atau null.
+// Cari kolom "PPR/SITECH", "No.Pol", "NAMA" (nama tujuan/customer), dan
+// "KETERANGAN" di 6 baris pertama sheet sumber (bukan hardcode kolom,
+// biar tahan kalau layout header sedikit bergeser antar bulan). Return
+// {colPPR, colNopol, colNama, colKet, headerRow} atau null.
 // headerRow = baris PALING BAWAH dari header yang ketemu -- data
 // mulai dibaca SETELAH baris ini (dinamis, bukan hardcode row 3).
 function _cariKolomJadwalSumber(sheet) {
   var headerRange = sheet.getRange(1, 1, Math.min(6, sheet.getLastRow()), sheet.getLastColumn());
   var vals = headerRange.getValues();
-  var colPPR = null, colNopol = null, colNama = null, rowPPR = 0, rowNopol = 0, rowNama = 0;
+  var colPPR = null, colNopol = null, colNama = null, colKet = null;
+  var rowPPR = 0, rowNopol = 0, rowNama = 0, rowKet = 0;
   for (var r = 0; r < vals.length; r++) {
     for (var c = 0; c < vals[r].length; c++) {
       var cell = String(vals[r][c] || '').toUpperCase().trim();
@@ -4201,14 +4202,15 @@ function _cariKolomJadwalSumber(sheet) {
       // (kolom nama customer utama, DAN kolom "+ NAMA" tambahan di
       // tengah tabel) -- yg pertama/paling kiri adalah nama customer utama.
       if (!colNama && cell === 'NAMA') { colNama = c + 1; rowNama = r + 1; }
+      if (!colKet && cell === 'KETERANGAN') { colKet = c + 1; rowKet = r + 1; }
     }
   }
   if (!colPPR || !colNopol) return null;
-  return { colPPR: colPPR, colNopol: colNopol, colNama: colNama, headerRow: Math.max(rowPPR, rowNopol, rowNama) };
+  return { colPPR: colPPR, colNopol: colNopol, colNama: colNama, colKet: colKet, headerRow: Math.max(rowPPR, rowNopol, rowNama, rowKet) };
 }
 
-// Baca daftar {spm, nopol, nama} dari sheet sumber (tab bernama angka
-// tanggal, mis. "8") untuk 1 tanggal tertentu.
+// Baca daftar {spm, nopol, nama, keterangan} dari sheet sumber (tab
+// bernama angka tanggal, mis. "8") untuk 1 tanggal tertentu.
 function _bacaJadwalPPRDariSumber(tanggal) {
   var id = PropertiesService.getScriptProperties().getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + ACTIVE_WORKSPACE);
   if (!id) return { success: false, error: 'Link spreadsheet Jadwal Pengiriman Fitting bulan ini belum diisi. Isi dulu di panel admin.' };
@@ -4230,6 +4232,7 @@ function _bacaJadwalPPRDariSumber(tanggal) {
   var dataPPR = shSumber.getRange(baseRow, kolom.colPPR, lastRow - baseRow + 1, 1).getValues();
   var dataNopol = shSumber.getRange(baseRow, kolom.colNopol, lastRow - baseRow + 1, 1).getValues();
   var dataNama = kolom.colNama ? shSumber.getRange(baseRow, kolom.colNama, lastRow - baseRow + 1, 1).getValues() : null;
+  var dataKet = kolom.colKet ? shSumber.getRange(baseRow, kolom.colKet, lastRow - baseRow + 1, 1).getValues() : null;
 
   var hasil = [];
   for (var i = 0; i < dataPPR.length; i++) {
@@ -4240,7 +4243,14 @@ function _bacaJadwalPPRDariSumber(tanggal) {
     // dobel/sheet punya baris header berulang), lewati baris ini.
     var spmUpper = spm.toUpperCase().replace(/\s+/g, '');
     if (/PPR.*SITECH/.test(spmUpper) || /SITECH.*PPR/.test(spmUpper)) continue;
-    hasil.push({ spm: spm, nopol: String(dataNopol[i][0] || '').trim(), nama: dataNama ? String(dataNama[i][0] || '').trim() : '' });
+    var ket = dataKet ? String(dataKet[i][0] || '').trim() : '';
+    hasil.push({
+      spm: spm,
+      nopol: String(dataNopol[i][0] || '').trim(),
+      nama: dataNama ? String(dataNama[i][0] || '').trim() : '',
+      keterangan: ket,
+      ikutPipa: /IKUT\s*PIPA/i.test(ket) // deteksi "IKUT PIPA" di teks keterangan
+    });
   }
   return { success: true, data: hasil };
 }
@@ -4267,17 +4277,18 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan.' };
 
-    // Baris yang SUDAH ada hari ini -- petakan SPM -> nomor baris asli,
-    // supaya bisa di-UPDATE (bukan cuma dicek ada/tidaknya).
+    // Petakan SPM -> nomor baris asli, DI SEMUA TANGGAL (bukan cuma hari
+    // ini!) -- kalau dibatasi ke hari ini saja, SPM yang masih "Menunggu"
+    // dari tanggal SEBELUMNYA (belum sempat dimuat, masih nyangkut) tidak
+    // akan ketemu, lalu sistem malah bikin baris BARU dgn tanggal hari
+    // ini utk SPM yang sama -- SPM-nya jadi dobel muncul di 2 tanggal
+    // berbeda. Yang TERBARU (baris paling bawah) menang kalau kebetulan
+    // ada SPM yang sama tercatat >1x (harusnya tidak terjadi, tapi jaga2).
     var lastRow = sheet.getLastRow();
     var spmKeRow = {}; // { spm: rowNumber }
     if (lastRow >= 2) {
       var existing = sheet.getRange(2, 1, lastRow - 1, 6).getValues(); // A-F
       existing.forEach(function (r, idx) {
-        var tglRow = r[0] ? new Date(r[0]) : null;
-        if (!tglRow) return;
-        tglRow.setHours(0, 0, 0, 0);
-        if (tglRow.getTime() !== tanggal.getTime()) return;
         var spmRow = String(r[4] || '').trim();
         if (spmRow) spmKeRow[spmRow] = 2 + idx;
       });
@@ -4285,13 +4296,18 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
 
     var barisBaru = [];
     var diupdate = 0;
+    var ikutPipaList = []; // {spm, nama} -- utk notifikasi ke PIC/checker
     bacaan.data.forEach(function (x) {
+      if (x.ikutPipa) ikutPipaList.push({ spm: x.spm, nama: x.nama || '' });
+
       var rowNum = spmKeRow[x.spm];
       if (!rowNum) {
         // Belum ada -> siapkan baris baru. Agen(B) diisi dari nama
         // customer di sumber, jadi kolom "Tujuan" di tampilan langsung
-        // terisi tanpa perlu PIC ketik manual lagi.
-        barisBaru.push([tanggal, x.nama || '', '', '', x.spm, x.nopol, '', '', '', '']);
+        // terisi tanpa perlu PIC ketik manual lagi. Keterangan disimpan
+        // di kolom K (kolom baru, tidak dipakai fungsi lain) sbg
+        // referensi -- munculkan di UI kalau perlu.
+        barisBaru.push([tanggal, x.nama || '', '', '', x.spm, x.nopol, '', '', '', '', x.keterangan || '']);
         return;
       }
       // Sudah ada -- cek apakah Agen(B)/Nopol(F) di sheet masih kosong
@@ -4302,17 +4318,19 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       var perluUpdate = false;
       if (!currentAgen && x.nama) { sheet.getRange(rowNum, 2).setValue(x.nama); perluUpdate = true; }
       if (!currentNopol && x.nopol) { sheet.getRange(rowNum, 6).setValue(x.nopol); perluUpdate = true; }
+      if (x.keterangan) { sheet.getRange(rowNum, 11).setValue(x.keterangan); } // kolom K, selalu disamakan dgn sumber terbaru
       if (perluUpdate) diupdate++;
     });
 
     if (barisBaru.length > 0) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, barisBaru.length, 10).setValues(barisBaru);
+      sheet.getRange(sheet.getLastRow() + 1, 1, barisBaru.length, 11).setValues(barisBaru);
     }
     if (barisBaru.length > 0 || diupdate > 0) _bumpDataCacheVersion();
 
     return {
       success: true,
       dibuat: barisBaru.length,
+      ikutPipa: ikutPipaList,
       diupdate: diupdate,
       totalDiSumber: bacaan.data.length,
       dilewati: bacaan.data.length - barisBaru.length - diupdate
