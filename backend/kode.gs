@@ -4251,6 +4251,7 @@ function _bacaJadwalPPRDariSumber(tanggal) {
   var dataKet = kolom.colKet ? shSumber.getRange(baseRow, kolom.colKet, lastRow - baseRow + 1, 1).getValues() : null;
 
   var hasil = [];
+  var dilewatiFormatSalah = [];
   for (var i = 0; i < dataPPR.length; i++) {
     var spm = String(dataPPR[i][0] || '').trim();
     if (!spm) continue;
@@ -4259,6 +4260,13 @@ function _bacaJadwalPPRDariSumber(tanggal) {
     // dobel/sheet punya baris header berulang), lewati baris ini.
     var spmUpper = spm.toUpperCase().replace(/\s+/g, '');
     if (/PPR.*SITECH/.test(spmUpper) || /SITECH.*PPR/.test(spmUpper)) continue;
+    // Validasi FORMAT: nomor SPM/PPR yang benar cuma berisi angka
+    // (kadang gabungan >1 nomor dgn tanda "+", mis. "26090633 +
+    // 26090635"). Kalau isinya ada HURUF (mis. nama ekspedisi/customer
+    // yang kebetulan/salah ketik nyangkut di kolom ini), JANGAN ditarik
+    // jadi baris kiriman -- cuma catat sbg dilewati, biar ketahuan di
+    // hasil sync tanpa bikin data sampah di PENGIRIMAN.
+    if (!/^[\d\s+]+$/.test(spm)) { dilewatiFormatSalah.push(spm); continue; }
     var ket = dataKet ? String(dataKet[i][0] || '').trim() : '';
     hasil.push({
       spm: spm,
@@ -4268,7 +4276,7 @@ function _bacaJadwalPPRDariSumber(tanggal) {
       ikutPipa: /IKUT\s*PIPA/i.test(ket) // deteksi "IKUT PIPA" di teks keterangan
     });
   }
-  return { success: true, data: hasil };
+  return { success: true, data: hasil, dilewatiFormatSalah: dilewatiFormatSalah };
 }
 
 // Dipanggil dari tombol "Sync Jadwal Hari Ini" di halaman Loading Time
@@ -4349,7 +4357,8 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       ikutPipa: ikutPipaList,
       diupdate: diupdate,
       totalDiSumber: bacaan.data.length,
-      dilewati: bacaan.data.length - barisBaru.length - diupdate
+      dilewati: bacaan.data.length - barisBaru.length - diupdate,
+      dilewatiFormatSalah: bacaan.dilewatiFormatSalah || []
     };
   } catch (err) { return { success: false, error: err.message }; }
 }
@@ -4370,8 +4379,14 @@ function bersihkanBarisSampahPengiriman() {
   var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues(); // A-F
   var rowsToDelete = [];
   for (var i = 0; i < data.length; i++) {
-    var spm = String(data[i][4] || '').trim().toUpperCase().replace(/\s+/g, '');
-    if (/PPR.*SITECH/.test(spm) || /SITECH.*PPR/.test(spm)) rowsToDelete.push(2 + i);
+    var spmRaw = String(data[i][4] || '').trim();
+    var spm = spmRaw.toUpperCase().replace(/\s+/g, '');
+    var isHeaderText = /PPR.*SITECH/.test(spm) || /SITECH.*PPR/.test(spm);
+    // SPM asli SELALU cuma angka (kadang gabungan >1 dgn "+") -- kalau
+    // ada huruf (mis. "TRIKAYA INDAH", nama ekspedisi yg salah nyangkut
+    // di kolom PPR/SITECH sumber), ini jelas bukan SPM sungguhan.
+    var isBukanFormatSpm = spmRaw && !/^[\d\s+]+$/.test(spmRaw);
+    if (isHeaderText || isBukanFormatSpm) rowsToDelete.push(2 + i);
   }
   if (!rowsToDelete.length) { Logger.log('Tidak ada baris sampah ditemukan.'); return; }
   for (var k = rowsToDelete.length - 1; k >= 0; k--) sheet.deleteRow(rowsToDelete[k]);

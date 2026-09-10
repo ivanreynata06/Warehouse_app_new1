@@ -3684,6 +3684,14 @@ function syncJadwalHariIni(){
           showToast('⚠️ '+res.ikutPipa.length+' SPM Fitting "IKUT PIPA" -- TIDAK perlu muat terpisah: '+daftar,'warning',7000);
         }, 900);
       }
+      // Baris yang dilewati krn format kolom PPR/SITECH-nya bukan angka
+      // (mis. nama ekspedisi/customer salah nyangkut di kolom itu) --
+      // beri tahu supaya bisa dicek/dibenerin manual di sheet sumber.
+      if (res.dilewatiFormatSalah && res.dilewatiFormatSalah.length){
+        setTimeout(function(){
+          showToast('❌ '+res.dilewatiFormatSalah.length+' baris dilewati (bukan format nomor SPM): '+res.dilewatiFormatSalah.join(', ')+' -- cek isi kolom PPR/SITECH di sheet sumber','error',8000);
+        }, 1800);
+      }
       clearApiCache();
       loadData();
     })
