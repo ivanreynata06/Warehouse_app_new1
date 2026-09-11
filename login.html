@@ -159,6 +159,17 @@
     position: absolute; left: 16px; top: 50%;
     transform: translateY(-50%); color: #64748b; pointer-events: none;
   }
+  /* PENTING: .input-wrap svg di atas menargetkan SEMUA svg di dalam
+     field, termasuk ikon mata di dalam tombol .pwd-toggle -- tanpa
+     baris ini, ikon mata ikut kepaksa position:absolute + left:16px
+     (posisi ikon gembok!), bikin tombolnya kehilangan ukuran/posisi
+     asli & area klik-nya jadi tidak presisi lagi (ini penyebab "tidak
+     rapi" + "belum bisa"). Reset supaya ikon mata tetap ikut layout
+     flex normal di dalam tombolnya sendiri, bukan diposisikan ulang
+     oleh aturan svg generik di atas. */
+  .input-wrap .pwd-toggle svg {
+    position: static; left: auto; top: auto; transform: none; color: inherit;
+  }
 
   .input-wrap input, .input-wrap select {
     width: 100%;
