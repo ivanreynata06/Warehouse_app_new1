@@ -4266,7 +4266,12 @@ function _bacaJadwalPPRDariSumber(tanggal) {
     // yang kebetulan/salah ketik nyangkut di kolom ini), JANGAN ditarik
     // jadi baris kiriman -- cuma catat sbg dilewati, biar ketahuan di
     // hasil sync tanpa bikin data sampah di PENGIRIMAN.
-    if (!/^[\d\s+]+$/.test(spm)) { dilewatiFormatSalah.push(spm); continue; }
+    // Validasi FORMAT: SPM/PPR asli PASTI ada ANGKANYA (kadang gabungan
+    // >1 nomor dgn "+", kadang ada PREFIX huruf spt "PS26091050" --
+    // jadi TIDAK bisa disyaratkan cuma-angka lagi). Yang ditolak cuma
+    // kalau SAMA SEKALI tidak ada angka (mis. "TRIKAYA INDAH", nama
+    // ekspedisi/customer yg kebetulan/salah ketik nyangkut di kolom ini).
+    if (!/\d/.test(spm)) { dilewatiFormatSalah.push(spm); continue; }
     var ket = dataKet ? String(dataKet[i][0] || '').trim() : '';
     hasil.push({
       spm: spm,
@@ -4385,7 +4390,11 @@ function bersihkanBarisSampahPengiriman() {
     // SPM asli SELALU cuma angka (kadang gabungan >1 dgn "+") -- kalau
     // ada huruf (mis. "TRIKAYA INDAH", nama ekspedisi yg salah nyangkut
     // di kolom PPR/SITECH sumber), ini jelas bukan SPM sungguhan.
-    var isBukanFormatSpm = spmRaw && !/^[\d\s+]+$/.test(spmRaw);
+    // SPM asli PASTI ada angkanya (kadang gabungan >1 dgn "+", kadang
+    // ada prefix huruf spt "PS26091050") -- yg jelas BUKAN SPM cuma
+    // kalau SAMA SEKALI tidak ada angka sama sekali (mis. "TRIKAYA
+    // INDAH", nama ekspedisi yg salah nyangkut di kolom PPR/SITECH sumber).
+    var isBukanFormatSpm = spmRaw && !/\d/.test(spmRaw);
     if (isHeaderText || isBukanFormatSpm) rowsToDelete.push(2 + i);
   }
   if (!rowsToDelete.length) { Logger.log('Tidak ada baris sampah ditemukan.'); return; }
