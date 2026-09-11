@@ -189,12 +189,24 @@
   }
   .input-wrap input::placeholder { color: #475569; }
 
+  /* Matikan ikon "reveal password" & "clear" bawaan browser (terutama
+     Edge/Windows -- ::-ms-reveal) yang otomatis muncul DI DALAM field
+     type="password", bentrok/tumpang-tindih dgn ikon mata custom kita
+     (bikin kelihatan ada "kotak aneh" dan klik-nya kena punya browser,
+     bukan punya kita -- makanya kelihatan "tidak berfungsi"). */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear { display: none; width: 0; height: 0; }
+  input[type="password"]::-webkit-credentials-auto-fill-button,
+  input[type="password"]::-webkit-strong-password-auto-fill-button { display: none !important; visibility: hidden; }
+
   .pwd-toggle {
     position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
     background: none; border: none; color: #64748b; cursor: pointer; padding: 4px;
-    display: flex;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2; line-height: 0; -webkit-tap-highlight-color: transparent;
   }
   .pwd-toggle:hover { color: #94a3b8; }
+  .pwd-toggle:focus-visible { outline: 2px solid rgba(0,168,204,0.6); outline-offset: 2px; border-radius: 4px; }
 
   #deptField { display: none; }
 
