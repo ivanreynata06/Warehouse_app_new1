@@ -4344,18 +4344,35 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan.' };
 
-    // Petakan SPM -> nomor baris asli, DI SEMUA TANGGAL (bukan cuma hari
-    // ini!) -- kalau dibatasi ke hari ini saja, SPM yang masih "Menunggu"
-    // dari tanggal SEBELUMNYA (belum sempat dimuat, masih nyangkut) tidak
-    // akan ketemu, lalu sistem malah bikin baris BARU dgn tanggal hari
-    // ini utk SPM yang sama -- SPM-nya jadi dobel muncul di 2 tanggal
-    // berbeda. Yang TERBARU (baris paling bawah) menang kalau kebetulan
-    // ada SPM yang sama tercatat >1x (harusnya tidak terjadi, tapi jaga2).
+    // Petakan SPM -> nomor baris asli, HANYA UTK BARIS DGN TANGGAL YANG
+    // SAMA dgn yang sedang di-sync (bukan lintas semua tanggal lagi).
+    //
+    // PERUBAHAN dari sebelumnya (atas permintaan user): dulu dicocokkan
+    // lintas SEMUA tanggal, dgn alasan supaya SPM yg masih "Menunggu"
+    // dari tanggal SEBELUMNYA (Nopol blm keisi) ikut disusulkan update-
+    // nya. Efek sampingnya: kalau nomor SPM yg sama persis kebetulan
+    // muncul lagi di sheet sumber pada tanggal LAIN sbg kiriman yg
+    // BERBEDA, sistem salah kira "sudah pernah disinkron" dan TIDAK
+    // membuat baris baru utk kiriman itu (row hilang dari sync -- kasus
+    // nyata: PT.INDOPRIMA PERMATA SULAWESI / PACIFIC PLASTINDO tgl
+    // 12/09 tidak ikut tersinkron).
+    //
+    // Sekarang dibatasi per-tanggal: SPM yg sama tapi beda tanggal akan
+    // SELALU dianggap kiriman baru & dibuatkan baris baru sendiri utk
+    // tanggal itu -- tidak akan lagi "tertelan" oleh baris lama. Trade-
+    // off yg disengaja: SPM "Menunggu" dari hari sebelumnya TIDAK lagi
+    // otomatis disusulkan update-nya oleh sync hari berikutnya (harus
+    // di-sync ulang di tanggalnya sendiri kalau sumbernya diedit lagi).
     var lastRow = sheet.getLastRow();
-    var spmKeRow = {}; // { spm: rowNumber }
+    var spmKeRow = {}; // { spm: rowNumber } -- scope: tanggal yg sama saja
+    var tanggalYmd = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     if (lastRow >= 2) {
       var existing = sheet.getRange(2, 1, lastRow - 1, 6).getValues(); // A-F
       existing.forEach(function (r, idx) {
+        var rowTanggal = r[0];
+        var rowYmd = (rowTanggal instanceof Date)
+          ? Utilities.formatDate(rowTanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
+        if (rowYmd !== tanggalYmd) return; // beda tanggal -> jangan dicocokkan
         var spmRow = String(r[4] || '').trim();
         if (spmRow) spmKeRow[spmRow] = 2 + idx;
       });
@@ -4364,54 +4381,30 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     var barisBaru = [];
     var diupdate = 0;
     var ikutPipaList = []; // {spm, nama} -- utk notifikasi ke PIC/checker
-    // Kandidat TABRAKAN SPM lintas tanggal: nomor SPM yg sama persis
-    // muncul lagi di tanggal LAIN, tapi baris lama di PENGIRIMAN sudah
-    // lengkap (Agen+Nopol terisi) sejak tanggal SEBELUMNYA -- sistem
-    // menganggapnya "sudah pernah disinkron", jadi TIDAK dibuatkan baris
-    // baru & TIDAK di-update, padahal ini kemungkinan kiriman BARU yang
-    // beda (nomor SPM kebetulan/salah kepakai ulang di sheet sumber).
-    // Ini kandidat penyebab "row tidak ikut sinkron" yang sebelumnya
-    // tidak tercatat di mana pun -- sekarang selalu dicatat di sini
-    // supaya kelihatan & bisa dicek manual.
-    var kemungkinanTabrakanSpm = [];
     bacaan.data.forEach(function (x) {
       if (x.ikutPipa) ikutPipaList.push({ spm: x.spm, nama: x.nama || '' });
 
       var rowNum = spmKeRow[x.spm];
       if (!rowNum) {
-        // Belum ada -> siapkan baris baru. Agen(B) diisi dari nama
-        // customer di sumber, jadi kolom "Tujuan" di tampilan langsung
-        // terisi tanpa perlu PIC ketik manual lagi. Keterangan disimpan
-        // di kolom K (kolom baru, tidak dipakai fungsi lain) sbg
-        // referensi -- munculkan di UI kalau perlu.
+        // Belum ada (utk tanggal ini) -> siapkan baris baru. Agen(B)
+        // diisi dari nama customer di sumber, jadi kolom "Tujuan" di
+        // tampilan langsung terisi tanpa perlu PIC ketik manual lagi.
+        // Keterangan disimpan di kolom K (kolom baru, tidak dipakai
+        // fungsi lain) sbg referensi -- munculkan di UI kalau perlu.
         barisBaru.push([tanggal, x.nama || '', '', '', x.spm, x.nopol, '', '', '', '', x.keterangan || '']);
         return;
       }
-      // Sudah ada -- cek apakah Agen(B)/Nopol(F) di sheet masih kosong
-      // tapi sekarang sudah terisi di sumber -> susulkan update-nya.
+      // Sudah ada (tanggal sama) -- cek apakah Agen(B)/Nopol(F) di sheet
+      // masih kosong tapi sekarang sudah terisi di sumber -> susulkan
+      // update-nya.
       var currentRow = sheet.getRange(rowNum, 1, 1, 6).getValues()[0]; // A-F
-      var currentTanggal = currentRow[0];
       var currentAgen = String(currentRow[1] || '').trim();
       var currentNopol = String(currentRow[5] || '').trim();
       var perluUpdate = false;
       if (!currentAgen && x.nama) { sheet.getRange(rowNum, 2).setValue(x.nama); perluUpdate = true; }
       if (!currentNopol && x.nopol) { sheet.getRange(rowNum, 6).setValue(x.nopol); perluUpdate = true; }
       if (x.keterangan) { sheet.getRange(rowNum, 11).setValue(x.keterangan); } // kolom K, selalu disamakan dgn sumber terbaru
-      if (perluUpdate) {
-        diupdate++;
-      } else {
-        // Tidak ada yg diupdate -- cek apakah ini kemungkinan tabrakan
-        // (baris lama itu dari tanggal LAIN, bukan hari ini).
-        var tanggalBeda = currentTanggal instanceof Date &&
-          Utilities.formatDate(currentTanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd') !==
-          Utilities.formatDate(tanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-        if (tanggalBeda) {
-          kemungkinanTabrakanSpm.push({
-            spm: x.spm, nama: x.nama || '', nopolSumber: x.nopol,
-            rowLama: rowNum, tanggalRowLama: Utilities.formatDate(currentTanggal, Session.getScriptTimeZone(), 'dd/MM/yyyy')
-          });
-        }
-      }
+      if (perluUpdate) diupdate++;
     });
 
     if (barisBaru.length > 0) {
@@ -4426,14 +4419,147 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       diupdate: diupdate,
       totalDiSumber: bacaan.data.length,
       dilewati: bacaan.data.length - barisBaru.length - diupdate,
-      dilewatiFormatSalah: bacaan.dilewatiFormatSalah || [],
-      kemungkinanTabrakanSpm: kemungkinanTabrakanSpm
+      dilewatiFormatSalah: bacaan.dilewatiFormatSalah || []
     };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
 // ================================================================
-//  Bersihkan baris "sampah" di PENGIRIMAN yang sudah kadung terbuat
+//  AUTO-SYNC JADWAL PENGIRIMAN PPR/FITTING -- real-time saat ada
+//  inputan baru di spreadsheet SUMBER (tidak perlu klik manual "Sync
+//  Jadwal Hari Ini" lagi). Dipasang sbg installable trigger onEdit LANGSUNG
+//  DI SPREADSHEET SUMBER (file "Jadwal Pengiriman Fitting", beda file
+//  dari spreadsheet app ini -- installable trigger BISA dipasang di
+//  spreadsheet lain asal skrip ini punya akses edit ke sana).
+//
+//  Begitu ada input/ubah di salah satu tab tanggal (mis. tab "14"),
+//  otomatis syncJadwalPengirimanHarian() dipanggil UNTUK TANGGAL ITU
+//  SAJA -- tidak scan / sentuh tab tanggal lain sama sekali.
+//
+//  CARA PASANG (jalankan manual 1x dari Apps Script editor -> Run):
+//    setupJadwalAutoSyncTrigger()
+//  Ulangi lagi tiap kali link spreadsheet sumber bulan baru
+//  (JADWAL_PENGIRIMAN_FITTING_ID_<workspace>) diganti di panel admin --
+//  trigger lama nempel ke FILE lama, tidak otomatis ikut pindah.
+// ================================================================
+function onJadwalSumberEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    var sheetName = e.range.getSheet().getName();
+    // Cuma proses edit di tab tanggal (nama tab murni angka, mis. "14",
+    // "05") -- edit di tab lain (rekap/template/dst di file yg sama)
+    // diabaikan.
+    if (!/^\d{1,2}$/.test(sheetName)) return;
+
+    var workspaceKey = _cariWorkspaceUntukSumberJadwal(e.source.getId());
+    if (!workspaceKey) return; // bukan sumber jadwal workspace manapun -- seharusnya tidak terjadi
+
+    // Debounce ringan (8 detik) per kombinasi workspace+tanggal --
+    // paste banyak sel sekaligus / edit beruntun bisa memicu beberapa
+    // event onEdit terpisah utk tab yang sama dlm waktu singkat. Kalau
+    // ada yg "kelewat" krn jatuh di jeda ini, ditandai PENDING supaya
+    // disusulkan oleh checkPendingJadwalSync() (jaring pengaman tiap 5
+    // menit) -- jadi tidak ada perubahan yang hilang selamanya.
+    var debounceKey = 'JADWAL_SYNC_DEBOUNCE_' + workspaceKey + '_' + sheetName;
+    var cache = CacheService.getScriptCache();
+    if (cache.get(debounceKey)) {
+      PropertiesService.getScriptProperties().setProperty('PENDING_JADWAL_SYNC_' + workspaceKey + '_' + sheetName, '1');
+      return;
+    }
+    cache.put(debounceKey, '1', 8);
+
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(3000)) return; // proses sync lain lagi jalan -> lewati, checkPendingJadwalSync akan menyusulkan
+    try {
+      _jalankanSyncJadwalUntukTab(workspaceKey, sheetName);
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    Logger.log('onJadwalSumberEdit gagal: ' + err.message);
+  }
+}
+
+// Jalankan syncJadwalPengirimanHarian utk 1 workspace + 1 nama tab
+// tanggal (mis. "14") -- tanggal dihitung dari BULAN & TAHUN SEKARANG
+// (asumsi spreadsheet sumber yg terpasang di properti
+// JADWAL_PENGIRIMAN_FITTING_ID_<workspace> selalu spreadsheet BULAN
+// BERJALAN, sama seperti asumsi yg sudah dipakai di seluruh kode ini).
+function _jalankanSyncJadwalUntukTab(workspaceKey, sheetName) {
+  var hari = parseInt(sheetName, 10);
+  if (isNaN(hari)) return;
+  var now = new Date();
+  var tanggal = new Date(now.getFullYear(), now.getMonth(), hari);
+  ACTIVE_WORKSPACE = workspaceKey;
+  SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+  var tglStr = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+  var hasil = syncJadwalPengirimanHarian(tglStr);
+  Logger.log('Auto-sync jadwal (' + workspaceKey + ', tab ' + sheetName + '): ' + JSON.stringify(hasil));
+  return hasil;
+}
+
+// Cari workspace mana yang properti JADWAL_PENGIRIMAN_FITTING_ID_-nya
+// cocok dengan ID spreadsheet sumber yang baru saja di-edit.
+function _cariWorkspaceUntukSumberJadwal(sourceId) {
+  var props = PropertiesService.getScriptProperties();
+  var ditemukan = null;
+  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
+    if (ditemukan) return;
+    var id = props.getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + workspaceKey);
+    if (id && id === sourceId) ditemukan = workspaceKey;
+  });
+  return ditemukan;
+}
+
+// Jaring pengaman: susulkan sync yang sempat "kelewat" krn jatuh di
+// dalam jeda debounce onJadwalSumberEdit(). Dipasang sbg trigger
+// berkala (tiap 5 menit) lewat setupJadwalAutoSyncTrigger() di bawah --
+// jadi paling lama nunggu 5 menit, tidak akan ada perubahan yg hilang
+// selamanya kalau debounce sempat melewatkannya.
+function checkPendingJadwalSync() {
+  var props = PropertiesService.getScriptProperties();
+  var semuaProp = props.getProperties();
+  Object.keys(semuaProp).forEach(function (key) {
+    if (semuaProp[key] !== '1' || key.indexOf('PENDING_JADWAL_SYNC_') !== 0) return;
+    var sisa = key.substring('PENDING_JADWAL_SYNC_'.length); // "<workspaceKey>_<tab>"
+    var pemisah = sisa.lastIndexOf('_');
+    var workspaceKey = sisa.substring(0, pemisah);
+    var sheetName = sisa.substring(pemisah + 1);
+    if (!WORKSPACE_MAP.hasOwnProperty(workspaceKey)) { props.deleteProperty(key); return; }
+    try {
+      _jalankanSyncJadwalUntukTab(workspaceKey, sheetName);
+      props.deleteProperty(key);
+    } catch (err) {
+      Logger.log('checkPendingJadwalSync gagal utk ' + key + ': ' + err.message);
+    }
+  });
+}
+
+function setupJadwalAutoSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    var fn = t.getHandlerFunction();
+    if (fn === 'onJadwalSumberEdit' || fn === 'checkPendingJadwalSync') ScriptApp.deleteTrigger(t);
+  });
+
+  var props = PropertiesService.getScriptProperties();
+  var jumlah = 0;
+  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
+    var sourceId = props.getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + workspaceKey);
+    if (!sourceId) return; // workspace ini belum diisi link jadwal sumbernya di panel admin
+    try {
+      var ssSumber = SpreadsheetApp.openById(sourceId);
+      ScriptApp.newTrigger('onJadwalSumberEdit').forSpreadsheet(ssSumber).onEdit().create();
+      jumlah++;
+      Logger.log('Trigger auto-sync jadwal terpasang utk: ' + workspaceKey + ' (' + sourceId + ')');
+    } catch (err) {
+      Logger.log('Gagal pasang trigger jadwal utk ' + workspaceKey + ': ' + err.message);
+    }
+  });
+  ScriptApp.newTrigger('checkPendingJadwalSync').timeBased().everyMinutes(5).create();
+
+  Logger.log('Selesai. ' + jumlah + ' trigger onEdit jadwal terpasang + 1 trigger checkPendingJadwalSync (tiap 5 menit). ' +
+    'PENTING: kalau bulan berganti & link spreadsheet sumber (JADWAL_PENGIRIMAN_FITTING_ID_*) diupdate ke file BARU, jalankan ULANG fungsi ini supaya trigger pindah ke file yang baru (trigger lama tetap nempel ke file lama, tidak otomatis ikut).');
+}
 //  gara-gara bug baca-header sebelum diperbaiki (kolom SPM isinya
 //  literal teks header spt "PPR / SITECH", bukan nomor SPM asli).
 //  Jalankan MANUAL 1x dari Apps Script editor kalau perlu. TIDAK
