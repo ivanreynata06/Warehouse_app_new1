@@ -3279,19 +3279,29 @@ function _supabaseUpsertSnapshot(key, payload) {
     muteHttpExceptions: true
   };
 
-  // Percobaan ulang otomatis (maks 3x) KHUSUS utk error 5xx (502/503/504)
-  // -- ini error di sisi SERVER SUPABASE (biasanya sesaat/transient,
-  // spt "Gateway Timeout"), bukan soal data/kode yg salah. Error 4xx
-  // (mis. 401 kredensial salah, 400 payload salah) TIDAK diulang --
-  // itu pasti gagal lagi kalau dicoba ulang, jadi langsung dilempar.
+  // Percobaan ulang otomatis (maks 5x, dinaikkan dari 3x) KHUSUS utk error
+  // 5xx (502/503/504) -- ini error di sisi SERVER SUPABASE (biasanya
+  // sesaat/transient, spt "Gateway Timeout"), bukan soal data/kode yg
+  // salah. Error 4xx (mis. 401 kredensial salah, 400 payload salah) TIDAK
+  // diulang -- itu pasti gagal lagi kalau dicoba ulang, jadi langsung
+  // dilempar.
+  //
+  // CATATAN (update): sebelumnya cuma 3x percobaan dgn jeda pendek (1s/2s)
+  // -- total waktu tunggu sebelum menyerah cuma ~3 detik, ternyata kadang
+  // kurang kalau Supabase lagi lambat beberapa detik lebih lama (contoh
+  // kasus nyata: key 'inbound:bulanan' bulan berjalan gagal terus2an
+  // dengan 504 walau key lain di sync yang sama sukses). Sekarang jeda
+  // pakai exponential backoff (2s, 4s, 8s, 16s) supaya kasus lambat-sesaat
+  // yang lebih lama dari itu tetap sempat berhasil sebelum menyerah.
+  var MAX_ATTEMPT = 5;
   var lastErr;
-  for (var attempt = 1; attempt <= 3; attempt++) {
+  for (var attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
     var res = UrlFetchApp.fetch(url, options);
     var code = res.getResponseCode();
     if (code >= 200 && code < 300) return; // sukses
     lastErr = new Error('Supabase upsert gagal (' + code + '): ' + res.getContentText());
-    if (code < 500 || attempt === 3) throw lastErr; // 4xx atau sudah percobaan terakhir -> lempar
-    Utilities.sleep(1000 * attempt); // jeda 1s, 2s sebelum coba lagi
+    if (code < 500 || attempt === MAX_ATTEMPT) throw lastErr; // 4xx atau sudah percobaan terakhir -> lempar
+    Utilities.sleep(2000 * Math.pow(2, attempt - 1)); // jeda 2s, 4s, 8s, 16s sebelum coba lagi
   }
   throw lastErr;
 }
