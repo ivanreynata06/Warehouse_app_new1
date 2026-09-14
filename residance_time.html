@@ -3692,6 +3692,18 @@ function syncJadwalHariIni(){
           showToast('❌ '+res.dilewatiFormatSalah.length+' baris dilewati (bukan format nomor SPM): '+res.dilewatiFormatSalah.join(', ')+' -- cek isi kolom PPR/SITECH di sheet sumber','error',8000);
         }, 1800);
       }
+      // Kandidat SPM yang nomornya sama persis dgn baris LAMA (tanggal
+      // beda) yang sudah lengkap Agen+Nopol -- kemungkinan ini kiriman
+      // BARU yang nomor SPM-nya kebetulan/salah kepakai ulang di sheet
+      // sumber, jadi TIDAK dibuatkan baris baru. Perlu dicek manual.
+      if (res.kemungkinanTabrakanSpm && res.kemungkinanTabrakanSpm.length){
+        setTimeout(function(){
+          var daftar = res.kemungkinanTabrakanSpm.map(function(x){
+            return x.spm+' ('+(x.nama||'-')+', row lama tgl '+x.tanggalRowLama+')';
+          }).join('; ');
+          showToast('⚠️ '+res.kemungkinanTabrakanSpm.length+' SPM kemungkinan TABRAKAN dgn baris lama, tidak dibuat baris baru: '+daftar+' -- cek manual apakah ini kiriman baru yg beda','error',10000);
+        }, 2700);
+      }
       clearApiCache();
       loadData();
     })

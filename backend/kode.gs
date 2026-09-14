@@ -4246,6 +4246,28 @@ function _cariKolomJadwalSumber(sheet) {
   return { colPPR: colPPR, colNopol: colNopol, colNama: colNama, colKet: colKet, headerRow: Math.max(rowPPR, rowNopol, rowNama, rowKet) };
 }
 
+// Validasi FORMAT nomor SPM/PPR yang benar-benar valid: nomor SPM asli
+// HANYA berisi ANGKA murni, atau diawali prefix huruf "PS" lalu angka
+// (mis. "PS26104269") -- boleh gabungan >1 nomor dipisah tanda "+"
+// (mis. "26090633 + 26090635" atau "26090898 + PS26104269"). SELAIN itu
+// (ada kata/kalimat, mis. teks dari kolom KETERANGAN yg kebetulan
+// nyangkut/salah baca kolom, atau nama ekspedisi/customer yg salah
+// ketik) HARUS ditolak walau kebetulan ada angka di dalamnya -- ini
+// perbaikan dari validasi lama yg cuma cek "ada angka di mana pun"
+// (lolos utk kalimat spt "TEE DT 3 QTY 80 BOX DAN LEM URGENT" krn
+// kebetulan ada angka "3" dan "80" di dalamnya, padahal itu jelas
+// bukan nomor SPM).
+function _formatSpmValid(spm) {
+  if (!spm) return false;
+  var token = spm.split('+');
+  for (var i = 0; i < token.length; i++) {
+    var t = token[i].trim();
+    if (!t) continue; // token kosong (akibat "+" di ujung/spasi ganda) -- lewati, bukan pelanggaran
+    if (!/^(PS)?\d+$/i.test(t)) return false; // ada token yg bukan digit-murni / PS+digit -> tolak SELURUH isi cell
+  }
+  return true;
+}
+
 // Baca daftar {spm, nopol, nama, keterangan} dari sheet sumber (tab
 // bernama angka tanggal, mis. "8") untuk 1 tanggal tertentu.
 function _bacaJadwalPPRDariSumber(tanggal) {
@@ -4281,18 +4303,13 @@ function _bacaJadwalPPRDariSumber(tanggal) {
     // dobel/sheet punya baris header berulang), lewati baris ini.
     var spmUpper = spm.toUpperCase().replace(/\s+/g, '');
     if (/PPR.*SITECH/.test(spmUpper) || /SITECH.*PPR/.test(spmUpper)) continue;
-    // Validasi FORMAT: nomor SPM/PPR yang benar cuma berisi angka
-    // (kadang gabungan >1 nomor dgn tanda "+", mis. "26090633 +
-    // 26090635"). Kalau isinya ada HURUF (mis. nama ekspedisi/customer
-    // yang kebetulan/salah ketik nyangkut di kolom ini), JANGAN ditarik
-    // jadi baris kiriman -- cuma catat sbg dilewati, biar ketahuan di
-    // hasil sync tanpa bikin data sampah di PENGIRIMAN.
-    // Validasi FORMAT: SPM/PPR asli PASTI ada ANGKANYA (kadang gabungan
-    // >1 nomor dgn "+", kadang ada PREFIX huruf spt "PS26091050" --
-    // jadi TIDAK bisa disyaratkan cuma-angka lagi). Yang ditolak cuma
-    // kalau SAMA SEKALI tidak ada angka (mis. "TRIKAYA INDAH", nama
-    // ekspedisi/customer yg kebetulan/salah ketik nyangkut di kolom ini).
-    if (!/\d/.test(spm)) { dilewatiFormatSalah.push(spm); continue; }
+    // Validasi FORMAT: lihat komentar lengkap di _formatSpmValid() di
+    // atas. Cuma digit murni / "PS"+digit (boleh gabungan dgn "+") yang
+    // lolos -- kalimat/frasa apa pun (walau kebetulan ada angkanya,
+    // mis. teks KETERANGAN yg kebetulan/salah nyangkut di kolom ini)
+    // ditolak dan dicatat di dilewatiFormatSalah, TIDAK dibuat jadi
+    // baris kiriman.
+    if (!_formatSpmValid(spm)) { dilewatiFormatSalah.push(spm); continue; }
     var ket = dataKet ? String(dataKet[i][0] || '').trim() : '';
     hasil.push({
       spm: spm,
@@ -4347,6 +4364,16 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     var barisBaru = [];
     var diupdate = 0;
     var ikutPipaList = []; // {spm, nama} -- utk notifikasi ke PIC/checker
+    // Kandidat TABRAKAN SPM lintas tanggal: nomor SPM yg sama persis
+    // muncul lagi di tanggal LAIN, tapi baris lama di PENGIRIMAN sudah
+    // lengkap (Agen+Nopol terisi) sejak tanggal SEBELUMNYA -- sistem
+    // menganggapnya "sudah pernah disinkron", jadi TIDAK dibuatkan baris
+    // baru & TIDAK di-update, padahal ini kemungkinan kiriman BARU yang
+    // beda (nomor SPM kebetulan/salah kepakai ulang di sheet sumber).
+    // Ini kandidat penyebab "row tidak ikut sinkron" yang sebelumnya
+    // tidak tercatat di mana pun -- sekarang selalu dicatat di sini
+    // supaya kelihatan & bisa dicek manual.
+    var kemungkinanTabrakanSpm = [];
     bacaan.data.forEach(function (x) {
       if (x.ikutPipa) ikutPipaList.push({ spm: x.spm, nama: x.nama || '' });
 
@@ -4363,13 +4390,28 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       // Sudah ada -- cek apakah Agen(B)/Nopol(F) di sheet masih kosong
       // tapi sekarang sudah terisi di sumber -> susulkan update-nya.
       var currentRow = sheet.getRange(rowNum, 1, 1, 6).getValues()[0]; // A-F
+      var currentTanggal = currentRow[0];
       var currentAgen = String(currentRow[1] || '').trim();
       var currentNopol = String(currentRow[5] || '').trim();
       var perluUpdate = false;
       if (!currentAgen && x.nama) { sheet.getRange(rowNum, 2).setValue(x.nama); perluUpdate = true; }
       if (!currentNopol && x.nopol) { sheet.getRange(rowNum, 6).setValue(x.nopol); perluUpdate = true; }
       if (x.keterangan) { sheet.getRange(rowNum, 11).setValue(x.keterangan); } // kolom K, selalu disamakan dgn sumber terbaru
-      if (perluUpdate) diupdate++;
+      if (perluUpdate) {
+        diupdate++;
+      } else {
+        // Tidak ada yg diupdate -- cek apakah ini kemungkinan tabrakan
+        // (baris lama itu dari tanggal LAIN, bukan hari ini).
+        var tanggalBeda = currentTanggal instanceof Date &&
+          Utilities.formatDate(currentTanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd') !==
+          Utilities.formatDate(tanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        if (tanggalBeda) {
+          kemungkinanTabrakanSpm.push({
+            spm: x.spm, nama: x.nama || '', nopolSumber: x.nopol,
+            rowLama: rowNum, tanggalRowLama: Utilities.formatDate(currentTanggal, Session.getScriptTimeZone(), 'dd/MM/yyyy')
+          });
+        }
+      }
     });
 
     if (barisBaru.length > 0) {
@@ -4384,7 +4426,8 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       diupdate: diupdate,
       totalDiSumber: bacaan.data.length,
       dilewati: bacaan.data.length - barisBaru.length - diupdate,
-      dilewatiFormatSalah: bacaan.dilewatiFormatSalah || []
+      dilewatiFormatSalah: bacaan.dilewatiFormatSalah || [],
+      kemungkinanTabrakanSpm: kemungkinanTabrakanSpm
     };
   } catch (err) { return { success: false, error: err.message }; }
 }
@@ -4406,16 +4449,16 @@ function bersihkanBarisSampahPengiriman() {
   var rowsToDelete = [];
   for (var i = 0; i < data.length; i++) {
     var spmRaw = String(data[i][4] || '').trim();
-    var spm = spmRaw.toUpperCase().replace(/\s+/g, '');
-    var isHeaderText = /PPR.*SITECH/.test(spm) || /SITECH.*PPR/.test(spm);
-    // SPM asli SELALU cuma angka (kadang gabungan >1 dgn "+") -- kalau
-    // ada huruf (mis. "TRIKAYA INDAH", nama ekspedisi yg salah nyangkut
-    // di kolom PPR/SITECH sumber), ini jelas bukan SPM sungguhan.
-    // SPM asli PASTI ada angkanya (kadang gabungan >1 dgn "+", kadang
-    // ada prefix huruf spt "PS26091050") -- yg jelas BUKAN SPM cuma
-    // kalau SAMA SEKALI tidak ada angka sama sekali (mis. "TRIKAYA
-    // INDAH", nama ekspedisi yg salah nyangkut di kolom PPR/SITECH sumber).
-    var isBukanFormatSpm = spmRaw && !/\d/.test(spmRaw);
+    var spmNormalized = spmRaw.toUpperCase().replace(/\s+/g, '');
+    var isHeaderText = /PPR.*SITECH/.test(spmNormalized) || /SITECH.*PPR/.test(spmNormalized);
+    // Pakai validator format SPM yang sama dgn _bacaJadwalPPRDariSumber
+    // (lihat komentar lengkap di _formatSpmValid()) -- cuma digit murni
+    // / "PS"+digit yg dianggap SPM sah. Ini juga membersihkan baris yg
+    // kadung terbuat dari BUG SEBELUMNYA (validasi lama cuma cek "ada
+    // angka di mana pun", jadi kalimat spt "TEE DT 3 QTY 80 BOX DAN LEM
+    // URGENT" -- teks dari kolom KETERANGAN yg kebetulan/salah nyangkut
+    // di kolom PPR/SITECH sumber -- lolos jadi baris kiriman).
+    var isBukanFormatSpm = spmRaw && !_formatSpmValid(spmRaw);
     if (isHeaderText || isBukanFormatSpm) rowsToDelete.push(2 + i);
   }
   if (!rowsToDelete.length) { Logger.log('Tidak ada baris sampah ditemukan.'); return; }
