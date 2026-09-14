@@ -3263,7 +3263,7 @@ function _supabaseUpsertSnapshot(key, payload) {
   }
 
   var url = baseUrl.replace(/\/$/, '') + '/rest/v1/dashboard_snapshots?on_conflict=snapshot_key';
-  var res = UrlFetchApp.fetch(url, {
+  var options = {
     method: 'post',
     contentType: 'application/json',
     headers: {
@@ -3277,12 +3277,23 @@ function _supabaseUpsertSnapshot(key, payload) {
       updated_at: new Date().toISOString()
     }]),
     muteHttpExceptions: true
-  });
+  };
 
-  var code = res.getResponseCode();
-  if (code < 200 || code >= 300) {
-    throw new Error('Supabase upsert gagal (' + code + '): ' + res.getContentText());
+  // Percobaan ulang otomatis (maks 3x) KHUSUS utk error 5xx (502/503/504)
+  // -- ini error di sisi SERVER SUPABASE (biasanya sesaat/transient,
+  // spt "Gateway Timeout"), bukan soal data/kode yg salah. Error 4xx
+  // (mis. 401 kredensial salah, 400 payload salah) TIDAK diulang --
+  // itu pasti gagal lagi kalau dicoba ulang, jadi langsung dilempar.
+  var lastErr;
+  for (var attempt = 1; attempt <= 3; attempt++) {
+    var res = UrlFetchApp.fetch(url, options);
+    var code = res.getResponseCode();
+    if (code >= 200 && code < 300) return; // sukses
+    lastErr = new Error('Supabase upsert gagal (' + code + '): ' + res.getContentText());
+    if (code < 500 || attempt === 3) throw lastErr; // 4xx atau sudah percobaan terakhir -> lempar
+    Utilities.sleep(1000 * attempt); // jeda 1s, 2s sebelum coba lagi
   }
+  throw lastErr;
 }
 
 // ================================================================
