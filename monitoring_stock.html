@@ -520,6 +520,7 @@
     .card{ overflow:visible !important; min-height:auto !important; }
     .fm-scroll{ max-height:260px; }
   }
+@keyframes spin{to{transform:rotate(360deg);}}
   </style>
 </head>
 <body>
@@ -597,6 +598,9 @@
         <div style="width:1px;height:24px;background:var(--border-color);margin:0 4px;"></div>
         <button class="nav-icon" onclick="clearApiCache();loadData()" title="Refresh">
           <i data-lucide="refresh-cw" style="width:15px;"></i>
+        </button>
+        <button class="nav-icon" id="btn-sync-monstock" onclick="syncMonitoringStockSekarang()" title="Sync Sekarang (paksa hitung ulang dari spreadsheet -- pakai ini kalau Refresh biasa tidak cukup)">
+          <i data-lucide="cloud-cog" style="width:15px;" id="icon-sync-monstock"></i>
         </button>
         <button class="nav-icon"><i data-lucide="bell" style="width:15px;"></i></button>
         <!-- Font Size Control -->
@@ -1300,6 +1304,32 @@ function resetIOFilter(which) {
 // ================================================================
 //  LOAD DATA
 // ================================================================
+// Paksa hitung ulang Stock + Outbound/Inbound dari spreadsheet & simpan
+// ulang ke Supabase -- beda dari tombol Refresh biasa (yang cuma hapus
+// cache LOKAL browser; kalau snapshot di Supabase SENDIRI yang basi/
+// gagal sebelumnya, Refresh biasa cuma baca ulang data basi yang sama).
+function syncMonitoringStockSekarang(){
+  var icon = document.getElementById('icon-sync-monstock');
+  icon.style.animation = 'spin 1s linear infinite';
+  google.script.run
+    .withSuccessHandler(function(res){
+      icon.style.animation = '';
+      if (!res || !res.success){
+        alert('Gagal sync: ' + (res && res.error || 'tidak diketahui'));
+        return;
+      }
+      var gagal = res.adaGagal ? ' (ada beberapa item yang masih gagal, coba lagi kalau perlu)' : '';
+      clearApiCache();
+      loadData();
+      alert('✅ Sync selesai' + gagal + '. Data sudah dimuat ulang.');
+    })
+    .withFailureHandler(function(err){
+      icon.style.animation = '';
+      alert('Gagal terhubung: ' + (err && err.message || 'cek koneksi'));
+    })
+    .manualSyncNow('io');
+}
+
 function loadData() {
   showLoading(true); hideError();
   google.script.run
