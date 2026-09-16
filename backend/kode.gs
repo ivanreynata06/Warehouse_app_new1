@@ -69,12 +69,15 @@ var API_FUNCTIONS = {
   adminResetPassword      : adminResetPassword,
   adminSetAktif           : adminSetAktif,
   adminEditUser           : adminEditUser,
+  adminHapusUser          : adminHapusUser,
   adminSetFonnteToken     : adminSetFonnteToken,
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   adminProvisionNewDepartment: adminProvisionNewDepartment,
   adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
+  adminHapusDepartemen    : adminHapusDepartemen,
+  adminHapusPlant         : adminHapusPlant,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -232,11 +235,25 @@ var WORKSPACE_LABELS = {
 //  admin, dst) otomatis "melihat" departemen baru ini juga, di mana pun
 //  dipakainya -- tidak perlu ubah satu-satu.
 // ------------------------------------------------------------
-(function _mergeExtraWorkspaces() {
+// ------------------------------------------------------------
+//  Helper baca/simpan WORKSPACE_REGISTRY_EXTRA (Script Properties).
+//  Dipakai bersama oleh: merge saat startup, provisioning departemen
+//  baru, DAN penghapusan departemen/plant -- supaya format datanya
+//  konsisten di satu tempat saja.
+// ------------------------------------------------------------
+function _getExtraWorkspaceRegistry() {
   try {
     var extraJson = PropertiesService.getScriptProperties().getProperty('WORKSPACE_REGISTRY_EXTRA');
-    if (!extraJson) return;
-    var extra = JSON.parse(extraJson); // { key: { id: '...', label: '...' } }
+    return extraJson ? JSON.parse(extraJson) : {};
+  } catch (e) { return {}; } // JSON korup -- anggap kosong, jangan sampai bikin error
+}
+function _saveExtraWorkspaceRegistry(extra) {
+  PropertiesService.getScriptProperties().setProperty('WORKSPACE_REGISTRY_EXTRA', JSON.stringify(extra || {}));
+}
+
+(function _mergeExtraWorkspaces() {
+  try {
+    var extra = _getExtraWorkspaceRegistry();
     Object.keys(extra).forEach(function (key) {
       WORKSPACE_MAP[key] = extra[key].id;
       WORKSPACE_LABELS[key] = extra[key].label;
@@ -3525,14 +3542,26 @@ function _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace) {
 // Daftar departemen/plant yang boleh dipilih -- HANYA dikembalikan
 // untuk super admin (TL biasa tidak perlu/tidak boleh tahu daftar ini
 // dari Panel Admin, mereka cuma kelola departemennya sendiri).
+// isExtra=true berarti departemen ini dibuat lewat Panel Admin (bukan
+// hardcode di kode) -- CUMA yang isExtra=true yang boleh dihapus lewat
+// web (adminHapusDepartemen/adminHapusPlant), supaya departemen inti
+// yang butuh edit kode (Fitting Import, Fitting Rucika, dst) tidak
+// bisa ke-hapus tidak sengaja dari UI.
 function getWorkspaceListForAdmin(actorNik) {
   if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Bukan super admin.' };
+  var extra = _getExtraWorkspaceRegistry();
   var out = [];
   Object.keys(WORKSPACE_MAP).forEach(function (key) {
+    var ex = extra[key];
     out.push({
       key: key,
       label: WORKSPACE_LABELS[key] || key,
-      provisioned: !!WORKSPACE_MAP[key]
+      provisioned: !!WORKSPACE_MAP[key],
+      isExtra: !!ex,
+      plantKey: ex ? ex.plantKey : null,
+      plantLabel: ex ? ex.plantLabel : null,
+      deptKey: ex ? ex.deptKey : null,
+      deptLabel: ex ? ex.deptLabel : null
     });
   });
   return { success: true, data: out, currentWorkspace: ACTIVE_WORKSPACE };
@@ -3573,11 +3602,18 @@ function adminProvisionNewDepartment(actorNik, plantKey, plantLabel, deptKey, de
     if (!hasil || !hasil.success) return { success: false, error: 'Gagal membuat spreadsheet baru.' };
 
     // Simpan ke registry Script Properties supaya langsung aktif tanpa deploy ulang.
-    var props = PropertiesService.getScriptProperties();
-    var extraJson = props.getProperty('WORKSPACE_REGISTRY_EXTRA');
-    var extra = extraJson ? JSON.parse(extraJson) : {};
-    extra[workspaceKey] = { id: hasil.spreadsheetId, label: plantLabel + ' — ' + deptLabel };
-    props.setProperty('WORKSPACE_REGISTRY_EXTRA', JSON.stringify(extra));
+    // plantKey/deptKey ASLI (bukan cuma workspaceKey gabungan) ikut disimpan di
+    // sini supaya penghapusan per-plant (adminHapusPlant) nanti AMAN & akurat --
+    // tidak perlu menebak-nebak dari memecah workspaceKey (yang bisa ambigu
+    // kalau plantKey atau deptKey sendiri sudah mengandung underscore).
+    var extra = _getExtraWorkspaceRegistry();
+    extra[workspaceKey] = {
+      id: hasil.spreadsheetId,
+      label: plantLabel + ' — ' + deptLabel,
+      plantKey: plantKey, plantLabel: plantLabel,
+      deptKey: deptKey, deptLabel: deptLabel
+    };
+    _saveExtraWorkspaceRegistry(extra);
 
     // Langsung aktifkan juga di memori proses saat ini (supaya kalau actor
     // lanjut Tambah User detik itu juga tanpa reload, sudah kebaca).
@@ -3585,6 +3621,88 @@ function adminProvisionNewDepartment(actorNik, plantKey, plantLabel, deptKey, de
     WORKSPACE_LABELS[workspaceKey] = plantLabel + ' — ' + deptLabel;
 
     return { success: true, workspaceKey: workspaceKey, spreadsheetUrl: hasil.url };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ------------------------------------------------------------
+//  Hapus 1 entri dari registry (dipakai bersama oleh adminHapusDepartemen
+//  & adminHapusPlant). TIDAK menghapus file spreadsheet-nya dari Drive
+//  secara default -- cuma "melepas" departemen itu dari WORKSPACE_MAP
+//  supaya tidak lagi bisa dipakai login/upload/dsb (data lama tetap
+//  aman tersimpan di file spreadsheet-nya, kalau-kalau ternyata
+//  terhapus keliru). Set jugaHapusSpreadsheet=true kalau memang mau
+//  file-nya ikut dipindah ke Trash Drive (masih bisa dipulihkan manual
+//  dari Trash, BUKAN dihapus permanen).
+// ------------------------------------------------------------
+function _hapusSatuWorkspace(workspaceKey, extra, jugaHapusSpreadsheet) {
+  var entry = extra[workspaceKey];
+  var idLama = WORKSPACE_MAP[workspaceKey];
+  delete extra[workspaceKey];
+  delete WORKSPACE_MAP[workspaceKey];
+  delete WORKSPACE_LABELS[workspaceKey];
+  var catatan = 'Departemen "' + workspaceKey + '" dilepas dari daftar aktif.';
+  if (jugaHapusSpreadsheet && idLama) {
+    try {
+      DriveApp.getFileById(idLama).setTrashed(true);
+      catatan += ' Spreadsheet-nya dipindah ke Trash Drive (masih bisa dipulihkan).';
+    } catch (e) {
+      catatan += ' TAPI gagal memindah spreadsheet ke Trash: ' + e.message;
+    }
+  } else {
+    catatan += ' Spreadsheet-nya TIDAK dihapus (aman dibuka manual di Drive kalau perlu).';
+  }
+  return catatan;
+}
+
+// ================================================================
+//  HAPUS 1 DEPARTEMEN/PLANT (Super Admin) -- lewat Panel Admin.
+//  HANYA bisa menghapus departemen yang dibuat lewat Panel Admin
+//  (isExtra=true dari getWorkspaceListForAdmin) -- departemen inti yang
+//  hardcode di WORKSPACE_MAP (Fitting Import, Fitting Rucika, dst)
+//  SENGAJA tidak bisa dihapus lewat sini, karena itu butuh edit kode.
+//
+//  jugaHapusSpreadsheet (opsional, default false): kalau true, file
+//  spreadsheet-nya ikut dipindah ke Trash Drive (bisa dipulihkan),
+//  BUKAN dihapus permanen.
+// ================================================================
+function adminHapusDepartemen(actorNik, workspaceKey, jugaHapusSpreadsheet) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin yang boleh menghapus departemen/plant.' };
+    workspaceKey = String(workspaceKey || '').trim();
+    if (!workspaceKey) return { success: false, error: 'Departemen/plant tidak dipilih.' };
+    var extra = _getExtraWorkspaceRegistry();
+    if (!extra[workspaceKey]) {
+      return { success: false, error: 'Departemen ini bukan hasil "Tambah Departemen/Plant Baru" -- departemen inti tidak bisa dihapus lewat web (perlu edit kode langsung kalau memang perlu).' };
+    }
+    var catatan = _hapusSatuWorkspace(workspaceKey, extra, !!jugaHapusSpreadsheet);
+    _saveExtraWorkspaceRegistry(extra);
+    return { success: true, catatan: catatan };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  HAPUS 1 PLANT SEKALIGUS SEMUA DEPARTEMEN DI DALAMNYA (Super Admin).
+//  Sama seperti adminHapusDepartemen, tapi menghapus SEMUA workspace
+//  extra yang plantKey-nya cocok sekaligus -- dicocokkan lewat field
+//  plantKey yang disimpan eksplisit saat provisioning (BUKAN dengan
+//  memecah workspaceKey), supaya aman walau nama plant/departemen
+//  sama-sama mengandung underscore.
+// ================================================================
+function adminHapusPlant(actorNik, plantKey, jugaHapusSpreadsheet) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin yang boleh menghapus plant.' };
+    plantKey = String(plantKey || '').trim();
+    if (!plantKey) return { success: false, error: 'Plant tidak dipilih.' };
+    var extra = _getExtraWorkspaceRegistry();
+    var keysToDelete = Object.keys(extra).filter(function (key) { return extra[key].plantKey === plantKey; });
+    if (!keysToDelete.length) {
+      return { success: false, error: 'Tidak ada departemen (hasil Tambah Departemen/Plant Baru) yang ditemukan untuk plant ini.' };
+    }
+    var catatanList = keysToDelete.map(function (key) {
+      return key + ': ' + _hapusSatuWorkspace(key, extra, !!jugaHapusSpreadsheet);
+    });
+    _saveExtraWorkspaceRegistry(extra);
+    return { success: true, catatan: catatanList.join('\n') };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -3720,6 +3838,51 @@ function adminEditUser(actorNik, nik, namaBaru, roleBaru, targetWorkspace) {
       }
     }
     return { success: false, error: 'NIK ' + nik + ' tidak ditemukan.' };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Hapus akun user SEPENUHNYA (bukan cuma nonaktifkan) dari sheet
+// AKUN_LOGIN. Dipakai lewat tombol "Hapus User" di Panel Admin.
+// Akses: SAMA seperti aksi admin lain (adminTambahUser/adminSetAktif/
+// dst) -- role TL ATAU Admin boleh (lihat _actorIsFullAccess), TIDAK
+// dibatasi cuma Super Admin. Super Admin tambahan bisa menghapus lintas
+// departemen lewat targetWorkspace (lihat _resolveAdminTargetSpreadsheet).
+//
+// 2 pengaman supaya tidak kejadian departemen jadi tidak punya admin
+// sama sekali / actor menghapus akun sendiri yang sedang dipakai login:
+//  1) Tidak bisa hapus akun sendiri yang sedang login.
+//  2) Tidak bisa hapus akun ini kalau dia satu-satunya akun berrole
+//     TL/Admin yang tersisa di departemen itu (departemen akan
+//     "terkunci", tidak ada yang bisa kelola user lagi).
+function adminHapusUser(actorNik, nik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh menghapus user.' };
+    nik = String(nik || '').trim();
+    if (!nik) return { success: false, error: 'NIK wajib diisi.' };
+    if (String(actorNik).trim().toUpperCase() === nik.toUpperCase()) {
+      return { success: false, error: 'Tidak bisa menghapus akun sendiri yang sedang login.' };
+    }
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var sh = tgt.ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!sh) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+    var data = sh.getDataRange().getValues();
+    var rowIdx = -1, jumlahFullAccessLain = 0;
+    for (var i = 1; i < data.length; i++) {
+      var rowNik = String(data[i][0]).trim().toUpperCase();
+      var role = String(data[i][2] || '').toUpperCase();
+      var isFullAccess = (role === 'TL' || role.indexOf('ADMIN') !== -1);
+      if (rowNik === nik.toUpperCase()) { rowIdx = i; }
+      else if (isFullAccess) { jumlahFullAccessLain++; }
+    }
+    if (rowIdx === -1) return { success: false, error: 'NIK ' + nik + ' tidak ditemukan.' };
+    var roleTarget = String(data[rowIdx][2] || '').toUpperCase();
+    var targetFullAccess = (roleTarget === 'TL' || roleTarget.indexOf('ADMIN') !== -1);
+    if (targetFullAccess && jumlahFullAccessLain === 0) {
+      return { success: false, error: 'Tidak bisa menghapus -- ini satu-satunya akun TL/Admin di departemen ini. Tambahkan/aktifkan akun TL/Admin lain dulu sebelum menghapus akun ini, supaya departemen tidak kehilangan akses kelola user sama sekali.' };
+    }
+    sh.deleteRow(rowIdx + 1); // +1 krn data[] mulai dari 0 tapi baris sheet mulai dari 1 (header di baris 1)
+    return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
 }
 

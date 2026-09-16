@@ -244,10 +244,35 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-export" style="background:linear-gradient(135deg,#d4af37,#f4d675);color:#1a1a10;" onclick="openTambahDeptModal()"><i data-lucide="plus-circle" style="width:11px;vertical-align:-2px;"></i> Tambah Departemen/Plant Baru</button>
-          <button class="btn-export" onclick="perbaikiSheetDepartemen()"><i data-lucide="wrench" style="width:11px;vertical-align:-2px;"></i> Perbaiki Sheet Departemen Lama</button>
+          <button class="btn-export" style="background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;" onclick="perbaikiSheetDepartemen()"><i data-lucide="wrench" style="width:11px;vertical-align:-2px;"></i> Perbaiki Sheet Departemen Lama</button>
         </div>
         <div class="modal-note" style="margin:6px 0 0;font-size:11px;opacity:.8;">
           Pakai tombol "Perbaiki Sheet" kalau ada departemen/plant lama yang upload Outbound/Inbound/Stock-nya gagal (sheet-nya sempat hilang/kurang saat dibuat dulu). Aman dijalankan berkali-kali, tidak menghapus data yang sudah ada.
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);">
+          <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="trash-2" style="width:11px;color:var(--accent-red);"></i>Hapus Departemen / Plant</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;opacity:.85;margin-bottom:8px;">
+            <input type="checkbox" id="chk-hapus-spreadsheet" style="width:auto;">
+            Ikut pindahkan file spreadsheet-nya ke Trash Drive (kalau tidak dicentang, file tetap ada -- cuma dilepas dari daftar aktif)
+          </label>
+          <div class="modal-field two-col" style="max-width:520px;align-items:flex-end;">
+            <div>
+              <label for="select-hapus-dept">Hapus 1 Departemen</label>
+              <select id="select-hapus-dept"></select>
+            </div>
+            <button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;" onclick="hapusDepartemenTerpilih()"><i data-lucide="trash-2" style="width:11px;vertical-align:-2px;"></i> Hapus Departemen</button>
+          </div>
+          <div class="modal-field two-col" style="max-width:520px;align-items:flex-end;margin-top:8px;">
+            <div>
+              <label for="select-hapus-plant">Hapus 1 Plant (+ semua departemen di dalamnya)</label>
+              <select id="select-hapus-plant"></select>
+            </div>
+            <button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;" onclick="hapusPlantTerpilih()"><i data-lucide="trash-2" style="width:11px;vertical-align:-2px;"></i> Hapus Plant</button>
+          </div>
+          <div class="modal-note" style="margin:8px 0 0;font-size:11px;opacity:.8;">
+            Cuma departemen/plant hasil "Tambah Departemen/Plant Baru" yang muncul di sini -- departemen inti (Fitting Import, Fitting Rucika, dst) sengaja tidak bisa dihapus lewat web.
+          </div>
         </div>
       </div>
 
@@ -521,23 +546,96 @@ function loadUsers(){
 }
 
 var superAdminPanelLoaded = false;
+var workspaceListCache = []; // hasil getWorkspaceListForAdmin, dipakai jg utk isi dropdown Hapus Departemen/Plant
 // ---- Panel "Kelola Departemen Lain" -- hanya tampil utk super admin ----
 function loadSuperAdminPanel(){
   google.script.run
     .withSuccessHandler(function(res){
       if (!res || !res.success) return; // bukan super admin -> diam saja, panel tetap tersembunyi
       isSuperAdmin = true;
+      workspaceListCache = res.data || [];
       document.getElementById('card-super-admin').style.display = 'flex';
       var sel = document.getElementById('select-workspace');
       var selectedKey = currentTargetWorkspace || res.currentWorkspace;
-      sel.innerHTML = res.data.map(function(w){
+      sel.innerHTML = workspaceListCache.map(function(w){
         var label = w.label + (w.provisioned ? '' : ' (belum di-provision)');
         return '<option value="'+escHtml(w.key)+'" '+(w.key===selectedKey?'selected':'')+' '+(w.provisioned?'':'disabled')+'>'+escHtml(label)+'</option>';
       }).join('');
+      isiDropdownHapus();
     })
     .withFailureHandler(function(){})
     .getWorkspaceListForAdmin(actorNik);
 }
+
+// ---- Isi dropdown "Hapus Departemen" & "Hapus Plant" -- HANYA departemen
+// hasil "Tambah Departemen/Plant Baru" (isExtra=true) yang muncul di sini.
+// Departemen inti (Fitting Import/Rucika, dst) sengaja TIDAK bisa dihapus
+// lewat web supaya tidak ke-hapus tidak sengaja.
+function isiDropdownHapus(){
+  var extras = workspaceListCache.filter(function(w){ return w.isExtra; });
+  var selDept = document.getElementById('select-hapus-dept');
+  if (selDept){
+    selDept.innerHTML = extras.length
+      ? extras.map(function(w){ return '<option value="'+escHtml(w.key)+'">'+escHtml(w.label)+'</option>'; }).join('')
+      : '<option value="">(tidak ada departemen yang bisa dihapus)</option>';
+  }
+  var selPlant = document.getElementById('select-hapus-plant');
+  if (selPlant){
+    var plantMap = {}; // plantKey -> {plantLabel, count}
+    extras.forEach(function(w){
+      if (!w.plantKey) return;
+      if (!plantMap[w.plantKey]) plantMap[w.plantKey] = { label: w.plantLabel || w.plantKey, count: 0 };
+      plantMap[w.plantKey].count++;
+    });
+    var plantKeys = Object.keys(plantMap);
+    selPlant.innerHTML = plantKeys.length
+      ? plantKeys.map(function(pk){ return '<option value="'+escHtml(pk)+'">'+escHtml(plantMap[pk].label)+' ('+plantMap[pk].count+' departemen)</option>'; }).join('')
+      : '<option value="">(tidak ada plant yang bisa dihapus)</option>';
+  }
+}
+
+function hapusDepartemenTerpilih(){
+  var sel = document.getElementById('select-hapus-dept');
+  var key = sel.value;
+  if (!key){ showToast('Pilih departemen yang mau dihapus dulu.','error'); return; }
+  var label = sel.options[sel.selectedIndex].text;
+  var jugaSpreadsheet = document.getElementById('chk-hapus-spreadsheet').checked;
+  var pesan = 'Yakin hapus departemen "'+label+'"?\n\nDepartemen ini akan langsung tidak bisa dipakai login/upload lagi.'+
+    (jugaSpreadsheet ? '\n\nFile spreadsheet-nya JUGA akan dipindah ke Trash Drive (masih bisa dipulihkan manual dari Trash).' : '\n\nFile spreadsheet-nya TIDAK dihapus (aman, data tetap ada di Drive).');
+  if (!confirm(pesan)) return;
+  showLoading(true, 'Menghapus departemen...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      showLoading(false);
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Departemen "'+label+'" berhasil dihapus.','success');
+      superAdminPanelLoaded = false; loadSuperAdminPanel();
+    })
+    .withFailureHandler(function(err){ showLoading(false); showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminHapusDepartemen(actorNik, key, jugaSpreadsheet);
+}
+
+function hapusPlantTerpilih(){
+  var sel = document.getElementById('select-hapus-plant');
+  var key = sel.value;
+  if (!key){ showToast('Pilih plant yang mau dihapus dulu.','error'); return; }
+  var label = sel.options[sel.selectedIndex].text;
+  var jugaSpreadsheet = document.getElementById('chk-hapus-spreadsheet').checked;
+  var pesan = 'Yakin hapus PLANT "'+label+'"? SEMUA departemen di plant ini akan ikut terhapus sekaligus.\n\n'+
+    (jugaSpreadsheet ? 'File spreadsheet SEMUA departemen di plant ini JUGA akan dipindah ke Trash Drive (masih bisa dipulihkan manual).' : 'File spreadsheet-nya TIDAK dihapus (aman, data tetap ada di Drive).');
+  if (!confirm(pesan)) return;
+  showLoading(true, 'Menghapus plant beserta semua departemennya...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      showLoading(false);
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Plant "'+label+'" berhasil dihapus.','success');
+      superAdminPanelLoaded = false; loadSuperAdminPanel();
+    })
+    .withFailureHandler(function(err){ showLoading(false); showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminHapusPlant(actorNik, key, jugaSpreadsheet);
+}
+
 function onWorkspaceSwitch(){
   var sel = document.getElementById('select-workspace');
   var chosen = sel.value;
@@ -629,6 +727,7 @@ function renderUserTable(){
         '<button class="btn-export btn-reset" data-idx="'+idx+'" data-act="reset">Reset Pwd</button>'+
         '<button class="btn-export" style="background:linear-gradient(135deg,#059669,#10b981);" data-idx="'+idx+'" data-act="wa">Token WA</button>'+
         '<button class="btn-export '+(u.aktif?'btn-toggle-on':'btn-toggle-off')+'" data-idx="'+idx+'" data-act="toggle">'+(u.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
+        '<button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);" data-idx="'+idx+'" data-act="hapus">Hapus</button>'+
       '</div></td>'+
     '</tr>';
   }).join('');
@@ -642,6 +741,7 @@ function renderUserTable(){
       else if (act === 'reset') openResetModal(u);
       else if (act === 'wa') openWaModal(u);
       else if (act === 'toggle') doToggleAktif(u);
+      else if (act === 'hapus') doHapusUser(u);
     });
   });
   if(typeof lucide!=='undefined') lucide.createIcons();
@@ -746,6 +846,22 @@ function doToggleAktif(u){
     })
     .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
     .adminSetAktif(actorNik, u.nik, aktifBaru, currentTargetWorkspace);
+}
+
+// Hapus user SEPENUHNYA (bukan cuma nonaktifkan). Berlaku utk role
+// TL/Admin (divalidasi ulang di backend, bukan cuma dicek di sini) --
+// SESUAI PERMINTAAN, bukan cuma Super Admin yang bisa hapus user.
+function doHapusUser(u){
+  if (!confirm('Yakin HAPUS PERMANEN akun '+u.nama+' ('+u.nik+')?\n\nBerbeda dengan "Nonaktifkan" -- ini menghapus barisnya sama sekali dari AKUN_LOGIN, tidak bisa dibatalkan (kecuali buat ulang akunnya lagi).')) return;
+  showToast('Menghapus...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Akun '+u.nama+' berhasil dihapus.','success');
+      loadUsers();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminHapusUser(actorNik, u.nik, currentTargetWorkspace);
 }
 
 // ---- Token WA (Fonnte) per karyawan ----
