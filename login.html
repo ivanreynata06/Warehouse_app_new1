@@ -283,25 +283,17 @@
           <div class="input-wrap">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg>
             <select id="plant" required>
-              <option value="" disabled selected>— Pilih Plant —</option>
-              <option value="cibitung">Plant Cibitung</option>
-              <option value="karawang">Plant Karawang (segera hadir)</option>
-              <option value="kutorejo">Plant Kutorejo (segera hadir)</option>
-              <option value="gresik">Plant Gresik (segera hadir)</option>
+              <option value="" disabled selected>— Memuat daftar plant... —</option>
             </select>
           </div>
         </div>
 
-        <div class="field" id="deptField">
+        <div class="field" id="deptField" style="display:none;">
           <label for="dept">Departemen</label>
           <div class="input-wrap">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <select id="dept">
               <option value="" disabled selected>— Pilih Departemen —</option>
-              <option value="fitting_import">Warehouse Fitting Import</option>
-              <option value="fitting_rucika">Warehouse Fitting Rucika</option>
-              <option value="pipa_rucika">Warehouse Pipa Rucika</option>
-              <option value="sparepart">Warehouse Sparepart</option>
             </select>
           </div>
         </div>
@@ -406,23 +398,57 @@
     window.addEventListener('touchend', endDrag);
 
     // ============================================================
-    // 2) Plant -> tampilkan Departemen (sama seperti versi lama)
+    // 2) Muat daftar Plant & Departemen SUNGGUHAN dari backend (yg
+    //    sudah di-provision Super Admin lewat Kelola User), lalu
+    //    bangun dropdown Plant -> Departemen secara dinamis. TIDAK ADA
+    //    LAGI opsi hardcode/"segera hadir" -- kalau belum ditambahkan
+    //    Super Admin, plant itu memang tidak akan muncul di sini.
     // ============================================================
     const plantSel = document.getElementById('plant');
     const deptField = document.getElementById('deptField');
     const deptSel = document.getElementById('dept');
+    let PLANT_ENTRIES = []; // { workspaceKey, plantKey, plantLabel, deptKey, deptLabel }
+    let currentDeptOptions = [];
+
+    function muatDaftarPlant() {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res || !res.success || !res.data || !res.data.length) {
+            plantSel.innerHTML = '<option value="" disabled selected>— Belum ada plant aktif, hubungi admin —</option>';
+            return;
+          }
+          PLANT_ENTRIES = res.data;
+          // Dropdown Plant: label unik saja (1 plant bisa punya >1 departemen)
+          var plantLabelsUnik = [];
+          PLANT_ENTRIES.forEach(function (x) {
+            if (plantLabelsUnik.indexOf(x.plantLabel) === -1) plantLabelsUnik.push(x.plantLabel);
+          });
+          plantSel.innerHTML = '<option value="" disabled selected>— Pilih Plant —</option>' +
+            plantLabelsUnik.map(function (lbl) {
+              return '<option value="' + lbl.replace(/"/g, '&quot;') + '">Plant ' + lbl + '</option>';
+            }).join('');
+        })
+        .withFailureHandler(function () {
+          plantSel.innerHTML = '<option value="" disabled selected>— Gagal memuat, cek koneksi —</option>';
+        })
+        .getAvailablePlantsForLogin();
+    }
+    muatDaftarPlant();
+
     plantSel.addEventListener('change', () => {
-      if (plantSel.value === 'cibitung') {
-        deptField.style.display = 'block';
-        deptSel.required = true;
-      } else {
+      var plantLabel = plantSel.value;
+      currentDeptOptions = PLANT_ENTRIES.filter(function (x) { return x.plantLabel === plantLabel; });
+      if (!currentDeptOptions.length) {
         deptField.style.display = 'none';
         deptSel.required = false;
-        if (plantSel.value) {
-          alert('Plant ini belum aktif. Saat ini baru Plant Cibitung yang tersedia.');
-          plantSel.value = '';
-        }
+        return;
       }
+      deptSel.innerHTML = '<option value="" disabled selected>— Pilih Departemen —</option>' +
+        currentDeptOptions.map(function (x, idx) {
+          return '<option value="' + idx + '">' + x.deptLabel.replace(/</g, '&lt;') + '</option>';
+        }).join('');
+      deptField.style.display = 'block';
+      deptSel.required = true;
     });
 
     // Toggle show/hide password -- dibungkus IIFE + try/catch sendiri
@@ -489,14 +515,18 @@
       e.preventDefault();
       clearLoginError();
 
-      const plant = plantSel.value;
-      const dept = deptSel.value;
+      const plantLabel = plantSel.value;
+      const deptIdx = deptSel.value;
       const nik = document.getElementById('nik').value.trim();
       const pwd = document.getElementById('pwd').value;
 
-      if (!plant || plant !== 'cibitung') { showLoginError('Pilih Plant Cibitung (plant lain belum aktif).'); return; }
-      if (!dept) { showLoginError('Pilih departemen terlebih dahulu.'); return; }
+      if (!plantLabel) { showLoginError('Pilih Plant terlebih dahulu.'); return; }
+      if (deptIdx === '' || deptIdx == null || !currentDeptOptions[deptIdx]) { showLoginError('Pilih departemen terlebih dahulu.'); return; }
       if (!nik || !pwd) { showLoginError('NIK dan kata sandi wajib diisi.'); return; }
+
+      const entry = currentDeptOptions[deptIdx];
+      const plant = entry.plantKey;
+      const dept = entry.deptKey;
 
       setLoading(true);
 

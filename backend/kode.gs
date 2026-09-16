@@ -61,6 +61,7 @@ var API_FUNCTIONS = {
   previewSPL              : previewSPL,
   // Multi-workspace (Plant & Departemen)
   loginUser               : loginUser,
+  getAvailablePlantsForLogin: getAvailablePlantsForLogin,
   provisionDepartmentSpreadsheet: provisionDepartmentSpreadsheet,
   // Panel Admin — Manajemen User (tambah/reset password/nonaktifkan lewat web)
   getAkunList             : getAkunList,
@@ -3956,6 +3957,73 @@ function loginUser(plant, dept, nik, password) {
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+// ================================================================
+//  DAFTAR PLANT/DEPARTEMEN YANG BENAR-BENAR SUDAH DI-PROVISION --
+//  dipanggil dari login.html SEBELUM login (tanpa NIK/password apa
+//  pun), supaya dropdown Plant & Departemen di halaman login SELALU
+//  mengikuti apa yang sungguh sudah dibuat Super Admin lewat Kelola
+//  User > Tambah Departemen/Plant Baru.
+//
+//  SEBELUMNYA dropdown Plant & Departemen di login.html itu teks
+//  HARDCODE (4 opsi tetap), TIDAK PERNAH baca WORKSPACE_MAP sama
+//  sekali -- makanya plant baru yang ditambahkan lewat panel admin
+//  (mis. "Lemah Abang") tidak pernah muncul di sana walau sudah benar
+//  dibuat di backend, dan malah ada validasi JS yang memblokir login
+//  selain Plant Cibitung. Fungsi ini yang jadi jembatannya sekarang.
+//
+//  TIDAK ADA data sensitif yang dikembalikan (tidak ada spreadsheet
+//  ID) -- cuma label & key yang memang bakal terlihat di dropdown.
+// ================================================================
+function getAvailablePlantsForLogin() {
+  function slugify(s) {
+    return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
+  var out = []; // { workspaceKey, plantKey, plantLabel, deptKey, deptLabel }
+
+  // 1) Departemen DASAR (hardcode di WORKSPACE_MAP sejak awal, semua
+  //    plant-nya "Cibitung"). deptKey = sisa key setelah prefix
+  //    "cibitung_" -- TIDAK direkonstruksi dari label krn label
+  //    departemen dasar (mis. "Warehouse Fitting Import") tidak
+  //    slug-match ke key aslinya ("fitting_import").
+  var BASE_PLANT_KEY = 'cibitung', BASE_PLANT_LABEL = 'Cibitung';
+  Object.keys(WORKSPACE_MAP).forEach(function (key) {
+    if (key.indexOf(BASE_PLANT_KEY + '_') !== 0) return;
+    if (!WORKSPACE_MAP[key]) return; // id kosong = belum di-provision, jangan ditampilkan (sesuai permintaan)
+    var deptKey = key.substring((BASE_PLANT_KEY + '_').length);
+    var label = WORKSPACE_LABELS[key] || key;
+    var deptLabel = label.indexOf(' — ') >= 0 ? label.split(' — ').slice(1).join(' — ') : label;
+    out.push({ workspaceKey: key, plantKey: BASE_PLANT_KEY, plantLabel: BASE_PLANT_LABEL, deptKey: deptKey, deptLabel: deptLabel });
+  });
+
+  // 2) Plant/departemen TAMBAHAN dari Panel Admin (WORKSPACE_REGISTRY_
+  //    EXTRA). plantKey/deptKey direkonstruksi dgn slugify() dari LABEL
+  //    (BUKAN dari workspaceKey gabungan -- workspaceKey = plantKey+
+  //    '_'+deptKey tidak bisa dipisah balik dgn aman kalau salah
+  //    satunya sendiri sudah mengandung "_", mis. "lemah_abang"). Ini
+  //    aman krn adminProvisionNewDepartment() MEMANG generate
+  //    plantKey/deptKey persis dgn slugify(plantLabel)/slugify(deptLabel)
+  //    -- lihat fungsi itu.
+  try {
+    var extraJson = PropertiesService.getScriptProperties().getProperty('WORKSPACE_REGISTRY_EXTRA');
+    var extra = extraJson ? JSON.parse(extraJson) : {};
+    Object.keys(extra).forEach(function (key) {
+      if (!extra[key] || !extra[key].id) return; // belum sungguh ke-provision -- jangan ditampilkan
+      var label = String(extra[key].label || '');
+      var parts = label.split(' — ');
+      var plantLabel = parts[0] || label;
+      var deptLabel = parts.length > 1 ? parts.slice(1).join(' — ') : label;
+      out.push({
+        workspaceKey: key,
+        plantKey: slugify(plantLabel), plantLabel: plantLabel,
+        deptKey: slugify(deptLabel), deptLabel: deptLabel
+      });
+    });
+  } catch (e) { /* registry korup -- jangan sampai bikin halaman login gagal total, cukup lewati bagian ekstra ini */ }
+
+  return { success: true, data: out };
 }
 
 // ================================================================
