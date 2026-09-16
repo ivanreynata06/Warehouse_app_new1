@@ -74,6 +74,7 @@ var API_FUNCTIONS = {
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   adminProvisionNewDepartment: adminProvisionNewDepartment,
+  adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -4045,6 +4046,89 @@ function getAvailablePlantsForLogin() {
 //  Setelah selesai, ID spreadsheet baru muncul di Logger (View ->
 //  Logs / Executions) -- copy ID itu ke WORKSPACE_MAP di atas.
 // ================================================================
+// ------------------------------------------------------------
+//  Pastikan sheet TRANSAKSIONAL INTI (Stock/Kirim/Produksi) + AKUN_LOGIN
+//  ada di sebuah spreadsheet, dengan header yang benar. Dipakai di 2
+//  tempat: (1) provisionDepartmentSpreadsheet() saat departemen BARU
+//  dibuat, dan (2) adminRepairWorkspaceSheets() untuk MEMPERBAIKI
+//  departemen LAMA yang mungkin sudah kadung kekurangan sheet ini
+//  (mis. dibuat sebelum fix ini ada, atau copy Drive-nya belum 100%
+//  materialisasi saat pertama kali di-provision). Tidak pernah
+//  menghapus/menimpa data yang sudah ada -- cuma menambah sheet/header
+//  yang hilang.
+// ------------------------------------------------------------
+function _ensureCoreSheets(ss) {
+  var HEADER_SETUP = {};
+  HEADER_SETUP[SH_STOCK]    = ['Item Number', 'Site', 'Unit', 'Group', 'Description', 'Description2', 'Stock Pcs', 'Stock Tonnase'];
+  HEADER_SETUP[SH_KIRIM]    = ['Item Number', 'Drawing Code', 'Description', 'Description2', 'Effective Date', 'Total Weight'];
+  HEADER_SETUP[SH_PRODUKSI] = ['Item Number', 'Drawing Code', 'Description', 'Description2', 'Effective Date', 'Total Weight'];
+  var report = [];
+  Object.keys(HEADER_SETUP).forEach(function (name) {
+    var headers = HEADER_SETUP[name];
+    var sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sh.setFrozenRows(1);
+      Logger.log('Sheet "' + name + '" tidak ketemu -- dibuat baru dengan header.');
+      report.push(name + ': dibuat baru (sheet tidak ada sebelumnya)');
+    } else if (sh.getLastRow() < 1) {
+      // Sheet-nya ada tapi kosong total (headernya pun ikut hilang) -- isi ulang.
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sh.setFrozenRows(1);
+      report.push(name + ': header diisi ulang (sheet ada tapi kosong total)');
+    } else {
+      report.push(name + ': sudah ada, tidak diubah');
+    }
+  });
+  if (!ss.getSheetByName(SH_AKUN_LOGIN)) {
+    var shAkun = ss.insertSheet(SH_AKUN_LOGIN);
+    shAkun.getRange(1, 1, 1, 5).setValues([['NIK', 'Nama', 'Role', 'PasswordHash', 'Aktif']]);
+    shAkun.setFrozenRows(1);
+    report.push(SH_AKUN_LOGIN + ': dibuat baru (sheet tidak ada sebelumnya)');
+  } else {
+    report.push(SH_AKUN_LOGIN + ': sudah ada, tidak diubah');
+  }
+  return report;
+}
+
+// ================================================================
+//  PERBAIKAN DEPARTEMEN/PLANT LAMA -- untuk kasus departemen yang
+//  SUDAH TERLANJUR dibuat sebelum fix _ensureCoreSheets() ada (atau
+//  saat proses copy Drive belum 100% selesai saat provisioning),
+//  sehingga sheet DASHBOARD_KIRIM/DASHBOARD_PRODUKSI/DASHBOARD_STOCK
+//  hilang -> upload Outbound/Inbound/Stock gagal dgn pesan
+//  'Sheet "..." tidak ditemukan.'
+//
+//  Cara pakai: panggil dari Panel Admin (Super Admin) atau langsung
+//  dari Apps Script editor:
+//    adminRepairWorkspaceSheets(actorNik)               -> perbaiki SEMUA departemen/plant
+//    adminRepairWorkspaceSheets(actorNik, 'cibitung_x')  -> perbaiki 1 departemen/plant saja
+//
+//  AMAN dijalankan berkali-kali (idempotent) -- tidak menghapus atau
+//  menimpa data yang sudah ada, cuma menambahkan sheet/header yang
+//  hilang.
+// ================================================================
+function adminRepairWorkspaceSheets(actorNik, workspaceKey) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin yang boleh menjalankan perbaikan ini.' };
+    var keys = workspaceKey ? [String(workspaceKey)] : Object.keys(WORKSPACE_MAP);
+    var hasil = {};
+    keys.forEach(function (key) {
+      var id = WORKSPACE_MAP[key];
+      if (!id) { hasil[key] = { success: false, detail: ['Belum di-provision (Spreadsheet ID kosong) -- dilewati.'] }; return; }
+      try {
+        var ss = SpreadsheetApp.openById(id);
+        var report = _ensureCoreSheets(ss);
+        hasil[key] = { success: true, detail: report };
+      } catch (e) {
+        hasil[key] = { success: false, detail: ['GAGAL buka/perbaiki spreadsheet: ' + e.message] };
+      }
+    });
+    return { success: true, hasil: hasil };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 function provisionDepartmentSpreadsheet(namaDept, includeRekapMuatan) {
   var sourceId = WORKSPACE_MAP['cibitung_fitting_import'];
   var sourceFile = DriveApp.getFileById(sourceId);
@@ -4075,24 +4159,7 @@ function provisionDepartmentSpreadsheet(namaDept, includeRekapMuatan) {
   // lanjut baca sheet-nya). Sama seperti fallback AKUN_LOGIN di bawah:
   // pastikan sheet inti untuk Upload Data Harian SELALU ada dengan
   // header yang benar, terlepas dari hasil copy-nya.
-  var HEADER_SETUP = {};
-  HEADER_SETUP[SH_STOCK]    = ['Item Number', 'Site', 'Unit', 'Group', 'Description', 'Description2', 'Stock Pcs', 'Stock Tonnase'];
-  HEADER_SETUP[SH_KIRIM]    = ['Item Number', 'Drawing Code', 'Description', 'Description2', 'Effective Date', 'Total Weight'];
-  HEADER_SETUP[SH_PRODUKSI] = ['Item Number', 'Drawing Code', 'Description', 'Description2', 'Effective Date', 'Total Weight'];
-  Object.keys(HEADER_SETUP).forEach(function (name) {
-    var headers = HEADER_SETUP[name];
-    var sh = ss.getSheetByName(name);
-    if (!sh) {
-      sh = ss.insertSheet(name);
-      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sh.setFrozenRows(1);
-      Logger.log('Sheet "' + name + '" tidak ketemu setelah copy -- dibuat ulang manual dengan header.');
-    } else if (sh.getLastRow() < 1) {
-      // Sheet-nya ada tapi kosong total (headernya pun ikut hilang) -- isi ulang.
-      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sh.setFrozenRows(1);
-    }
-  });
+  _ensureCoreSheets(ss);
 
   // Rekap Muatan cuma untuk Warehouse Fitting Import -> hapus sheet-nya
   // di departemen lain supaya tidak membingungkan (menu tetap ada di

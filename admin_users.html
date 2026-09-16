@@ -242,8 +242,12 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <select id="select-workspace" onchange="onWorkspaceSwitch()"></select>
           </div>
         </div>
-        <div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-export" style="background:linear-gradient(135deg,#d4af37,#f4d675);color:#1a1a10;" onclick="openTambahDeptModal()"><i data-lucide="plus-circle" style="width:11px;vertical-align:-2px;"></i> Tambah Departemen/Plant Baru</button>
+          <button class="btn-export" onclick="perbaikiSheetDepartemen()"><i data-lucide="wrench" style="width:11px;vertical-align:-2px;"></i> Perbaiki Sheet Departemen Lama</button>
+        </div>
+        <div class="modal-note" style="margin:6px 0 0;font-size:11px;opacity:.8;">
+          Pakai tombol "Perbaiki Sheet" kalau ada departemen/plant lama yang upload Outbound/Inbound/Stock-nya gagal (sheet-nya sempat hilang/kurang saat dibuat dulu). Aman dijalankan berkali-kali, tidak menghapus data yang sudah ada.
         </div>
       </div>
 
@@ -570,6 +574,31 @@ function submitTambahDept(){
     })
     .withFailureHandler(function(err){ showLoading(false); showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
     .adminProvisionNewDepartment(actorNik, plantLabel, plantLabel, deptLabel, deptLabel, includeRekap);
+}
+
+// ---- Perbaiki Sheet Departemen Lama (Super Admin) ----
+// Untuk departemen/plant yang SUDAH TERLANJUR dibuat sebelum sheet inti
+// (DASHBOARD_KIRIM/DASHBOARD_PRODUKSI/DASHBOARD_STOCK) dijamin ikut
+// terbentuk -- upload Outbound/Inbound/Stock gagal krn sheet-nya hilang.
+// Aman dijalankan berkali-kali (idempotent), tidak menghapus data lama.
+function perbaikiSheetDepartemen(){
+  if (!confirm('Cek & perbaiki sheet inti (Stock/Outbound/Inbound/Akun Login) di SEMUA departemen/plant?\n\nTidak ada data yang dihapus -- hanya sheet yang hilang akan dibuat ulang.')) return;
+  showLoading(true, 'Memeriksa & memperbaiki sheet di semua departemen...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      showLoading(false);
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
+      var ringkasan = Object.keys(res.hasil).map(function(key){
+        var w = res.hasil[key];
+        if (!w.success) return key+': GAGAL -- '+w.detail.join('; ');
+        var dibuatBaru = w.detail.filter(function(d){ return d.indexOf('dibuat baru') !== -1 || d.indexOf('diisi ulang') !== -1; });
+        return key+': '+(dibuatBaru.length ? dibuatBaru.join('; ') : 'sudah lengkap, tidak ada perubahan');
+      }).join('\n');
+      alert('Hasil perbaikan sheet per departemen/plant:\n\n'+ringkasan);
+      showToast('Selesai memeriksa semua departemen/plant.','success');
+    })
+    .withFailureHandler(function(err){ showLoading(false); showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminRepairWorkspaceSheets(actorNik, '');
 }
 
 function renderUserTable(){
