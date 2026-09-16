@@ -300,12 +300,13 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
     </div>
     <div class="modal-field">
       <label for="tambah-role">Role</label>
-      <input type="text" id="tambah-role" list="daftar-role" placeholder="mis. Technician I, TL, Admin Wh Fitting">
+      <input type="text" id="tambah-role" list="daftar-role" placeholder="mis. Technician I, TL, Admin">
       <datalist id="daftar-role">
         <option value="TL"></option>
         <option value="Technician I"></option>
-        <option value="Admin Wh Fitting"></option>
+        <option value="Admin"></option>
       </datalist>
+      <div class="modal-note" style="margin-top:2px;">Role yang mengandung kata <b>"Admin"</b> atau <b>"TL"</b> otomatis dapat akses penuh (termasuk Kelola User & Upload Data Harian).</div>
     </div>
     <div class="modal-field">
       <label for="tambah-pwd">Password Awal</label>

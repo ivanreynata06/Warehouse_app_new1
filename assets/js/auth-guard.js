@@ -52,14 +52,15 @@
   // tab Stock tetap KHUSUS Fitting Import (dicek juga di dalam
   // upload_data.html sendiri lewat window.WH_SESSION.isFittingImport).
 
-  // "Upload Data Harian" SENGAJA dibatasi lebih ketat daripada menu admin
-  // lain: HANYA boleh diakses TL, atau 2 orang admin spesifik ini (dicek
-  // lewat NIK, bukan nama, supaya tidak salah kalau ada nama yang mirip).
-  // Admin lain (mis. "Admin Wh Fitting" selain 2 NIK ini) TIDAK boleh
-  // lihat/akses menu ini walaupun role-nya Admin.
-  var UPLOAD_ALLOWED_NIK = ['PEG22111246', 'PEG24032730']; // Ivan Reynata, Saepulloh
-  var nikUpper = String(nik || '').trim().toUpperCase();
-  var canUploadData = isTL || UPLOAD_ALLOWED_NIK.indexOf(nikUpper) !== -1;
+  // "Upload Data Harian" -- SEBELUMNYA dibatasi ke 2 NIK spesifik
+  // hardcode (Ivan, Saepulloh), jadi admin baru di plant/departemen lain
+  // (mis. Lemah Abang) TIDAK bisa akses walau role-nya "Admin". Sekarang
+  // digeneralisasi: SEMUA role TL / mengandung "ADMIN" boleh akses (sama
+  // seperti fullAccess di atas) -- tab Stock tetap otomatis disembunyikan
+  // untuk departemen selain Fitting Import (lihat
+  // restrictStockTabForOtherDept() di upload_data.html), jadi Admin/TL
+  // departemen lain cuma lihat Outbound & Inbound, sesuai yang diminta.
+  var canUploadData = fullAccess;
 
   // Info sesi yang sedang login, dipakai halaman lain (nama di header, dst)
   window.WH_SESSION = {
@@ -114,8 +115,7 @@
   }
 
   // Upload Data Harian: blokir akses LANGSUNG lewat URL juga (bukan cuma
-  // sembunyikan menunya) -- berlaku untuk SEMUA orang termasuk admin lain
-  // yang bukan 2 NIK di atas, walaupun fullAccess mereka true.
+  // sembunyikan menunya) -- untuk role terbatas (bukan TL/Admin).
   if (!canUploadData) {
     var hereFile2 = (window.location.pathname.split('/').pop() || '').toLowerCase();
     if (hereFile2 === 'upload_data.html') {
@@ -161,9 +161,9 @@
       }
     }
 
-    // Sembunyikan menu "Upload Data Harian" untuk siapa pun selain TL
-    // atau 2 admin spesifik (lihat UPLOAD_ALLOWED_NIK di atas) -- termasuk
-    // admin lain yang biasanya fullAccess=true tetap TIDAK boleh lihat ini.
+    // Sembunyikan menu "Upload Data Harian" untuk role terbatas (bukan
+    // TL/Admin) -- lihat canUploadData di atas (sekarang berbasis role,
+    // bukan lagi hardcode NIK tertentu).
     if (!window.WH_SESSION.canUploadData) {
       document.querySelectorAll('[onclick*="\'upload\'"]').forEach(function (el) {
         el.style.display = 'none';

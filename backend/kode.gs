@@ -4066,6 +4066,34 @@ function provisionDepartmentSpreadsheet(namaDept, includeRekapMuatan) {
     }
   });
 
+  // JAGA-JAGA: makeCopy() (salin Drive) SEHARUSNYA ikut menyalin semua
+  // sheet transaksional di atas (bukan cuma header, tapi struktur sheet-
+  // nya sendiri) -- tapi pernah dilaporkan sheet DASHBOARD_KIRIM/
+  // DASHBOARD_PRODUKSI/DASHBOARD_STOCK tidak ketemu di spreadsheet
+  // departemen baru walau proses "berhasil" (kemungkinan copy Drive
+  // untuk file besar belum 100% selesai materialisasi saat kode ini
+  // lanjut baca sheet-nya). Sama seperti fallback AKUN_LOGIN di bawah:
+  // pastikan sheet inti untuk Upload Data Harian SELALU ada dengan
+  // header yang benar, terlepas dari hasil copy-nya.
+  var HEADER_SETUP = {};
+  HEADER_SETUP[SH_STOCK]    = ['Item Number', 'Site', 'Unit', 'Group', 'Description', 'Description2', 'Stock Pcs', 'Stock Tonnase'];
+  HEADER_SETUP[SH_KIRIM]    = ['Item Number', 'Drawing Code', 'Description', 'Description2', 'Effective Date', 'Total Weight'];
+  HEADER_SETUP[SH_PRODUKSI] = ['Item Number', 'Drawing Code', 'Description', 'Description2', 'Effective Date', 'Total Weight'];
+  Object.keys(HEADER_SETUP).forEach(function (name) {
+    var headers = HEADER_SETUP[name];
+    var sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sh.setFrozenRows(1);
+      Logger.log('Sheet "' + name + '" tidak ketemu setelah copy -- dibuat ulang manual dengan header.');
+    } else if (sh.getLastRow() < 1) {
+      // Sheet-nya ada tapi kosong total (headernya pun ikut hilang) -- isi ulang.
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sh.setFrozenRows(1);
+    }
+  });
+
   // Rekap Muatan cuma untuk Warehouse Fitting Import -> hapus sheet-nya
   // di departemen lain supaya tidak membingungkan (menu tetap ada di
   // frontend, tapi baiknya nanti disembunyikan juga untuk departemen ini).
