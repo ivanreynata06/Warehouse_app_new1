@@ -125,6 +125,42 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    // ================================================================
+    //  USERBAR MENGAMBANG -- Selamat Pagi/Siang/Sore/Malam + nama user
+    //  yang login + tombol Logout, SELALU muncul di pojok kanan atas di
+    //  SEMUA halaman & SEMUA akun, TIDAK tergantung sidebar terbuka/
+    //  tertutup (sebelumnya greeting cuma ada di index.html, dan Logout
+    //  cuma nempel di menu sidebar -- kalau sidebar tersembunyi/di-
+    //  collapse, mis. di layar sempit, Logout jadi tidak kelihatan sama
+    //  sekali). index.html DILEWATI krn sudah punya versi sendiri
+    //  (greeting-badge + user-session-badge + tombol Logout di topbar).
+    // ================================================================
+    (function injectFloatingUserBar() {
+      if (document.getElementById('greeting-badge') || document.getElementById('user-session-badge')) return; // halaman ini sudah punya versinya sendiri
+      if (document.getElementById('wh-userbar')) return; // jaga2 anti dobel
+      try {
+        var jam = new Date().getHours();
+        var salam = jam < 11 ? 'Selamat Pagi' : jam < 15 ? 'Selamat Siang' : jam < 19 ? 'Selamat Sore' : 'Selamat Malam';
+        var nama = String(window.WH_SESSION.nama || '').trim() || window.WH_SESSION.nik;
+        var namaAman = nama.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+
+        var bar = document.createElement('div');
+        bar.id = 'wh-userbar';
+        bar.style.cssText = 'position:fixed;top:10px;right:14px;z-index:99999;display:flex;align-items:center;gap:8px;' +
+          'background:rgba(18,20,30,.94);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.09);' +
+          'border-radius:999px;padding:6px 8px 6px 14px;font-family:inherit;font-size:11px;line-height:1;' +
+          'color:#e8eaf0;box-shadow:0 4px 16px rgba(0,0,0,.35);';
+        bar.innerHTML =
+          '<span style="opacity:.7;white-space:nowrap;">' + salam + ',</span>' +
+          '<span style="font-weight:700;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;">' + namaAman + '</span>' +
+          '<button type="button" onclick="whLogout()" title="Logout" ' +
+            'style="display:flex;align-items:center;gap:4px;background:rgba(255,80,80,.14);border:1px solid rgba(255,80,80,.35);' +
+            'color:#ff8f8f;border-radius:999px;padding:5px 11px;cursor:pointer;font-size:10.5px;font-weight:700;white-space:nowrap;">' +
+            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>';
+        document.body.appendChild(bar);
+      } catch (e) { /* jangan sampai userbar gagal bikin seluruh halaman error */ }
+    })();
+
     // ---- Departemen selain Fitting Import: sembunyikan menu di luar
     //      3 menu inti (Monitoring FTE, Monitoring Stock, Input Lembur) ----
     if (!window.WH_SESSION.isFittingImport) {
