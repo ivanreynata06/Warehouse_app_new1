@@ -917,6 +917,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <div class="nav-divider"></div>
         <button class="nav-icon" onclick="clearApiCache();loadData()" data-tip="Refresh data"><i data-lucide="refresh-cw" style="width:13px;" id="refresh-icon"></i></button>
         <button class="nav-icon" id="btn-sync-jadwal" onclick="syncJadwalHariIni()" data-tip="Sync Jadwal Hari Ini (dari spreadsheet Jadwal Pengiriman Fitting)" style="display:none;"><i data-lucide="calendar-sync" style="width:13px;"></i></button>
+        <button class="nav-icon" id="btn-resync-tanggal" onclick="openModalResyncTanggal()" data-tip="Hapus & Sync Ulang 1 Tanggal (kalau data hasil sync ternyata salah/basi)" style="display:none;"><i data-lucide="eraser" style="width:13px;"></i></button>
         <button class="nav-icon" id="btn-setting-jadwal" onclick="openModalSettingJadwal()" data-tip="Setting Link Jadwal Bulan Ini" style="display:none;"><i data-lucide="settings" style="width:13px;"></i></button>
         <button class="nav-icon" data-tip="Notifikasi"><i data-lucide="bell" style="width:13px;"></i></button>
         <div class="font-ctrl" data-tip="Ukuran font">
@@ -1278,6 +1279,31 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeModal('modal-setting-jadwal')">Batal</button>
       <button class="btn-modal-ok" id="btn-simpan-link-jadwal" onclick="simpanLinkJadwal()"><i data-lucide="save" style="width:12px;"></i>Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: HAPUS & SYNC ULANG 1 TANGGAL -- dipakai kalau hasil sync
+     sebelumnya utk tanggal itu ternyata salah/basi (mis. tab sumber
+     sempat berisi sisa data duplikat dari tanggal lain sebelum
+     dibersihkan). Menghapus semua baris PENGIRIMAN tanggal itu, lalu
+     sync ulang FRESH dari tab sumber tanggal yang sama. -->
+<div class="modal-overlay" id="modal-resync-tanggal">
+  <div class="modal-box" style="width:420px;max-width:92vw;">
+    <div class="modal-icon" style="background:linear-gradient(135deg,rgba(239,68,68,.3),rgba(239,68,68,.1));border-color:rgba(239,68,68,.3);"><i data-lucide="eraser" style="width:16px;color:var(--accent-red,#ef4444);"></i></div>
+    <div class="modal-title">Hapus &amp; Sync Ulang 1 Tanggal</div>
+    <div class="modal-hint" style="margin-bottom:10px;">
+      Pakai ini kalau data jadwal hasil sync utk 1 tanggal ternyata salah/basi (mis. sama persis dgn tanggal lain). Ini akan <b>menghapus SEMUA baris jadwal tanggal yang dipilih</b>, lalu sync ulang bersih dari tab sumber tanggal itu.<br><br>
+      <b style="color:var(--accent-red,#ef4444);">Pastikan dulu</b> tab tanggal ini di spreadsheet sumber "Jadwal Pengiriman Fitting" sudah benar/bersih -- kalau belum diperbaiki di sana, hasil sync ulang akan sama basinya.
+    </div>
+    <div class="modal-field">
+      <label>Tanggal yang mau dihapus &amp; di-sync ulang</label>
+      <input type="date" id="input-tanggal-resync">
+    </div>
+    <div id="status-resync-tanggal" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal('modal-resync-tanggal')">Batal</button>
+      <button class="btn-modal-ok" id="btn-jalankan-resync-tanggal" style="background:linear-gradient(135deg,#ef4444,#f87171);" onclick="jalankanResyncTanggal()"><i data-lucide="eraser" style="width:12px;"></i>Hapus &amp; Sync Ulang</button>
     </div>
   </div>
 </div>
@@ -3618,8 +3644,10 @@ function initJadwalPengirimanUI(){
   var boleh = sess && (String(sess.role||'').trim().toUpperCase()==='TL' || sess.fullAccess || JADWAL_SYNC_ALLOWED_NIK.indexOf(nikUpper) !== -1);
   if (!boleh) return;
   var btnSync = document.getElementById('btn-sync-jadwal');
+  var btnResync = document.getElementById('btn-resync-tanggal');
   var btnSet  = document.getElementById('btn-setting-jadwal');
   if (btnSync) btnSync.style.display = '';
+  if (btnResync) btnResync.style.display = '';
   if (btnSet)  btnSet.style.display  = '';
 }
 
@@ -3654,6 +3682,47 @@ function simpanLinkJadwal(){
     })
     .withFailureHandler(function(err){ btn.disabled=false; statusEl.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
     .adminSetJadwalPengirimanSumber(nik, link, '');
+}
+
+// ---- Hapus & Sync Ulang 1 Tanggal (utk data hasil sync yg ternyata salah/basi) ----
+function openModalResyncTanggal(){
+  var input = document.getElementById('input-tanggal-resync');
+  if (input && !input.value){
+    // Default: tanggal yang lagi difilter di halaman ini kalau ada, kalau tidak ya hari ini.
+    var d = (typeof currentFilterDate !== 'undefined' && currentFilterDate) ? currentFilterDate : new Date();
+    var yyyy = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+    input.value = yyyy+'-'+mm+'-'+dd;
+  }
+  document.getElementById('status-resync-tanggal').textContent = '';
+  openModal('modal-resync-tanggal');
+}
+
+function jalankanResyncTanggal(){
+  var input = document.getElementById('input-tanggal-resync');
+  var statusEl = document.getElementById('status-resync-tanggal');
+  var val = input.value; // format YYYY-MM-DD dari <input type="date">
+  if (!val){ statusEl.textContent = 'Pilih tanggal dulu.'; return; }
+  var parts = val.split('-'); // [YYYY, MM, DD]
+  var tglDDMMYYYY = parts[2]+'/'+parts[1]+'/'+parts[0];
+  var labelTgl = parts[2]+'/'+parts[1]+'/'+parts[0];
+
+  if (!confirm('Yakin HAPUS semua data jadwal tanggal '+labelTgl+' lalu sync ulang dari sumber?\n\nPastikan tab tanggal ini di spreadsheet sumber sudah benar/bersih dulu -- kalau belum, hasilnya akan sama seperti sebelumnya.')) return;
+
+  var btn = document.getElementById('btn-jalankan-resync-tanggal');
+  btn.disabled = true;
+  statusEl.textContent = 'Menghapus & sync ulang...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled = false;
+      if (!res || !res.success){ statusEl.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+      statusEl.textContent = '✅ '+res.dihapus+' baris lama dihapus, '+res.dibuatUlang+' baris baru dibuat ('+res.totalDiSumber+' total di sumber saat ini).';
+      showToast('✅ Tanggal '+labelTgl+' berhasil dihapus & di-sync ulang','success');
+      clearApiCache();
+      loadData();
+      setTimeout(function(){ closeModal('modal-resync-tanggal'); }, 1600);
+    })
+    .withFailureHandler(function(err){ btn.disabled=false; statusEl.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
+    .resyncBersihJadwalTanggal(tglDDMMYYYY);
 }
 
 function syncJadwalHariIni(){

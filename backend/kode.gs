@@ -98,7 +98,9 @@ var API_FUNCTIONS = {
   // Jadwal Pengiriman Fitting -- sync otomatis dari sumber eksternal
   adminSetJadwalPengirimanSumber: adminSetJadwalPengirimanSumber,
   adminGetJadwalPengirimanSumberStatus: adminGetJadwalPengirimanSumberStatus,
-  syncJadwalPengirimanHarian: syncJadwalPengirimanHarian
+  syncJadwalPengirimanHarian: syncJadwalPengirimanHarian,
+  hapusDataPengirimanByTanggal: hapusDataPengirimanByTanggal,
+  resyncBersihJadwalTanggal: resyncBersihJadwalTanggal
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -4746,6 +4748,47 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       totalDiSumber: bacaan.data.length,
       dilewati: bacaan.data.length - barisBaru.length - diupdate,
       dilewatiFormatSalah: bacaan.dilewatiFormatSalah || []
+    };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Hapus SEMUA baris di sheet PENGIRIMAN utk 1 tanggal tertentu (kolom A).
+// Dipakai kalau data hasil sync utk tanggal itu ternyata salah/basi
+// (mis. tab sumber sempat berisi data duplikat dari tanggal lain sebelum
+// dibersihkan) -- lihat resyncBersihJadwalTanggal() di bawah utk alur
+// lengkap "hapus lalu sync ulang" dalam 1 aksi.
+function hapusDataPengirimanByTanggal(tanggalDDMMYYYY) {
+  return _hapusDataByTanggalRange(SH_PENGIRIMAN, 1, tanggalDDMMYYYY, tanggalDDMMYYYY); // kolom A = tanggal
+}
+
+// ================================================================
+//  HAPUS DATA JADWAL 1 TANGGAL LALU SYNC ULANG BERSIH DARI SUMBER --
+//  dipakai kalau sync sebelumnya utk tanggal ini ternyata membawa data
+//  yang salah/basi (mis. tab sumber sempat berisi sisa data duplikat
+//  dari tanggal lain sebelum dibersihkan oleh yang menyiapkan jadwal).
+//
+//  PENTING: pastikan dulu tab tanggal ini di spreadsheet SUMBER ("Jadwal
+//  Pengiriman Fitting") sudah benar/bersih SEBELUM menjalankan ini --
+//  fungsi ini menghapus semua baris tanggal tsb di PENGIRIMAN, lalu
+//  langsung menyalin ulang APAPUN yang ada di tab sumber saat ini. Kalau
+//  sumbernya belum diperbaiki, hasilnya akan sama basinya seperti
+//  sebelum dihapus.
+// ================================================================
+function resyncBersihJadwalTanggal(tanggalDDMMYYYY) {
+  try {
+    if (!tanggalDDMMYYYY) return { success: false, error: 'Tanggal wajib diisi (format DD/MM/YYYY).' };
+    var hapus = hapusDataPengirimanByTanggal(tanggalDDMMYYYY);
+    if (!hapus.success) return hapus;
+    var sync = syncJadwalPengirimanHarian(tanggalDDMMYYYY);
+    if (!sync.success) return sync; // baris lama sudah kadung terhapus -- error sync perlu ditindaklanjuti manual (jalankan ulang syncJadwalPengirimanHarian setelah sumber diperbaiki)
+    return {
+      success: true,
+      dihapus: hapus.dihapus,
+      dibuatUlang: sync.dibuat,
+      diupdate: sync.diupdate,
+      totalDiSumber: sync.totalDiSumber,
+      ikutPipa: sync.ikutPipa,
+      dilewatiFormatSalah: sync.dilewatiFormatSalah
     };
   } catch (err) { return { success: false, error: err.message }; }
 }
