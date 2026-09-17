@@ -5476,16 +5476,22 @@ function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek
       }
     }
 
-    // ---- KHUSUS: Lembur yang DITOLAK -- HAPUS TOTAL baris ini (bukan
-    // cuma diberi status "Ditolak") supaya TIDAK muncul di Riwayat
-    // Lembur karyawan & TIDAK tersimpan di mana pun lagi, sesuai
-    // permintaan. Karyawan diberi kartu notifikasi di akunnya sbg
-    // pengganti (lihat _kirimNotifikasiUser + getNotifikasiSaya, dibaca
-    // oleh input_lembur.html). Cuti TIDAK diubah -- tetap seperti semula
-    // (status "Ditolak", baris tetap ada) krn tidak diminta.
-    if (tipe === 'lembur' && keputusan === 'Ditolak') {
+    // ---- SEMUA jenis pengajuan yang DITOLAK -- HAPUS TOTAL baris ini
+    // (bukan cuma diberi status "Ditolak") supaya TIDAK muncul lagi di
+    // Riwayat & TIDAK tersimpan di mana pun. Karyawan diberi kartu
+    // notifikasi di akunnya sbg pengganti (lihat _kirimNotifikasiUser +
+    // getNotifikasiSaya, dibaca oleh input_lembur.html).
+    if (keputusan === 'Ditolak') {
       var tglBarisHapus = row[1] ? _fmtYMD(new Date(row[1])) : '';
-      var pesanNotif = 'Pengajuan lembur Anda tanggal ' + tglBarisHapus + ' (' + _fmtTime(row[4]) + '–' + _fmtTime(row[5]) + ') ditolak. Untuk keterangan pastinya bisa ditanyakan kepada Team Leader Anda.';
+      var pesanNotif;
+      if (tipe === 'lembur') {
+        pesanNotif = 'Pengajuan lembur Anda tanggal ' + tglBarisHapus + ' (' + _fmtTime(row[4]) + '–' + _fmtTime(row[5]) + ') ditolak. Untuk keterangan pastinya bisa ditanyakan kepada Team Leader Anda.';
+      } else {
+        // ABSENSI_LOG: kolom E (row[4]) = Jenis (Sakit/Cuti Tahunan/dst),
+        // BUKAN jam -- beda layout dari LEMBUR_LOG.
+        var jenisCuti = row[4] ? String(row[4]) : 'cuti/ketidakhadiran';
+        pesanNotif = 'Pengajuan ' + jenisCuti + ' Anda tanggal ' + tglBarisHapus + ' ditolak. Untuk keterangan pastinya bisa ditanyakan kepada Team Leader Anda.';
+      }
       _kirimNotifikasiUser(ss, kode, pesanNotif);
       sh.deleteRow(rowIndex);
       _bumpDataCacheVersion();
@@ -5507,9 +5513,11 @@ function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek
 
 // ------------------------------------------------------------
 //  NOTIFIKASI PERSONAL UTK KARYAWAN -- sheet NOTIFIKASI_USER (dibuat
-//  otomatis kalau belum ada). Dipakai sejauh ini utk kabari karyawan
-//  saat pengajuan lemburnya DITOLAK (lihat approveItem di atas).
-//  Dibaca oleh getNotifikasiSaya() -- ditampilkan sbg kartu notif di
+//  otomatis kalau belum ada). Dipakai utk kabari karyawan begitu SALAH
+//  SATU dari pengajuan berikut ditolak TL: lembur baru, cuti/ketidak-
+//  hadiran baru, atau pengajuan edit/hapus catatan lembur (lihat
+//  approveItem & approveEditRequest di atas). Dibaca oleh
+//  getNotifikasiSaya() -- ditampilkan sbg kartu notif di
 //  input_lembur.html saat karyawan itu login.
 // ------------------------------------------------------------
 function _kirimNotifikasiUser(ss, nik, pesan) {
@@ -5909,10 +5917,26 @@ function approveEditRequest(rowIndex, keputusan, approverNik, catatan, kodeCek, 
         sh.getRange(rowIndex, 8).setValue(reqData.keterangan || ''); // H
         sh.getRange(rowIndex, 13).setValue(reqData.kategoriLembur || ''); // M
       }
+      // Reset kolom pengajuan setelah diterapkan
+      sh.getRange(rowIndex, 14, 1, 4).setValues([['', '', '', catatan || '']]);
+      _bumpDataCacheVersion();
+      return { success: true };
     }
 
-    // Reset kolom pengajuan (baik disetujui-sudah-diterapkan maupun ditolak)
-    sh.getRange(rowIndex, 14, 1, 4).setValues([[keputusan === 'Ditolak' ? 'Ditolak' : '', '', '', catatan || '']]);
+    // ---- DITOLAK -- SAMA seperti pengajuan lembur/cuti baru: kabari
+    // karyawan lewat kartu notifikasi, lalu kolom pengajuannya
+    // dikosongkan TOTAL (bukan disimpan sbg "Ditolak") -- supaya tidak
+    // ada jejak pengajuan yang ditolak tersimpan di mana pun. Catatan
+    // lembur ASLINYA (yang mau diedit/dihapus) TETAP UTUH -- yang
+    // ditolak cuma PERMINTAAN perubahannya, bukan catatan lemburnya.
+    var infoBaris = sh.getRange(rowIndex, 2, 1, 3).getValues()[0]; // [Tanggal, Kode, Nama]
+    var tglInfo = infoBaris[0] ? _fmtYMD(new Date(infoBaris[0])) : '';
+    var kodeInfo = String(infoBaris[1] || '');
+    var aksiLabel = reqData.action === 'delete' ? 'penghapusan' : 'perubahan';
+    var pesanNotifEdit = 'Pengajuan ' + aksiLabel + ' catatan lembur Anda tanggal ' + tglInfo + ' ditolak. Untuk keterangan pastinya bisa ditanyakan kepada Team Leader Anda.';
+    _kirimNotifikasiUser(ss, kodeInfo, pesanNotifEdit);
+
+    sh.getRange(rowIndex, 14, 1, 4).setValues([['', '', '', '']]);
     _bumpDataCacheVersion();
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
