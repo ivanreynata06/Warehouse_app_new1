@@ -135,15 +135,57 @@
     //  sekali). index.html DILEWATI krn sudah punya versi sendiri
     //  (greeting-badge + user-session-badge + tombol Logout di topbar).
     // ================================================================
+    // ================================================================
+    //  GREETING "Selamat Pagi/Siang/Sore/Malam" + nama user, SELALU
+    //  muncul di SEMUA halaman & SEMUA akun -- SEBELUMNYA dibuat sbg
+    //  pill fixed-position pojok kanan atas (z-index tinggi), yang
+    //  ternyata MENIMPA/menutupi tombol2 navbar (refresh, sync, setting,
+    //  notif, font size, dst) di halaman yg sudah punya navbar sendiri
+    //  (mis. Loading Time, Monitoring Stock, Kanban, dst) -- laporan
+    //  user: "notif selamat pagi ini menutupi fungsi lainnya".
+    //
+    //  FIX: kalau halaman sudah punya navbar sendiri (.nav-right ada di
+    //  DOM -- ini benar utk hampir semua halaman kecuali index.html yg
+    //  sudah punya versi sendiri), greeting disisipkan SEBAGAI BAGIAN
+    //  dari navbar itu (in-flow, di kiri tombol2 lain), BUKAN sbg pill
+    //  fixed terpisah yg mengambang di atas segalanya -- supaya tidak
+    //  pernah menimpa tombol apapun lagi. Halaman ini JUGA sudah punya
+    //  tombol Logout sendiri di navbar, jadi tidak perlu tombol Logout
+    //  duplikat lagi di sini.
+    //
+    //  Pill fixed lama TETAP dipertahankan sbg fallback, KHUSUS utk
+    //  halaman yg ternyata tidak punya navbar/.nav-right sama sekali
+    //  (jaga2 kalau ada halaman baru dgn layout beda di masa depan).
+    // ================================================================
     (function injectFloatingUserBar() {
       if (document.getElementById('greeting-badge') || document.getElementById('user-session-badge')) return; // halaman ini sudah punya versinya sendiri
-      if (document.getElementById('wh-userbar')) return; // jaga2 anti dobel
+      if (document.getElementById('wh-userbar') || document.getElementById('wh-greeting-inline')) return; // jaga2 anti dobel
       try {
         var jam = new Date().getHours();
         var salam = jam < 11 ? 'Selamat Pagi' : jam < 15 ? 'Selamat Siang' : jam < 19 ? 'Selamat Sore' : 'Selamat Malam';
         var nama = String(window.WH_SESSION.nama || '').trim() || window.WH_SESSION.nik;
         var namaAman = nama.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
 
+        var navRight = document.querySelector('.nav-right');
+        if (navRight) {
+          // ---- Halaman sudah punya navbar sendiri -> sisipkan IN-FLOW,
+          //      di paling kiri navbar, tidak menimpa tombol apapun. ----
+          var styleTag = document.createElement('style');
+          styleTag.textContent = '@media (max-width:640px){ #wh-greeting-inline{display:none !important;} }';
+          document.head.appendChild(styleTag);
+
+          var greet = document.createElement('span');
+          greet.id = 'wh-greeting-inline';
+          greet.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text-muted,#9aa0b4);white-space:nowrap;padding-right:4px;';
+          greet.innerHTML = '<span style="opacity:.7;">' + salam + ',</span>' +
+            '<span style="font-weight:700;color:inherit;max-width:120px;overflow:hidden;text-overflow:ellipsis;">' + namaAman + '</span>';
+          navRight.insertBefore(greet, navRight.firstChild);
+          return;
+        }
+
+        // ---- Fallback: halaman tanpa .nav-right sama sekali -> pill
+        //      fixed spt sebelumnya (termasuk tombol Logout, krn halaman
+        //      spt ini kemungkinan tidak punya Logout sendiri). ----
         var bar = document.createElement('div');
         bar.id = 'wh-userbar';
         bar.style.cssText = 'position:fixed;top:10px;right:14px;z-index:99999;display:flex;align-items:center;gap:8px;' +
