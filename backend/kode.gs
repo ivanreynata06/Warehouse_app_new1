@@ -52,6 +52,8 @@ var API_FUNCTIONS = {
   deleteLembur            : deleteLembur,
   submitEditLembur        : submitEditLembur,
   approveEditRequest      : approveEditRequest,
+  getNotifikasiSaya       : getNotifikasiSaya,
+  tandaiNotifikasiDibaca  : tandaiNotifikasiDibaca,
   getPendingApprovalCount : getPendingApprovalCount,
   saveAbsensi             : saveAbsensi,
   getAbsensiList          : getAbsensiList,
@@ -5464,7 +5466,7 @@ function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek
     if (!sh) return { success: false, error: 'Sheet ' + sheetName + ' tidak ditemukan.' };
     if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid.' };
 
-    var row = sh.getRange(rowIndex, 1, 1, 4).getValues()[0]; // [Timestamp, Tanggal, Kode, Nama]
+    var row = sh.getRange(rowIndex, 1, 1, 8).getValues()[0]; // [Timestamp, Tanggal, Kode, Nama, JamMulai, JamSelesai, TotalJam, Keterangan]
     var kode = String(row[2] || ''), nama = String(row[3] || '');
 
     if (kodeCek && tanggalCek) {
@@ -5472,6 +5474,22 @@ function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek
       if (kode !== String(kodeCek) || tglBaris !== String(tanggalCek)) {
         return { success: false, error: 'Daftar approval sudah berubah (ada aksi lain yang menggeser urutan baris) -- silakan refresh panel approval, lalu coba lagi. Tidak ada data yang berubah.' };
       }
+    }
+
+    // ---- KHUSUS: Lembur yang DITOLAK -- HAPUS TOTAL baris ini (bukan
+    // cuma diberi status "Ditolak") supaya TIDAK muncul di Riwayat
+    // Lembur karyawan & TIDAK tersimpan di mana pun lagi, sesuai
+    // permintaan. Karyawan diberi kartu notifikasi di akunnya sbg
+    // pengganti (lihat _kirimNotifikasiUser + getNotifikasiSaya, dibaca
+    // oleh input_lembur.html). Cuti TIDAK diubah -- tetap seperti semula
+    // (status "Ditolak", baris tetap ada) krn tidak diminta.
+    if (tipe === 'lembur' && keputusan === 'Ditolak') {
+      var tglBarisHapus = row[1] ? _fmtYMD(new Date(row[1])) : '';
+      var pesanNotif = 'Pengajuan lembur Anda tanggal ' + tglBarisHapus + ' (' + _fmtTime(row[4]) + '–' + _fmtTime(row[5]) + ') ditolak. Untuk keterangan pastinya bisa ditanyakan kepada Team Leader Anda.';
+      _kirimNotifikasiUser(ss, kode, pesanNotif);
+      sh.deleteRow(rowIndex);
+      _bumpDataCacheVersion();
+      return { success: true, dihapus: true };
     }
 
     sh.getRange(rowIndex, statusCol, 1, 2).setValues([[keputusan, approverNik || '']]);
@@ -5483,6 +5501,59 @@ function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek
     sh.getRange(rowIndex, catatanCol).setValue(catatan);
 
     _bumpDataCacheVersion();
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ------------------------------------------------------------
+//  NOTIFIKASI PERSONAL UTK KARYAWAN -- sheet NOTIFIKASI_USER (dibuat
+//  otomatis kalau belum ada). Dipakai sejauh ini utk kabari karyawan
+//  saat pengajuan lemburnya DITOLAK (lihat approveItem di atas).
+//  Dibaca oleh getNotifikasiSaya() -- ditampilkan sbg kartu notif di
+//  input_lembur.html saat karyawan itu login.
+// ------------------------------------------------------------
+function _kirimNotifikasiUser(ss, nik, pesan) {
+  var sh = ss.getSheetByName('NOTIFIKASI_USER');
+  if (!sh) {
+    sh = ss.insertSheet('NOTIFIKASI_USER');
+    sh.getRange(1, 1, 1, 4).setValues([['Timestamp', 'NIK', 'Pesan', 'Dibaca']]);
+    sh.setFrozenRows(1);
+  }
+  sh.appendRow([new Date(), String(nik || '').trim(), String(pesan || ''), false]);
+}
+
+// Notifikasi yang BELUM dibaca milik nik ini, di departemen (workspace)
+// yang sedang aktif/login. Terbaru duluan.
+function getNotifikasiSaya(nik) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName('NOTIFIKASI_USER');
+    if (!sh) return { success: true, data: [] };
+    var data = sh.getDataRange().getValues();
+    var nikUp = String(nik || '').trim().toUpperCase();
+    var out = [];
+    for (var i = 1; i < data.length; i++) {
+      var r = data[i];
+      if (!r[1]) continue;
+      if (String(r[1]).trim().toUpperCase() === nikUp && r[3] !== true) {
+        out.push({ rowIndex: i + 1, pesan: String(r[2] || '') });
+      }
+    }
+    out.reverse();
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Ditandai dibaca (dismiss) setelah karyawan lihat kartunya -- supaya
+// tidak muncul berulang tiap buka halaman.
+function tandaiNotifikasiDibaca(nik, rowIndexes) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName('NOTIFIKASI_USER');
+    if (!sh) return { success: true };
+    (rowIndexes || []).forEach(function (ri) {
+      if (ri >= 2 && ri <= sh.getLastRow()) sh.getRange(ri, 4).setValue(true);
+    });
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
 }

@@ -106,6 +106,24 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 
 /* KPI CARDS */
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;flex-shrink:0;}
+
+/* Kartu notifikasi personal (mis. lembur ditolak) -- warna netral gelap
+   dgn aksen merah tipis di kiri, bukan merah menyala penuh, supaya
+   terasa spt pemberitahuan yg tenang & jelas, bukan alarm. */
+.notif-personal{
+  display:flex;align-items:flex-start;gap:10px;
+  background:var(--bg-card);border:1px solid var(--border-color);
+  border-left:3px solid var(--accent-red);border-radius:8px;
+  padding:11px 13px;font-size:11.5px;line-height:1.5;color:var(--text-main);
+}
+.notif-personal i[data-lucide]{flex-shrink:0;margin-top:1px;color:#f2a3a3;}
+.notif-personal .notif-close{
+  margin-left:auto;flex-shrink:0;background:transparent;border:1px solid var(--border-color);
+  color:var(--text-muted);cursor:pointer;padding:5px 11px;border-radius:6px;
+  font-family:var(--font-body);font-size:10px;font-weight:600;
+  transition:border-color .15s ease,color .15s ease;
+}
+.notif-personal .notif-close:hover{border-color:#3a3a58;color:var(--text-main);}
 .kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:11px 13px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;cursor:default;}
 .kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.32);}
 .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;border-radius:10px 10px 0 0;}
@@ -350,6 +368,11 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <i data-lucide="log-out" style="width:15px;"></i>
         </button>
       </div>
+
+      <!-- KARTU NOTIFIKASI PERSONAL (mis. pengajuan lembur ditolak) --
+           kosong & tersembunyi kalau tidak ada notifikasi. Diisi oleh
+           loadNotifikasiSaya() saat halaman dibuka. -->
+      <div id="wrap-notifikasi-saya" style="display:flex;flex-direction:column;gap:8px;"></div>
 
       <!-- KPI RINGKAS BULAN INI -->
       <div class="kpi-row">
@@ -647,6 +670,44 @@ function showLoading(v, txt){
 
 function p2(n){ n=parseInt(n,10); return n<10?'0'+n:''+n; }
 function todayStr(){ var n=new Date(); return n.getFullYear()+'-'+p2(n.getMonth()+1)+'-'+p2(n.getDate()); }
+
+// ================================================================
+//  NOTIFIKASI PERSONAL -- mis. kabar "pengajuan lembur Anda ditolak".
+//  Dipanggil sekali saat halaman dibuka. Kartu bisa ditutup (dismiss);
+//  begitu ditutup, ditandai dibaca di server supaya tidak muncul lagi.
+// ================================================================
+function loadNotifikasiSaya(){
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  if (!nik) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success || !res.data || !res.data.length) return;
+      var wrap = document.getElementById('wrap-notifikasi-saya');
+      wrap.innerHTML = res.data.map(function(n){
+        return '<div class="notif-personal" data-row="'+n.rowIndex+'">'+
+          '<i data-lucide="bell-ring" style="width:14px;"></i>'+
+          '<span>'+escHtml(n.pesan)+'</span>'+
+          '<button class="notif-close" data-row="'+n.rowIndex+'">Mengerti</button>'+
+        '</div>';
+      }).join('');
+      if(typeof lucide!=='undefined') lucide.createIcons();
+      wrap.querySelectorAll('.notif-close').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var card = btn.closest('.notif-personal');
+          var rowIdx = Number(btn.dataset.row);
+          card.remove();
+          google.script.run.tandaiNotifikasiDibaca(nik, [rowIdx]); // fire-and-forget, tidak perlu tunggu respons
+        });
+      });
+    })
+    .withFailureHandler(function(){ /* diam saja -- notifikasi bukan hal kritis, jangan ganggu halaman kalau gagal load */ })
+    .getNotifikasiSaya(nik);
+}
+
+// escHtml dipakai di atas -- jaga-jaga kalau belum ada definisi lain.
+if (typeof escHtml !== 'function') {
+  var escHtml = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+}
 
 // ================================================================
 //  LOAD DATA
@@ -1156,6 +1217,7 @@ setInterval(function(){
 
 if(typeof lucide!=='undefined') lucide.createIcons();
 loadAll();
+loadNotifikasiSaya();
 </script>
 </body>
 </html>
