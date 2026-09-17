@@ -693,15 +693,20 @@ function loadApprovalPanel(){
           detail = a.jenis+' — '+(a.keterangan||'-');
           badge = '<span class="card-badge badge-purple">Cuti</span>';
         }
+        // Badge nama departemen -- CUMA ditampilkan kalau TL ini memang TL
+        // Lintas Departemen (res.lintasDepartemen true, berarti daftar ini
+        // gabungan dari >1 departemen) supaya TL biasa (1 departemen) tidak
+        // lihat badge yg tidak perlu.
+        var wsBadge = (res.lintasDepartemen && a.workspaceLabel) ? '<div style="font-size:9px;color:var(--accent-blue,#3b82f6);margin-top:2px;">'+escHtml(a.workspaceLabel)+'</div>' : '';
         return '<tr>'+
           '<td>'+badge+'</td>'+
-          '<td>'+escHtml(a.tanggal)+'</td>'+
+          '<td>'+escHtml(a.tanggal)+wsBadge+'</td>'+
           '<td>'+escHtml(a.nama)+'</td>'+
           '<td style="font-size:11px;color:var(--text-muted);">'+detail+'</td>'+
           '<td><div class="btn-export-group">'+
             (a.tipe==='lembur' ? '<button class="btn-export btn-edit-item" data-idx="'+idx+'">Edit</button>' : '')+
-            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#16a34a,#22c55e);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-kode="'+escHtml(a.kode)+'" data-tanggal="'+escHtml(a.tanggal)+'" data-keputusan="Disetujui">Setujui</button>'+
-            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-kode="'+escHtml(a.kode)+'" data-tanggal="'+escHtml(a.tanggal)+'" data-keputusan="Ditolak">Tolak</button>'+
+            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#16a34a,#22c55e);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-kode="'+escHtml(a.kode)+'" data-tanggal="'+escHtml(a.tanggal)+'" data-workspace="'+escHtml(a.workspaceKey||'')+'" data-keputusan="Disetujui">Setujui</button>'+
+            '<button class="btn-export btn-approve-item" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" data-tipe="'+escHtml(a.tipe)+'" data-row="'+a.rowIndex+'" data-kode="'+escHtml(a.kode)+'" data-tanggal="'+escHtml(a.tanggal)+'" data-workspace="'+escHtml(a.workspaceKey||'')+'" data-keputusan="Ditolak">Tolak</button>'+
           '</div></td>'+
         '</tr>';
       }).join('');
@@ -711,7 +716,7 @@ function loadApprovalPanel(){
       // sebagai string onclick langsung.
       tb.querySelectorAll('.btn-approve-item').forEach(function(btn){
         btn.addEventListener('click', function(){
-          doApprove(btn.dataset.tipe, Number(btn.dataset.row), btn.dataset.keputusan, btn.dataset.kode, btn.dataset.tanggal);
+          doApprove(btn.dataset.tipe, Number(btn.dataset.row), btn.dataset.keputusan, btn.dataset.kode, btn.dataset.tanggal, btn.dataset.workspace);
         });
       });
       tb.querySelectorAll('.btn-edit-item').forEach(function(btn){
@@ -724,13 +729,16 @@ function loadApprovalPanel(){
       document.getElementById('badge-approval').textContent = 'Error';
       document.getElementById('tbody-approval').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#f87171;padding:14px;">Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi')+'</td></tr>';
     })
-    .getPendingApprovals();
+    .getPendingApprovals(window.WH_SESSION ? window.WH_SESSION.nik : '');
 }
 
 // kode/tanggal: fingerprint baris yg dilihat TL saat klik -- dicek ulang
 // oleh backend supaya tidak salah sasaran kalau daftar sudah basi
 // (lihat komentar approveItem/approveEditRequest di backend/kode.gs).
-function doApprove(tipe, rowIndex, keputusan, kode, tanggal){
+// workspaceKey: departemen ASAL item ini (dari getPendingApprovals) --
+// dikirim balik supaya TL Lintas Departemen bisa approve item dari
+// departemen lain walau sedang login di departemen yang berbeda.
+function doApprove(tipe, rowIndex, keputusan, kode, tanggal, workspaceKey){
   var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
   // KUNCI semua tombol approve/tolak/edit di panel ini SEGERA begitu satu
   // diklik -- mencegah klik beruntun ke rowIndex yang sudah basi kalau
@@ -755,9 +763,9 @@ function doApprove(tipe, rowIndex, keputusan, kode, tanggal){
     });
 
   if (tipe === 'edit_lembur'){
-    runner.approveEditRequest(rowIndex, keputusan, nik, '', kode, tanggal);
+    runner.approveEditRequest(rowIndex, keputusan, nik, '', kode, tanggal, workspaceKey);
   } else {
-    runner.approveItem(tipe, rowIndex, keputusan, nik, kode, tanggal);
+    runner.approveItem(tipe, rowIndex, keputusan, nik, kode, tanggal, workspaceKey);
   }
 }
 

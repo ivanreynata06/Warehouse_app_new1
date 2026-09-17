@@ -274,6 +274,25 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             Cuma departemen/plant hasil "Tambah Departemen/Plant Baru" yang muncul di sini -- departemen inti (Fitting Import, Fitting Rucika, dst) sengaja tidak bisa dihapus lewat web.
           </div>
         </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);">
+          <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="users" style="width:11px;color:var(--accent-blue);"></i>TL Lintas Departemen (Approval Lembur/Cuti)</div>
+          <div class="modal-note" style="margin:0 0 8px;font-size:11px;opacity:.8;">
+            Untuk TL yang menjabat di lebih dari 1 departemen/plant (mis. TL yang sama utk Warehouse Fitting Import DAN Fitting Rucika) -- centang departemen mana saja yang boleh dia-approve lembur/cutinya, walau dia sedang login di akun salah satu departemen saja. Ini CUMA berlaku utk approval lembur/cuti, BUKAN kelola user/spreadsheet.
+          </div>
+          <div class="modal-field">
+            <label for="input-nik-cross-tl">NIK TL</label>
+            <input type="text" id="input-nik-cross-tl" placeholder="Contoh: PEG12345678">
+          </div>
+          <div id="checkbox-cross-tl-workspaces" style="display:flex;flex-wrap:wrap;gap:10px;margin:8px 0;font-size:11px;"></div>
+          <button class="btn-export" style="background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;" onclick="simpanCrossWorkspaceTL()"><i data-lucide="save" style="width:11px;vertical-align:-2px;"></i> Simpan</button>
+          <div id="status-cross-tl" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
+
+          <div style="margin-top:12px;">
+            <div style="font-size:10.5px;opacity:.7;margin-bottom:4px;">Daftar TL Lintas Departemen saat ini:</div>
+            <div id="list-cross-tl" style="font-size:11px;"></div>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -592,6 +611,76 @@ function isiDropdownHapus(){
       ? plantKeys.map(function(pk){ return '<option value="'+escHtml(pk)+'">'+escHtml(plantMap[pk].label)+' ('+plantMap[pk].count+' departemen)</option>'; }).join('')
       : '<option value="">(tidak ada plant yang bisa dihapus)</option>';
   }
+
+  // ---- Checkbox TL Lintas Departemen -- SEMUA departemen/plant (inti
+  // maupun extra), krn TL lintas departemen memang wajarnya menjabat di
+  // departemen inti (mis. Fitting Import & Fitting Rucika). ----
+  var wrapCB = document.getElementById('checkbox-cross-tl-workspaces');
+  if (wrapCB){
+    wrapCB.innerHTML = workspaceListCache.map(function(w){
+      return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;">'+
+        '<input type="checkbox" class="chk-cross-tl-ws" value="'+escHtml(w.key)+'" style="width:auto;">'+
+        escHtml(w.label)+'</label>';
+    }).join('');
+  }
+  loadCrossWorkspaceTLList();
+}
+
+// ---- TL Lintas Departemen: load & render daftar yang sudah diatur ----
+function loadCrossWorkspaceTLList(){
+  var box = document.getElementById('list-cross-tl');
+  if (!box) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ box.innerHTML = '<span style="opacity:.6;">Gagal memuat.</span>'; return; }
+      var map = res.data || {};
+      var niks = Object.keys(map);
+      if (!niks.length){ box.innerHTML = '<span style="opacity:.6;">Belum ada TL Lintas Departemen yang diatur.</span>'; return; }
+      box.innerHTML = niks.map(function(nik){
+        var labels = (map[nik]||[]).map(function(k){
+          var w = workspaceListCache.find(function(x){ return x.key===k; });
+          return w ? w.label : k;
+        }).join(', ');
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border-color);">'+
+          '<span><b>'+escHtml(nik)+'</b> — '+escHtml(labels)+'</span>'+
+          '<button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;flex-shrink:0;" onclick="hapusCrossWorkspaceTL(\''+nik.replace(/'/g,"\\'")+'\')">Hapus</button>'+
+        '</div>';
+      }).join('');
+    })
+    .withFailureHandler(function(){ box.innerHTML = '<span style="opacity:.6;">Gagal terhubung.</span>'; })
+    .adminGetCrossWorkspaceTL(actorNik);
+}
+
+function simpanCrossWorkspaceTL(){
+  var nik = document.getElementById('input-nik-cross-tl').value.trim();
+  var statusEl = document.getElementById('status-cross-tl');
+  if (!nik){ statusEl.textContent = 'Isi NIK dulu.'; return; }
+  var keys = Array.prototype.slice.call(document.querySelectorAll('.chk-cross-tl-ws:checked')).map(function(c){ return c.value; });
+  if (keys.length < 2){ statusEl.textContent = 'Pilih minimal 2 departemen (kalau cuma 1, tidak perlu diatur di sini -- itu sudah otomatis departemen dia sendiri).'; return; }
+  statusEl.textContent = 'Menyimpan...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ statusEl.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+      statusEl.textContent = '✅ Tersimpan.';
+      document.getElementById('input-nik-cross-tl').value = '';
+      document.querySelectorAll('.chk-cross-tl-ws').forEach(function(c){ c.checked=false; });
+      loadCrossWorkspaceTLList();
+      showToast('TL Lintas Departemen utk '+nik+' berhasil disimpan','success');
+    })
+    .withFailureHandler(function(err){ statusEl.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
+    .adminSetCrossWorkspaceTL(actorNik, nik, keys);
+}
+
+function hapusCrossWorkspaceTL(nik){
+  if (!confirm('Hapus pendaftaran TL Lintas Departemen utk NIK '+nik+'? Dia akan kembali cuma bisa approve departemennya sendiri.')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Berhasil dihapus','success');
+      loadCrossWorkspaceTLList();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetCrossWorkspaceTL(actorNik, nik, []);
 }
 
 function hapusDepartemenTerpilih(){

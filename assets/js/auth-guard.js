@@ -144,9 +144,10 @@
     //  (mis. Loading Time, Monitoring Stock, Kanban, dst) -- laporan
     //  user: "notif selamat pagi ini menutupi fungsi lainnya".
     //
-    //  FIX: kalau halaman sudah punya navbar sendiri (.nav-right ada di
-    //  DOM -- ini benar utk hampir semua halaman kecuali index.html yg
-    //  sudah punya versi sendiri), greeting disisipkan SEBAGAI BAGIAN
+    //  FIX: kalau halaman sudah punya navbar sendiri (.nav-right ATAU
+    //  .topbar-right ada di DOM -- ini benar utk hampir semua halaman
+    //  kecuali index.html yg sudah punya versi sendiri & login.html yg
+    //  belum ada session), greeting disisipkan SEBAGAI BAGIAN
     //  dari navbar itu (in-flow, di kiri tombol2 lain), BUKAN sbg pill
     //  fixed terpisah yg mengambang di atas segalanya -- supaya tidak
     //  pernah menimpa tombol apapun lagi. Halaman ini JUGA sudah punya
@@ -166,7 +167,7 @@
         var nama = String(window.WH_SESSION.nama || '').trim() || window.WH_SESSION.nik;
         var namaAman = nama.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
 
-        var navRight = document.querySelector('.nav-right');
+        var navRight = document.querySelector('.nav-right, .topbar-right');
         if (navRight) {
           // ---- Halaman sudah punya navbar sendiri -> sisipkan IN-FLOW,
           //      di paling kiri navbar, tidak menimpa tombol apapun. ----
@@ -183,9 +184,10 @@
           return;
         }
 
-        // ---- Fallback: halaman tanpa .nav-right sama sekali -> pill
-        //      fixed spt sebelumnya (termasuk tombol Logout, krn halaman
-        //      spt ini kemungkinan tidak punya Logout sendiri). ----
+        // ---- Fallback: halaman tanpa .nav-right/.topbar-right sama
+        //      sekali -> pill fixed spt sebelumnya (termasuk tombol
+        //      Logout, krn halaman spt ini kemungkinan tidak punya
+        //      Logout sendiri). ----
         var bar = document.createElement('div');
         bar.id = 'wh-userbar';
         bar.style.cssText = 'position:fixed;top:10px;right:14px;z-index:99999;display:flex;align-items:center;gap:8px;' +

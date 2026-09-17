@@ -78,6 +78,8 @@ var API_FUNCTIONS = {
   adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
   adminHapusDepartemen    : adminHapusDepartemen,
   adminHapusPlant         : adminHapusPlant,
+  adminGetCrossWorkspaceTL: adminGetCrossWorkspaceTL,
+  adminSetCrossWorkspaceTL: adminSetCrossWorkspaceTL,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -3521,6 +3523,70 @@ function _isSuperAdmin(actorNik) {
   return SUPER_ADMIN_NIK.indexOf(String(actorNik || '').trim().toUpperCase()) !== -1;
 }
 
+// ------------------------------------------------------------
+//  TL LINTAS DEPARTEMEN -- APPROVAL LEMBUR/CUTI SAJA
+// ------------------------------------------------------------
+//  Beda dgn SUPER_ADMIN_NIK di atas (yg bisa kelola USER di departemen
+//  lain): ini KHUSUS utk TL yang menjabat di LEBIH DARI 1 departemen/
+//  plant sekaligus (mis. Pak Shandy: TL Warehouse Fitting Import
+//  SEKALIGUS Fitting Rucika) -- supaya dia bisa APPROVE/TOLAK
+//  pengajuan lembur & cuti dari SEMUA departemen yang dia pegang,
+//  walau sedang login di akun salah satu departemen saja. TIDAK bisa
+//  dipakai utk kelola user/spreadsheet departemen lain (itu tetap
+//  butuh Super Admin).
+//
+//  Diatur lewat Panel Admin (Super Admin > TL Lintas Departemen),
+//  disimpan di Script Properties (BUKAN hardcode di sini) supaya bisa
+//  diubah langsung tanpa deploy ulang -- lihat
+//  adminGetCrossWorkspaceTL()/adminSetCrossWorkspaceTL() di bawah.
+//  Format tersimpan: { "NIK": ["workspaceKey1","workspaceKey2", ...] }
+// ------------------------------------------------------------
+function _getCrossWorkspaceTLMap() {
+  try {
+    var json = PropertiesService.getScriptProperties().getProperty('CROSS_WORKSPACE_TL');
+    return json ? JSON.parse(json) : {};
+  } catch (e) { return {}; } // JSON korup -- anggap kosong, jangan sampai bikin approval error
+}
+function _saveCrossWorkspaceTLMap(map) {
+  PropertiesService.getScriptProperties().setProperty('CROSS_WORKSPACE_TL', JSON.stringify(map || {}));
+}
+
+// Daftar workspace key yang boleh di-approve lembur/cuti-nya oleh
+// actorNik -- SELALU termasuk departemen tempat dia login SEKARANG
+// (ACTIVE_WORKSPACE), PLUS departemen tambahan hasil pendaftaran TL
+// Lintas Departemen (kalau NIK-nya terdaftar di situ).
+function _resolveApprovalWorkspaceKeys(actorNik) {
+  var keys = [ACTIVE_WORKSPACE];
+  try {
+    var map = _getCrossWorkspaceTLMap();
+    var extra = map[String(actorNik || '').trim().toUpperCase()] || [];
+    extra.forEach(function (k) { if (keys.indexOf(k) === -1 && WORKSPACE_MAP[k]) keys.push(k); });
+  } catch (e) { /* jangan sampai bikin approval error -- minimal tetap bisa approve departemen sendiri */ }
+  return keys;
+}
+
+// Super Admin saja: lihat & atur daftar TL Lintas Departemen.
+function adminGetCrossWorkspaceTL(actorNik) {
+  if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+  return { success: true, data: _getCrossWorkspaceTLMap() };
+}
+// workspaceKeys: array of string. Kirim array kosong utk hapus
+// pendaftaran NIK ini (kembali ke approval departemen sendiri saja).
+function adminSetCrossWorkspaceTL(actorNik, targetNik, workspaceKeys) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    targetNik = String(targetNik || '').trim().toUpperCase();
+    if (!targetNik) return { success: false, error: 'NIK wajib diisi.' };
+    var keys = (workspaceKeys || []).map(function (k) { return String(k).trim(); }).filter(Boolean);
+    var invalid = keys.filter(function (k) { return !WORKSPACE_MAP[k]; });
+    if (invalid.length) return { success: false, error: 'Departemen/plant tidak dikenali: ' + invalid.join(', ') };
+    var map = _getCrossWorkspaceTLMap();
+    if (!keys.length) { delete map[targetNik]; } else { map[targetNik] = keys; }
+    _saveCrossWorkspaceTLMap(map);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 // Buka Spreadsheet AKUN_LOGIN yang tepat untuk aksi admin ini:
 //  - Kalau actor SUPER ADMIN dan targetWorkspace diisi & valid -> buka
 //    spreadsheet departemen TUJUAN itu (lintas departemen).
@@ -5290,65 +5356,81 @@ function getPendingApprovalCount() {
   return { success: true, jumlah: res.data.length };
 }
 
-function getPendingApprovals() {
+// actorNik: dipakai utk cek apakah dia TL Lintas Departemen (lihat
+// _resolveApprovalWorkspaceKeys di atas) -- kalau ya, hasilnya
+// digabung dari SEMUA departemen yang dia pegang, masing2 item ditandai
+// workspaceKey/workspaceLabel supaya panel approval bisa menampilkan
+// dari departemen mana asalnya & mengirimkannya kembali saat approve.
+function getPendingApprovals(actorNik) {
   try {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var workspaceKeys = _resolveApprovalWorkspaceKeys(actorNik);
     var out = [];
 
-    var shLem = ss.getSheetByName(SH_LEMBUR_LOG);
-    if (shLem) {
-      var dl = shLem.getDataRange().getValues();
-      for (var i = 1; i < dl.length; i++) {
-        var r = dl[i];
-        if (!r[1]) continue;
-        var st = String(r[9] || 'Pending');
-        if (st === 'Pending') {
-          out.push({
-            tipe: 'lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
-            kode: String(r[2]), nama: String(r[3]),
-            jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
-            keterangan: String(r[7] || '')
-          });
-        }
-        // Pengajuan edit/hapus (kolom N = EditReqStatus) -- terpisah dari
-        // status approval catatan lembur itu sendiri (kolom J), supaya
-        // catatan yang SUDAH disetujui pun tetap bisa diajukan edit/hapus.
-        var editReqSt = String(r[13] || '');
-        if (editReqSt === 'Pending') {
-          var reqData = {};
-          try { reqData = JSON.parse(r[14] || '{}'); } catch (e) {}
-          out.push({
-            tipe: 'edit_lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
-            kode: String(r[2]), nama: String(r[3]),
-            jamMulaiLama: _fmtTime(r[4]), jamSelesaiLama: _fmtTime(r[5]), totalJamLama: Number(r[6]) || 0,
-            keteranganLama: String(r[7] || ''),
-            aksi: reqData.action || 'edit',
-            jamMulaiBaru: reqData.jamMulai || '', jamSelesaiBaru: reqData.jamSelesai || '',
-            totalJamBaru: reqData.totalJam || 0, keteranganBaru: reqData.keterangan || '',
-            diajukanOleh: String(r[15] || '')
-          });
-        }
-      }
-    }
+    workspaceKeys.forEach(function (wsKey) {
+      var wsId = WORKSPACE_MAP[wsKey];
+      if (!wsId) return; // departemen belum di-provision -- lewati diam2, jangan sampai gagalkan semua
+      var ss;
+      try { ss = SpreadsheetApp.openById(wsId); } catch (e) { return; }
+      var wsLabel = WORKSPACE_LABELS[wsKey] || wsKey;
 
-    var shAbs = ss.getSheetByName(SH_ABSENSI_LOG);
-    if (shAbs) {
-      var da = shAbs.getDataRange().getValues();
-      for (var j = 1; j < da.length; j++) {
-        var ra = da[j];
-        if (!ra[1]) continue;
-        var sta = String(ra[7] || 'Pending');
-        if (sta !== 'Pending') continue;
-        out.push({
-          tipe: 'cuti', rowIndex: j + 1, tanggal: _fmtYMD(new Date(ra[1])),
-          kode: String(ra[2]), nama: String(ra[3]), jenis: String(ra[4]),
-          keterangan: String(ra[5] || '')
-        });
+      var shLem = ss.getSheetByName(SH_LEMBUR_LOG);
+      if (shLem) {
+        var dl = shLem.getDataRange().getValues();
+        for (var i = 1; i < dl.length; i++) {
+          var r = dl[i];
+          if (!r[1]) continue;
+          var st = String(r[9] || 'Pending');
+          if (st === 'Pending') {
+            out.push({
+              tipe: 'lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
+              kode: String(r[2]), nama: String(r[3]),
+              jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
+              keterangan: String(r[7] || ''),
+              workspaceKey: wsKey, workspaceLabel: wsLabel
+            });
+          }
+          // Pengajuan edit/hapus (kolom N = EditReqStatus) -- terpisah dari
+          // status approval catatan lembur itu sendiri (kolom J), supaya
+          // catatan yang SUDAH disetujui pun tetap bisa diajukan edit/hapus.
+          var editReqSt = String(r[13] || '');
+          if (editReqSt === 'Pending') {
+            var reqData = {};
+            try { reqData = JSON.parse(r[14] || '{}'); } catch (e) {}
+            out.push({
+              tipe: 'edit_lembur', rowIndex: i + 1, tanggal: _fmtYMD(new Date(r[1])),
+              kode: String(r[2]), nama: String(r[3]),
+              jamMulaiLama: _fmtTime(r[4]), jamSelesaiLama: _fmtTime(r[5]), totalJamLama: Number(r[6]) || 0,
+              keteranganLama: String(r[7] || ''),
+              aksi: reqData.action || 'edit',
+              jamMulaiBaru: reqData.jamMulai || '', jamSelesaiBaru: reqData.jamSelesai || '',
+              totalJamBaru: reqData.totalJam || 0, keteranganBaru: reqData.keterangan || '',
+              diajukanOleh: String(r[15] || ''),
+              workspaceKey: wsKey, workspaceLabel: wsLabel
+            });
+          }
+        }
       }
-    }
+
+      var shAbs = ss.getSheetByName(SH_ABSENSI_LOG);
+      if (shAbs) {
+        var da = shAbs.getDataRange().getValues();
+        for (var j = 1; j < da.length; j++) {
+          var ra = da[j];
+          if (!ra[1]) continue;
+          var sta = String(ra[7] || 'Pending');
+          if (sta !== 'Pending') continue;
+          out.push({
+            tipe: 'cuti', rowIndex: j + 1, tanggal: _fmtYMD(new Date(ra[1])),
+            kode: String(ra[2]), nama: String(ra[3]), jenis: String(ra[4]),
+            keterangan: String(ra[5] || ''),
+            workspaceKey: wsKey, workspaceLabel: wsLabel
+          });
+        }
+      }
+    });
 
     out.sort(function (a, b) { return a.tanggal < b.tanggal ? 1 : -1; });
-    return { success: true, data: out };
+    return { success: true, data: out, lintasDepartemen: workspaceKeys.length > 1 };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -5359,9 +5441,22 @@ function getPendingApprovals() {
 // aksi 'delete') yang bikin rowIndex lama jadi menunjuk baris berbeda.
 // Tanpa cek ini, approval bisa "kena" baris yang salah tanpa error --
 // itu penyebab bug "approve kadang tidak jalan/salah sasaran".
-function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek) {
+//
+// workspaceKey (opsional): departemen ASAL item ini (dikirim balik oleh
+// panel approval, lihat getPendingApprovals). Kalau diisi & BEDA dari
+// ACTIVE_WORKSPACE (session TL saat ini), WAJIB approverNik terdaftar
+// sbg TL Lintas Departemen utk workspace itu (lihat
+// _resolveApprovalWorkspaceKeys) -- kalau tidak, ditolak. Kalau kosong,
+// pakai ACTIVE_WORKSPACE spt semula (backward compatible).
+function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek, workspaceKey) {
   try {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var wsKey = workspaceKey || ACTIVE_WORKSPACE;
+    if (wsKey !== ACTIVE_WORKSPACE && _resolveApprovalWorkspaceKeys(approverNik).indexOf(wsKey) === -1) {
+      return { success: false, error: 'Akses ditolak -- akun ini tidak terdaftar sbg TL Lintas Departemen utk departemen "' + (WORKSPACE_LABELS[wsKey] || wsKey) + '".' };
+    }
+    var wsId = WORKSPACE_MAP[wsKey];
+    if (!wsId) return { success: false, error: 'Departemen "' + wsKey + '" belum di-provision.' };
+    var ss = SpreadsheetApp.openById(wsId);
     var sheetName = tipe === 'cuti' ? SH_ABSENSI_LOG : SH_LEMBUR_LOG;
     var statusCol  = tipe === 'cuti' ? 8 : 10;  // kolom H (cuti) / J (lembur), 1-based
     var catatanCol = tipe === 'cuti' ? 10 : 12; // kolom J (cuti) / L (lembur) -- catatan attestasi
@@ -5703,9 +5798,18 @@ function submitEditLembur(rowIndex, nikRequester, newData) {
 // Dipanggil TL dari panel approval. keputusan: 'Disetujui' | 'Ditolak'.
 // kodeCek/tanggalCek: sama seperti di approveItem() -- fingerprint
 // pengaman terhadap rowIndex basi.
-function approveEditRequest(rowIndex, keputusan, approverNik, catatan, kodeCek, tanggalCek) {
+// workspaceKey (opsional): sama seperti di approveItem() -- departemen
+// ASAL item ini. Kalau beda dari ACTIVE_WORKSPACE, approverNik wajib
+// terdaftar sbg TL Lintas Departemen utk workspace tsb.
+function approveEditRequest(rowIndex, keputusan, approverNik, catatan, kodeCek, tanggalCek, workspaceKey) {
   try {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var wsKey = workspaceKey || ACTIVE_WORKSPACE;
+    if (wsKey !== ACTIVE_WORKSPACE && _resolveApprovalWorkspaceKeys(approverNik).indexOf(wsKey) === -1) {
+      return { success: false, error: 'Akses ditolak -- akun ini tidak terdaftar sbg TL Lintas Departemen utk departemen "' + (WORKSPACE_LABELS[wsKey] || wsKey) + '".' };
+    }
+    var wsId = WORKSPACE_MAP[wsKey];
+    if (!wsId) return { success: false, error: 'Departemen "' + wsKey + '" belum di-provision.' };
+    var ss = SpreadsheetApp.openById(wsId);
     var sh = ss.getSheetByName(SH_LEMBUR_LOG);
     if (!sh) return { success: false, error: 'Sheet tidak ditemukan' };
     if (rowIndex < 2 || rowIndex > sh.getLastRow()) return { success: false, error: 'Baris tidak valid / sudah tidak ada.' };

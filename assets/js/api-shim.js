@@ -123,6 +123,27 @@
   // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
   var LARGE_PAYLOAD_FUNCTIONS = { savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, uploadTlSignature: 1 };
 
+  // Bungkus r.json() supaya kalau Apps Script Web App ternyata
+  // mengembalikan HALAMAN HTML (bukan JSON) -- ini SELALU terjadi kalau
+  // link-nya sudah tidak valid/expired, deployment "Who has access"
+  // ternyata bukan "Anyone", atau Google menyisipkan halaman
+  // login/otorisasi -- browser tidak melempar error mentah "Unexpected
+  // token < in JSON..." ke pengguna. CATATAN: semua error LOGIKA di
+  // backend (kode.gs) SUDAH pasti dibungkus JSON oleh handleApiRequest()
+  // (lihat try/catch di sana) -- kalau error ini muncul, penyebabnya
+  // hampir pasti di LUAR kode aplikasi (link/izin deployment Apps
+  // Script), bukan bug di kode.gs/HTML.
+  function parseJsonSafe(r) {
+    return r.text().then(function (txt) {
+      try {
+        return JSON.parse(txt);
+      } catch (e) {
+        console.error('[api-shim] Respon server bukan JSON, awal isinya:', txt.slice(0, 200));
+        throw new Error('Respon server bukan JSON (kemungkinan link Apps Script sudah tidak valid / perlu redeploy / izin akses "Anyone" berubah). Coba refresh; kalau masih terjadi, hubungi admin utk cek deployment Apps Script.');
+      }
+    });
+  }
+
   function callBackend(fnName, args) {
     var payload = { action: fnName, params: args || [], workspace: getWorkspace() };
 
@@ -146,7 +167,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }, timeoutMs).then(function (r) { return r.json(); });
+      }, timeoutMs).then(parseJsonSafe);
     }
 
     var sep = BASE_URL.indexOf('?') === -1 ? '?' : '&';
@@ -155,7 +176,7 @@
       '&params=' + encodeURIComponent(JSON.stringify(args || [])) +
       '&workspace=' + encodeURIComponent(getWorkspace());
 
-    return fetchWithTimeout(url, { method: 'GET' }, 45000).then(function (r) { return r.json(); });
+    return fetchWithTimeout(url, { method: 'GET' }, 45000).then(parseJsonSafe);
   }
 
   function makeRunner() {
