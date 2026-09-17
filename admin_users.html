@@ -86,8 +86,8 @@ body.sidebar-hidden .sidebar{margin-left:calc(-1*var(--sidebar-w));}
 .page-title{font-family:var(--font-display);font-size:15px;font-weight:800;}
 .page-sub{font-size:10px;color:var(--text-muted);}
 
-.btn-primary{display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--accent-gold),var(--accent-gold2));border:none;color:#1a1a10;cursor:pointer;padding:9px 16px;border-radius:9px;font-family:var(--font-body);font-size:11px;font-weight:700;}
-.btn-primary:hover{filter:brightness(1.08);}
+.btn-primary{display:flex;align-items:center;gap:6px;background:var(--accent-gold);border:none;color:#25200c;cursor:pointer;padding:9px 16px;border-radius:9px;font-family:var(--font-body);font-size:11px;font-weight:700;transition:background-color .15s ease;}
+.btn-primary:hover{background:#c19f34;}
 
 .card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
 .card-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
@@ -111,13 +111,22 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .chip-internal{background:rgba(59,130,246,.12);color:#93c5fd;}
 
 .btn-export-group{display:flex;gap:5px;flex-wrap:wrap;}
-.btn-export{border:none;color:#fff;cursor:pointer;padding:5px 10px;border-radius:7px;font-family:var(--font-body);font-size:9px;font-weight:700;white-space:nowrap;}
-.btn-export:hover{filter:brightness(1.1);}
-.btn-lihat{background:linear-gradient(135deg,#3b82f6,#60a5fa);}
-.btn-edit{background:linear-gradient(135deg,#f59e0b,#d97706);}
-.btn-reset{background:linear-gradient(135deg,#8b5cf6,#a78bfa);}
-.btn-toggle-on{background:linear-gradient(135deg,#dc2626,#b91c1c);}
-.btn-toggle-off{background:linear-gradient(135deg,#16a34a,#22c55e);}
+.btn-export{border:1px solid transparent;color:#fff;cursor:pointer;padding:5px 10px;border-radius:7px;font-family:var(--font-body);font-size:9px;font-weight:700;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,opacity .1s ease;}
+.btn-export:active{opacity:.82;}
+.btn-lihat{background:var(--bg-card-hover);border-color:var(--border-color);color:var(--text-main);}
+.btn-lihat:hover{background:#252539;border-color:#3a3a58;}
+.btn-edit{background:#a96a1c;}
+.btn-edit:hover{background:#8f5817;}
+.btn-reset{background:#5f4bab;}
+.btn-reset:hover{background:#4e3d8e;}
+.btn-toggle-on{background:#a8342b;}
+.btn-toggle-on:hover{background:#8e2b23;}
+.btn-toggle-off{background:#227551;}
+.btn-toggle-off:hover{background:#1c6243;}
+.btn-wa{background:#1f7a5c;}
+.btn-wa:hover{background:#19634a;}
+.btn-hapus{background:#a8342b;}
+.btn-hapus:hover{background:#8e2b23;}
 
 /* ------------------------------------------------------------
    Tombol & checkbox "flat" -- dipakai di panel Kelola Departemen
@@ -167,13 +176,15 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .modal-box h3{font-family:var(--font-display);font-size:13px;margin:0 0 2px;color:var(--text-main);display:flex;align-items:center;gap:7px;}
 .modal-sub{font-size:9.5px;color:var(--text-muted);margin:-6px 0 4px;}
 .modal-field{display:flex;flex-direction:column;gap:4px;}
-.modal-field label{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600;}
+.modal-field label{font-size:10.5px;color:var(--text-muted);font-weight:600;}
 .modal-field input,.modal-field select,.modal-field textarea{background:var(--bg-main);border:1px solid var(--border-color);border-radius:7px;padding:8px 9px;color:var(--text-main);font-family:var(--font-body);font-size:11.5px;}
 .modal-field select option{background:var(--bg-card);color:var(--text-main);}
 .modal-note{font-size:9.5px;color:var(--text-muted);background:rgba(255,255,255,.03);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;line-height:1.5;}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
-.btn-modal-cancel{background:transparent;border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;}
-.btn-modal-save{background:linear-gradient(135deg,#16a34a,#22c55e);border:none;color:#fff;cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;}
+.btn-modal-cancel{background:transparent;border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;transition:border-color .15s ease,color .15s ease;}
+.btn-modal-cancel:hover{border-color:#3a3a58;color:var(--text-main);}
+.btn-modal-save{background:#227551;border:none;color:#eafff5;cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;transition:background-color .15s ease;}
+.btn-modal-save:hover{background:#1c6243;}
 .detail-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border-color);font-size:10.5px;}
 .detail-row span:first-child{color:var(--text-muted);}
 
@@ -856,9 +867,9 @@ function renderUserTable(){
         '<button class="btn-export btn-lihat" data-idx="'+idx+'" data-act="lihat">Lihat</button>'+
         '<button class="btn-export btn-edit" data-idx="'+idx+'" data-act="edit">Edit</button>'+
         '<button class="btn-export btn-reset" data-idx="'+idx+'" data-act="reset">Reset Pwd</button>'+
-        '<button class="btn-export" style="background:linear-gradient(135deg,#059669,#10b981);" data-idx="'+idx+'" data-act="wa">Token WA</button>'+
+        '<button class="btn-export btn-wa" data-idx="'+idx+'" data-act="wa">Token WA</button>'+
         '<button class="btn-export '+(u.aktif?'btn-toggle-on':'btn-toggle-off')+'" data-idx="'+idx+'" data-act="toggle">'+(u.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
-        '<button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);" data-idx="'+idx+'" data-act="hapus">Hapus</button>'+
+        '<button class="btn-export btn-hapus" data-idx="'+idx+'" data-act="hapus">Hapus</button>'+
       '</div></td>'+
     '</tr>';
   }).join('');
