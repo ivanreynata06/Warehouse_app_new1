@@ -376,7 +376,10 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
       <div class="card" id="card-approval" style="display:none;min-height:120px;overflow:visible;">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="clipboard-check" style="width:12px;"></i>Approval Lembur &amp; Cuti</div>
-          <span class="card-badge badge-purple" id="badge-approval">0 menunggu</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn-export" style="background:var(--bg-card-hover,#202033);border:1px solid var(--border-color,#2c2c42);color:var(--text-muted,#9aa0b4);" onclick="bersihkanDitolakLama()" title="Sekali-jalan: bersihkan baris pengajuan yang sempat ditolak SEBELUM update sistem notifikasi ini aktif (masih nyangkut di riwayat)"><i data-lucide="eraser" style="width:10px;"></i> Bersihkan Ditolak Lama</button>
+            <span class="card-badge badge-purple" id="badge-approval">0 menunggu</span>
+          </div>
         </div>
         <div id="ttd-setup-box" style="display:none;background:rgba(242,183,5,.08);border:1px solid rgba(242,183,5,.3);border-radius:10px;padding:12px;margin-bottom:12px;">
           <div style="font-size:11.5px;color:#f2d98a;margin-bottom:8px;">✍️ Anda belum upload tanda tangan. Upload sekali, otomatis dipakai di setiap SPL yang Anda approve.</div>
@@ -662,6 +665,25 @@ function escHtml(s){
   return String(s==null?'':s).replace(/[&<>"']/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
+}
+
+// ---- Sekali-jalan: bersihkan baris pengajuan yang sempat ditolak
+// SEBELUM update sistem "hapus + notif" ini aktif (masih nyangkut
+// berstatus "Ditolak" di riwayat krn logika lama tidak menghapusnya).
+// Aman dijalankan berkali-kali -- kalau sudah bersih, tidak ketemu apa2.
+function bersihkanDitolakLama(){
+  if (!confirm('Bersihkan baris pengajuan lembur/cuti LAMA yang sempat ditolak sebelum update sistem notifikasi ini aktif?\n\nBaris tsb akan dihapus dari riwayat + karyawannya dikirimi notifikasi susulan. Aman dijalankan berkali-kali.')) return;
+  showToast('Memeriksa & membersihkan...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      var h = res.hasil || {lembur:0,cuti:0};
+      if (!h.lembur && !h.cuti){ showToast('Tidak ada baris lama yang perlu dibersihkan -- sudah bersih 👍','success'); return; }
+      showToast('Selesai: '+h.lembur+' lembur & '+h.cuti+' cuti lama dibersihkan + notif terkirim','success');
+      loadApprovalPanel();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .bersihkanPengajuanDitolakLama(window.WH_SESSION ? window.WH_SESSION.nik : '', '');
 }
 
 function loadApprovalPanel(){

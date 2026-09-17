@@ -54,6 +54,7 @@ var API_FUNCTIONS = {
   approveEditRequest      : approveEditRequest,
   getNotifikasiSaya       : getNotifikasiSaya,
   tandaiNotifikasiDibaca  : tandaiNotifikasiDibaca,
+  bersihkanPengajuanDitolakLama: bersihkanPengajuanDitolakLama,
   getPendingApprovalCount : getPendingApprovalCount,
   saveAbsensi             : saveAbsensi,
   getAbsensiList          : getAbsensiList,
@@ -5563,6 +5564,65 @@ function tandaiNotifikasiDibaca(nik, rowIndexes) {
       if (ri >= 2 && ri <= sh.getLastRow()) sh.getRange(ri, 4).setValue(true);
     });
     return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  BERSIHKAN BARIS "DITOLAK" LAMA (sekali-jalan) -- utk baris yang
+//  sempat ditolak SEBELUM update ini di-deploy (masih pakai logika
+//  lama: cuma diberi status "Ditolak", tidak dihapus). Baris spt ini
+//  "nyangkut" selamanya krn logika baru cuma berlaku utk aksi Tolak
+//  BERIKUTNYA, bukan retroaktif. Fungsi ini menyisir LEMBUR_LOG &
+//  ABSENSI_LOG di departemen yang sedang aktif, hapus semua baris
+//  berstatus "Ditolak", dan kirim notifikasi susulan ke pemiliknya --
+//  supaya konsisten dgn baris yg ditolak lewat logika baru. AMAN
+//  dijalankan berkali-kali (kalau sudah bersih, tidak akan ketemu apa2).
+// ================================================================
+function bersihkanPengajuanDitolakLama(actorNik, workspaceKey) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    var wsKey = workspaceKey || ACTIVE_WORKSPACE;
+    if (wsKey !== ACTIVE_WORKSPACE && _resolveApprovalWorkspaceKeys(actorNik).indexOf(wsKey) === -1) {
+      return { success: false, error: 'Akses ditolak -- akun ini tidak terdaftar sbg TL Lintas Departemen utk departemen "' + (WORKSPACE_LABELS[wsKey] || wsKey) + '".' };
+    }
+    var wsId = WORKSPACE_MAP[wsKey];
+    if (!wsId) return { success: false, error: 'Departemen "' + wsKey + '" belum di-provision.' };
+    var ss = SpreadsheetApp.openById(wsId);
+    var hasil = { lembur: 0, cuti: 0 };
+
+    var shLem = ss.getSheetByName(SH_LEMBUR_LOG);
+    if (shLem) {
+      var dataLem = shLem.getDataRange().getValues();
+      for (var i = dataLem.length - 1; i >= 1; i--) { // dari bawah ke atas spy index baris tdk berantakan saat deleteRow
+        if (String(dataLem[i][9] || '') === 'Ditolak') { // kolom J (index 9)
+          var kodeL = String(dataLem[i][2] || '');
+          var tglL = dataLem[i][1] ? _fmtYMD(new Date(dataLem[i][1])) : '';
+          var pesanL = 'Pengajuan lembur Anda tanggal ' + tglL + ' (' + _fmtTime(dataLem[i][4]) + '–' + _fmtTime(dataLem[i][5]) + ') ditolak. Untuk keterangan pastinya bisa ditanyakan kepada Team Leader Anda.';
+          _kirimNotifikasiUser(ss, kodeL, pesanL);
+          shLem.deleteRow(i + 1);
+          hasil.lembur++;
+        }
+      }
+    }
+
+    var shAbs = ss.getSheetByName(SH_ABSENSI_LOG);
+    if (shAbs) {
+      var dataAbs = shAbs.getDataRange().getValues();
+      for (var j = dataAbs.length - 1; j >= 1; j--) {
+        if (String(dataAbs[j][7] || '') === 'Ditolak') { // kolom H (index 7)
+          var kodeA = String(dataAbs[j][2] || '');
+          var tglA = dataAbs[j][1] ? _fmtYMD(new Date(dataAbs[j][1])) : '';
+          var jenisA = dataAbs[j][4] ? String(dataAbs[j][4]) : 'cuti/ketidakhadiran';
+          var pesanA = 'Pengajuan ' + jenisA + ' Anda tanggal ' + tglA + ' ditolak. Untuk keterangan pastinya bisa ditanyakan kepada Team Leader Anda.';
+          _kirimNotifikasiUser(ss, kodeA, pesanA);
+          shAbs.deleteRow(j + 1);
+          hasil.cuti++;
+        }
+      }
+    }
+
+    _bumpDataCacheVersion();
+    return { success: true, hasil: hasil };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
