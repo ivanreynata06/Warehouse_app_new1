@@ -119,6 +119,48 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .btn-toggle-on{background:linear-gradient(135deg,#dc2626,#b91c1c);}
 .btn-toggle-off{background:linear-gradient(135deg,#16a34a,#22c55e);}
 
+/* ------------------------------------------------------------
+   Tombol & checkbox "flat" -- dipakai di panel Kelola Departemen
+   Lain (Tambah/Perbaiki Sheet/Hapus/TL Lintas Departemen). Warna
+   solid tunggal + border tipis, bukan gradient dua-warna terang --
+   supaya terasa tenang & disengaja, bukan default tombol "AI".
+   ------------------------------------------------------------ */
+.btn-flat{
+  display:inline-flex;align-items:center;gap:6px;
+  border:1px solid transparent;cursor:pointer;
+  padding:7px 13px;border-radius:7px;
+  font-family:var(--font-body);font-size:10.5px;font-weight:600;
+  white-space:nowrap;line-height:1.2;
+  transition:background-color .15s ease,border-color .15s ease,opacity .1s ease;
+}
+.btn-flat:active{opacity:.82;}
+.btn-flat:disabled{opacity:.45;cursor:not-allowed;}
+.btn-flat-ghost{background:var(--bg-card-hover);border-color:var(--border-color);color:var(--text-main);}
+.btn-flat-ghost:hover{background:#252539;border-color:#3a3a58;}
+.btn-flat-accent{background:var(--accent-gold);color:#25200c;}
+.btn-flat-accent:hover{background:#c19f34;}
+.btn-flat-info{background:#3568c9;color:#f3f6ff;}
+.btn-flat-info:hover{background:#2c5aae;}
+.btn-flat-danger{background:#a8342b;color:#fdf1f0;}
+.btn-flat-danger:hover{background:#8e2b23;}
+
+/* Checkbox singular di depan kalimat (mis. "Ikut pindahkan ke Trash
+   Drive") -- native, cuma direstyle warnanya biar konsisten tema. */
+.chk-plain{width:15px;height:15px;flex-shrink:0;accent-color:var(--accent-blue);cursor:pointer;}
+
+/* Checkbox pilihan pendek (nama departemen, dst) -- dibungkus jadi
+   baris kecil dgn border, supaya area klik lebih jelas & terasa spt
+   komponen form yang dirancang, bukan checkbox polos berjejer. */
+.chk-row{
+  display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+  padding:6px 11px;border-radius:7px;border:1px solid var(--border-color);
+  background:var(--bg-card-hover);font-size:10.5px;color:var(--text-main);
+  transition:background-color .15s ease,border-color .15s ease,color .15s ease;
+}
+.chk-row:hover{background:#252539;border-color:#3a3a58;}
+.chk-row input[type="checkbox"]{width:14px;height:14px;margin:0;flex-shrink:0;accent-color:var(--accent-blue);cursor:pointer;}
+.chk-row:has(input:checked){background:rgba(59,130,246,.14);border-color:rgba(59,130,246,.5);color:#bcd4fb;}
+
 .modal-backdrop{position:fixed;inset:0;background:rgba(8,8,16,.7);z-index:1900;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
 .modal-backdrop.open{display:flex;}
 .modal-box{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:18px 20px;width:340px;max-width:92vw;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 50px rgba(0,0,0,.5);max-height:88vh;overflow-y:auto;}
@@ -243,8 +285,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn-export" style="background:linear-gradient(135deg,#d4af37,#f4d675);color:#1a1a10;" onclick="openTambahDeptModal()"><i data-lucide="plus-circle" style="width:11px;vertical-align:-2px;"></i> Tambah Departemen/Plant Baru</button>
-          <button class="btn-export" style="background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;" onclick="perbaikiSheetDepartemen()"><i data-lucide="wrench" style="width:11px;vertical-align:-2px;"></i> Perbaiki Sheet Departemen Lama</button>
+          <button class="btn-flat btn-flat-accent" onclick="openTambahDeptModal()"><i data-lucide="plus-circle" style="width:11px;"></i> Tambah Departemen/Plant Baru</button>
+          <button class="btn-flat btn-flat-info" onclick="perbaikiSheetDepartemen()"><i data-lucide="wrench" style="width:11px;"></i> Perbaiki Sheet Departemen Lama</button>
         </div>
         <div class="modal-note" style="margin:6px 0 0;font-size:11px;opacity:.8;">
           Pakai tombol "Perbaiki Sheet" kalau ada departemen/plant lama yang upload Outbound/Inbound/Stock-nya gagal (sheet-nya sempat hilang/kurang saat dibuat dulu). Aman dijalankan berkali-kali, tidak menghapus data yang sudah ada.
@@ -252,8 +294,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);">
           <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="trash-2" style="width:11px;color:var(--accent-red);"></i>Hapus Departemen / Plant</div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:11px;opacity:.85;margin-bottom:8px;">
-            <input type="checkbox" id="chk-hapus-spreadsheet" style="width:auto;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;opacity:.85;margin-bottom:10px;cursor:pointer;">
+            <input type="checkbox" id="chk-hapus-spreadsheet" class="chk-plain">
             Ikut pindahkan file spreadsheet-nya ke Trash Drive (kalau tidak dicentang, file tetap ada -- cuma dilepas dari daftar aktif)
           </label>
           <div class="modal-field two-col" style="max-width:520px;align-items:flex-end;">
@@ -261,14 +303,14 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
               <label for="select-hapus-dept">Hapus 1 Departemen</label>
               <select id="select-hapus-dept"></select>
             </div>
-            <button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;" onclick="hapusDepartemenTerpilih()"><i data-lucide="trash-2" style="width:11px;vertical-align:-2px;"></i> Hapus Departemen</button>
+            <button class="btn-flat btn-flat-danger" onclick="hapusDepartemenTerpilih()"><i data-lucide="trash-2" style="width:11px;"></i> Hapus Departemen</button>
           </div>
           <div class="modal-field two-col" style="max-width:520px;align-items:flex-end;margin-top:8px;">
             <div>
               <label for="select-hapus-plant">Hapus 1 Plant (+ semua departemen di dalamnya)</label>
               <select id="select-hapus-plant"></select>
             </div>
-            <button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;" onclick="hapusPlantTerpilih()"><i data-lucide="trash-2" style="width:11px;vertical-align:-2px;"></i> Hapus Plant</button>
+            <button class="btn-flat btn-flat-danger" onclick="hapusPlantTerpilih()"><i data-lucide="trash-2" style="width:11px;"></i> Hapus Plant</button>
           </div>
           <div class="modal-note" style="margin:8px 0 0;font-size:11px;opacity:.8;">
             Cuma departemen/plant hasil "Tambah Departemen/Plant Baru" yang muncul di sini -- departemen inti (Fitting Import, Fitting Rucika, dst) sengaja tidak bisa dihapus lewat web.
@@ -284,8 +326,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <label for="input-nik-cross-tl">NIK TL</label>
             <input type="text" id="input-nik-cross-tl" placeholder="Contoh: PEG12345678">
           </div>
-          <div id="checkbox-cross-tl-workspaces" style="display:flex;flex-wrap:wrap;gap:10px;margin:8px 0;font-size:11px;"></div>
-          <button class="btn-export" style="background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;" onclick="simpanCrossWorkspaceTL()"><i data-lucide="save" style="width:11px;vertical-align:-2px;"></i> Simpan</button>
+          <div id="checkbox-cross-tl-workspaces" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;"></div>
+          <button class="btn-flat btn-flat-info" onclick="simpanCrossWorkspaceTL()"><i data-lucide="save" style="width:11px;"></i> Simpan</button>
           <div id="status-cross-tl" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
 
           <div style="margin-top:12px;">
@@ -618,8 +660,8 @@ function isiDropdownHapus(){
   var wrapCB = document.getElementById('checkbox-cross-tl-workspaces');
   if (wrapCB){
     wrapCB.innerHTML = workspaceListCache.map(function(w){
-      return '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;">'+
-        '<input type="checkbox" class="chk-cross-tl-ws" value="'+escHtml(w.key)+'" style="width:auto;">'+
+      return '<label class="chk-row">'+
+        '<input type="checkbox" class="chk-cross-tl-ws" value="'+escHtml(w.key)+'">'+
         escHtml(w.label)+'</label>';
     }).join('');
   }
@@ -643,7 +685,7 @@ function loadCrossWorkspaceTLList(){
         }).join(', ');
         return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border-color);">'+
           '<span><b>'+escHtml(nik)+'</b> — '+escHtml(labels)+'</span>'+
-          '<button class="btn-export" style="background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;flex-shrink:0;" onclick="hapusCrossWorkspaceTL(\''+nik.replace(/'/g,"\\'")+'\')">Hapus</button>'+
+          '<button class="btn-flat btn-flat-danger" style="flex-shrink:0;" onclick="hapusCrossWorkspaceTL(\''+nik.replace(/'/g,"\\'")+'\')">Hapus</button>'+
         '</div>';
       }).join('');
     })
