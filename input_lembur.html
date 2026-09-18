@@ -107,38 +107,69 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 /* KPI CARDS */
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;flex-shrink:0;}
 
-/* Kartu notifikasi personal (mis. lembur ditolak) -- gaya sama dgn
-   kartu "Notifikasi Pengiriman Tertunda" di halaman Loading Time
-   (residance_time.html .ncard): wash gradien tipis + garis aksen kiri +
-   badge status kapital kecil, bukan blok merah penuh. */
-.notif-personal{
-  border-radius:12px;padding:13px 15px;
-  border:1px solid rgba(239,68,68,.25);
+/* ----------------------------------------------
+   MODAL NOTIFIKASI "PENGAJUAN DITOLAK" -- gaya sama dgn modal
+   Notifikasi Pengiriman Tertunda di Loading Time (residance_time.html):
+   overlay gelap blur, panel muncul di tengah, WAJIB klik "Mengerti"
+   utk lanjut (tidak ada tutup-klik-luar, beda dari referensinya yg
+   memang boleh diklik-luar -- ini sengaja diblokir).
+---------------------------------------------- */
+#nt-overlay{
+  position:fixed;inset:0;z-index:10000;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(6,6,18,0);pointer-events:none;
+  transition:background .4s ease;
+}
+#nt-overlay.show{background:rgba(6,6,18,.72);pointer-events:auto;backdrop-filter:blur(6px);}
+#nt-panel{
+  width:min(480px,94vw);max-height:85vh;
+  display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+  transform:translateY(40px) scale(.95);opacity:0;
+  transition:transform .45s cubic-bezier(.34,1.56,.64,1),opacity .35s ease;
+  box-shadow:0 32px 80px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.06);
+  background:linear-gradient(160deg,#12122e 0%,#0e0e22 100%);
+}
+#nt-overlay.show #nt-panel{transform:translateY(0) scale(1);opacity:1;}
+.nt-topbar{height:3px;background:linear-gradient(90deg,#ef4444,#f59e0b,#ef4444);background-size:300% 100%;animation:ntBarSlide 3s linear infinite;}
+@keyframes ntBarSlide{0%{background-position:0% 0;}100%{background-position:300% 0;}}
+.nt-hdr{padding:16px 20px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0;}
+.nt-hdr-icon{
+  width:40px;height:40px;border-radius:12px;flex-shrink:0;
+  background:linear-gradient(135deg,rgba(239,68,68,.2),rgba(239,68,68,.08));
+  border:1px solid rgba(239,68,68,.3);
+  display:flex;align-items:center;justify-content:center;
+  animation:ntIconPulse 2s ease-in-out infinite;
+}
+@keyframes ntIconPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4);}50%{box-shadow:0 0 0 8px rgba(239,68,68,0);}}
+.nt-hdr-text{flex:1;}
+.nt-hdr-title{font-size:13px;font-weight:800;color:#e8eaf0;letter-spacing:.2px;}
+.nt-hdr-sub{font-size:10px;color:#9da3b8;margin-top:2px;}
+.nt-cards{overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;flex:1;}
+.nt-cards::-webkit-scrollbar{width:3px;}
+.nt-cards::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px;}
+.ncard-tolak{
+  border-radius:12px;padding:13px 15px;border:1px solid rgba(239,68,68,.25);
   background:linear-gradient(135deg,rgba(239,68,68,.08),rgba(239,68,68,.03));
   position:relative;overflow:hidden;
-  animation:notifPersonalIn .4s cubic-bezier(.34,1.2,.64,1) both;
+  animation:ncardTolakIn .4s cubic-bezier(.34,1.2,.64,1) both;
 }
-@keyframes notifPersonalIn{from{opacity:0;transform:translateX(-16px);}to{opacity:1;transform:translateX(0);}}
-.notif-personal::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:rgba(239,68,68,.9);}
-.notif-personal-badge{
-  display:inline-flex;align-items:center;gap:4px;
-  font-size:8px;font-weight:700;padding:2px 8px;border-radius:20px;
-  text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;
+@keyframes ncardTolakIn{from{opacity:0;transform:translateX(-16px);}to{opacity:1;transform:translateX(0);}}
+.ncard-tolak-accent{position:absolute;left:0;top:0;bottom:0;width:3px;background:rgba(239,68,68,.9);}
+.ncard-tolak-badge{
+  display:inline-flex;align-items:center;gap:4px;font-size:8px;font-weight:700;
+  padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;
   background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.25);
 }
-.notif-personal-msg{font-size:11.5px;line-height:1.6;color:#cbd5e1;}
-.notif-personal-footer{
-  margin-top:10px;display:flex;align-items:center;justify-content:space-between;
-  padding-top:8px;border-top:1px solid rgba(255,255,255,.06);
+.ncard-tolak-body{font-size:11px;line-height:1.6;color:#cbd5e1;}
+.ncard-tolak-meta{font-size:8px;color:#64748b;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);}
+.nt-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:rgba(0,0,0,.2);}
+.nt-footer-left{font-size:9px;color:#6b7280;}
+.btn-nt-dismiss{
+  background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;color:#fff;cursor:pointer;
+  padding:7px 18px;border-radius:8px;font-size:10px;font-weight:700;
+  font-family:inherit;letter-spacing:.2px;transition:all .2s;
 }
-.notif-personal-time{font-size:9px;color:#64748b;}
-.notif-personal-ok{
-  background:linear-gradient(135deg,#1d4ed8,#3b82f6);
-  border:none;color:#fff;cursor:pointer;padding:6px 15px;border-radius:8px;
-  font-size:10px;font-weight:700;font-family:inherit;letter-spacing:.2px;
-  transition:transform .15s ease,background-color .15s ease;
-}
-.notif-personal-ok:hover{background:linear-gradient(135deg,#1e40af,#2563eb);transform:scale(1.03);}
+.btn-nt-dismiss:hover{background:linear-gradient(135deg,#1e40af,#2563eb);transform:scale(1.03);}
 .kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:11px 13px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;cursor:default;}
 .kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.32);}
 .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;border-radius:10px 10px 0 0;}
@@ -383,11 +414,6 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <i data-lucide="log-out" style="width:15px;"></i>
         </button>
       </div>
-
-      <!-- KARTU NOTIFIKASI PERSONAL (mis. pengajuan lembur ditolak) --
-           kosong & tersembunyi kalau tidak ada notifikasi. Diisi oleh
-           loadNotifikasiSaya() saat halaman dibuka. -->
-      <div id="wrap-notifikasi-saya" style="display:flex;flex-direction:column;gap:8px;"></div>
 
       <!-- KPI RINGKAS BULAN INI -->
       <div class="kpi-row">
@@ -691,34 +717,56 @@ function todayStr(){ var n=new Date(); return n.getFullYear()+'-'+p2(n.getMonth(
 //  Dipanggil sekali saat halaman dibuka. Kartu bisa ditutup (dismiss);
 //  begitu ditutup, ditandai dibaca di server supaya tidak muncul lagi.
 // ================================================================
+// ================================================================
+//  NOTIFIKASI "PENGAJUAN DITOLAK" -- modal spt Notifikasi Pengiriman
+//  Tertunda di Loading Time: muncul di tengah layar, blokir interaksi
+//  lain sampai user klik "Mengerti". Dipanggil sekali saat halaman
+//  dibuka.
+// ================================================================
 function loadNotifikasiSaya(){
   var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
   if (!nik) return;
   google.script.run
     .withSuccessHandler(function(res){
       if (!res || !res.success || !res.data || !res.data.length) return;
-      var wrap = document.getElementById('wrap-notifikasi-saya');
-      wrap.innerHTML = res.data.map(function(n, idx){
-        return '<div class="notif-personal" data-row="'+n.rowIndex+'" style="animation-delay:'+(idx*0.08)+'s;">'+
-          '<span class="notif-personal-badge">Pengajuan Ditolak</span>'+
-          '<div class="notif-personal-msg">'+escHtml(n.pesan)+'</div>'+
-          '<div class="notif-personal-footer">'+
-            '<span class="notif-personal-time">'+escHtml(n.waktu||'')+'</span>'+
-            '<button class="notif-personal-ok" data-row="'+n.rowIndex+'">Mengerti</button>'+
-          '</div>'+
+      window.__notifTolakRows = res.data.map(function(n){ return n.rowIndex; });
+
+      document.getElementById('nt-footer-count').textContent = res.data.length + ' pengajuan ditolak';
+      document.getElementById('nt-cards').innerHTML = res.data.map(function(n, idx){
+        return '<div class="ncard-tolak" style="animation-delay:'+(idx*0.1)+'s;">'+
+          '<div class="ncard-tolak-accent"></div>'+
+          '<div class="ncard-tolak-badge">Pengajuan Ditolak</div>'+
+          '<div class="ncard-tolak-body">'+escHtml(n.pesan)+'</div>'+
+          '<div class="ncard-tolak-meta">'+escHtml(n.waktu||'')+'</div>'+
         '</div>';
       }).join('');
-      wrap.querySelectorAll('.notif-personal-ok').forEach(function(btn){
-        btn.addEventListener('click', function(){
-          var card = btn.closest('.notif-personal');
-          var rowIdx = Number(btn.dataset.row);
-          card.remove();
-          google.script.run.tandaiNotifikasiDibaca(nik, [rowIdx]); // fire-and-forget, tidak perlu tunggu respons
-        });
-      });
+
+      var overlay = document.getElementById('nt-overlay');
+      requestAnimationFrame(function(){ overlay.classList.add('show'); });
     })
     .withFailureHandler(function(){ /* diam saja -- notifikasi bukan hal kritis, jangan ganggu halaman kalau gagal load */ })
     .getNotifikasiSaya(nik);
+}
+
+// Satu-satunya cara menutup modal ini -- SENGAJA tidak ada tutup-klik-
+// di-luar-panel, beda dari modal Notifikasi Pengiriman di Loading Time
+// yang boleh diklik-luar. Semua notifikasi yang lagi ditampilkan
+// ditandai dibaca sekaligus di server saat "Mengerti" diklik.
+function dismissNotifTolak(){
+  var overlay = document.getElementById('nt-overlay');
+  var panel = document.getElementById('nt-panel');
+  if (panel){ panel.style.transform = 'translateY(30px) scale(.97)'; panel.style.opacity = '0'; }
+  overlay.style.background = 'rgba(6,6,18,0)';
+  overlay.style.backdropFilter = 'blur(0)';
+  setTimeout(function(){
+    overlay.classList.remove('show');
+    if (panel){ panel.style.transform=''; panel.style.opacity=''; }
+    overlay.style.background = ''; overlay.style.backdropFilter = '';
+  }, 350);
+
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  var rows = window.__notifTolakRows || [];
+  if (rows.length) google.script.run.tandaiNotifikasiDibaca(nik, rows); // fire-and-forget
 }
 
 // escHtml dipakai di atas -- jaga-jaga kalau belum ada definisi lain.
@@ -1236,5 +1284,30 @@ if(typeof lucide!=='undefined') lucide.createIcons();
 loadAll();
 loadNotifikasiSaya();
 </script>
+
+<!-- MODAL NOTIFIKASI "PENGAJUAN DITOLAK" -- muncul otomatis kalau ada
+     pengajuan yang ditolak TL & belum dibaca. Wajib klik "Mengerti"
+     utk lanjut (lihat loadNotifikasiSaya/dismissNotifTolak). -->
+<div id="nt-overlay">
+  <div id="nt-panel">
+    <div class="nt-topbar"></div>
+    <div class="nt-hdr">
+      <div class="nt-hdr-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+      </div>
+      <div class="nt-hdr-text">
+        <div class="nt-hdr-title">Pengajuan Anda Ditolak</div>
+        <div class="nt-hdr-sub">Team Leader menolak pengajuan berikut -- ketuk Mengerti utk lanjut</div>
+      </div>
+    </div>
+    <div class="nt-cards" id="nt-cards"><!-- diisi JS --></div>
+    <div class="nt-footer">
+      <div class="nt-footer-left" id="nt-footer-count">0 pengajuan</div>
+      <button class="btn-nt-dismiss" onclick="dismissNotifTolak()">Mengerti</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
