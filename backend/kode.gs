@@ -5512,6 +5512,22 @@ function approveItem(tipe, rowIndex, keputusan, approverNik, kodeCek, tanggalCek
   } catch (err) { return { success: false, error: err.message }; }
 }
 
+// Waktu notifikasi dalam bentuk relatif ringkas ("Baru saja", "23 menit
+// lalu", "3 jam lalu", "Kemarin", atau tanggal singkat kalau sudah lama).
+function _fmtWaktuNotif(d) {
+  var diffMs = new Date().getTime() - d.getTime();
+  var menit = Math.floor(diffMs / 60000);
+  if (menit < 1) return 'Baru saja';
+  if (menit < 60) return menit + ' menit lalu';
+  var jam = Math.floor(menit / 60);
+  if (jam < 24) return jam + ' jam lalu';
+  var hari = Math.floor(jam / 24);
+  if (hari === 1) return 'Kemarin';
+  if (hari < 7) return hari + ' hari lalu';
+  var bln = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return d.getDate() + ' ' + bln[d.getMonth()];
+}
+
 // ------------------------------------------------------------
 //  NOTIFIKASI PERSONAL UTK KARYAWAN -- sheet NOTIFIKASI_USER (dibuat
 //  otomatis kalau belum ada). Dipakai utk kabari karyawan begitu SALAH
@@ -5545,7 +5561,7 @@ function getNotifikasiSaya(nik) {
       var r = data[i];
       if (!r[1]) continue;
       if (String(r[1]).trim().toUpperCase() === nikUp && r[3] !== true) {
-        out.push({ rowIndex: i + 1, pesan: String(r[2] || '') });
+        out.push({ rowIndex: i + 1, pesan: String(r[2] || ''), waktu: r[0] ? _fmtWaktuNotif(new Date(r[0])) : '' });
       }
     }
     out.reverse();

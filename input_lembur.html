@@ -107,23 +107,38 @@ body.sidebar-hidden .sidebar{width:0;min-width:0;padding:0;}
 /* KPI CARDS */
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;flex-shrink:0;}
 
-/* Kartu notifikasi personal (mis. lembur ditolak) -- warna netral gelap
-   dgn aksen merah tipis di kiri, bukan merah menyala penuh, supaya
-   terasa spt pemberitahuan yg tenang & jelas, bukan alarm. */
+/* Kartu notifikasi personal (mis. lembur ditolak) -- gaya sama dgn
+   kartu "Notifikasi Pengiriman Tertunda" di halaman Loading Time
+   (residance_time.html .ncard): wash gradien tipis + garis aksen kiri +
+   badge status kapital kecil, bukan blok merah penuh. */
 .notif-personal{
-  display:flex;align-items:flex-start;gap:10px;
-  background:var(--bg-card);border:1px solid var(--border-color);
-  border-left:3px solid var(--accent-red);border-radius:8px;
-  padding:11px 13px;font-size:11.5px;line-height:1.5;color:var(--text-main);
+  border-radius:12px;padding:13px 15px;
+  border:1px solid rgba(239,68,68,.25);
+  background:linear-gradient(135deg,rgba(239,68,68,.08),rgba(239,68,68,.03));
+  position:relative;overflow:hidden;
+  animation:notifPersonalIn .4s cubic-bezier(.34,1.2,.64,1) both;
 }
-.notif-personal i[data-lucide]{flex-shrink:0;margin-top:1px;color:#f2a3a3;}
-.notif-personal .notif-close{
-  margin-left:auto;flex-shrink:0;background:transparent;border:1px solid var(--border-color);
-  color:var(--text-muted);cursor:pointer;padding:5px 11px;border-radius:6px;
-  font-family:var(--font-body);font-size:10px;font-weight:600;
-  transition:border-color .15s ease,color .15s ease;
+@keyframes notifPersonalIn{from{opacity:0;transform:translateX(-16px);}to{opacity:1;transform:translateX(0);}}
+.notif-personal::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:rgba(239,68,68,.9);}
+.notif-personal-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:8px;font-weight:700;padding:2px 8px;border-radius:20px;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;
+  background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.25);
 }
-.notif-personal .notif-close:hover{border-color:#3a3a58;color:var(--text-main);}
+.notif-personal-msg{font-size:11.5px;line-height:1.6;color:#cbd5e1;}
+.notif-personal-footer{
+  margin-top:10px;display:flex;align-items:center;justify-content:space-between;
+  padding-top:8px;border-top:1px solid rgba(255,255,255,.06);
+}
+.notif-personal-time{font-size:9px;color:#64748b;}
+.notif-personal-ok{
+  background:linear-gradient(135deg,#1d4ed8,#3b82f6);
+  border:none;color:#fff;cursor:pointer;padding:6px 15px;border-radius:8px;
+  font-size:10px;font-weight:700;font-family:inherit;letter-spacing:.2px;
+  transition:transform .15s ease,background-color .15s ease;
+}
+.notif-personal-ok:hover{background:linear-gradient(135deg,#1e40af,#2563eb);transform:scale(1.03);}
 .kpi-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:11px 13px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;cursor:default;}
 .kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.32);}
 .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;border-radius:10px 10px 0 0;}
@@ -683,15 +698,17 @@ function loadNotifikasiSaya(){
     .withSuccessHandler(function(res){
       if (!res || !res.success || !res.data || !res.data.length) return;
       var wrap = document.getElementById('wrap-notifikasi-saya');
-      wrap.innerHTML = res.data.map(function(n){
-        return '<div class="notif-personal" data-row="'+n.rowIndex+'">'+
-          '<i data-lucide="bell-ring" style="width:14px;"></i>'+
-          '<span>'+escHtml(n.pesan)+'</span>'+
-          '<button class="notif-close" data-row="'+n.rowIndex+'">Mengerti</button>'+
+      wrap.innerHTML = res.data.map(function(n, idx){
+        return '<div class="notif-personal" data-row="'+n.rowIndex+'" style="animation-delay:'+(idx*0.08)+'s;">'+
+          '<span class="notif-personal-badge">Pengajuan Ditolak</span>'+
+          '<div class="notif-personal-msg">'+escHtml(n.pesan)+'</div>'+
+          '<div class="notif-personal-footer">'+
+            '<span class="notif-personal-time">'+escHtml(n.waktu||'')+'</span>'+
+            '<button class="notif-personal-ok" data-row="'+n.rowIndex+'">Mengerti</button>'+
+          '</div>'+
         '</div>';
       }).join('');
-      if(typeof lucide!=='undefined') lucide.createIcons();
-      wrap.querySelectorAll('.notif-close').forEach(function(btn){
+      wrap.querySelectorAll('.notif-personal-ok').forEach(function(btn){
         btn.addEventListener('click', function(){
           var card = btn.closest('.notif-personal');
           var rowIdx = Number(btn.dataset.row);
