@@ -348,6 +348,27 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <!-- ═══ KELOLA MENU PER DEPARTEMEN/PLANT -- cuma tampil utk Super Admin ═══ -->
+      <div class="card" id="card-kelola-menu" style="display:none;border:1px solid rgba(212,175,55,.35);">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="layout-list" style="width:12px;color:var(--accent-gold);"></i>Kelola Menu per Departemen/Plant</div>
+          <span class="card-badge badge-gold"><i data-lucide="key" style="width:9px;"></i> Super Admin</span>
+        </div>
+        <div class="modal-note" style="margin:0;">
+          Tentukan menu apa saja yang tampil di sidebar untuk tiap departemen/plant. Kalau tidak diatur di sini, departemen baru default-nya cuma dapat 4 menu inti (Monitoring Stock, Monitoring FTE, Input Lembur, Upload Data Harian).
+        </div>
+        <div class="modal-field">
+          <label for="select-menu-workspace">Departemen / Plant</label>
+          <select id="select-menu-workspace" onchange="onMenuWorkspaceSwitch()"></select>
+        </div>
+        <div id="checkbox-menu-catalog" style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;"></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn-flat btn-flat-info" onclick="simpanMenuConfig()"><i data-lucide="save" style="width:11px;"></i> Simpan</button>
+          <button class="btn-flat btn-flat-ghost" onclick="resetMenuConfig()"><i data-lucide="rotate-ccw" style="width:11px;"></i> Kembalikan ke Default</button>
+        </div>
+        <div id="status-menu-config" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
+      </div>
+
       <div class="card">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="message-circle" style="width:12px;"></i>Notifikasi WhatsApp (Fonnte) — Departemen Ini</div>
@@ -627,6 +648,7 @@ function loadSuperAdminPanel(){
       isSuperAdmin = true;
       workspaceListCache = res.data || [];
       document.getElementById('card-super-admin').style.display = 'flex';
+      document.getElementById('card-kelola-menu').style.display = 'flex';
       var sel = document.getElementById('select-workspace');
       var selectedKey = currentTargetWorkspace || res.currentWorkspace;
       sel.innerHTML = workspaceListCache.map(function(w){
@@ -634,9 +656,78 @@ function loadSuperAdminPanel(){
         return '<option value="'+escHtml(w.key)+'" '+(w.key===selectedKey?'selected':'')+' '+(w.provisioned?'':'disabled')+'>'+escHtml(label)+'</option>';
       }).join('');
       isiDropdownHapus();
+      loadMenuConfigPanel();
     })
     .withFailureHandler(function(){})
     .getWorkspaceListForAdmin(actorNik);
+}
+
+// ---- Kelola Menu per Departemen/Plant ----
+var menuCatalogCache = [];   // [{key,label,file}]
+var menuConfigCache = {};    // { workspaceKey: [key,...] }
+
+function loadMenuConfigPanel(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success) return;
+      menuCatalogCache = res.catalog || [];
+      menuConfigCache = res.config || {};
+      var sel = document.getElementById('select-menu-workspace');
+      var selectedKey = sel.value || (workspaceListCache[0] && workspaceListCache[0].key) || '';
+      sel.innerHTML = workspaceListCache.map(function(w){
+        return '<option value="'+escHtml(w.key)+'" '+(w.key===selectedKey?'selected':'')+'>'+escHtml(w.label)+'</option>';
+      }).join('');
+      renderMenuCatalogCheckboxes();
+    })
+    .withFailureHandler(function(){})
+    .adminGetMenuConfig(actorNik);
+}
+
+function onMenuWorkspaceSwitch(){
+  document.getElementById('status-menu-config').textContent = '';
+  renderMenuCatalogCheckboxes();
+}
+
+function renderMenuCatalogCheckboxes(){
+  var wsKey = document.getElementById('select-menu-workspace').value;
+  var aktif = menuConfigCache[wsKey] || [];
+  var wrap = document.getElementById('checkbox-menu-catalog');
+  wrap.innerHTML = menuCatalogCache.map(function(m){
+    var checked = aktif.indexOf(m.key) !== -1 ? 'checked' : '';
+    return '<label class="chk-row"><input type="checkbox" class="chk-menu-catalog" value="'+escHtml(m.key)+'" '+checked+'>'+escHtml(m.label)+'</label>';
+  }).join('');
+}
+
+function simpanMenuConfig(){
+  var wsKey = document.getElementById('select-menu-workspace').value;
+  if (!wsKey){ showToast('Pilih departemen/plant dulu.','error'); return; }
+  var keys = Array.prototype.slice.call(document.querySelectorAll('.chk-menu-catalog:checked')).map(function(c){ return c.value; });
+  if (!keys.length){ showToast('Pilih minimal 1 menu -- kalau mau kosongkan semua, pakai tombol "Kembalikan ke Default" saja.','error'); return; }
+  var statusEl = document.getElementById('status-menu-config');
+  statusEl.textContent = 'Menyimpan...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ statusEl.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+      statusEl.textContent = '✅ Tersimpan.';
+      menuConfigCache[wsKey] = keys;
+      showToast('Menu utk departemen ini berhasil disimpan','success');
+    })
+    .withFailureHandler(function(err){ statusEl.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
+    .adminSetMenuConfig(actorNik, wsKey, keys);
+}
+
+function resetMenuConfig(){
+  var wsKey = document.getElementById('select-menu-workspace').value;
+  if (!wsKey){ showToast('Pilih departemen/plant dulu.','error'); return; }
+  if (!confirm('Kembalikan menu departemen ini ke default? (custom yang tersimpan akan dihapus)')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Dikembalikan ke default','success');
+      loadMenuConfigPanel();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetMenuConfig(actorNik, wsKey, []);
 }
 
 // ---- Isi dropdown "Hapus Departemen" & "Hapus Plant" -- HANYA departemen

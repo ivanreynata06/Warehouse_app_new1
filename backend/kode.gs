@@ -81,6 +81,8 @@ var API_FUNCTIONS = {
   adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
   adminHapusDepartemen    : adminHapusDepartemen,
   adminHapusPlant         : adminHapusPlant,
+  adminGetMenuConfig      : adminGetMenuConfig,
+  adminSetMenuConfig      : adminSetMenuConfig,
   adminGetCrossWorkspaceTL: adminGetCrossWorkspaceTL,
   adminSetCrossWorkspaceTL: adminSetCrossWorkspaceTL,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
@@ -279,6 +281,86 @@ function resolveWorkspaceSpreadsheetId(workspaceKey) {
     throw new Error('Departemen "' + workspaceKey + '" belum di-provision (Spreadsheet ID kosong). Jalankan provisionDepartmentSpreadsheet() dulu, lalu isi WORKSPACE_MAP.');
   }
   return id;
+}
+
+// ================================================================
+//  KELOLA MENU PER DEPARTEMEN/PLANT (Super Admin)
+// ================================================================
+//  Katalog SEMUA menu/halaman yang bisa diatur tampil/tidaknya per
+//  departemen/plant lewat Panel Admin. `key` HARUS SAMA PERSIS dgn key
+//  di PAGE_MAP (index.html) & fileForKey (assets/js/auth-guard.js) --
+//  kalau nambah halaman baru ke aplikasi, ketiga tempat ini WAJIB
+//  di-update bareng, supaya menu baru itu bisa dipilih tampil/tidaknya.
+// ------------------------------------------------------------
+var MENU_CATALOG = [
+  { key: 'wh_control_tower', label: 'Dashboard WH Import (Control Tower)', file: 'index.html' },
+  { key: 'index',            label: 'Monitoring Stock, Inbound & Outbound', file: 'monitoring_stock.html' },
+  { key: 'kanban',           label: 'Monitoring Kanban', file: 'kanban.html' },
+  { key: 'fte_dashboard',    label: 'Monitoring FTE', file: 'fte_dashboard.html' },
+  { key: 'rekap',            label: 'Rekap Muatan', file: 'rekap_muatan.html' },
+  { key: 'residance',        label: 'Loading Time (Jadwal Pengiriman)', file: 'residance_time.html' },
+  { key: 'input_lembur',     label: 'Input Lembur & Cuti', file: 'input_lembur.html' },
+  { key: 'upload',           label: 'Upload Data Harian', file: 'upload_data.html' }
+];
+var MENU_CATALOG_KEYS = MENU_CATALOG.map(function (m) { return m.key; });
+
+// Default kalau Super Admin BELUM mengatur menu departemen ini lewat
+// Kelola Menu -- SAMA seperti perilaku lama (sebelum fitur ini ada),
+// supaya departemen yang sudah berjalan tidak berubah tiba2:
+//  - Warehouse Fitting Import: SEMUA menu.
+//  - Departemen/plant lain: 4 menu inti (spt yg sudah berjalan).
+function _defaultMenuKeysForWorkspace(workspaceKey) {
+  if (workspaceKey === 'cibitung_fitting_import') return MENU_CATALOG_KEYS.slice();
+  return ['index', 'fte_dashboard', 'input_lembur', 'upload'];
+}
+
+function _getMenuConfigRegistry() {
+  try {
+    var json = PropertiesService.getScriptProperties().getProperty('MENU_CONFIG_PER_WORKSPACE');
+    return json ? JSON.parse(json) : {};
+  } catch (e) { return {}; } // JSON korup -- anggap kosong, semua departemen jatuh ke default (aman)
+}
+function _saveMenuConfigRegistry(reg) {
+  PropertiesService.getScriptProperties().setProperty('MENU_CONFIG_PER_WORKSPACE', JSON.stringify(reg || {}));
+}
+
+// Dipanggil oleh loginUser() -- daftar key menu yg boleh tampil utk
+// departemen ini, dikirim ke sessionStorage lewat login.html supaya
+// auth-guard.js bisa baca tanpa panggilan API tambahan di tiap halaman.
+function _resolveMenuKeysForWorkspace(workspaceKey) {
+  var reg = _getMenuConfigRegistry();
+  var keys = reg[workspaceKey];
+  if (!keys || !keys.length) return _defaultMenuKeysForWorkspace(workspaceKey);
+  return keys.filter(function (k) { return MENU_CATALOG_KEYS.indexOf(k) !== -1; }); // saring key yg sudah tidak valid, jaga2
+}
+
+// Super Admin: lihat katalog menu + konfigurasi SEMUA departemen/plant
+// sekaligus, utk dirender jadi checkbox per departemen di Panel Admin.
+function adminGetMenuConfig(actorNik) {
+  if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+  var out = {};
+  Object.keys(WORKSPACE_MAP).forEach(function (key) {
+    out[key] = _resolveMenuKeysForWorkspace(key);
+  });
+  return { success: true, catalog: MENU_CATALOG, config: out };
+}
+
+// Super Admin: simpan daftar menu utk 1 departemen/plant. menuKeys
+// kosong = hapus konfigurasi custom, kembali ke default (SENGAJA --
+// mencegah Super Admin tidak sengaja mengunci total 1 departemen
+// dgn 0 menu, yg akan bikin department itu tidak punya halaman yg
+// bisa dibuka sama sekali).
+function adminSetMenuConfig(actorNik, workspaceKey, menuKeys) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    workspaceKey = String(workspaceKey || '').trim();
+    if (!WORKSPACE_MAP.hasOwnProperty(workspaceKey)) return { success: false, error: 'Departemen/plant tidak dikenali.' };
+    var keys = (menuKeys || []).map(function (k) { return String(k).trim(); }).filter(function (k) { return MENU_CATALOG_KEYS.indexOf(k) !== -1; });
+    var reg = _getMenuConfigRegistry();
+    if (!keys.length) { delete reg[workspaceKey]; } else { reg[workspaceKey] = keys; }
+    _saveMenuConfigRegistry(reg);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
 }
 
 // Bungkus fungsi baca data dengan CacheService supaya panggilan berulang
@@ -4183,7 +4265,7 @@ function loginUser(plant, dept, nik, password) {
       var row = data[i];
       if (String(row[0]).trim().toUpperCase() === nikInput && row[4] !== false) {
         if (String(row[3]) === hash) {
-          return { success: true, workspace: workspaceKey, nik: row[0], nama: row[1], role: row[2] };
+          return { success: true, workspace: workspaceKey, nik: row[0], nama: row[1], role: row[2], menuKeys: _resolveMenuKeysForWorkspace(workspaceKey) };
         }
         return { success: false, error: 'NIK atau kata sandi salah.' };
       }

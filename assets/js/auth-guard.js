@@ -24,33 +24,70 @@
 
   // Klasifikasi akses berdasarkan Role (kolom Role di sheet AKUN_LOGIN):
   //  - TL / Admin (mengandung kata "Admin", mis. "Admin Wh Fitting") -> FULL ACCESS
-  //  - Role lain (Technician I, dst) -> AKSES TERBATAS, cuma boleh:
-  //    Control Tower, Input Lembur (+Cuti), Loading Time, Monitoring FTE
+  //  - Role lain (Technician I, dst) -> AKSES TERBATAS, cuma boleh menu
+  //    yg ada di MENU_KEYS_RESTRICTED_ROLE di bawah (diiriskan dgn menu
+  //    departemen -- lihat penjelasan lebih lanjut di bawah)
   var roleUpper = (sessionStorage.getItem('wh_role') || '').trim().toUpperCase();
   var fullAccess = (roleUpper === 'TL') || roleUpper.indexOf('ADMIN') !== -1;
   var isTL = (roleUpper === 'TL');
-  var ALLOWED_FILES_RESTRICTED = ['index.html', 'input_lembur.html', 'residance_time.html', 'fte_dashboard.html', 'login.html', ''];
-  // Menu sidebar yang harus disembunyikan untuk role terbatas (pola onclick
-  // navTo('kanban') / navTo('index') dipakai konsisten di semua halaman;
-  // 'index' = key menu utk Monitoring Stock, lihat PAGE_MAP di index.html)
+
+  // ================================================================
+  //  MENU PER DEPARTEMEN/PLANT -- diatur Super Admin lewat Panel Admin
+  //  (Kelola Menu). Daftar key menu yg boleh tampil utk departemen ini
+  //  dikirim backend saat login & disimpan SEKALI ke sessionStorage
+  //  (lihat login.html) -- jadi halaman manapun bisa baca langsung
+  //  tanpa panggilan API tambahan tiap buka halaman.
+  //
+  //  fileForKey HARUS SAMA PERSIS dgn PAGE_MAP (index.html) & MENU_CATALOG
+  //  (backend/kode.gs) -- kalau nambah halaman baru ke aplikasi, update
+  //  KETIGANYA bareng.
+  // ------------------------------------------------------------
+  var fileForKey = {
+    'wh_control_tower': 'index.html',
+    'index'           : 'monitoring_stock.html',
+    'kanban'          : 'kanban.html',
+    'fte_dashboard'   : 'fte_dashboard.html',
+    'rekap'           : 'rekap_muatan.html',
+    'residance'       : 'residance_time.html',
+    'input_lembur'    : 'input_lembur.html',
+    'upload'          : 'upload_data.html'
+  };
+  var isFittingImport = workspace === 'cibitung_fitting_import';
+
+  var menuKeys;
+  try {
+    var menuKeysRaw = sessionStorage.getItem('wh_menu_keys');
+    menuKeys = menuKeysRaw ? JSON.parse(menuKeysRaw) : null;
+  } catch (e) { menuKeys = null; }
+  if (!menuKeys || !menuKeys.length) {
+    // Fallback: sesi lama (login SEBELUM fitur Kelola Menu ini ada) atau
+    // backend belum sempat di-deploy -- pakai default LAMA (persis
+    // perilaku sebelum fitur ini) spy departemen yg sudah berjalan tidak
+    // berubah tiba2 cuma krn sesi browser belum di-refresh/login ulang.
+    menuKeys = isFittingImport ? Object.keys(fileForKey) : ['index', 'fte_dashboard', 'input_lembur', 'upload'];
+  }
+
+  // Menu yg boleh dilihat role TERBATAS (Technician dkk) -- LAPISAN
+  // KEDUA, diirisikan dgn menuKeys departemen di atas: sebuah menu
+  // tampil ke role terbatas HANYA kalau diizinkan departemennya (di
+  // atas) DAN diizinkan role-nya (di sini). "index" (Monitoring Stock)
+  // & "kanban" SENGAJA tidak dimasukkan -- role terbatas tidak pernah
+  // lihat itu di departemen manapun. "upload" diatur terpisah lewat
+  // canUploadData (selalu fullAccess-only, di semua departemen).
+  var MENU_KEYS_RESTRICTED_ROLE = ['wh_control_tower', 'input_lembur', 'residance', 'fte_dashboard', 'rekap'];
   var HIDDEN_NAV_KEYS_RESTRICTED = ['kanban', 'index'];
 
-  // ---- Departemen/Plant selain Fitting Import (Cibitung) ----
-  // Sengaja dibatasi jauh lebih sempit daripada Fitting Import: HANYA
-  // Monitoring FTE, Monitoring Stock, dan Input Lembur -- berlaku untuk
-  // SEMUA role (bukan cuma role terbatas), karena menu lain (Control
-  // Tower, Kanban, Rekap Muatan, Loading Time, Upload Data Harian) belum
-  // relevan/di-provision untuk departemen itu. Aturan/algoritma lain
-  // (approval, FTE, dst) TETAP SAMA seperti Fitting Import -- yang beda
-  // cuma menu yang tersedia. Kalau nanti ada permintaan menu tambahan
-  // (mis. Control Tower) untuk departemen tertentu, longgarkan di sini.
-  var isFittingImport = workspace === 'cibitung_fitting_import';
-  var ALLOWED_FILES_OTHER_DEPT = ['monitoring_stock.html', 'input_lembur.html', 'fte_dashboard.html', 'admin_users.html', 'upload_data.html', 'login.html', ''];
-  var HIDDEN_NAV_KEYS_OTHER_DEPT = ['wh_control_tower', 'kanban', 'residance', 'rekap'];
-  // Upload Data Harian: SEKARANG diizinkan untuk departemen lain juga
-  // (sebelumnya diblokir total), tapi khusus tab Outbound & Inbound --
-  // tab Stock tetap KHUSUS Fitting Import (dicek juga di dalam
-  // upload_data.html sendiri lewat window.WH_SESSION.isFittingImport).
+  // Urutan prioritas landing page kalau user "ketendang" dari halaman yg
+  // tidak diizinkan -- dipakai bareng menuKeys spy TIDAK PERNAH melempar
+  // ke halaman yg ternyata JUGA tidak diizinkan (dulu hardcode
+  // './index.html'/'./monitoring_stock.html', bisa jebol kalau
+  // departemen itu ternyata tidak dikasih menu itu oleh Super Admin).
+  function pickLandingFile(priorityKeys) {
+    var k = priorityKeys.filter(function (key) { return menuKeys.indexOf(key) !== -1; })[0];
+    return k ? fileForKey[k] : 'monitoring_stock.html';
+  }
+  var GENERAL_LANDING_PRIORITY = ['index', 'wh_control_tower', 'input_lembur', 'fte_dashboard', 'upload', 'kanban', 'rekap', 'residance'];
+  var RESTRICTED_LANDING_PRIORITY = ['wh_control_tower', 'input_lembur', 'fte_dashboard', 'residance', 'rekap'];
 
   // "Upload Data Harian" -- SEBELUMNYA dibatasi ke 2 NIK spesifik
   // hardcode (Ivan, Saepulloh), jadi admin baru di plant/departemen lain
@@ -72,34 +109,34 @@
     isTL: isTL,
     canUploadData: canUploadData,
     isFittingImport: isFittingImport,
-    // Rekap Muatan sengaja CUMA ada di departemen Fitting Import (sheet-nya
-    // tidak di-provision di departemen lain) -- boleh dilihat SEMUA role
-    // (termasuk Technician), asal masih di departemen Fitting Import.
-    hasRekapMuatan: isFittingImport
+    menuKeys: menuKeys, // menu yg aktif utk departemen ini -- dipakai halaman lain kalau perlu
+    // Rekap Muatan sekarang ditentukan Super Admin lewat Kelola Menu
+    // (dulu hardcode cuma Fitting Import) -- boleh dilihat SEMUA role
+    // (termasuk Technician) SELAMA departemennya memang dikasih menu ini.
+    hasRekapMuatan: menuKeys.indexOf('rekap') !== -1
   };
 
-  // ---- Departemen selain Fitting Import: batasi ke 3 halaman inti ----
-  // Dicek PALING AWAL (sebelum aturan role) karena berlaku untuk SEMUA
-  // role -- bukan cuma role terbatas.
-  if (!isFittingImport) {
-    var hereFileDept = (window.location.pathname.split('/').pop() || '').toLowerCase();
-    if (ALLOWED_FILES_OTHER_DEPT.indexOf(hereFileDept) === -1) {
-      window.location.replace('./monitoring_stock.html');
-      return;
-    }
-  }
-
-  // Role terbatas coba buka halaman yang tidak diizinkan -> tendang ke Control Tower
-  if (isFittingImport && !fullAccess) {
+  // ---- Batasi akses HALAMAN cuma ke menu yg diizinkan Super Admin utk
+  //      departemen ini. Berlaku utk SEMUA role, dicek PALING AWAL. File
+  //      inti (root, login, Kelola User) selalu boleh terlepas dari
+  //      menuKeys -- Kelola User dicek terpisah di bawah (fullAccess only). ----
+  (function enforceMenuAccess() {
     var hereFile = (window.location.pathname.split('/').pop() || '').toLowerCase();
-    // Rekap Muatan BUKAN halaman "admin-only" -- boleh dibuka role apa pun
-    // (termasuk Technician) SELAMA workspace-nya memang punya Rekap Muatan
-    // (hasRekapMuatan). Sebelumnya file ini ketinggalan dari daftar, jadi
-    // walaupun hasRekapMuatan true, tetap ketendang ke Control Tower.
-    var allowedNow = ALLOWED_FILES_RESTRICTED.slice();
-    if (window.WH_SESSION.hasRekapMuatan) allowedNow.push('rekap_muatan.html');
-    if (allowedNow.indexOf(hereFile) === -1) {
-      window.location.replace('./index.html');
+    if (hereFile === '' || hereFile === 'login.html' || hereFile === 'admin_users.html') return;
+
+    var allowedFiles = menuKeys.map(function (k) { return fileForKey[k]; }).filter(Boolean);
+    if (allowedFiles.indexOf(hereFile) !== -1) return; // halaman ini memang ada di menu departemen
+
+    window.location.replace('./' + pickLandingFile(GENERAL_LANDING_PRIORITY));
+  })();
+
+  // Role terbatas coba buka halaman yang tidak diizinkan role-nya (walau
+  // diizinkan departemennya) -> tendang ke landing page role terbatas.
+  if (!fullAccess) {
+    var hereFile = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    var keyForHereFile = Object.keys(fileForKey).filter(function (k) { return fileForKey[k] === hereFile; })[0];
+    if (keyForHereFile && MENU_KEYS_RESTRICTED_ROLE.indexOf(keyForHereFile) === -1) {
+      window.location.replace('./' + pickLandingFile(RESTRICTED_LANDING_PRIORITY));
       return;
     }
   }
@@ -109,7 +146,7 @@
   if (!fullAccess) {
     var hereFileAdmin = (window.location.pathname.split('/').pop() || '').toLowerCase();
     if (hereFileAdmin === 'admin_users.html') {
-      window.location.replace(isFittingImport ? './index.html' : './monitoring_stock.html');
+      window.location.replace('./' + pickLandingFile(RESTRICTED_LANDING_PRIORITY));
       return;
     }
   }
@@ -119,7 +156,7 @@
   if (!canUploadData) {
     var hereFile2 = (window.location.pathname.split('/').pop() || '').toLowerCase();
     if (hereFile2 === 'upload_data.html') {
-      window.location.replace('./index.html');
+      window.location.replace('./' + pickLandingFile(RESTRICTED_LANDING_PRIORITY));
       return;
     }
   }
@@ -205,21 +242,31 @@
       } catch (e) { /* jangan sampai userbar gagal bikin seluruh halaman error */ }
     })();
 
-    // ---- Departemen selain Fitting Import: sembunyikan menu di luar
-    //      3 menu inti (Monitoring FTE, Monitoring Stock, Input Lembur) ----
-    if (!window.WH_SESSION.isFittingImport) {
-      HIDDEN_NAV_KEYS_OTHER_DEPT.forEach(function (key) {
+    // ---- Sembunyikan menu sidebar yg TIDAK ada di menuKeys departemen
+    //      ini (diatur Super Admin lewat Kelola Menu) -- berlaku utk
+    //      SEMUA role. Lapisan kedua: role terbatas (Technician dkk)
+    //      TAMBAHAN kehilangan menu yg tidak ada di
+    //      MENU_KEYS_RESTRICTED_ROLE, walau departemennya mengizinkan. ----
+    Object.keys(fileForKey).forEach(function (key) {
+      if (menuKeys.indexOf(key) === -1) {
         document.querySelectorAll('[onclick*="\'' + key + '\'"]').forEach(function (el) {
           el.style.display = 'none';
         });
-      });
-    }
+      }
+    });
 
-    if (window.WH_SESSION.isFittingImport && !window.WH_SESSION.fullAccess) {
+    if (!window.WH_SESSION.fullAccess) {
       HIDDEN_NAV_KEYS_RESTRICTED.forEach(function (key) {
         document.querySelectorAll('[onclick*="\'' + key + '\'"]').forEach(function (el) {
           el.style.display = 'none';
         });
+      });
+      Object.keys(fileForKey).forEach(function (key) {
+        if (MENU_KEYS_RESTRICTED_ROLE.indexOf(key) === -1) {
+          document.querySelectorAll('[onclick*="\'' + key + '\'"]').forEach(function (el) {
+            el.style.display = 'none';
+          });
+        }
       });
     }
 
@@ -337,12 +384,10 @@
     }
 
     if (window.WH_SESSION.hasRekapMuatan) return;
-    // Sembunyikan menu sidebar "Rekap Muatan" (pola onclick="navTo('rekap')"
-    // atau onclick="goTo('rekap')" -- dipakai konsisten di semua halaman)
-    document.querySelectorAll('[onclick*="\'rekap\'"]').forEach(function (el) {
-      el.style.display = 'none';
-    });
-    // Sembunyikan section "Rekap Muatan per PIC" khusus di Control Tower
+    // Menu sidebar Rekap Muatan sudah disembunyikan otomatis di atas
+    // (loop generik berdasar menuKeys) -- di sini cuma perlu sembunyikan
+    // section "Rekap Muatan per PIC" khusus di Control Tower (bukan menu
+    // sidebar, jadi tidak ke-cover loop generik itu).
     var sec = document.getElementById('section-rekap-muatan');
     if (sec) sec.style.display = 'none';
   });

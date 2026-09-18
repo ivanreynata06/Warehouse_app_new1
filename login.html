@@ -542,6 +542,13 @@
             sessionStorage.setItem('wh_nik', res.nik);
             sessionStorage.setItem('wh_nama', res.nama);
             sessionStorage.setItem('wh_role', res.role);
+            // Daftar menu yang boleh tampil utk departemen ini (diatur Super
+            // Admin lewat Kelola Menu) -- disimpan sekali di sini saat login
+            // supaya auth-guard.js bisa baca tanpa panggilan API tambahan di
+            // SETIAP halaman. Kalau backend lama (belum ada field ini, mis.
+            // belum di-deploy), simpan array kosong -- auth-guard.js akan
+            // otomatis jatuh ke perilaku default lama sbg fallback aman.
+            sessionStorage.setItem('wh_menu_keys', JSON.stringify(res.menuKeys || []));
           } catch (err) {}
 
           // Landing page default: Control Tower (index.html) HANYA ada di
