@@ -656,6 +656,18 @@ function loadSuperAdminPanel(){
         return '<option value="'+escHtml(w.key)+'" '+(w.key===selectedKey?'selected':'')+' '+(w.provisioned?'':'disabled')+'>'+escHtml(label)+'</option>';
       }).join('');
       isiDropdownHapus();
+
+      // Isi dropdown "Kelola Menu" LANGSUNG dari daftar departemen yang
+      // sudah ada di atas (tidak menunggu adminGetMenuConfig) -- supaya
+      // dropdown-nya tetap terisi walau backend belum sempat di-deploy
+      // dgn fungsi adminGetMenuConfig (dulu dropdown ini bisa kosong
+      // total kalau itu terjadi, krn cuma diisi di dalam success handler
+      // adminGetMenuConfig).
+      var selMenu = document.getElementById('select-menu-workspace');
+      selMenu.innerHTML = workspaceListCache.map(function(w){
+        return '<option value="'+escHtml(w.key)+'">'+escHtml(w.label)+'</option>';
+      }).join('');
+
       loadMenuConfigPanel();
     })
     .withFailureHandler(function(){})
@@ -667,19 +679,21 @@ var menuCatalogCache = [];   // [{key,label,file}]
 var menuConfigCache = {};    // { workspaceKey: [key,...] }
 
 function loadMenuConfigPanel(){
+  var statusEl = document.getElementById('status-menu-config');
   google.script.run
     .withSuccessHandler(function(res){
-      if (!res || !res.success) return;
+      if (!res || !res.success){
+        statusEl.textContent = '❌ Gagal memuat katalog menu: '+(res&&res.error?res.error:'tidak diketahui')+' -- kemungkinan besar kode.gs di Apps Script belum di-deploy dgn versi terbaru.';
+        return;
+      }
+      statusEl.textContent = '';
       menuCatalogCache = res.catalog || [];
       menuConfigCache = res.config || {};
-      var sel = document.getElementById('select-menu-workspace');
-      var selectedKey = sel.value || (workspaceListCache[0] && workspaceListCache[0].key) || '';
-      sel.innerHTML = workspaceListCache.map(function(w){
-        return '<option value="'+escHtml(w.key)+'" '+(w.key===selectedKey?'selected':'')+'>'+escHtml(w.label)+'</option>';
-      }).join('');
       renderMenuCatalogCheckboxes();
     })
-    .withFailureHandler(function(){})
+    .withFailureHandler(function(err){
+      statusEl.textContent = '❌ Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi')+' -- kemungkinan besar kode.gs di Apps Script belum di-deploy dgn versi terbaru.';
+    })
     .adminGetMenuConfig(actorNik);
 }
 

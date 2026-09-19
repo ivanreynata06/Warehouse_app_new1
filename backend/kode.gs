@@ -4845,9 +4845,10 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     var lastRow = sheet.getLastRow();
     var spmKeRow = {}; // { spm: rowNumber } -- scope: tanggal yg sama saja
     var tanggalYmd = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var existingFull = []; // dipakai jg utk deteksi baris basi di bawah
     if (lastRow >= 2) {
-      var existing = sheet.getRange(2, 1, lastRow - 1, 6).getValues(); // A-F
-      existing.forEach(function (r, idx) {
+      existingFull = sheet.getRange(2, 1, lastRow - 1, 10).getValues(); // A-J
+      existingFull.forEach(function (r, idx) {
         var rowTanggal = r[0];
         var rowYmd = (rowTanggal instanceof Date)
           ? Utilities.formatDate(rowTanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
@@ -4860,7 +4861,9 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     var barisBaru = [];
     var diupdate = 0;
     var ikutPipaList = []; // {spm, nama} -- utk notifikasi ke PIC/checker
+    var spmDiSumberSet = {}; // dipakai jg utk deteksi baris basi di bawah
     bacaan.data.forEach(function (x) {
+      spmDiSumberSet[x.spm] = true;
       if (x.ikutPipa) ikutPipaList.push({ spm: x.spm, nama: x.nama || '' });
 
       var rowNum = spmKeRow[x.spm];
@@ -4889,13 +4892,44 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     if (barisBaru.length > 0) {
       sheet.getRange(sheet.getLastRow() + 1, 1, barisBaru.length, 11).setValues(barisBaru);
     }
-    if (barisBaru.length > 0 || diupdate > 0) _bumpDataCacheVersion();
+
+    // ------------------------------------------------------------
+    //  BERSIHKAN BARIS BASI -- SPM yang SUDAH TIDAK ADA lagi di sumber
+    //  (mis. tab sumber sempat berisi sisa data duplikat dari tanggal
+    //  lain, lalu dibersihkan/dikoreksi orang yang input jadwal), DAN
+    //  belum ada aktivitas operasional apa pun (Waktu Mulai/Selesai/
+    //  Status kolom H/I/J masih kosong semua). Ini menggantikan
+    //  kebutuhan menjalankan "Hapus & Sync Ulang" manual tiap hari --
+    //  sync biasa sekarang otomatis membuang sisa data basi ini sendiri.
+    //
+    //  SENGAJA TIDAK PERNAH menghapus baris yang Waktu Mulai/Selesai/
+    //  Status-nya sudah terisi -- itu artinya tim loading SUDAH mulai
+    //  memproses kiriman itu, jadi datanya harus tetap aman walau
+    //  SPM-nya belakangan hilang dari sumber (mis. typo dikoreksi).
+    // ------------------------------------------------------------
+    var barisBasi = [];
+    existingFull.forEach(function (r, idx) {
+      var rowTanggal = r[0];
+      var rowYmd = (rowTanggal instanceof Date)
+        ? Utilities.formatDate(rowTanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
+      if (rowYmd !== tanggalYmd) return;
+      var spmRow = String(r[4] || '').trim();
+      if (!spmRow || spmDiSumberSet[spmRow]) return; // SPM masih ada di sumber -> bukan basi
+      var waktuMulai = r[7], waktuSelesai = r[8], status = String(r[9] || '').trim();
+      if (waktuMulai || waktuSelesai || status) return; // sudah ada aktivitas -- JANGAN dihapus otomatis
+      barisBasi.push(2 + idx);
+    });
+    barisBasi.sort(function (a, b) { return b - a; }); // hapus dari baris paling bawah dulu spy index sisanya tdk berantakan
+    barisBasi.forEach(function (rowNum) { sheet.deleteRow(rowNum); });
+
+    if (barisBaru.length > 0 || diupdate > 0 || barisBasi.length > 0) _bumpDataCacheVersion();
 
     return {
       success: true,
       dibuat: barisBaru.length,
       ikutPipa: ikutPipaList,
       diupdate: diupdate,
+      dibersihkan: barisBasi.length,
       totalDiSumber: bacaan.data.length,
       dilewati: bacaan.data.length - barisBaru.length - diupdate,
       dilewatiFormatSalah: bacaan.dilewatiFormatSalah || []
