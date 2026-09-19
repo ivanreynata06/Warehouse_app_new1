@@ -1179,7 +1179,7 @@ function submitLembur(){
           if(res.waNotifSent){
             showToast('Notifikasi WA terkirim ke Pak Sandy untuk approval','success');
           } else {
-            showToast('Lembur tersimpan, tapi notifikasi WA ke Pak Sandy gagal terkirim (cek token Fonnte)','warning');
+            showToast('Lembur tersimpan, tapi notifikasi WA ke Pak Sandy gagal terkirim (Super Admin: cek pengaturan WA di Panel Admin)','warning');
           }
         }, 600);
       }
@@ -1240,7 +1240,7 @@ function submitAbsensi(){
           if(res.waNotifSent){
             showToast('Notifikasi WA terkirim ke Pak Sandy untuk approval','success');
           } else {
-            showToast('Ketidakhadiran tersimpan, tapi notifikasi WA ke Pak Sandy gagal terkirim (cek token Fonnte)','warning');
+            showToast('Ketidakhadiran tersimpan, tapi notifikasi WA ke Pak Sandy gagal terkirim (Super Admin: cek pengaturan WA di Panel Admin)','warning');
           }
         }, 600);
       }
