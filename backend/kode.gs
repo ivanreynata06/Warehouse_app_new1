@@ -76,6 +76,9 @@ var API_FUNCTIONS = {
   adminSetFonnteToken     : adminSetFonnteToken,
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
+  adminSetWaOfficialCreds : adminSetWaOfficialCreds,
+  adminSetWaOfficialTemplate: adminSetWaOfficialTemplate,
+  adminTesKirimWaOfficial : adminTesKirimWaOfficial,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   adminProvisionNewDepartment: adminProvisionNewDepartment,
   adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
@@ -4089,6 +4092,12 @@ function adminGetFonnteStatus(actorNik, targetWorkspace) {
       tokenNiks: tokenNiks,
       approverWaWorkspace: props.getProperty('FONNTE_APPROVER_WA_' + workspaceKey) ? 'diisi' : '',
       approverWaUmum: props.getProperty('FONNTE_APPROVER_WA') ? 'diisi' : '',
+      // Status WA Official (Meta Cloud API) -- GANTI Fonnte.
+      waOfficialTokenWorkspace: props.getProperty('WA_OFFICIAL_TOKEN_' + workspaceKey) ? 'diisi' : '',
+      waOfficialTokenUmum: props.getProperty('WA_OFFICIAL_TOKEN') ? 'diisi' : '',
+      waOfficialPhoneIdWorkspace: props.getProperty('WA_OFFICIAL_PHONE_ID_' + workspaceKey) ? 'diisi' : '',
+      waOfficialPhoneIdUmum: props.getProperty('WA_OFFICIAL_PHONE_ID') ? 'diisi' : '',
+      waOfficialTemplateName: props.getProperty('WA_OFFICIAL_TEMPLATE_NAME') || '',
       workspace: workspaceKey
     };
   } catch (err) { return { success: false, error: err.message }; }
@@ -4108,6 +4117,60 @@ function adminSetFonnteApproverWa(actorNik, nomorWa, targetWorkspace) {
     if (!nomorWa) { props.deleteProperty(key); return { success: true, cleared: true }; }
     props.setProperty(key, nomorWa);
     return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  WA OFFICIAL (Meta WhatsApp Business Cloud API) -- pengaturan
+//  kredensial, GANTI Fonnte. token & phoneId per-workspace (Super
+//  Admin bisa atur beda2 per departemen/plant), sama pola dgn nomor
+//  approver di atas.
+// ================================================================
+function adminSetWaOfficialCreds(actorNik, token, phoneId, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur ini.' };
+    token = String(token || '').trim();
+    phoneId = String(phoneId || '').trim();
+    var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
+    var props = PropertiesService.getScriptProperties();
+    var keyToken = 'WA_OFFICIAL_TOKEN_' + workspaceKey;
+    var keyPhone = 'WA_OFFICIAL_PHONE_ID_' + workspaceKey;
+    if (token) props.setProperty(keyToken, token); else props.deleteProperty(keyToken);
+    if (phoneId) props.setProperty(keyPhone, phoneId); else props.deleteProperty(keyPhone);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Nama & bahasa template WA (SATU untuk semua departemen, krn nama
+// template didaftarkan di level akun Meta Business, bukan per-plant).
+// Kosongkan nama template kalau template BELUM disetujui Meta -- sistem
+// otomatis fallback ke mode teks bebas (lihat _kirimWaNotifikasi).
+function adminSetWaOfficialTemplate(actorNik, templateName, templateLang) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    var props = PropertiesService.getScriptProperties();
+    templateName = String(templateName || '').trim();
+    if (templateName) props.setProperty('WA_OFFICIAL_TEMPLATE_NAME', templateName);
+    else props.deleteProperty('WA_OFFICIAL_TEMPLATE_NAME');
+    props.setProperty('WA_OFFICIAL_TEMPLATE_LANG', String(templateLang || 'id').trim() || 'id');
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Kirim 1 pesan TES ke nomor approver yang sedang diatur -- supaya
+// bisa langsung tahu kredensialnya benar/salah tanpa harus input
+// lembur/absensi sungguhan dulu. Dipanggil dari tombol "Tes Kirim" di
+// panel admin.
+function adminTesKirimWaOfficial(actorNik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    if (targetWorkspace && _isSuperAdmin(actorNik)) ACTIVE_WORKSPACE = targetWorkspace;
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+    var ok = _kirimWaNotifikasi(
+      'TES KONEKSI WA OFFICIAL', 'Test', '-', now, 'Ini pesan percobaan dari panel admin.',
+      '✅ Tes koneksi WhatsApp Business API berhasil.\n\nDikirim: ' + now
+    );
+    return { success: true, terkirim: ok };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -5266,19 +5329,8 @@ function saveLembur(data) {
 //  tahu user "notif WA terkirim" atau tidak).
 // ================================================================
 function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
-  var props   = PropertiesService.getScriptProperties();
-  // Nomor approver: coba versi khusus workspace ini dulu (FONNTE_APPROVER_WA_<WORKSPACE>,
-  // supaya tiap plant/departemen bisa punya approver WA berbeda), baru fallback
-  // ke FONNTE_APPROVER_WA umum (dipakai kalau semua plant approver-nya sama).
-  var target  = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
-  // Token pengirim: coba punya karyawan ybs dulu, baru fallback ke token umum.
-  var token   = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
-  if (!token || !target) {
-    Logger.log('Token Fonnte untuk kode "'+kode+'" atau FONNTE_APPROVER_WA belum diisi -- notif WA dilewati.');
-    return false;
-  }
-
-  var pesan =
+  var detail = jamMulai + ' - ' + jamSelesai + ' (' + durJam + ' jam) -- ' + keterangan;
+  var pesanBebas =
     '*PENGAJUAN LEMBUR BARU*\n\n' +
     'Nama       : ' + nama + '\n' +
     'NIK        : ' + kode + '\n' +
@@ -5286,20 +5338,101 @@ function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, ke
     'Jam        : ' + jamMulai + ' - ' + jamSelesai + ' (' + durJam + ' jam)\n' +
     'Keterangan : ' + keterangan + '\n\n' +
     'Mohon Segera di input di aplikasi Sunfish, terimakasih';
+  return _kirimWaNotifikasi('PENGAJUAN LEMBUR BARU', nama, kode, tanggal, detail, pesanBebas);
+}
+
+// ================================================================
+//  Kirim notifikasi WhatsApp lewat WhatsApp Business Cloud API RESMI
+//  (Meta) -- GANTI Fonnte. Bedanya penting dari Fonnte: API resmi
+//  TIDAK BISA kirim teks bebas kapan saja. Kalau penerima (approver)
+//  belum chat ke nomor bisnis dalam 24 jam terakhir, WAJIB pakai
+//  MESSAGE TEMPLATE yang sudah disetujui Meta (isi pesan sudah
+//  ditentukan, cuma variabelnya yg diisi).
+//
+//  Cara kerja fungsi ini:
+//   1. Kalau WA_OFFICIAL_TEMPLATE_NAME sudah diisi (artinya template
+//      sudah disetujui Meta) -> kirim via template, aman kapan saja.
+//   2. Kalau BELUM diisi -> coba kirim teks bebas (cuma akan berhasil
+//      kalau approver sudah chat nomor bisnis dlm 24 jam terakhir;
+//      di luar itu Meta akan menolak dgn error code 131047/470).
+//
+//  judul/detail: dipakai utk isi variabel template ({{1}}=judul,
+//  {{2}}=nama, {{3}}=nik, {{4}}=tanggal, {{5}}=detail) DAN sekaligus
+//  jadi bagian dari pesanBebas kalau lagi pakai mode teks bebas.
+// ================================================================
+function _kirimWaNotifikasi(judul, nama, kode, tanggal, detail, pesanBebas) {
+  var props = PropertiesService.getScriptProperties();
+  var target = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
+  var token    = props.getProperty('WA_OFFICIAL_TOKEN_' + ACTIVE_WORKSPACE) || props.getProperty('WA_OFFICIAL_TOKEN');
+  var phoneId  = props.getProperty('WA_OFFICIAL_PHONE_ID_' + ACTIVE_WORKSPACE) || props.getProperty('WA_OFFICIAL_PHONE_ID');
+  var tplName  = props.getProperty('WA_OFFICIAL_TEMPLATE_NAME');
+  var tplLang  = props.getProperty('WA_OFFICIAL_TEMPLATE_LANG') || 'id';
+
+  if (!target || !token || !phoneId) {
+    Logger.log('WA_OFFICIAL_TOKEN / WA_OFFICIAL_PHONE_ID / nomor approver belum lengkap -- notif WA dilewati.');
+    return false;
+  }
+
+  var nomorTujuan = String(target).replace(/[^0-9]/g, ''); // Cloud API perlu format angka polos (628xxx), tanpa +/spasi
+  var url = 'https://graph.facebook.com/v21.0/' + phoneId + '/messages';
+  var payload;
+
+  if (tplName) {
+    // Mode TEMPLATE -- aman dikirim kapan saja, tidak terikat jendela 24 jam.
+    payload = {
+      messaging_product: 'whatsapp',
+      to: nomorTujuan,
+      type: 'template',
+      template: {
+        name: tplName,
+        language: { code: tplLang },
+        components: [{
+          type: 'body',
+          parameters: [
+            { type: 'text', text: judul },
+            { type: 'text', text: nama },
+            { type: 'text', text: kode },
+            { type: 'text', text: tanggal },
+            { type: 'text', text: detail }
+          ]
+        }]
+      }
+    };
+  } else {
+    // Mode TEKS BEBAS -- cuma berhasil kalau approver sudah chat nomor
+    // bisnis dlm 24 jam terakhir. Di luar itu Meta akan menolak (lihat
+    // pengecekan error code di bawah).
+    payload = {
+      messaging_product: 'whatsapp',
+      to: nomorTujuan,
+      type: 'text',
+      text: { body: pesanBebas }
+    };
+  }
 
   try {
-    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+    var res = UrlFetchApp.fetch(url, {
       method: 'post',
-      headers: { Authorization: token },
-      payload: { target: target, message: pesan, countryCode: '62' },
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
+    var code = res.getResponseCode();
     var body = res.getContentText();
-    Logger.log('Fonnte response: ' + body);
-    var parsed = JSON.parse(body);
-    return parsed && parsed.status === true;
+    Logger.log('WA Official response (' + code + '): ' + body);
+
+    if (code >= 200 && code < 300) return true;
+
+    // Error 24-jam (di luar customer service window, blm ada template)
+    // -- kasih pesan Logger yg jelas, biar ketahuan penyebabnya persis
+    // apa, bukan cuma "gagal".
+    if (!tplName && /24|window|template/i.test(body)) {
+      Logger.log('Kemungkinan gagal krn di luar jendela 24 jam & belum ada template disetujui -- lihat WA_OFFICIAL_TEMPLATE_NAME.');
+    }
+    return false;
   } catch (waErr) {
-    Logger.log('Fonnte fetch error: ' + waErr.message);
+    Logger.log('WA Official fetch error: ' + waErr.message);
     return false;
   }
 }
@@ -6168,38 +6301,17 @@ function saveAbsensi(data) {
 //  cuma beda isi pesan.
 // ================================================================
 function sendWaNotifAbsensi(kode, nama, tanggal, status, keterangan) {
-  var props  = PropertiesService.getScriptProperties();
-  var target = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
-  var token  = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
-  if (!token || !target) {
-    Logger.log('Token Fonnte untuk kode "'+kode+'" atau FONNTE_APPROVER_WA belum diisi -- notif WA absensi dilewati.');
-    return false;
-  }
-
   var statusLabel = { Sakit: 'Sakit', CutiDokter: 'Cuti Dokter', CutiTahunan: 'Cuti Tahunan', Mangkir: 'Mangkir' };
   var label = statusLabel[status] || status;
   var isCuti = (status === 'CutiDokter' || status === 'CutiTahunan');
+  var detail = 'Berhalangan ' + label + (keterangan && keterangan !== '-' ? ' (' + keterangan + ')' : '');
 
-  var pesan =
+  var pesanBebas =
     'Dengan nama ' + nama + ', NIK ' + kode + ', hari ini berhalangan ' + label +
     (keterangan && keterangan !== '-' ? ' (' + keterangan + ')' : '') + '.' +
     (isCuti ? '\n\nMohon untuk segera menginput cuti saya pada aplikasi Sunfish.' : '');
 
-  try {
-    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
-      method: 'post',
-      headers: { Authorization: token },
-      payload: { target: target, message: pesan, countryCode: '62' },
-      muteHttpExceptions: true
-    });
-    var body = res.getContentText();
-    Logger.log('Fonnte response (absensi): ' + body);
-    var parsed = JSON.parse(body);
-    return parsed && parsed.status === true;
-  } catch (waErr) {
-    Logger.log('Fonnte fetch error (absensi): ' + waErr.message);
-    return false;
-  }
+  return _kirimWaNotifikasi('PENGAJUAN KETIDAKHADIRAN', nama, kode, tanggal, detail, pesanBebas);
 }
 
 function getAbsensiList(filter) {
