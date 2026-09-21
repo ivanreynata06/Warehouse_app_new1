@@ -371,10 +371,10 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 
       <div class="card">
         <div class="card-hdr">
-          <div class="card-title"><i data-lucide="message-circle" style="width:12px;"></i>Notifikasi WhatsApp (WhatsApp Business API Resmi) — Departemen Ini</div>
+          <div class="card-title"><i data-lucide="message-circle" style="width:12px;"></i>Notifikasi WhatsApp (Fonnte) — Departemen Ini</div>
         </div>
         <div class="modal-note" style="margin:0;">
-          Nomor WA yang menerima notifikasi approval lembur/cuti untuk departemen yang sedang login ini. Kalau dikosongkan, otomatis pakai nomor WA umum (kalau ada).
+          Nomor WA yang menerima notifikasi approval lembur/cuti untuk departemen yang sedang login ini. Kalau dikosongkan, otomatis pakai nomor WA umum (kalau ada). Token WA pengirim per-karyawan diatur lewat tombol <b>Token WA</b> di masing-masing baris user pada tabel di bawah.
         </div>
         <div class="modal-field two-col" style="max-width:420px;">
           <div>
@@ -385,43 +385,6 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <div style="display:flex;gap:8px;">
           <button class="btn-modal-save" onclick="submitApproverWa()">Simpan</button>
           <span id="approver-wa-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
-        </div>
-
-        <div class="modal-note" style="margin-top:14px;border-top:1px solid var(--border-color);padding-top:12px;">
-          <b>Kredensial WhatsApp Business Cloud API (Meta)</b> — Access Token & Phone Number ID dari Meta Business Manager, khusus departemen yang sedang dipilih ini.
-        </div>
-        <div class="modal-field two-col" style="max-width:640px;display:flex;gap:12px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:240px;">
-            <label for="wa-official-token">Access Token</label>
-            <input type="text" id="wa-official-token" placeholder="EAAG...">
-          </div>
-          <div style="flex:1;min-width:200px;">
-            <label for="wa-official-phoneid">Phone Number ID</label>
-            <input type="text" id="wa-official-phoneid" placeholder="123456789012345">
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn-modal-save" onclick="submitWaOfficialCreds()">Simpan Kredensial</button>
-          <span id="wa-official-creds-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
-        </div>
-
-        <div class="modal-note" style="margin-top:14px;border-top:1px solid var(--border-color);padding-top:12px;">
-          <b>Nama Template Pesan</b> — WAJIB diisi kalau template pesan sudah dibuat & <u>disetujui Meta</u>, supaya notifikasi bisa terkirim kapan saja (tidak terbatas jendela 24 jam). Kalau dikosongkan, sistem coba kirim teks bebas (cuma berhasil kalau approver sudah chat nomor bisnis dalam 24 jam terakhir). Ini berlaku SAMA untuk semua departemen (nama template terdaftar di 1 akun Meta Business).
-        </div>
-        <div class="modal-field two-col" style="max-width:420px;display:flex;gap:12px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:180px;">
-            <label for="wa-official-tplname">Nama Template</label>
-            <input type="text" id="wa-official-tplname" placeholder="notifikasi_pengajuan">
-          </div>
-          <div style="width:90px;">
-            <label for="wa-official-tpllang">Bahasa</label>
-            <input type="text" id="wa-official-tpllang" placeholder="id">
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="btn-modal-save" onclick="submitWaOfficialTemplate()">Simpan Template</button>
-          <button class="btn-export" onclick="tesKirimWaOfficial()"><i data-lucide="send" style="width:11px;vertical-align:-2px;"></i> Tes Kirim</button>
-          <span id="wa-official-tpl-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
         </div>
       </div>
 
@@ -1177,22 +1140,6 @@ function loadFonnteStatus(){
       document.getElementById('approver-wa-status').textContent =
         res.approverWaWorkspace ? 'Nomor khusus departemen ini sudah diisi.' :
         (res.approverWaUmum ? 'Belum ada nomor khusus -- memakai nomor WA umum.' : 'Belum ada nomor WA approver yang diisi.');
-
-      var credsStatusEl = document.getElementById('wa-official-creds-status');
-      if (credsStatusEl){
-        var adaToken = res.waOfficialTokenWorkspace || res.waOfficialTokenUmum;
-        var adaPhone = res.waOfficialPhoneIdWorkspace || res.waOfficialPhoneIdUmum;
-        credsStatusEl.textContent = (adaToken && adaPhone)
-          ? 'Kredensial sudah diisi' + (res.waOfficialTokenWorkspace ? ' (khusus departemen ini)' : ' (umum)') + '.'
-          : 'Kredensial belum lengkap -- notifikasi WA belum bisa terkirim.';
-      }
-      var tplStatusEl = document.getElementById('wa-official-tpl-status');
-      if (tplStatusEl){
-        tplStatusEl.textContent = res.waOfficialTemplateName
-          ? 'Template aktif: "' + res.waOfficialTemplateName + '" -- notifikasi bisa terkirim kapan saja.'
-          : 'Belum ada template -- notifikasi cuma bisa terkirim dalam jendela 24 jam.';
-        document.getElementById('wa-official-tplname').placeholder = res.waOfficialTemplateName || 'notifikasi_pengajuan';
-      }
     })
     .withFailureHandler(function(){})
     .adminGetFonnteStatus(actorNik, currentTargetWorkspace);
@@ -1209,48 +1156,6 @@ function submitApproverWa(){
     })
     .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
     .adminSetFonnteApproverWa(actorNik, nomor, currentTargetWorkspace);
-}
-
-function submitWaOfficialCreds(){
-  var token = document.getElementById('wa-official-token').value.trim();
-  var phoneId = document.getElementById('wa-official-phoneid').value.trim();
-  if (!token && !phoneId){ showToast('Isi Access Token dan Phone Number ID dulu.','error'); return; }
-  showToast('Menyimpan kredensial WA...','info');
-  google.script.run
-    .withSuccessHandler(function(res){
-      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
-      showToast('Kredensial WhatsApp Business API disimpan','success');
-      document.getElementById('wa-official-token').value = '';
-      document.getElementById('wa-official-phoneid').value = '';
-      loadFonnteStatus();
-    })
-    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .adminSetWaOfficialCreds(actorNik, token, phoneId, currentTargetWorkspace);
-}
-
-function submitWaOfficialTemplate(){
-  var nama = document.getElementById('wa-official-tplname').value.trim();
-  var lang = document.getElementById('wa-official-tpllang').value.trim() || 'id';
-  showToast('Menyimpan template...','info');
-  google.script.run
-    .withSuccessHandler(function(res){
-      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
-      showToast('Pengaturan template disimpan','success');
-      loadFonnteStatus();
-    })
-    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .adminSetWaOfficialTemplate(actorNik, nama, lang);
-}
-
-function tesKirimWaOfficial(){
-  showToast('Mengirim pesan tes...','info');
-  google.script.run
-    .withSuccessHandler(function(res){
-      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
-      showToast(res.terkirim ? '✅ Pesan tes berhasil terkirim! Cek WA approver.' : '❌ Gagal terkirim -- cek Apps Script Logs (View > Logs) utk detail errornya.', res.terkirim ? 'success' : 'error');
-    })
-    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .adminTesKirimWaOfficial(actorNik, currentTargetWorkspace);
 }
 
 document.addEventListener('DOMContentLoaded', function(){
