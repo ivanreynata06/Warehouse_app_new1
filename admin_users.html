@@ -86,8 +86,6 @@ body.sidebar-hidden .sidebar{margin-left:calc(-1*var(--sidebar-w));}
 .page-title{font-family:var(--font-display);font-size:15px;font-weight:800;}
 .page-sub{font-size:10px;color:var(--text-muted);}
 
-.btn-primary{display:flex;align-items:center;gap:6px;background:var(--accent-gold);border:none;color:#25200c;cursor:pointer;padding:9px 16px;border-radius:9px;font-family:var(--font-body);font-size:11px;font-weight:700;transition:background-color .15s ease;}
-.btn-primary:hover{background:#c19f34;}
 
 .card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
 .card-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
@@ -111,51 +109,96 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .chip-internal{background:rgba(59,130,246,.12);color:#93c5fd;}
 
 .btn-export-group{display:flex;gap:5px;flex-wrap:wrap;}
-.btn-export{border:1px solid transparent;color:#fff;cursor:pointer;padding:5px 10px;border-radius:7px;font-family:var(--font-body);font-size:9px;font-weight:700;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,opacity .1s ease;}
-.btn-export:active{opacity:.82;}
-.btn-lihat{background:var(--bg-card-hover);border-color:var(--border-color);color:var(--text-main);}
-.btn-lihat:hover{background:#252539;border-color:#3a3a58;}
-.btn-edit{background:#a96a1c;}
-.btn-edit:hover{background:#8f5817;}
-.btn-reset{background:#5f4bab;}
-.btn-reset:hover{background:#4e3d8e;}
-.btn-toggle-on{background:#a8342b;}
-.btn-toggle-on:hover{background:#8e2b23;}
-.btn-toggle-off{background:#227551;}
-.btn-toggle-off:hover{background:#1c6243;}
-.btn-wa{background:#1f7a5c;}
-.btn-wa:hover{background:#19634a;}
-.btn-hapus{background:#a8342b;}
-.btn-hapus:hover{background:#8e2b23;}
-
-/* ------------------------------------------------------------
-   Tombol & checkbox "flat" -- dipakai di panel Kelola Departemen
-   Lain (Tambah/Perbaiki Sheet/Hapus/TL Lintas Departemen). Warna
-   solid tunggal + border tipis, bukan gradient dua-warna terang --
-   supaya terasa tenang & disengaja, bukan default tombol "AI".
-   ------------------------------------------------------------ */
-.btn-flat{
-  display:inline-flex;align-items:center;gap:6px;
-  border:1px solid transparent;cursor:pointer;
-  padding:7px 13px;border-radius:7px;
-  font-family:var(--font-body);font-size:10.5px;font-weight:600;
-  white-space:nowrap;line-height:1.2;
-  transition:background-color .15s ease,border-color .15s ease,opacity .1s ease;
-}
-.btn-flat:active{opacity:.82;}
-.btn-flat:disabled{opacity:.45;cursor:not-allowed;}
-.btn-flat-ghost{background:var(--bg-card-hover);border-color:var(--border-color);color:var(--text-main);}
-.btn-flat-ghost:hover{background:#252539;border-color:#3a3a58;}
-.btn-flat-accent{background:var(--accent-gold);color:#25200c;}
-.btn-flat-accent:hover{background:#c19f34;}
-.btn-flat-info{background:#3568c9;color:#f3f6ff;}
-.btn-flat-info:hover{background:#2c5aae;}
-.btn-flat-danger{background:#a8342b;color:#fdf1f0;}
-.btn-flat-danger:hover{background:#8e2b23;}
 
 /* Checkbox singular di depan kalimat (mis. "Ikut pindahkan ke Trash
    Drive") -- native, cuma direstyle warnanya biar konsisten tema. */
 .chk-plain{width:15px;height:15px;flex-shrink:0;accent-color:var(--accent-blue);cursor:pointer;}
+
+/* ------------------------------------------------------------
+   SISTEM TOMBOL -- satu bahasa visual untuk seluruh halaman.
+   Tiga tingkat saja:
+     Primer   (emas solid)          aksi utama, satu per kartu
+     Sekunder (outline netral)      aksi pendukung / baris tabel
+     Bahaya   (tint merah lembut)   hapus / tindakan tak bisa dibatalkan
+   Tanpa gradient, glow, maupun bayangan; warna baru muncul saat
+   hover/fokus. Ukuran font & tinggi sama di semua varian supaya
+   tombol yang berdampingan selalu sejajar.
+   ------------------------------------------------------------ */
+:root{
+  --btn-primary:#d4af37; --btn-primary-hover:#e2c250; --btn-primary-ink:#1d1808;
+  --btn-line:#35354e; --btn-line-hover:#54546f; --btn-fill-hover:rgba(255,255,255,.055);
+  --btn-danger-ink:#f4958f; --btn-danger-fill:rgba(239,68,68,.08); --btn-danger-line:rgba(239,68,68,.30);
+  --btn-danger-fill-hover:rgba(239,68,68,.16); --btn-danger-line-hover:rgba(239,68,68,.55);
+  --btn-ok-ink:#6fd9ae; --btn-ok-fill:rgba(16,185,129,.08); --btn-ok-line:rgba(16,185,129,.30);
+  --btn-ok-fill-hover:rgba(16,185,129,.16); --btn-ok-line-hover:rgba(16,185,129,.55);
+  --focus-ring:rgba(212,175,55,.55);
+}
+body.theme-light{
+  --btn-primary:#b8942b; --btn-primary-hover:#a58424; --btn-primary-ink:#fffdf4;
+  --btn-line:#cdd4e3; --btn-line-hover:#a3aec5; --btn-fill-hover:rgba(16,26,48,.05);
+  --btn-danger-ink:#b42318; --btn-danger-fill:rgba(217,45,32,.05); --btn-danger-line:rgba(217,45,32,.28);
+  --btn-danger-fill-hover:rgba(217,45,32,.11); --btn-danger-line-hover:rgba(217,45,32,.5);
+  --btn-ok-ink:#067647; --btn-ok-fill:rgba(6,118,71,.06); --btn-ok-line:rgba(6,118,71,.28);
+  --btn-ok-fill-hover:rgba(6,118,71,.12); --btn-ok-line-hover:rgba(6,118,71,.5);
+  --focus-ring:rgba(184,148,43,.6);
+}
+
+.btn-primary,.btn-flat,.btn-modal-save,.btn-modal-cancel,.btn-export{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  font-family:var(--font-body);font-weight:600;letter-spacing:.01em;line-height:1.2;white-space:nowrap;
+  border:1px solid transparent;border-radius:8px;cursor:pointer;
+  transition:background-color .15s ease,border-color .15s ease,color .15s ease,opacity .12s ease;
+}
+.btn-primary:focus-visible,.btn-flat:focus-visible,.btn-modal-save:focus-visible,.btn-modal-cancel:focus-visible,.btn-export:focus-visible{
+  outline:2px solid var(--focus-ring);outline-offset:2px;
+}
+.btn-primary:active,.btn-flat:active,.btn-modal-save:active,.btn-modal-cancel:active,.btn-export:active{opacity:.85;}
+.btn-flat:disabled,.btn-modal-save:disabled,.btn-modal-cancel:disabled,.btn-export:disabled{opacity:.45;cursor:not-allowed;}
+
+/* ukuran */
+.btn-flat,.btn-modal-save,.btn-modal-cancel{padding:8px 15px;font-size:10.5px;}
+.btn-primary{padding:9px 16px;font-size:11px;}
+.btn-export{padding:4px 10px;font-size:9.5px;border-radius:6px;}
+
+/* Primer */
+.btn-primary,.btn-flat-accent,.btn-modal-save{background:var(--btn-primary);color:var(--btn-primary-ink);}
+.btn-primary:hover,.btn-flat-accent:hover,.btn-modal-save:hover{background:var(--btn-primary-hover);}
+
+/* Sekunder (default semua tombol di baris tabel) */
+.btn-flat-ghost,.btn-flat-info,.btn-modal-cancel{background:transparent;border-color:var(--btn-line);color:var(--text-main);}
+.btn-export{background:transparent;border-color:var(--btn-line);color:var(--text-muted);}
+.btn-flat-ghost:hover,.btn-flat-info:hover,.btn-modal-cancel:hover,.btn-export:hover{
+  background:var(--btn-fill-hover);border-color:var(--btn-line-hover);color:var(--text-main);
+}
+
+/* Bahaya */
+.btn-flat-danger,.btn-hapus{background:var(--btn-danger-fill);border-color:var(--btn-danger-line);color:var(--btn-danger-ink);}
+.btn-flat-danger:hover,.btn-hapus:hover{background:var(--btn-danger-fill-hover);border-color:var(--btn-danger-line-hover);color:var(--btn-danger-ink);}
+
+/* Aktifkan (kebalikan dari Nonaktifkan yang netral) */
+.btn-toggle-off{background:var(--btn-ok-fill);border-color:var(--btn-ok-line);color:var(--btn-ok-ink);}
+.btn-toggle-off:hover{background:var(--btn-ok-fill-hover);border-color:var(--btn-ok-line-hover);color:var(--btn-ok-ink);}
+
+/* Checkbox singular di depan kalimat (mis. "Ikut pindahkan ke Trash
+   Drive") -- native, cuma direstyle warnanya biar konsisten tema. */
+.chk-plain{width:15px;height:15px;flex-shrink:0;accent-color:var(--btn-primary);cursor:pointer;}
+
+/* ---- Form ---- */
+#fonnte-umum-wrap .modal-field{margin-bottom:10px;}
+input[type="checkbox"]{accent-color:var(--btn-primary);cursor:pointer;}
+.modal-field.two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;}
+.modal-field.two-col>div{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.modal-field.two-col input,.modal-field.two-col select{width:100%;box-sizing:border-box;}
+.form-input{background:var(--bg-main);border:1px solid var(--border-color);border-radius:7px;padding:8px 9px;color:var(--text-main);font-family:var(--font-body);font-size:11.5px;box-sizing:border-box;}
+.modal-field input:focus,.modal-field select:focus,.modal-field textarea:focus,.form-input:focus{
+  outline:none;border-color:var(--btn-primary);box-shadow:0 0 0 3px rgba(212,175,55,.14);
+}
+.modal-field input::placeholder,.form-input::placeholder{color:var(--text-muted);opacity:.55;}
+/* Autofill browser memaksa latar biru muda -- samakan dengan tema */
+input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus{
+  -webkit-text-fill-color:var(--text-main);caret-color:var(--text-main);
+  box-shadow:0 0 0 1000px var(--bg-main) inset;transition:background-color 9999s ease-out 0s;
+}
 
 /* Checkbox pilihan pendek (nama departemen, dst) -- dibungkus jadi
    baris kecil dgn border, supaya area klik lebih jelas & terasa spt
@@ -167,8 +210,8 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
   transition:background-color .15s ease,border-color .15s ease,color .15s ease;
 }
 .chk-row:hover{background:#252539;border-color:#3a3a58;}
-.chk-row input[type="checkbox"]{width:14px;height:14px;margin:0;flex-shrink:0;accent-color:var(--accent-blue);cursor:pointer;}
-.chk-row:has(input:checked){background:rgba(59,130,246,.14);border-color:rgba(59,130,246,.5);color:#bcd4fb;}
+.chk-row input[type="checkbox"]{width:14px;height:14px;margin:0;flex-shrink:0;accent-color:var(--btn-primary);cursor:pointer;}
+.chk-row:has(input:checked){background:rgba(212,175,55,.10);border-color:rgba(212,175,55,.45);color:var(--text-main);}
 
 .modal-backdrop{position:fixed;inset:0;background:rgba(8,8,16,.7);z-index:1900;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
 .modal-backdrop.open{display:flex;}
@@ -181,10 +224,6 @@ table.data-table{width:100%;border-collapse:collapse;font-size:10.5px;}
 .modal-field select option{background:var(--bg-card);color:var(--text-main);}
 .modal-note{font-size:9.5px;color:var(--text-muted);background:rgba(255,255,255,.03);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;line-height:1.5;}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
-.btn-modal-cancel{background:transparent;border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;transition:border-color .15s ease,color .15s ease;}
-.btn-modal-cancel:hover{border-color:#3a3a58;color:var(--text-main);}
-.btn-modal-save{background:#227551;border:none;color:#eafff5;cursor:pointer;padding:7px 14px;border-radius:8px;font-family:var(--font-body);font-size:10px;font-weight:700;transition:background-color .15s ease;}
-.btn-modal-save:hover{background:#1c6243;}
 .detail-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border-color);font-size:10.5px;}
 .detail-row span:first-child{color:var(--text-muted);}
 
@@ -338,7 +377,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <input type="text" id="input-nik-cross-tl" placeholder="Contoh: PEG12345678">
           </div>
           <div id="checkbox-cross-tl-workspaces" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;"></div>
-          <button class="btn-flat btn-flat-info" onclick="simpanCrossWorkspaceTL()"><i data-lucide="save" style="width:11px;"></i> Simpan</button>
+          <button class="btn-flat btn-flat-accent" onclick="simpanCrossWorkspaceTL()"><i data-lucide="save" style="width:11px;"></i> Simpan</button>
           <div id="status-cross-tl" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
 
           <div style="margin-top:12px;">
@@ -363,7 +402,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
         <div id="checkbox-menu-catalog" style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;"></div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <button class="btn-flat btn-flat-info" onclick="simpanMenuConfig()"><i data-lucide="save" style="width:11px;"></i> Simpan</button>
+          <button class="btn-flat btn-flat-accent" onclick="simpanMenuConfig()"><i data-lucide="save" style="width:11px;"></i> Simpan</button>
           <button class="btn-flat btn-flat-ghost" onclick="resetMenuConfig()"><i data-lucide="rotate-ccw" style="width:11px;"></i> Kembalikan ke Default</button>
         </div>
         <div id="status-menu-config" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
@@ -397,7 +436,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           </div>
           <div style="display:flex;gap:8px;">
             <button class="btn-modal-save" onclick="submitTokenUmum()">Simpan Token Umum</button>
-            <button class="btn-export" onclick="hapusTokenUmum()">Hapus</button>
+            <button class="btn-flat btn-flat-danger" onclick="hapusTokenUmum()">Hapus</button>
             <span id="fonnte-umum-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
           </div>
         </div>
@@ -407,8 +446,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <b>Tes Kirim</b> — kirim pesan percobaan ke nomor approver departemen ini. Isi NIK untuk menguji token milik karyawan itu; kosongkan untuk menguji token umum.
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input type="text" id="fonnte-tes-nik" placeholder="NIK (opsional)" style="width:150px;">
-            <button class="btn-modal-save" onclick="tesKirimFonnte()">Tes Kirim</button>
+            <input type="text" id="fonnte-tes-nik" class="form-input" placeholder="NIK (opsional)" style="width:170px;">
+            <button class="btn-flat btn-flat-ghost" onclick="tesKirimFonnte()">Tes Kirim</button>
           </div>
           <div id="fonnte-tes-result" style="display:none;margin-top:10px;padding:8px 10px;border-radius:6px;font-size:10px;line-height:1.5;border:1px solid var(--border-color);max-width:640px;white-space:pre-wrap;word-break:break-word;"></div>
           <div id="fonnte-last-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);max-width:640px;word-break:break-word;"></div>
@@ -429,8 +468,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <div id="karyawan-kandidat-list" style="max-height:170px;overflow:auto;font-size:10.5px;line-height:1.9;"></div>
           <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
             <button class="btn-modal-save" onclick="imporKaryawanTerpilih()">Tambahkan yang dicentang</button>
-            <button class="btn-export" onclick="centangSemuaKandidat(true)">Centang semua</button>
-            <button class="btn-export" onclick="centangSemuaKandidat(false)">Kosongkan</button>
+            <button class="btn-flat btn-flat-ghost" onclick="centangSemuaKandidat(true)">Centang semua</button>
+            <button class="btn-flat btn-flat-ghost" onclick="centangSemuaKandidat(false)">Kosongkan</button>
             <span style="font-size:9.5px;color:var(--text-muted);">Hilangkan centang untuk akun yang bukan karyawan gudang (mis. akun admin).</span>
           </div>
         </div>
@@ -442,7 +481,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
         <div style="display:flex;gap:8px;margin-bottom:10px;">
           <button class="btn-modal-save" onclick="simpanKaryawan()">Simpan Karyawan</button>
-          <button class="btn-export" onclick="resetFormKaryawan()">Kosongkan Form</button>
+          <button class="btn-flat btn-flat-ghost" onclick="resetFormKaryawan()">Kosongkan Form</button>
         </div>
 
         <div class="table-wrap">
@@ -1223,9 +1262,11 @@ function renderKaryawanMaster(){
     return '<tr>'+
       '<td>'+escHtml(k.kode)+'</td><td>'+escHtml(k.nama)+'</td>'+
       '<td>'+(k.kategori==='OS'?'Outsourcing':'Internal')+'</td><td>'+escHtml(k.jabatan)+'</td>'+
-      '<td>'+(k.aktif?'Aktif':'<span style="color:#ef4444;">Nonaktif</span>')+'</td>'+
-      '<td><button class="btn-export" onclick="editKaryawan('+i+')">Edit</button> '+
-      '<button class="btn-export" onclick="toggleAktifKaryawan('+i+')">'+(k.aktif?'Nonaktifkan':'Aktifkan')+'</button></td></tr>';
+      '<td><span class="chip '+(k.aktif?'chip-aktif':'chip-nonaktif')+'">'+(k.aktif?'Aktif':'Nonaktif')+'</span></td>'+
+      '<td><div class="btn-export-group">'+
+        '<button class="btn-export btn-edit" onclick="editKaryawan('+i+')">Edit</button>'+
+        '<button class="btn-export '+(k.aktif?'btn-toggle-on':'btn-toggle-off')+'" onclick="toggleAktifKaryawan('+i+')">'+(k.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
+      '</div></td></tr>';
   }).join('');
 }
 function renderKandidatKaryawan(list){
