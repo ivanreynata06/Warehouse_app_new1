@@ -386,6 +386,33 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <button class="btn-modal-save" onclick="submitApproverWa()">Simpan</button>
           <span id="approver-wa-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
         </div>
+
+        <div id="fonnte-umum-wrap" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);">
+          <div class="modal-note" style="margin:0 0 8px;">
+            <b>Token Fonnte Umum (nomor dedicated)</b> — dipakai SEMUA karyawan &amp; reminder otomatis yang belum punya token sendiri. Cukup isi sekali di sini kalau semua notifikasi dikirim dari 1 nomor WhatsApp.
+          </div>
+          <div class="modal-field" style="max-width:420px;">
+            <label for="fonnte-token-umum">Token Device Fonnte</label>
+            <input type="password" id="fonnte-token-umum" placeholder="Tempel token dari fonnte.com → Device" autocomplete="off">
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-modal-save" onclick="submitTokenUmum()">Simpan Token Umum</button>
+            <button class="btn-export" onclick="hapusTokenUmum()">Hapus</button>
+            <span id="fonnte-umum-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);">
+          <div class="modal-note" style="margin:0 0 8px;">
+            <b>Tes Kirim</b> — kirim pesan percobaan ke nomor approver departemen ini. Isi NIK untuk menguji token milik karyawan itu; kosongkan untuk menguji token umum.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="fonnte-tes-nik" placeholder="NIK (opsional)" style="width:150px;">
+            <button class="btn-modal-save" onclick="tesKirimFonnte()">Tes Kirim</button>
+          </div>
+          <div id="fonnte-tes-result" style="display:none;margin-top:10px;padding:8px 10px;border-radius:6px;font-size:10px;line-height:1.5;border:1px solid var(--border-color);max-width:640px;white-space:pre-wrap;word-break:break-word;"></div>
+          <div id="fonnte-last-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);max-width:640px;word-break:break-word;"></div>
+        </div>
       </div>
 
       <div class="card" style="min-height:200px;">
@@ -646,6 +673,7 @@ function loadSuperAdminPanel(){
     .withSuccessHandler(function(res){
       if (!res || !res.success) return; // bukan super admin -> diam saja, panel tetap tersembunyi
       isSuperAdmin = true;
+      var uw0 = document.getElementById('fonnte-umum-wrap'); if (uw0) uw0.style.display = 'block';
       workspaceListCache = res.data || [];
       document.getElementById('card-super-admin').style.display = 'flex';
       document.getElementById('card-kelola-menu').style.display = 'flex';
@@ -1140,6 +1168,18 @@ function loadFonnteStatus(){
       document.getElementById('approver-wa-status').textContent =
         res.approverWaWorkspace ? 'Nomor khusus departemen ini sudah diisi.' :
         (res.approverWaUmum ? 'Belum ada nomor khusus -- memakai nomor WA umum.' : 'Belum ada nomor WA approver yang diisi.');
+      var uw = document.getElementById('fonnte-umum-wrap');
+      if (uw) uw.style.display = isSuperAdmin ? 'block' : 'none';
+      var us = document.getElementById('fonnte-umum-status');
+      if (us) us.textContent = res.tokenUmum ? 'Token umum sudah diisi.' : 'Belum ada token umum.';
+      var le = document.getElementById('fonnte-last-status');
+      if (le){
+        var ls = null;
+        try { ls = res.lastStatus ? JSON.parse(res.lastStatus) : null; } catch(e){}
+        le.textContent = !ls ? 'Belum ada riwayat pengiriman.' :
+          'Pengiriman terakhir (' + ls.waktu + ', ' + (ls.workspace||'-') + (ls.sumber ? ', ' + ls.sumber : '') + '): ' +
+          (ls.ok ? '✅ masuk antrean Fonnte' : '❌ GAGAL — ' + (ls.pesan||'') + (ls.saran ? '  ➜ ' + ls.saran : ''));
+      }
     })
     .withFailureHandler(function(){})
     .adminGetFonnteStatus(actorNik, currentTargetWorkspace);
@@ -1156,6 +1196,63 @@ function submitApproverWa(){
     })
     .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
     .adminSetFonnteApproverWa(actorNik, nomor, currentTargetWorkspace);
+}
+
+function submitTokenUmum(){
+  var token = document.getElementById('fonnte-token-umum').value.trim();
+  if (!token){ showToast('Isi token dulu (atau pakai tombol Hapus).','error'); return; }
+  showToast('Menyimpan token umum...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Token umum disimpan','success');
+      document.getElementById('fonnte-token-umum').value = '';
+      loadFonnteStatus();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetFonnteTokenUmum(actorNik, token);
+}
+function hapusTokenUmum(){
+  if (!confirm('Hapus token Fonnte umum?')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Token umum dihapus','success');
+      loadFonnteStatus();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetFonnteTokenUmum(actorNik, '');
+}
+function tesKirimFonnte(){
+  var box = document.getElementById('fonnte-tes-result');
+  var nik = document.getElementById('fonnte-tes-nik').value.trim();
+  box.style.display = 'block';
+  box.style.color = 'var(--text-muted)';
+  box.textContent = 'Mengirim pesan tes...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){
+        box.style.color = '#ef4444';
+        box.textContent = '❌ Gagal: ' + (res && res.error ? res.error : 'tidak ada respons');
+        return;
+      }
+      var d = res.detail || {};
+      if (res.terkirim){
+        box.style.color = '#16a34a';
+        box.textContent = '✅ ' + (d.pesan || 'Terkirim') + '\nTujuan: ' + (d.to || '-') + '  |  Pengirim: ' + (d.sumber || '-');
+        showToast('Tes masuk antrean Fonnte','success');
+      } else {
+        box.style.color = '#ef4444';
+        box.textContent = '❌ Gagal\n' + (d.pesan || '') + (d.saran ? '\n\n➜ ' + d.saran : '') + (d.sumber ? '\n\nPengirim: ' + d.sumber : '');
+        showToast('Tes gagal -- lihat detail di bawah tombol','error');
+      }
+      loadFonnteStatus();
+    })
+    .withFailureHandler(function(err){
+      box.style.color = '#ef4444';
+      box.textContent = '❌ Gagal: ' + (err && err.message ? err.message : 'cek koneksi');
+    })
+    .adminTesKirimFonnte(actorNik, currentTargetWorkspace, nik);
 }
 
 document.addEventListener('DOMContentLoaded', function(){

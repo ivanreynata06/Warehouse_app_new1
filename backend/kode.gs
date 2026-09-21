@@ -77,6 +77,8 @@ var API_FUNCTIONS = {
   adminSetFonnteToken     : adminSetFonnteToken,
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
+  adminSetFonnteTokenUmum: adminSetFonnteTokenUmum,
+  adminTesKirimFonnte: adminTesKirimFonnte,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   adminProvisionNewDepartment: adminProvisionNewDepartment,
   adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
@@ -4157,6 +4159,8 @@ function adminGetFonnteStatus(actorNik, targetWorkspace) {
       tokenNiks: tokenNiks,
       approverWaWorkspace: props.getProperty('FONNTE_APPROVER_WA_' + workspaceKey) ? 'diisi' : '',
       approverWaUmum: props.getProperty('FONNTE_APPROVER_WA') ? 'diisi' : '',
+      tokenUmum: props.getProperty('FONNTE_TOKEN') ? 'diisi' : '',
+      lastStatus: props.getProperty('FONNTE_LAST_STATUS') || '',
       workspace: workspaceKey
     };
   } catch (err) { return { success: false, error: err.message }; }
@@ -4176,6 +4180,137 @@ function adminSetFonnteApproverWa(actorNik, nomorWa, targetWorkspace) {
     if (!nomorWa) { props.deleteProperty(key); return { success: true, cleared: true }; }
     props.setProperty(key, nomorWa);
     return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  HELPER PENGIRIMAN FONNTE -- dipakai lembur, absensi, reminder & tes
+// ================================================================
+// Nomor WA -> 62xxxxxxxxxx (digit saja). "+62 812-3456", "0812 3456",
+// "62812..." semuanya jadi format yang sama.
+function _normNomorFonnte(raw) {
+  var n = String(raw || '').replace(/[^0-9]/g, '');
+  if (!n) return '';
+  if (n.indexOf('00') === 0) n = n.substring(2);
+  if (n.charAt(0) === '0') n = '62' + n.substring(1);
+  return n;
+}
+
+// Token pengirim untuk 1 karyawan: token miliknya -> token UMUM (nomor
+// dedicated) -> (terakhir) token siapa saja yang sudah tersimpan, supaya
+// karyawan yg belum dikasih token tidak membuat notif diam-diam dilewati.
+// NIK disimpan HURUF BESAR oleh adminSetFonnteToken, jadi dicari huruf
+// besar juga (sebelumnya persis "as-is" -> bisa meleset kalau beda kapital).
+function _fonnteCariToken(kode) {
+  var props = PropertiesService.getScriptProperties();
+  var k = String(kode || '').trim();
+  if (k) {
+    var t = props.getProperty('FONNTE_TOKEN_' + k.toUpperCase()) || props.getProperty('FONNTE_TOKEN_' + k);
+    if (t) return { token: t, sumber: 'token NIK ' + k };
+  }
+  var umum = props.getProperty('FONNTE_TOKEN');
+  if (umum) return { token: umum, sumber: 'token umum' };
+  var all = props.getProperties();
+  var keys = Object.keys(all);
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i].indexOf('FONNTE_TOKEN_') === 0 && all[keys[i]]) {
+      return { token: all[keys[i]], sumber: 'token ' + keys[i].substring('FONNTE_TOKEN_'.length) + ' (cadangan)' };
+    }
+  }
+  return null;
+}
+
+function _fonnteApprover() {
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA') || '';
+}
+
+function _fonnteSaran(reason) {
+  var r = String(reason || '').toLowerCase();
+  if (/token/.test(r) && /(invalid|salah|not found|tidak)/.test(r)) return 'Token Fonnte tidak dikenali. Copy ulang token dari fonnte.com → Device → (pilih device) → Token, lalu simpan lagi tanpa spasi.';
+  if (/disconnect|not connect|terputus|belum terhubung/.test(r)) return 'Device Fonnte sedang TIDAK terhubung. Buka fonnte.com → Device, lalu Connect / scan QR ulang dgn WhatsApp nomor dedicated.';
+  if (/quota|kuota|expired|habis|package|paket|subscription|limit/.test(r)) return 'Paket/kuota Fonnte kemungkinan habis atau kedaluwarsa. Cek masa aktif & kuota di dashboard Fonnte.';
+  if (/target|number|nomor/.test(r)) return 'Nomor tujuan (approver) ditolak Fonnte. Pastikan nomor aktif WhatsApp, format 628xxxxxxxxxx, dan BUKAN nomor yang sama dengan nomor pengirim (device).';
+  return '';
+}
+
+function _fonnteSimpanStatus(r) {
+  try {
+    PropertiesService.getScriptProperties().setProperty('FONNTE_LAST_STATUS', JSON.stringify({
+      waktu: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm:ss'),
+      workspace: ACTIVE_WORKSPACE, ok: !!r.ok, sumber: r.sumber || '', ke: r.to || '',
+      pesan: r.pesan || '', saran: r.saran || ''
+    }));
+  } catch (e) { /* cuma pelengkap diagnosa */ }
+}
+
+// Kirim 1 pesan lewat Fonnte. Mengembalikan objek {ok, pesan, saran, to, sumber, httpCode}
+// -- alasan gagal dari Fonnte (reason) ikut dikembalikan & disimpan, bukan cuma "false".
+function _fonnteKirim(kodePengirim, pesan) {
+  var hasil = { ok: false };
+  var tk = _fonnteCariToken(kodePengirim);
+  var targetRaw = _fonnteApprover();
+  if (!tk || !targetRaw) {
+    var kurang = [];
+    if (!tk) kurang.push('Token Fonnte');
+    if (!targetRaw) kurang.push('Nomor WA Approver');
+    hasil.pesan = 'Belum diisi (departemen "' + ACTIVE_WORKSPACE + '"): ' + kurang.join(' & ') + '.';
+    hasil.saran = !tk ? 'Isi token di Panel Admin (Token Fonnte Umum atau tombol Token WA pada user).' : 'Isi Nomor WA Approver di Panel Admin utk departemen ini, atau nomor umum.';
+    Logger.log('Notif WA dilewati: ' + hasil.pesan);
+    _fonnteSimpanStatus(hasil);
+    return hasil;
+  }
+  var target = _normNomorFonnte(targetRaw);
+  hasil.to = target; hasil.sumber = tk.sumber;
+  try {
+    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+      method: 'post',
+      headers: { Authorization: tk.token },
+      payload: { target: target, message: pesan, countryCode: '62' },
+      muteHttpExceptions: true
+    });
+    hasil.httpCode = res.getResponseCode();
+    var body = res.getContentText();
+    Logger.log('Fonnte response (' + hasil.httpCode + ') ke ' + target + ' [' + tk.sumber + ']: ' + body);
+    var parsed = null;
+    try { parsed = JSON.parse(body); } catch (e) { /* bukan JSON */ }
+    if (parsed && parsed.status === true) {
+      hasil.ok = true;
+      hasil.pesan = 'Masuk antrean Fonnte' + (parsed.detail ? ' (' + parsed.detail + ')' : '') +
+        '. Ini belum jaminan sampai ke HP -- cek status pesannya di dashboard Fonnte.';
+    } else {
+      hasil.pesan = (parsed && (parsed.reason || parsed.detail)) ? String(parsed.reason || parsed.detail) : ('Respons tidak dikenali (HTTP ' + hasil.httpCode + '): ' + body.substring(0, 200));
+      hasil.saran = _fonnteSaran(hasil.pesan);
+    }
+  } catch (err) {
+    hasil.pesan = 'Gagal menghubungi Fonnte: ' + err.message;
+  }
+  _fonnteSimpanStatus(hasil);
+  return hasil;
+}
+
+// Token UMUM (nomor dedicated, dipakai semua karyawan & reminder).
+// Khusus Super Admin. Kosongkan = hapus.
+function adminSetFonnteTokenUmum(actorNik, token) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Token umum hanya boleh diatur Super Admin.' };
+    token = String(token || '').replace(/\s+/g, '');
+    var props = PropertiesService.getScriptProperties();
+    if (!token) { props.deleteProperty('FONNTE_TOKEN'); return { success: true, cleared: true }; }
+    props.setProperty('FONNTE_TOKEN', token);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Tes kirim: pesan percobaan ke nomor approver departemen yg dipilih.
+// nik (opsional) = uji token milik NIK tsb; kosong = token umum/cadangan.
+function adminTesKirimFonnte(actorNik, targetWorkspace, nik) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    if (targetWorkspace && _isSuperAdmin(actorNik)) ACTIVE_WORKSPACE = targetWorkspace;
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+    var r = _fonnteKirim(String(nik || '').trim(), '✅ Tes koneksi notifikasi WhatsApp (Fonnte) berhasil.\n\nDikirim: ' + now);
+    return { success: true, terkirim: r.ok, detail: r };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -5334,18 +5469,6 @@ function saveLembur(data) {
 //  tahu user "notif WA terkirim" atau tidak).
 // ================================================================
 function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, keterangan) {
-  var props   = PropertiesService.getScriptProperties();
-  // Nomor approver: coba versi khusus workspace ini dulu (FONNTE_APPROVER_WA_<WORKSPACE>,
-  // supaya tiap plant/departemen bisa punya approver WA berbeda), baru fallback
-  // ke FONNTE_APPROVER_WA umum (dipakai kalau semua plant approver-nya sama).
-  var target  = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
-  // Token pengirim: coba punya karyawan ybs dulu, baru fallback ke token umum.
-  var token   = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
-  if (!token || !target) {
-    Logger.log('Token Fonnte untuk kode "'+kode+'" atau FONNTE_APPROVER_WA belum diisi -- notif WA dilewati.');
-    return false;
-  }
-
   var pesan =
     '*PENGAJUAN LEMBUR BARU*\n\n' +
     'Nama       : ' + nama + '\n' +
@@ -5354,22 +5477,9 @@ function sendWaNotifLembur(kode, nama, tanggal, jamMulai, jamSelesai, durJam, ke
     'Jam        : ' + jamMulai + ' - ' + jamSelesai + ' (' + durJam + ' jam)\n' +
     'Keterangan : ' + keterangan + '\n\n' +
     'Mohon Segera di input di aplikasi Sunfish, terimakasih';
-
-  try {
-    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
-      method: 'post',
-      headers: { Authorization: token },
-      payload: { target: target, message: pesan, countryCode: '62' },
-      muteHttpExceptions: true
-    });
-    var body = res.getContentText();
-    Logger.log('Fonnte response: ' + body);
-    var parsed = JSON.parse(body);
-    return parsed && parsed.status === true;
-  } catch (waErr) {
-    Logger.log('Fonnte fetch error: ' + waErr.message);
-    return false;
-  }
+  // Token: milik karyawan -> umum -> cadangan; nomor approver: khusus
+  // departemen -> umum. Alasan gagal dicatat (lihat _fonnteKirim).
+  return _fonnteKirim(kode, pesan).ok;
 }
 
 // ================================================================
@@ -5925,31 +6035,16 @@ function _remindPendingApprovalsWorkspaceAktif() {
   }
   if (!pendingLama.length) return;
 
-  var props  = PropertiesService.getScriptProperties();
-  var token  = props.getProperty('FONNTE_TOKEN');
-  var target = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
-  if (!token || !target) {
-    Logger.log('FONNTE_TOKEN / FONNTE_APPROVER_WA belum di-set -- reminder dilewati untuk ' + ACTIVE_WORKSPACE);
-    return;
-  }
-
   var pesan =
     '*REMINDER APPROVAL CUTI* (' + ACTIVE_WORKSPACE + ')\n\n' +
     pendingLama.length + ' pengajuan cuti sudah lebih dari 24 jam belum diproses:\n' +
     pendingLama.map(function (p) { return '- ' + p.nama + ' (' + p.kode + ') — ' + p.tanggal; }).join('\n') +
     '\n\nMohon segera di-approve/tolak di aplikasi Sunfish.';
 
-  try {
-    UrlFetchApp.fetch('https://api.fonnte.com/send', {
-      method: 'post',
-      headers: { Authorization: token },
-      payload: { target: target, message: pesan, countryCode: '62' },
-      muteHttpExceptions: true
-    });
-    Logger.log('Reminder terkirim untuk ' + ACTIVE_WORKSPACE + ' (' + pendingLama.length + ' item)');
-  } catch (waErr) {
-    Logger.log('Gagal kirim reminder WA: ' + waErr.message);
-  }
+  // Reminder tidak terkait 1 karyawan -> pakai token umum / cadangan.
+  var r = _fonnteKirim('', pesan);
+  if (r.ok) Logger.log('Reminder terkirim untuk ' + ACTIVE_WORKSPACE + ' (' + pendingLama.length + ' item)');
+  else Logger.log('Gagal kirim reminder WA untuk ' + ACTIVE_WORKSPACE + ': ' + (r.pesan || '') + ' ' + (r.saran || ''));
 }
 
 // Jalankan SEKALI SAJA lewat Apps Script editor untuk memasang jadwal
@@ -6236,14 +6331,6 @@ function saveAbsensi(data) {
 //  cuma beda isi pesan.
 // ================================================================
 function sendWaNotifAbsensi(kode, nama, tanggal, status, keterangan) {
-  var props  = PropertiesService.getScriptProperties();
-  var target = props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA');
-  var token  = props.getProperty('FONNTE_TOKEN_' + kode) || props.getProperty('FONNTE_TOKEN');
-  if (!token || !target) {
-    Logger.log('Token Fonnte untuk kode "'+kode+'" atau FONNTE_APPROVER_WA belum diisi -- notif WA absensi dilewati.');
-    return false;
-  }
-
   var statusLabel = { Sakit: 'Sakit', CutiDokter: 'Cuti Dokter', CutiTahunan: 'Cuti Tahunan', Mangkir: 'Mangkir' };
   var label = statusLabel[status] || status;
   var isCuti = (status === 'CutiDokter' || status === 'CutiTahunan');
@@ -6253,21 +6340,7 @@ function sendWaNotifAbsensi(kode, nama, tanggal, status, keterangan) {
     (keterangan && keterangan !== '-' ? ' (' + keterangan + ')' : '') + '.' +
     (isCuti ? '\n\nMohon untuk segera menginput cuti saya pada aplikasi Sunfish.' : '');
 
-  try {
-    var res = UrlFetchApp.fetch('https://api.fonnte.com/send', {
-      method: 'post',
-      headers: { Authorization: token },
-      payload: { target: target, message: pesan, countryCode: '62' },
-      muteHttpExceptions: true
-    });
-    var body = res.getContentText();
-    Logger.log('Fonnte response (absensi): ' + body);
-    var parsed = JSON.parse(body);
-    return parsed && parsed.status === true;
-  } catch (waErr) {
-    Logger.log('Fonnte fetch error (absensi): ' + waErr.message);
-    return false;
-  }
+  return _fonnteKirim(kode, pesan).ok;
 }
 
 function getAbsensiList(filter) {
