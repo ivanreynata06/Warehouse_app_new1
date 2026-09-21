@@ -415,6 +415,47 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="user-check" style="width:12px;"></i>Data Karyawan (Monitoring FTE, Lembur &amp; SPL) — Departemen Ini</div>
+          <span class="card-badge badge-gold" id="badge-karyawan">0 karyawan</span>
+        </div>
+        <div class="modal-note" style="margin:0 0 10px;">
+          Daftar ini menentukan siapa yang tampil di <b>Monitoring FTE</b> (Rincian FTE Internal &amp; Rekap Lembur Outsourcing), dropdown <b>Form Lembur/Absensi</b>, dan tombol <b>Print/SPL</b> karyawan OS. Ini <b>terpisah dari akun login</b> — karyawan yang punya akun belum otomatis masuk sini. NIK berawalan <b>PEG</b> otomatis dianggap Outsourcing (OS), selain itu Internal.
+        </div>
+
+        <div id="karyawan-kandidat" style="display:none;margin-bottom:12px;padding:10px;border:1px dashed var(--border-color);border-radius:8px;">
+          <div style="font-size:10.5px;font-weight:600;margin-bottom:6px;">Akun login yang belum masuk Data Karyawan</div>
+          <div id="karyawan-kandidat-list" style="max-height:170px;overflow:auto;font-size:10.5px;line-height:1.9;"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+            <button class="btn-modal-save" onclick="imporKaryawanTerpilih()">Tambahkan yang dicentang</button>
+            <button class="btn-export" onclick="centangSemuaKandidat(true)">Centang semua</button>
+            <button class="btn-export" onclick="centangSemuaKandidat(false)">Kosongkan</button>
+            <span style="font-size:9.5px;color:var(--text-muted);">Hilangkan centang untuk akun yang bukan karyawan gudang (mis. akun admin).</span>
+          </div>
+        </div>
+
+        <div class="modal-field two-col" style="max-width:640px;">
+          <div><label for="kr-nik">NIK</label><input type="text" id="kr-nik" placeholder="2168311 / PEG21101254"></div>
+          <div><label for="kr-nama">Nama</label><input type="text" id="kr-nama" placeholder="Nama lengkap"></div>
+          <div><label for="kr-jabatan">Jabatan</label><input type="text" id="kr-jabatan" placeholder="Staff / Team Leader"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button class="btn-modal-save" onclick="simpanKaryawan()">Simpan Karyawan</button>
+          <button class="btn-export" onclick="resetFormKaryawan()">Kosongkan Form</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>NIK</th><th>Nama</th><th>Kategori</th><th>Jabatan</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="tbody-karyawan"></tbody>
+          </table>
+        </div>
+        <div id="empty-karyawan" style="display:none;text-align:center;color:var(--text-muted);font-size:10.5px;padding:14px;">
+          Belum ada data karyawan di departemen ini — inilah sebabnya Monitoring FTE menampilkan "0 orang". Tambahkan lewat form di atasatau impor dari akun login.
+        </div>
+      </div>
+
       <div class="card" style="min-height:200px;">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="users" style="width:12px;"></i>Daftar User</div>
@@ -920,6 +961,7 @@ function onWorkspaceSwitch(){
     'Mengelola: ' + (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : chosen);
   loadUsers();
   loadFonnteStatus(); // status nomor approver WA harus ikut departemen yang dipilih, bukan departemen login sendiri
+  loadKaryawanMaster(); // Data Karyawan juga per departemen yang dipilih
 }
 
 // ---- Tambah Departemen/Plant Baru (Super Admin) ----
@@ -1160,6 +1202,93 @@ function submitWaToken(){
     .adminSetFonnteToken(actorNik, __waNik, token);
 }
 
+// ---- Data Karyawan (master KARYAWAN_LEMBUR) per departemen ----
+var karyawanMasterCache = [];
+function loadKaryawanMaster(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal memuat data karyawan: '+(res&&res.error?res.error:''),'error'); return; }
+      karyawanMasterCache = res.data || [];
+      renderKaryawanMaster();
+      renderKandidatKaryawan(res.kandidat || []);
+    })
+    .withFailureHandler(function(err){ showToast('Gagal memuat data karyawan: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminGetKaryawanMaster(actorNik, currentTargetWorkspace);
+}
+function renderKaryawanMaster(){
+  var tb = document.getElementById('tbody-karyawan');
+  document.getElementById('badge-karyawan').textContent = karyawanMasterCache.length + ' karyawan';
+  document.getElementById('empty-karyawan').style.display = karyawanMasterCache.length ? 'none' : 'block';
+  tb.innerHTML = karyawanMasterCache.map(function(k, i){
+    return '<tr>'+
+      '<td>'+escHtml(k.kode)+'</td><td>'+escHtml(k.nama)+'</td>'+
+      '<td>'+(k.kategori==='OS'?'Outsourcing':'Internal')+'</td><td>'+escHtml(k.jabatan)+'</td>'+
+      '<td>'+(k.aktif?'Aktif':'<span style="color:#ef4444;">Nonaktif</span>')+'</td>'+
+      '<td><button class="btn-export" onclick="editKaryawan('+i+')">Edit</button> '+
+      '<button class="btn-export" onclick="toggleAktifKaryawan('+i+')">'+(k.aktif?'Nonaktifkan':'Aktifkan')+'</button></td></tr>';
+  }).join('');
+}
+function renderKandidatKaryawan(list){
+  var box = document.getElementById('karyawan-kandidat');
+  var lst = document.getElementById('karyawan-kandidat-list');
+  box.style.display = list.length ? 'block' : 'none';
+  lst.innerHTML = list.map(function(c){
+    return '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;">'+
+      '<input type="checkbox" class="kandidat-cb" value="'+escHtml(c.nik)+'" checked style="width:auto;margin:0;">'+
+      '<span>'+escHtml(c.nik)+' — '+escHtml(c.nama)+' <span style="color:var(--text-muted);">('+escHtml(c.role)+', '+(c.kategori==='OS'?'OS':'Internal')+')</span></span></label>';
+  }).join('');
+}
+function centangSemuaKandidat(v){
+  Array.prototype.forEach.call(document.querySelectorAll('.kandidat-cb'), function(cb){ cb.checked = v; });
+}
+function imporKaryawanTerpilih(){
+  var niks = Array.prototype.filter.call(document.querySelectorAll('.kandidat-cb'), function(cb){ return cb.checked; }).map(function(cb){ return cb.value; });
+  if (!niks.length){ showToast('Centang minimal satu akun dulu.','error'); return; }
+  showToast('Menambahkan karyawan...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(res.ditambah + ' karyawan ditambahkan ke Data Karyawan','success');
+      loadKaryawanMaster();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminImporKaryawanDariAkun(actorNik, niks, currentTargetWorkspace);
+}
+function kirimSimpanKaryawan(kode, nama, jabatan, aktif){
+  showToast('Menyimpan...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(res.diubah ? 'Data karyawan diperbarui' : 'Karyawan ditambahkan','success');
+      resetFormKaryawan();
+      loadKaryawanMaster();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSimpanKaryawan(actorNik, kode, nama, jabatan, aktif, currentTargetWorkspace);
+}
+function simpanKaryawan(){
+  var kode = document.getElementById('kr-nik').value.trim();
+  var nama = document.getElementById('kr-nama').value.trim();
+  var jab  = document.getElementById('kr-jabatan').value.trim();
+  if (!kode || !nama){ showToast('NIK dan Nama wajib diisi.','error'); return; }
+  var ada = karyawanMasterCache.filter(function(k){ return k.kode.toUpperCase() === kode.toUpperCase(); })[0];
+  kirimSimpanKaryawan(kode, nama, jab, ada ? ada.aktif : true);
+}
+function editKaryawan(i){
+  var k = karyawanMasterCache[i]; if (!k) return;
+  document.getElementById('kr-nik').value = k.kode;
+  document.getElementById('kr-nama').value = k.nama;
+  document.getElementById('kr-jabatan').value = k.jabatan;
+  document.getElementById('kr-nama').focus();
+}
+function toggleAktifKaryawan(i){
+  var k = karyawanMasterCache[i]; if (!k) return;
+  kirimSimpanKaryawan(k.kode, k.nama, k.jabatan, !k.aktif);
+}
+function resetFormKaryawan(){
+  ['kr-nik','kr-nama','kr-jabatan'].forEach(function(id){ document.getElementById(id).value = ''; });
+}
+
 // ---- Nomor WA Approver (per departemen/plant yang sedang login) ----
 function loadFonnteStatus(){
   google.script.run
@@ -1259,6 +1388,7 @@ document.addEventListener('DOMContentLoaded', function(){
   if(typeof lucide!=='undefined') lucide.createIcons();
   loadUsers();
   setTimeout(loadFonnteStatus, 300); // tunggu actorNik terisi dari loadUsers()
+  setTimeout(loadKaryawanMaster, 350);
 });
 </script>
 

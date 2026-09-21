@@ -78,6 +78,9 @@ var API_FUNCTIONS = {
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
   adminSetFonnteTokenUmum: adminSetFonnteTokenUmum,
+  adminGetKaryawanMaster: adminGetKaryawanMaster,
+  adminSimpanKaryawan: adminSimpanKaryawan,
+  adminImporKaryawanDariAkun: adminImporKaryawanDariAkun,
   adminTesKirimFonnte: adminTesKirimFonnte,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   adminProvisionNewDepartment: adminProvisionNewDepartment,
@@ -4762,6 +4765,167 @@ function getKaryawanList() {
       });
     }
     return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  MASTER KARYAWAN (sheet KARYAWAN_LEMBUR) per departemen/plant.
+//
+//  Sheet ini menentukan SIAPA yang muncul di Monitoring FTE ("Rincian
+//  FTE per Karyawan Internal" & "Rekap Lembur Outsourcing"), dropdown
+//  Form Lembur/Absensi, dan tombol Print/SPL karyawan OS. Beda dari
+//  AKUN_LOGIN (akun untuk masuk ke aplikasi).
+//
+//  MASALAH SEBELUMNYA: departemen baru dibuat lewat
+//  provisionDepartmentSpreadsheet() yang MENYALIN spreadsheet Fitting
+//  Import lalu MENGOSONGKAN KARYAWAN_LEMBUR -- dan tidak ada menu di
+//  aplikasi untuk mengisinya lagi (adminTambahUser cuma menulis ke
+//  AKUN_LOGIN). Akibatnya di semua departemen selain Fitting Import
+//  Monitoring FTE selalu "0 orang". Fungsi di bawah ini menutup celah itu.
+//
+//  Kolom: A Kode | B Nama | C Kategori | D Jabatan | E JamWeekday |
+//         F JamSabtu | G JamMinggu | H Aktif
+//  (Kategori efektif SELALU dihitung dari NIK: awalan "PEG" = OS.)
+// ================================================================
+var KARYAWAN_HEADER = ['Kode', 'Nama', 'Kategori', 'Jabatan', 'JamWeekday', 'JamSabtu', 'JamMinggu', 'Aktif'];
+
+function _sheetKaryawanMaster(ss) {
+  var sh = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+  if (!sh) {
+    sh = ss.insertSheet(SH_KARYAWAN_LEMBUR);
+    sh.getRange(1, 1, 1, KARYAWAN_HEADER.length).setValues([KARYAWAN_HEADER]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function _jabatanDariRole(role) {
+  return String(role || '').trim().toUpperCase() === 'TL' ? 'Team Leader' : 'Staff';
+}
+
+// Cache data dihitung per ACTIVE_WORKSPACE -- kalau Super Admin mengedit
+// departemen LAIN, versi cache departemen itu yang harus dinaikkan.
+function _bumpCacheUntukWorkspace(workspaceKey) {
+  var asal = ACTIVE_WORKSPACE;
+  try { ACTIVE_WORKSPACE = workspaceKey; _bumpDataCacheVersion(); }
+  finally { ACTIVE_WORKSPACE = asal; }
+}
+
+// Daftar master karyawan + daftar AKUN LOGIN yang BELUM masuk master
+// (kandidat untuk diimpor), utk departemen yang dipilih.
+function adminGetKaryawanMaster(actorNik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+
+    var out = [], sudah = {};
+    var sh = tgt.ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+    if (sh) {
+      var data = sh.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        var r = data[i];
+        if (!r[0]) continue;
+        var kode = String(r[0]).trim();
+        sudah[kode.toUpperCase()] = true;
+        out.push({
+          kode: kode, nama: String(r[1] || ''), kategori: _kategoriDariNIK(kode), jabatan: String(r[3] || ''),
+          aktif: r[7] === true || String(r[7]).toUpperCase() === 'TRUE'
+        });
+      }
+    }
+
+    var kandidat = [];
+    var shAkun = tgt.ss.getSheetByName(SH_AKUN_LOGIN);
+    if (shAkun) {
+      var ak = shAkun.getDataRange().getValues();
+      for (var j = 1; j < ak.length; j++) {
+        var nik = String(ak[j][0] || '').trim();
+        if (!nik || sudah[nik.toUpperCase()]) continue;
+        kandidat.push({ nik: nik, nama: String(ak[j][1] || ''), role: String(ak[j][2] || ''), kategori: _kategoriDariNIK(nik) });
+      }
+    }
+    return { success: true, data: out, kandidat: kandidat, workspace: tgt.workspaceKey, sheetAda: !!sh };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Tambah / ubah SATU karyawan di master (upsert berdasarkan NIK).
+function adminSimpanKaryawan(actorNik, kode, nama, jabatan, aktif, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    kode = String(kode || '').trim().toUpperCase();
+    nama = String(nama || '').trim();
+    jabatan = String(jabatan || '').trim() || 'Staff';
+    if (!kode || !nama) return { success: false, error: 'NIK dan Nama wajib diisi.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    try {
+      var sh = _sheetKaryawanMaster(tgt.ss);
+      var data = sh.getDataRange().getValues();
+      var kategori = _kategoriDariNIK(kode);
+      var barisKetemu = -1;
+      for (var i = 1; i < data.length; i++) {
+        if (String(data[i][0]).trim().toUpperCase() === kode) { barisKetemu = i + 1; break; }
+      }
+      var isAktif = (aktif === undefined || aktif === null) ? true : !!aktif;
+      if (barisKetemu > 0) {
+        sh.getRange(barisKetemu, 2, 1, 3).setValues([[nama, kategori, jabatan]]); // B..D
+        sh.getRange(barisKetemu, 8).setValue(isAktif);                            // H
+      } else {
+        var tl = (jabatan.toUpperCase() === 'TEAM LEADER' || jabatan.toUpperCase() === 'TL');
+        sh.appendRow([kode, nama, kategori, jabatan, tl ? 8 : 7, tl ? 0 : 6, 0, isAktif]);
+      }
+    } finally { lock.releaseLock(); }
+
+    _bumpCacheUntukWorkspace(tgt.workspaceKey);
+    return { success: true, diubah: barisKetemu > 0 };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Impor BANYAK akun login (daftar NIK) ke master karyawan sekaligus.
+// Yang sudah ada di master dilewati -- aman diklik berulang.
+function adminImporKaryawanDariAkun(actorNik, daftarNik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    if (!daftarNik || !daftarNik.length) return { success: false, error: 'Tidak ada NIK yang dipilih.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var shAkun = tgt.ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!shAkun) return { success: false, error: 'Sheet AKUN_LOGIN belum ada.' };
+
+    var dipilih = {};
+    daftarNik.forEach(function (n) { dipilih[String(n).trim().toUpperCase()] = true; });
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    var ditambah = 0;
+    try {
+      var sh = _sheetKaryawanMaster(tgt.ss);
+      var sudah = {};
+      var m = sh.getDataRange().getValues();
+      for (var i = 1; i < m.length; i++) sudah[String(m[i][0]).trim().toUpperCase()] = true;
+
+      var akun = shAkun.getDataRange().getValues();
+      var barisBaru = [];
+      for (var j = 1; j < akun.length; j++) {
+        var nik = String(akun[j][0] || '').trim().toUpperCase();
+        if (!nik || !dipilih[nik] || sudah[nik]) continue;
+        var jab = _jabatanDariRole(akun[j][2]);
+        var tl = (jab === 'Team Leader');
+        barisBaru.push([nik, String(akun[j][1] || ''), _kategoriDariNIK(nik), jab, tl ? 8 : 7, tl ? 0 : 6, 0, true]);
+        sudah[nik] = true;
+      }
+      if (barisBaru.length) {
+        sh.getRange(sh.getLastRow() + 1, 1, barisBaru.length, KARYAWAN_HEADER.length).setValues(barisBaru);
+      }
+      ditambah = barisBaru.length;
+    } finally { lock.releaseLock(); }
+
+    if (ditambah) _bumpCacheUntukWorkspace(tgt.workspaceKey);
+    return { success: true, ditambah: ditambah };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
