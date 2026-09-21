@@ -298,6 +298,10 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
         <span id="lbl-sync-rekap">Sync Sekarang</span>
       </button>
+      <button class="btn-refresh" onclick="diagnosaFitting()" title="Lihat data mentah Rekap Muatan Fitting per baris -- utk telusur kalau tonase 1 PIC tidak muncul/kurang" style="background:transparent;border:1px solid var(--border-color,#333);">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Diagnosa Fitting
+      </button>
       <button class="btn-refresh" onclick="whLogout()" title="Logout" style="background:transparent;border:1px solid var(--border-color,#333);">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Logout
@@ -565,6 +569,34 @@ function syncRekapSekarang(){
       alert('Gagal terhubung: ' + (err && err.message || 'cek koneksi'));
     })
     .manualSyncNow('io');
+}
+
+// Diagnosa data mentah Rekap Muatan Fitting -- utk telusur kalau tonase
+// 1 PIC (mis. WANG) tidak muncul/kurang. Nampilin per baris: tanggal &
+// PIC yang kebaca, tonase, ikut terhitung atau tidak & kenapa.
+function diagnosaFitting(){
+  var bulan = document.getElementById('inp-bulan').value;
+  var tahun = document.getElementById('inp-tahun').value;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ alert('Gagal: '+(res&&res.error?res.error:'tidak diketahui')); return; }
+      var rows = res.data || [];
+      if (!rows.length){ alert('Tidak ada baris data sama sekali di sheet REKAP MUATAN FITTING utk periode ini.'); return; }
+      var dilewati = rows.filter(function(r){ return !r.ikutDihitung; });
+      var teks = 'Total baris: '+rows.length+' | Ikut terhitung: '+(rows.length-dilewati.length)+' | Dilewati: '+dilewati.length+'\n\n';
+      if (dilewati.length){
+        teks += 'BARIS YANG DILEWATI (tidak ikut dihitung):\n';
+        teks += dilewati.map(function(r){
+          return '  Baris '+r.baris+' | Tanggal: '+r.tanggalKebaca+' | PIC mentah: "'+r.picMentah+'" | PIC dipakai: "'+r.picDipakai+'" | Tonase: '+r.tonase+' | Alasan: '+r.alasanLewat;
+        }).join('\n');
+      } else {
+        teks += 'Semua baris ikut terhitung -- tidak ada yang dilewati.';
+      }
+      alert(teks);
+      console.log('Diagnosa Rekap Fitting (detail lengkap):', rows);
+    })
+    .withFailureHandler(function(err){ alert('Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi')); })
+    .diagnosaRekapFitting(bulan, tahun);
 }
 
 function loadData(){

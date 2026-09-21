@@ -25,6 +25,7 @@ var API_FUNCTIONS = {
   getInboundData          : getInboundData,
   getKanbanData           : getKanbanData,
   getRekapMuatanData      : getRekapMuatanData,
+  diagnosaRekapFitting    : diagnosaRekapFitting,
   getResidenceTimeData    : getResidenceTimeData,
   getLoadingTimeAnalytics : getLoadingTimeAnalytics,
   getPendingRows          : getPendingRows,
@@ -2383,12 +2384,15 @@ function getRekapMuatanData(params) {
     var shMuat = ss.getSheetByName(SH_REKAP_MUATAN);
     if (shMuat) {
       var dm = shMuat.getDataRange().getValues();
+      var lastPicMuat = ''; // lihat catatan forward-fill di loop FITTING di bawah -- sama alasannya
       for (var i=1; i<dm.length; i++) {
         var row=dm[i];
         var tgl=toDate(row[1]);
-        var pic=String(row[2]||'').trim().toUpperCase();
         var kg =parseFloat(row[3])||0;
         if (!tgl||!kg) continue;
+        var picRaw=String(row[2]||'').trim().toUpperCase();
+        if (picRaw) lastPicMuat = picRaw;
+        var pic = picRaw || lastPicMuat;
         if (range&&!inRange(tgl,range)) continue;
         var dk=fmtD(tgl);
         var entries=normalizePIC(pic,kg);
@@ -2418,12 +2422,27 @@ function getRekapMuatanData(params) {
     var shFit = ss.getSheetByName(SH_REKAP_FITTING);
     if (shFit) {
       var df = shFit.getDataRange().getValues();
+      // Forward-fill kolom PIC yang kosong -- kejadian nyata: kolom PIC di
+      // sheet sumber pakai CELL MERGE (mis. WANG ditulis 1x di baris
+      // pertama, baris2 berikutnya kosong tapi kelihatan "menyatu" secara
+      // visual krn merge). Nilai baris kosong itu SUNGGUH kosong secara
+      // data (Apps Script baca cell merge: cuma cell kiri-atas yg ada
+      // isinya, sisanya string kosong) -- SEBELUMNYA baris kosong itu
+      // gagal cocok PIC manapun (normalizePICFitting('', ...) -> [])
+      // dan diam2 dilewati, sehingga tonase WANG (atau PIC lain yg
+      // sel-nya di-merge) hilang dari total padahal tanggal & tonase-nya
+      // ada. Sekarang kolom PIC kosong otomatis mewarisi PIC baris
+      // TERAKHIR yang terisi -- SAMA seperti bagaimana orang membaca
+      // sheet yang sel-nya digabung.
+      var lastPicFit = '';
       for (var j=1; j<df.length; j++) {
         var rowF=df[j];
         var tglF=toDate(rowF[1]);
-        var picF=String(rowF[2]||'').trim().toUpperCase();
         var box =parseFloat(rowF[3])||0; // nama var "box" dipertahankan, isinya sekarang kg
         if (!tglF||!box) continue;
+        var picFRaw=String(rowF[2]||'').trim().toUpperCase();
+        if (picFRaw) lastPicFit = picFRaw;
+        var picF = picFRaw || lastPicFit;
         if (range&&!inRange(tglF,range)) continue;
         var dkF=fmtD(tglF);
         var entriesF=normalizePICFitting(picF,box);
@@ -2571,6 +2590,55 @@ function getRekapMuatanData(params) {
   } catch(err) {
     return { success: false, error: err.message };
   }
+}
+
+// ================================================================
+//  DIAGNOSA REKAP MUATAN FITTING -- alat bantu telusur kalau tonase 1
+//  PIC (mis. WANG) tidak muncul/kurang di Rekap Muatan. Menampilkan
+//  data MENTAH per baris sheet REKAP MUATAN FITTING utk 1 bulan,
+//  supaya kelihatan persis kenapa suatu baris tidak ikut terhitung
+//  (tanggal kosong/tidak kebaca, tonase kosong, PIC tidak dikenal,
+//  atau di luar rentang bulan yg diminta).
+// ================================================================
+function diagnosaRekapFitting(bulan, tahun) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sh = ss.getSheetByName(SH_REKAP_FITTING);
+    if (!sh) return { success: false, error: 'Sheet "' + SH_REKAP_FITTING + '" tidak ditemukan.' };
+    var range = buildRekapDateRange({ mode: 'bulanan', bulan: bulan, tahun: tahun });
+    var data = sh.getDataRange().getValues();
+    var out = [];
+    var lastPic = '';
+    for (var j = 1; j < data.length; j++) {
+      var r = data[j];
+      var tgl = toDate(r[1]);
+      var picRaw = String(r[2] || '').trim();
+      var box = parseFloat(r[3]) || 0;
+      if (!tgl && !picRaw && !box) continue; // baris benar2 kosong -- lewati diam2, tidak perlu dilaporkan
+      var picRawUp = picRaw.toUpperCase();
+      if (picRawUp) lastPic = picRawUp;
+      var picDipakai = picRawUp || lastPic;
+      var alasanLewat = '';
+      if (!tgl) alasanLewat = 'Tanggal kosong/tidak kebaca sbg tanggal';
+      else if (!box) alasanLewat = 'Tonase (kolom D) kosong/0';
+      else if (range && !inRange(tgl, range)) alasanLewat = 'Di luar bulan yang diminta';
+      else {
+        var cocok = normalizePICFitting(picDipakai, box);
+        if (!cocok.length) alasanLewat = 'PIC "' + picDipakai + '" tidak dikenali sistem';
+      }
+      out.push({
+        baris: j + 1,
+        tanggalMentah: String(r[1]),
+        tanggalKebaca: tgl ? _fmtYMD(tgl) : '(gagal dibaca)',
+        picMentah: picRaw || '(kosong -- mewarisi dari baris di atas)',
+        picDipakai: picDipakai,
+        tonase: box,
+        ikutDihitung: !alasanLewat,
+        alasanLewat: alasanLewat
+      });
+    }
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
 }
 
 // Normalisasi PIC untuk PIPA
