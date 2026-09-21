@@ -400,13 +400,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <input type="text" id="wa-official-phoneid" placeholder="123456789012345">
           </div>
         </div>
-        <label id="wa-official-global-wrap" style="display:none;align-items:center;gap:6px;font-size:10px;margin:2px 0 8px;cursor:pointer;">
-          <input type="checkbox" id="wa-official-global" style="width:auto;margin:0;">
-          Pakai untuk <b>semua departemen</b> (umum) — centang kalau 1 nomor bisnis Meta dipakai semua departemen
-        </label>
         <div style="display:flex;gap:8px;">
           <button class="btn-modal-save" onclick="submitWaOfficialCreds()">Simpan Kredensial</button>
-          <button class="btn-export" onclick="hapusWaOfficialCreds()" title="Hapus kredensial (sesuai pilihan centang di samping)">Hapus</button>
           <span id="wa-official-creds-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
         </div>
 
@@ -422,18 +417,12 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <label for="wa-official-tpllang">Bahasa</label>
             <input type="text" id="wa-official-tpllang" placeholder="id">
           </div>
-          <div style="width:90px;">
-            <label for="wa-official-tplparams" title="Jumlah variabel {{n}} di isi template Meta (0-5)">Jml Variabel</label>
-            <input type="number" id="wa-official-tplparams" min="0" max="5" placeholder="5">
-          </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <button class="btn-modal-save" onclick="submitWaOfficialTemplate()">Simpan Template</button>
           <button class="btn-export" onclick="tesKirimWaOfficial()"><i data-lucide="send" style="width:11px;vertical-align:-2px;"></i> Tes Kirim</button>
           <span id="wa-official-tpl-status" style="font-size:9.5px;color:var(--text-muted);align-self:center;"></span>
         </div>
-        <div id="wa-official-test-result" style="display:none;margin-top:10px;padding:8px 10px;border-radius:6px;font-size:10px;line-height:1.5;border:1px solid var(--border-color);max-width:640px;white-space:pre-wrap;word-break:break-word;"></div>
-        <div id="wa-official-last-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);max-width:640px;word-break:break-word;"></div>
       </div>
 
       <div class="card" style="min-height:200px;">
@@ -694,7 +683,6 @@ function loadSuperAdminPanel(){
     .withSuccessHandler(function(res){
       if (!res || !res.success) return; // bukan super admin -> diam saja, panel tetap tersembunyi
       isSuperAdmin = true;
-      var gw = document.getElementById('wa-official-global-wrap'); if (gw) gw.style.display = 'flex'; // opsi kredensial WA umum khusus Super Admin
       workspaceListCache = res.data || [];
       document.getElementById('card-super-admin').style.display = 'flex';
       document.getElementById('card-kelola-menu').style.display = 'flex';
@@ -1198,19 +1186,6 @@ function loadFonnteStatus(){
           ? 'Kredensial sudah diisi' + (res.waOfficialTokenWorkspace ? ' (khusus departemen ini)' : ' (umum)') + '.'
           : 'Kredensial belum lengkap -- notifikasi WA belum bisa terkirim.';
       }
-      var globalWrap = document.getElementById('wa-official-global-wrap');
-      if (globalWrap) globalWrap.style.display = isSuperAdmin ? 'flex' : 'none';
-      var langEl = document.getElementById('wa-official-tpllang');
-      var prmEl = document.getElementById('wa-official-tplparams');
-      if (langEl) langEl.placeholder = res.waOfficialTemplateLang || 'id';
-      if (prmEl) prmEl.placeholder = (res.waOfficialTemplateParams != null ? res.waOfficialTemplateParams : 5);
-      var lastEl = document.getElementById('wa-official-last-status');
-      if (lastEl){
-        var ls = null;
-        try { ls = res.waOfficialLastStatus ? JSON.parse(res.waOfficialLastStatus) : null; } catch(e){}
-        lastEl.textContent = !ls ? 'Belum ada riwayat pengiriman.' :
-          'Pengiriman terakhir (' + ls.waktu + ', ' + (ls.workspace||'-') + '): ' + (ls.ok ? '✅ diterima Meta' : '❌ GAGAL — ' + (ls.errorCode ? '[' + ls.errorCode + '] ' : '') + (ls.pesan||'') + (ls.saran ? '  ➜ ' + ls.saran : ''));
-      }
       var tplStatusEl = document.getElementById('wa-official-tpl-status');
       if (tplStatusEl){
         tplStatusEl.textContent = res.waOfficialTemplateName
@@ -1239,39 +1214,23 @@ function submitApproverWa(){
 function submitWaOfficialCreds(){
   var token = document.getElementById('wa-official-token').value.trim();
   var phoneId = document.getElementById('wa-official-phoneid').value.trim();
-  var umum = !!(document.getElementById('wa-official-global') && document.getElementById('wa-official-global').checked);
-  if (!token && !phoneId){ showToast('Isi Access Token dan/atau Phone Number ID dulu.','error'); return; }
+  if (!token && !phoneId){ showToast('Isi Access Token dan Phone Number ID dulu.','error'); return; }
   showToast('Menyimpan kredensial WA...','info');
   google.script.run
     .withSuccessHandler(function(res){
       if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
-      showToast('Kredensial WhatsApp Business API disimpan' + (umum ? ' (berlaku semua departemen)' : ''),'success');
+      showToast('Kredensial WhatsApp Business API disimpan','success');
       document.getElementById('wa-official-token').value = '';
       document.getElementById('wa-official-phoneid').value = '';
       loadFonnteStatus();
     })
     .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .adminSetWaOfficialCreds(actorNik, token, phoneId, currentTargetWorkspace, umum, false);
-}
-
-function hapusWaOfficialCreds(){
-  var umum = !!(document.getElementById('wa-official-global') && document.getElementById('wa-official-global').checked);
-  if (!confirm(umum ? 'Hapus kredensial UMUM (semua departemen)?' : 'Hapus kredensial khusus departemen ini?')) return;
-  google.script.run
-    .withSuccessHandler(function(res){
-      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
-      showToast('Kredensial dihapus','success');
-      loadFonnteStatus();
-    })
-    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .adminSetWaOfficialCreds(actorNik, '', '', currentTargetWorkspace, umum, true);
+    .adminSetWaOfficialCreds(actorNik, token, phoneId, currentTargetWorkspace);
 }
 
 function submitWaOfficialTemplate(){
   var nama = document.getElementById('wa-official-tplname').value.trim();
   var lang = document.getElementById('wa-official-tpllang').value.trim() || 'id';
-  var prm = document.getElementById('wa-official-tplparams').value.trim();
-  if (prm === '') prm = 5;
   showToast('Menyimpan template...','info');
   google.script.run
     .withSuccessHandler(function(res){
@@ -1280,37 +1239,17 @@ function submitWaOfficialTemplate(){
       loadFonnteStatus();
     })
     .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .adminSetWaOfficialTemplate(actorNik, nama, lang, prm);
+    .adminSetWaOfficialTemplate(actorNik, nama, lang);
 }
 
 function tesKirimWaOfficial(){
-  var box = document.getElementById('wa-official-test-result');
-  box.style.display = 'block';
-  box.style.color = 'var(--text-muted)';
-  box.textContent = 'Mengirim pesan tes...';
+  showToast('Mengirim pesan tes...','info');
   google.script.run
     .withSuccessHandler(function(res){
-      if (!res || !res.success){
-        box.style.color = '#ef4444';
-        box.textContent = '❌ Gagal: ' + (res && res.error ? res.error : 'tidak ada respons');
-        return;
-      }
-      var d = res.detail || {};
-      if (res.terkirim){
-        box.style.color = '#16a34a';
-        box.textContent = '✅ Berhasil diterima Meta' + (d.to ? ' (tujuan ' + d.to + ')' : '') + '. Cek WA approver.\n' + (d.pesan || '');
-        showToast('Pesan tes diterima Meta','success');
-      } else {
-        box.style.color = '#ef4444';
-        box.textContent = '❌ Gagal terkirim' + (d.errorCode ? ' [kode ' + d.errorCode + ']' : '') + '\n' + (d.pesan || '') + (d.saran ? '\n\n➜ ' + d.saran : '');
-        showToast('Tes gagal -- lihat detail di bawah tombol','error');
-      }
-      loadFonnteStatus();
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(res.terkirim ? '✅ Pesan tes berhasil terkirim! Cek WA approver.' : '❌ Gagal terkirim -- cek Apps Script Logs (View > Logs) utk detail errornya.', res.terkirim ? 'success' : 'error');
     })
-    .withFailureHandler(function(err){
-      box.style.color = '#ef4444';
-      box.textContent = '❌ Gagal: ' + (err && err.message ? err.message : 'cek koneksi');
-    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
     .adminTesKirimWaOfficial(actorNik, currentTargetWorkspace);
 }
 
