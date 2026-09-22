@@ -82,6 +82,9 @@ var API_FUNCTIONS = {
   adminSimpanKaryawan: adminSimpanKaryawan,
   adminImporKaryawanDariAkun: adminImporKaryawanDariAkun,
   adminTesKirimFonnte: adminTesKirimFonnte,
+  getKeywordKategoriGabungan: getKeywordKategoriGabungan,
+  adminGetKeywordKategoriTambahan: adminGetKeywordKategoriTambahan,
+  adminSetKeywordKategoriTambahan: adminSetKeywordKategoriTambahan,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   adminProvisionNewDepartment: adminProvisionNewDepartment,
   adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
@@ -1366,6 +1369,55 @@ function getKategoriStock(drawingVal) {
   return null;
 }
 
+// ================================================================
+//  KATA KUNCI KATEGORI TAMBAHAN -- item baru (mis. varian drainase/
+//  sanitary seperti RDS, Clean Out, P Trap) kadang punya nama yang
+//  belum tercakup daftar bawaan di atas, sehingga sempat "hilang" dari
+//  rincian kartu Pipa/Fitting walau datanya tetap tersimpan lengkap.
+//  Daripada menunggu perubahan kode + deploy ulang tiap kali muncul
+//  nama item baru, Super Admin bisa menambah kata kunci sendiri lewat
+//  halaman Upload Data -> disimpan di Script Property ini (dipisah
+//  koma), digabung otomatis ke daftar bawaan di atas.
+// ================================================================
+var _kwFittingTambahanCache = null; // cache per-eksekusi, supaya tidak baca Script Property berulang kali per baris saat memproses ribuan baris
+function _daftarKeywordFittingTambahan() {
+  if (_kwFittingTambahanCache === null) {
+    var raw = PropertiesService.getScriptProperties().getProperty('KATEGORI_KEYWORD_TAMBAHAN') || '';
+    _kwFittingTambahanCache = raw.split(',').map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+  }
+  return _kwFittingTambahanCache;
+}
+
+// Daftar gabungan (bawaan + tambahan) -- dipakai frontend Upload Data utk
+// menampilkan warning "item tak terkategori" SEBELUM data diupload,
+// dengan definisi kata kunci yang identik dgn yang dipakai backend.
+function getKeywordKategoriGabungan() {
+  try {
+    return { success: true, tambahan: _daftarKeywordFittingTambahan() };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Lihat kata kunci tambahan saat ini (utk ditampilkan di textarea edit).
+function adminGetKeywordKategoriTambahan(actorNik) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- hanya Super Admin (berlaku ke semua departemen).' };
+    return { success: true, tambahan: PropertiesService.getScriptProperties().getProperty('KATEGORI_KEYWORD_TAMBAHAN') || '' };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Simpan daftar kata kunci tambahan (replace semua, dipisah koma).
+// Berlaku GLOBAL ke semua departemen -- item PPR bernama sama biasanya
+// dipakai lintas plant, jadi tidak dibuat per-departemen.
+function adminSetKeywordKategoriTambahan(actorNik, csv) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- hanya Super Admin (berlaku ke semua departemen).' };
+    var bersih = String(csv || '').split(',').map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+    PropertiesService.getScriptProperties().setProperty('KATEGORI_KEYWORD_TAMBAHAN', bersih.join(','));
+    _bumpDataCacheVersion(); // kartu Pipa/Fitting yang sudah di-cache perlu dihitung ulang dgn kata kunci baru
+    return { success: true, jumlah: bersih.length };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 // Dipakai kalau getKategoriStock(drawingVal) gagal (kosong / tidak persis
 // cocok, mis. item baru yang belum ada di MASTER lookup Drawing). Baca
 // kata kunci dari kolom E (Description) sebagai cadangan, supaya item
@@ -1378,7 +1430,11 @@ function getKategoriStockFallback(descE) {
                    'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT','FLANGE',
                    'KELEN REDU','KLN REDU','KELEN EQUA','KLN EQUA',
                    'KELEN ELBO','KLN ELBO','KELEN COUP','KLN COUP',
-                   'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN'];
+                   'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN',
+                   'RDS','CLEAN OUT','TRAP','INCREASER','DECREASER','BEND','KNEE',
+                   'WYE','CROSS','NIPPLE','PLUG','STRAINER','VENT CAP','BUSHING',
+                   'ADAPTOR','ADAPTER','SADDLE','DOP','DRAT','KRAN','GATE VALVE',
+                   'CHECK VALVE','BALL VALVE','EXPANSION','DOUBLE NIPPLE'].concat(_daftarKeywordFittingTambahan());
   var isFitting = fittingKw.some(function(k){ return desc.indexOf(k) !== -1; });
   var isPipa    = !isFitting && (desc.indexOf('PIPE') !== -1 || desc.indexOf('PIPA') !== -1);
   if (!isPipa && !isFitting) return null;
@@ -1399,7 +1455,11 @@ function getKategoriTransaksi(descC, descD) {
                    'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT','FLANGE',
                    'KELEN REDU','KLN REDU','KELEN EQUA','KLN EQUA',
                    'KELEN ELBO','KLN ELBO','KELEN COUP','KLN COUP',
-                   'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN'];
+                   'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN',
+                   'RDS','CLEAN OUT','TRAP','INCREASER','DECREASER','BEND','KNEE',
+                   'WYE','CROSS','NIPPLE','PLUG','STRAINER','VENT CAP','BUSHING',
+                   'ADAPTOR','ADAPTER','SADDLE','DOP','DRAT','KRAN','GATE VALVE',
+                   'CHECK VALVE','BALL VALVE','EXPANSION','DOUBLE NIPPLE'].concat(_daftarKeywordFittingTambahan());
   var isFitting = fittingKw.some(function(k){ return desc.indexOf(k) !== -1; });
   var isPipa    = !isFitting && (desc.indexOf('PIPE') !== -1 || desc.indexOf('PIPA') !== -1);
   if (!isPipa && !isFitting) return null;

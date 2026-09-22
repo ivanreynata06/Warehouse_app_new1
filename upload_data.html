@@ -281,6 +281,24 @@ table.preview-table tr.row-valid td{color:var(--txt);}
       </button>
     </div>
 
+    <!-- ============== KATA KUNCI KATEGORI TAMBAHAN (Super Admin) ============== -->
+    <div class="card" id="card-keyword-kategori" style="display:none;margin-bottom:16px;">
+      <div class="card-header"><div class="card-title">⚙️ Kata Kunci Kategori Tambahan (Pipa/Fitting PPR)</div></div>
+      <div class="card-body">
+        <div class="col-ref">
+          Kalau ada item yang muncul di peringatan "tidak masuk kategori" padahal memang barang Pipa/Fitting
+          (mis. varian drainase seperti RDS, Clean Out, P Trap), tambahkan kata kuncinya di sini -- <b>tanpa perlu
+          minta ubah kode</b>. Berlaku untuk <b>semua departemen</b> begitu disimpan. Pisahkan tiap kata kunci
+          dengan koma. Ini digabung dengan daftar bawaan sistem, tidak menggantikannya.
+        </div>
+        <textarea id="keyword-tambahan-input" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:9px 11px;color:var(--txt);font-family:inherit;font-size:12px;" placeholder="Contoh: STOP KRAN, WATERMUR, T DUS"></textarea>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn btn-primary" onclick="simpanKeywordTambahan()">Simpan Kata Kunci</button>
+          <span class="status-msg" id="status-keyword-tambahan"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- ============== TAB: STOCK ============== -->
     <div class="tab-panel active" id="tab-stock">
       <div class="card">
@@ -599,17 +617,70 @@ var PARSED_ROWS = { stock: null, outbound: null, inbound: null };
 //  keyword di backend diubah, keyword di sini WAJIB ikut disamakan
 //  supaya deteksi tidak salah/basi.
 // ================================================================
-var FITTING_KEYWORDS = ['ELBOW','REDUC','EQUAL','COUPL','COUP','VALVE','SOCK','UNION',
+var FITTING_KEYWORDS_DASAR = ['ELBOW','REDUC','EQUAL','COUPL','COUP','VALVE','SOCK','UNION',
   'FEMALE','MALE','TEE','CAP','FITTING','STRAIGHT','FLANGE',
   'KELEN REDU','KLN REDU','KELEN EQUA','KLN EQUA',
   'KELEN ELBO','KLN ELBO','KELEN COUP','KLN COUP',
-  'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN'];
+  'KELEN STRA','KLN STRA','WAY VALVE','RUCIKA KLN',
+  'RDS','CLEAN OUT','TRAP','INCREASER','DECREASER','BEND','KNEE',
+  'WYE','CROSS','NIPPLE','PLUG','STRAINER','VENT CAP','BUSHING',
+  'ADAPTOR','ADAPTER','SADDLE','DOP','DRAT','KRAN','GATE VALVE',
+  'CHECK VALVE','BALL VALVE','EXPANSION','DOUBLE NIPPLE'];
+var FITTING_KEYWORDS_TAMBAHAN = []; // dimuat dari server saat halaman siap -- lihat muatKeywordTambahan()
 
 function isKategoriTransaksiDikenali(descC, descD){
   var desc = (String(descC||'')+' '+String(descD||'')).toUpperCase();
-  var isFitting = FITTING_KEYWORDS.some(function(k){ return desc.indexOf(k) !== -1; });
+  var semua = FITTING_KEYWORDS_DASAR.concat(FITTING_KEYWORDS_TAMBAHAN);
+  var isFitting = semua.some(function(k){ return desc.indexOf(k) !== -1; });
   var isPipa = !isFitting && (desc.indexOf('PIPE') !== -1 || desc.indexOf('PIPA') !== -1);
   return isFitting || isPipa;
+}
+
+// Ambil kata kunci tambahan dari server (yang diatur Super Admin lewat
+// panel "Kata Kunci Kategori Tambahan" di bawah) -- supaya deteksi item
+// tak terkategori di browser SAMA PERSIS dgn yang dipakai backend saat
+// menghitung kartu Pipa/Fitting, tanpa perlu refresh kode tiap kali
+// kata kunci baru ditambahkan.
+function muatKeywordTambahan(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (res && res.success) FITTING_KEYWORDS_TAMBAHAN = res.tambahan || [];
+    })
+    .withFailureHandler(function(){ /* diam-diam pakai daftar dasar saja kalau gagal muat */ })
+    .getKeywordKategoriGabungan();
+}
+muatKeywordTambahan();
+
+// Panel Kata Kunci Tambahan cuma utk Super Admin (berlaku lintas
+// departemen) -- coba muat; kalau server menolak (bukan Super Admin),
+// panel tetap disembunyikan.
+function initPanelKeywordTambahan(){
+  var nik = (window.WH_SESSION && window.WH_SESSION.nik) || '';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success) return; // bukan Super Admin -> diam saja, panel tetap tersembunyi
+      document.getElementById('card-keyword-kategori').style.display = 'block';
+      document.getElementById('keyword-tambahan-input').value = res.tambahan || '';
+    })
+    .withFailureHandler(function(){ /* diam-diam sembunyikan panel */ })
+    .adminGetKeywordKategoriTambahan(nik);
+}
+initPanelKeywordTambahan();
+
+function simpanKeywordTambahan(){
+  var nik = (window.WH_SESSION && window.WH_SESSION.nik) || '';
+  var csv = document.getElementById('keyword-tambahan-input').value.trim();
+  var st = document.getElementById('status-keyword-tambahan');
+  st.textContent = 'Menyimpan...'; st.className = 'status-msg show info';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ st.textContent = 'Gagal: ' + (res && res.error ? res.error : ''); st.className = 'status-msg show err'; return; }
+      st.textContent = '✅ Tersimpan (' + res.jumlah + ' kata kunci tambahan, berlaku semua departemen).';
+      st.className = 'status-msg show ok';
+      muatKeywordTambahan(); // refresh daftar yg dipakai deteksi di halaman ini juga
+    })
+    .withFailureHandler(function(err){ st.textContent = 'Gagal: ' + (err && err.message ? err.message : 'cek koneksi'); st.className = 'status-msg show err'; })
+    .adminSetKeywordKategoriTambahan(nik, csv);
 }
 
 // Cek batch yang baru diupload (rows format: [ItemNumber, DrawingCode,
