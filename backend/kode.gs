@@ -85,6 +85,8 @@ var API_FUNCTIONS = {
   getKeywordKategoriGabungan: getKeywordKategoriGabungan,
   adminGetKeywordKategoriTambahan: adminGetKeywordKategoriTambahan,
   adminSetKeywordKategoriTambahan: adminSetKeywordKategoriTambahan,
+  adminGetTargetProduktivitas: adminGetTargetProduktivitas,
+  adminSetTargetProduktivitas: adminSetTargetProduktivitas,
   getWorkspaceListForAdmin: getWorkspaceListForAdmin,
   adminProvisionNewDepartment: adminProvisionNewDepartment,
   adminRepairWorkspaceSheets: adminRepairWorkspaceSheets,
@@ -1367,6 +1369,68 @@ function getKategoriStock(drawingVal) {
   if (d === DRAW_FITTING_GREEN.toUpperCase()) return 'fittingGreen';
   if (d === DRAW_FITTING_GREY.toUpperCase())  return 'fittingGrey';
   return null;
+}
+
+// ================================================================
+//  TARGET PRODUKTIVITAS (Ton/FTE) PER DEPARTEMEN
+//
+//  Dulu satu angka global (62,3 Ton/FTE) dipakai SEMUA departemen --
+//  padahal job-mix beda plant beda (mis. Fitting Rucika byk item
+//  sanitary/drainase kecil-kecil spt RDS/Clean Out yg lebih berat per
+//  unit dibanding fitting standar Warehouse Import), jadi wajar
+//  targetnya beda. Override per departemen disimpan di Script
+//  Properties (PRODUKTIVITAS_TARGET_TON_FTE_<workspaceKey>) supaya bisa
+//  diubah lewat Panel Admin tanpa perlu deploy ulang; kalau belum
+//  pernah diatur, jatuh ke nilai default di bawah.
+// ================================================================
+var PRODUKTIVITAS_TARGET_DEFAULT = 62.3;
+var PRODUKTIVITAS_TARGET_PER_WORKSPACE = {
+  // 111.000,00 Kg = 111 Ton/FTE, sesuai permintaan -- sebelumnya
+  // ikut default yang sama dgn Warehouse Import (62,3 Ton/FTE).
+  'cibitung_fitting_rucika': 111
+};
+
+function _targetProduktivitasTonFTE() {
+  var props = PropertiesService.getScriptProperties();
+  var custom = props.getProperty('PRODUKTIVITAS_TARGET_TON_FTE_' + ACTIVE_WORKSPACE);
+  if (custom !== null && custom !== '' && !isNaN(parseFloat(custom))) return parseFloat(custom);
+  if (PRODUKTIVITAS_TARGET_PER_WORKSPACE.hasOwnProperty(ACTIVE_WORKSPACE)) return PRODUKTIVITAS_TARGET_PER_WORKSPACE[ACTIVE_WORKSPACE];
+  return PRODUKTIVITAS_TARGET_DEFAULT;
+}
+
+// Lihat target departemen yang dipilih (utk ditampilkan di Panel Admin).
+function adminGetTargetProduktivitas(actorNik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var props = PropertiesService.getScriptProperties();
+    var custom = props.getProperty('PRODUKTIVITAS_TARGET_TON_FTE_' + tgt.workspaceKey);
+    var efektif = (custom !== null && custom !== '' && !isNaN(parseFloat(custom))) ? parseFloat(custom)
+      : (PRODUKTIVITAS_TARGET_PER_WORKSPACE.hasOwnProperty(tgt.workspaceKey) ? PRODUKTIVITAS_TARGET_PER_WORKSPACE[tgt.workspaceKey] : PRODUKTIVITAS_TARGET_DEFAULT);
+    return { success: true, target: efektif, diaturManual: custom !== null && custom !== '', workspace: tgt.workspaceKey };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Ubah target departemen yang dipilih. targetTon kosong = kembalikan ke
+// bawaan sistem (hapus override).
+function adminSetTargetProduktivitas(actorNik, targetTon, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var props = PropertiesService.getScriptProperties();
+    var key = 'PRODUKTIVITAS_TARGET_TON_FTE_' + tgt.workspaceKey;
+    var nilai = String(targetTon || '').trim();
+    if (!nilai) { props.deleteProperty(key); }
+    else {
+      var n = parseFloat(nilai.replace(',', '.'));
+      if (isNaN(n) || n <= 0) return { success: false, error: 'Target harus berupa angka lebih dari 0.' };
+      props.setProperty(key, String(n));
+    }
+    _bumpCacheUntukWorkspace(tgt.workspaceKey); // kartu Produktivitas yang sudah di-cache perlu dihitung ulang
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
 }
 
 // ================================================================
@@ -6803,7 +6867,7 @@ function getAbsensiFTEData(bulan, tahun) {
     //  (beban kerja per FTE kelebihan -- biasanya karena FTE efektif
     //  berkurang akibat lembur tinggi & banyak yang tidak hadir).
     // ------------------------------------------------------------
-    var PRODUKTIVITAS_TARGET_TON_FTE = 62.3;
+    var PRODUKTIVITAS_TARGET_TON_FTE = _targetProduktivitasTonFTE();
     // Target 62,3 Ton/FTE adalah BATAS BAWAH (bukan batas atas): angka
     // di BAWAH target = belum tercapai (produktivitas per FTE kurang
     // dari yang diharapkan). Angka SAMA DENGAN/DI ATAS target = tercapai.

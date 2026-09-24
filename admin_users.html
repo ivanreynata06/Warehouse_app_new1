@@ -456,6 +456,22 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 
       <div class="card">
         <div class="card-hdr">
+          <div class="card-title"><i data-lucide="target" style="width:12px;"></i>Target Produktivitas (Ton/FTE) — Departemen Ini</div>
+        </div>
+        <div class="modal-note" style="margin:0 0 10px;">
+          Ambang batas kartu Produktivitas di Monitoring FTE untuk departemen yang dipilih. Beda plant boleh beda target (mis. Fitting Rucika lebih banyak item sanitary/drainase yang lebih berat per unit, jadi wajar targetnya beda dari Warehouse Import).
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" id="target-produktivitas-input" class="form-input" placeholder="mis. 62.3" style="width:140px;">
+          <span style="font-size:10.5px;color:var(--text-muted);">Ton/FTE</span>
+          <button class="btn-flat btn-flat-accent" onclick="simpanTargetProduktivitas()">Simpan</button>
+          <button class="btn-flat btn-flat-ghost" onclick="kembalikanTargetProduktivitas()">Kembalikan ke Bawaan</button>
+        </div>
+        <div id="target-produktivitas-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
           <div class="card-title"><i data-lucide="user-check" style="width:12px;"></i>Data Karyawan (Monitoring FTE, Lembur &amp; SPL) — Departemen Ini</div>
           <span class="card-badge badge-gold" id="badge-karyawan">0 karyawan</span>
         </div>
@@ -1001,6 +1017,7 @@ function onWorkspaceSwitch(){
   loadUsers();
   loadFonnteStatus(); // status nomor approver WA harus ikut departemen yang dipilih, bukan departemen login sendiri
   loadKaryawanMaster(); // Data Karyawan juga per departemen yang dipilih
+  loadTargetProduktivitas(); // Target Produktivitas juga per departemen yang dipilih
 }
 
 // ---- Tambah Departemen/Plant Baru (Super Admin) ----
@@ -1241,6 +1258,42 @@ function submitWaToken(){
     .adminSetFonnteToken(actorNik, __waNik, token);
 }
 
+// ---- Target Produktivitas (Ton/FTE) per departemen ----
+function loadTargetProduktivitas(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      var st = document.getElementById('target-produktivitas-status');
+      var inp = document.getElementById('target-produktivitas-input');
+      if (!res || !res.success){ st.textContent = 'Gagal memuat: '+(res&&res.error?res.error:''); return; }
+      inp.value = res.target;
+      st.textContent = res.diaturManual ? 'Diatur manual untuk departemen ini.' : 'Memakai nilai bawaan sistem (belum diatur manual).';
+    })
+    .withFailureHandler(function(err){ document.getElementById('target-produktivitas-status').textContent = 'Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'); })
+    .adminGetTargetProduktivitas(actorNik, currentTargetWorkspace);
+}
+function simpanTargetProduktivitas(){
+  var v = document.getElementById('target-produktivitas-input').value.trim();
+  if (!v){ showToast('Isi angka target dulu (atau pakai tombol Kembalikan ke Bawaan).','error'); return; }
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Target produktivitas disimpan','success');
+      loadTargetProduktivitas();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetTargetProduktivitas(actorNik, v, currentTargetWorkspace);
+}
+function kembalikanTargetProduktivitas(){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Dikembalikan ke nilai bawaan sistem','success');
+      loadTargetProduktivitas();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetTargetProduktivitas(actorNik, '', currentTargetWorkspace);
+}
+
 // ---- Data Karyawan (master KARYAWAN_LEMBUR) per departemen ----
 var karyawanMasterCache = [];
 function loadKaryawanMaster(){
@@ -1430,6 +1483,7 @@ document.addEventListener('DOMContentLoaded', function(){
   loadUsers();
   setTimeout(loadFonnteStatus, 300); // tunggu actorNik terisi dari loadUsers()
   setTimeout(loadKaryawanMaster, 350);
+  setTimeout(loadTargetProduktivitas, 400);
 });
 </script>
 
