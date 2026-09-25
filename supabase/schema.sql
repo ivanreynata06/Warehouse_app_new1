@@ -24,6 +24,27 @@ create table if not exists dashboard_snapshots (
 create index if not exists idx_dashboard_snapshots_key on dashboard_snapshots (snapshot_key);
 
 -- ------------------------------------------------------------
+-- GRANT eksplisit -- wajib per pengumuman Supabase: mulai 30 Okt 2026,
+-- Data API TIDAK LAGI otomatis diberi akses ke tabel baru di schema
+-- public, jadi kalau file ini dijalankan ulang di project baru/preview
+-- branch/"supabase db reset" SETELAH tanggal itu, tanpa baris di bawah
+-- ini tabelnya tidak bisa diakses lewat Data API (error permission
+-- denied). Untuk tabel yang SUDAH ada sekarang (sebelum 30 Okt), grant
+-- lama tetap berlaku otomatis -- baris ini cuma jaring pengaman.
+--
+-- anon   : SELECT saja -- dashboard (browser, lewat SUPABASE_ANON_KEY
+--          di config.js) cuma boleh BACA, sama seperti kebijakan RLS
+--          "Public read access" di bawah.
+-- service_role : penuh -- dipakai Apps Script (SUPABASE_SERVICE_KEY di
+--          Script Properties) utk menulis snapshot; role ini bypass RLS,
+--          tapi tetap butuh GRANT tabel spt role lain sesuai kebijakan baru.
+-- (Tidak ada grant ke "authenticated" -- app ini tidak pakai Supabase
+--  Auth sama sekali, login dikelola sendiri lewat sheet AKUN_LOGIN.)
+-- ------------------------------------------------------------
+grant select on public.dashboard_snapshots to anon;
+grant select, insert, update, delete on public.dashboard_snapshots to service_role;
+
+-- ------------------------------------------------------------
 -- ROW LEVEL SECURITY: publik cuma boleh BACA (SELECT), tidak
 -- boleh ubah apa pun. Yang boleh nulis/update cuma Apps Script,
 -- lewat SERVICE ROLE key (bukan anon key) yang tidak pernah
