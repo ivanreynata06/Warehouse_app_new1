@@ -2074,28 +2074,14 @@ function renderAllFromGS(gsData){
   var dayGagal=Object.keys(gagalSet).filter(function(spm){ return dayAll.some(function(r){return r.spm===spm;}); }).length;
   var selesaiRows=rows.filter(function(r){ return r.durasiMenit!=null; });
   var avgMin=selesaiRows.length?Math.round(selesaiRows.reduce(function(a,r){ return a+r.durasiMenit; },0)/selesaiRows.length):null;
-  // Statistik bulan selalu pakai monthRows dari GS (bukan rows yang sudah difilter)
+  // Statistik bulan: pakai ringkasanBulan yang SUDAH DIHITUNG BACKEND
+  // (fungsi _ltRingkasan di kode.gs) -- SATU definisi yang sama persis
+  // dipakai Control Tower (index.html), supaya kedua tempat TIDAK LAGI
+  // bisa menampilkan angka yang berbeda utk periode yang sama.
   var monthRows=gsData.monthRows||[];
-  var monthDone=monthRows.filter(function(r){
-    if(r.isCancelled) return false; // BATAL tidak pernah dihitung selesai, prioritas mutlak
-    var _isIkutFit=(r.waktuMulai==='Ikut Fitting');
-    var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
-    var _selesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit||_terkirimAtauGagal;
-    return _selesai;
-  });
-  var monthDur=monthDone.map(function(r){
-    if(!r.waktuMulai||!r.waktuSelesai) return null;
-    var p1=r.waktuMulai.split(':'),p2=r.waktuSelesai.split(':');
-    if(p1.length!==2||p2.length!==2) return null;
-    var d=parseInt(p2[0])*60+parseInt(p2[1])-parseInt(p1[0])*60-parseInt(p1[1]);
-    return d>0?d:null;
-  }).filter(function(d){ return d!=null; });
-  var monthAvg=monthDur.length?Math.round(monthDur.reduce(function(a,b){return a+b;},0)/monthDur.length):null;
-  // Statistik Bulan Ini: "Batal Kirim" — dihitung LANGSUNG dari kolom STATUS
-  // di sheet (r.isCancelled), raw row count, konsisten dengan cara Total/
-  // Selesai/Proses/Belum-Muat dihitung (bukan dedup SPM / gabungan sumber
-  // lain yang bisa bikin angkanya berbeda dari yang ada di sheet).
-  var monthCancelled=monthRows.filter(function(r){ return r.isCancelled; }).length;
+  var rb=gsData.ringkasanBulan||{total:0,selesai:0,batal:0,avgMin:0};
+  var monthAvg=rb.avgMin||null;
+  var monthCancelled=rb.batal||0;
   var cityMap={},vehicleMap={};
   rows.forEach(function(r){
     if(r.agen) cityMap[r.agen]=(cityMap[r.agen]||0)+1;
@@ -2118,7 +2104,7 @@ function renderAllFromGS(gsData){
     doneGagal:isDayFilter?dayGagal:0,
     wait:isDayFilter?dayWait.length:rows.filter(function(r){return r.status==='menunggu'&&!doneSpmSet[r.spm];}).length,
     avgMin:avgMin, cities:cities, vehicles:vehicles,
-    bulan:{total:monthRows.length,selesai:monthDone.length,avgMin:monthAvg,batalKirim:monthCancelled,
+    bulan:{total:rb.total,selesai:rb.selesai,avgMin:monthAvg,batalKirim:monthCancelled,
       isMonthFilter:currentFilter==='bulan'},
     chart7:chart7, durDist:dist, rows:rows
   });
@@ -2460,7 +2446,7 @@ function confirmTerkirim(){
       google.script.run
         .withSuccessHandler(function(res){if(res&&res.success){ clearApiCache(); loadData(); }})
         .withFailureHandler(function(){})
-        .setStatusTerkirim(found.rowIndex,'TERKIRIM'+(waktu?' - '+waktu:'')+(catatan?' | '+catatan:''));
+        .setStatusTerkirim(found.rowIndex,'TERKIRIM'+(waktu?' - '+waktu:'')+(catatan?' | '+catatan:''),spm);
     }
   }
   if(allData) renderAllFromGS(allData); else renderDemoData();
@@ -2493,7 +2479,7 @@ function confirmGagal(){
       google.script.run
         .withSuccessHandler(function(res){if(res&&res.success){ clearApiCache(); loadData(); }})
         .withFailureHandler(function(){})
-        .setStatusTerkirim(found.rowIndex,'GAGAL - '+alasan+(ket?' | '+ket:''));
+        .setStatusTerkirim(found.rowIndex,'GAGAL - '+alasan+(ket?' | '+ket:''),spm);
     }
   }
   if(allData) renderAllFromGS(allData); else renderDemoData();
@@ -2971,7 +2957,7 @@ function confirmCancel(){
     .withFailureHandler(function(err){
       showToast('❌ Gagal simpan batal ke sheet: '+(err&&err.message?err.message:'cek koneksi')+'. Coba lagi.','error');
     })
-    .setStatusBatal(rowIndex, reason, notes);
+    .setStatusBatal(rowIndex, reason, notes, spm);
 }
 
 // ================================================================
@@ -3083,7 +3069,7 @@ function _saveStatusToSheet(spm, label){
     google.script.run
       .withSuccessHandler(function(){})
       .withFailureHandler(function(){})
-      .setStatusTerkirim(found.rowIndex, label);
+      .setStatusTerkirim(found.rowIndex, label, spm);
   }
 }
 
@@ -3220,7 +3206,7 @@ function startLoad(){
       .withFailureHandler(function(err){
         showToast('?? Gagal simpan jam mulai: '+(err&&err.message?err.message:'cek koneksi/izin sheet'),'error');
       })
-      .setWaktuMulai(row,formatTimeHHMM(startTime));
+      .setWaktuMulai(row,formatTimeHHMM(startTime),spm);
   } else {
     commitLocal();
     showToast('?? Loading dimulai (mode lokal): SPM '+spm,'info');
@@ -3242,7 +3228,7 @@ function markIkutFitting(rowIndex, spm){
       .withFailureHandler(function(err){
         showToast('?? Gagal simpan: '+(err&&err.message?err.message:'cek koneksi/izin sheet'),'error');
       })
-      .setIkutFittingRucika(rowIndex);
+      .setIkutFittingRucika(rowIndex,spm);
   } else {
     showToast('?? Mode lokal: SPM '+spm+' ditandai Selesai (Ikut Fitting)','info');
   }
@@ -3297,7 +3283,7 @@ function submitFitting(){
       .withFailureHandler(function(err){
         showToast('?? Gagal simpan: '+(err&&err.message?err.message:'cek koneksi/izin sheet'),'error');
       })
-      .setIkutFittingRucika(row);
+      .setIkutFittingRucika(row,spm);
   } else {
     showToast('?? Mode lokal: SPM '+spm+' ditandai Selesai (Ikut Fitting)','info');
   }
@@ -3320,7 +3306,7 @@ function finishLoad(spm){
         clearApiCache(); loadData();
       })
       .withFailureHandler(function(){ delete activeLoads[spm]; renderActiveLoads(); showToast('? Selesai (lokal)','info'); })
-      .setWaktuSelesai(load.row,formatTimeHHMM(endTime));
+      .setWaktuSelesai(load.row,formatTimeHHMM(endTime),spm);
   } else {
     setTimeout(function(){
       delete activeLoads[spm]; renderActiveLoads();
@@ -3352,7 +3338,7 @@ function finishRow(rowIndex, spm){
         showToast('Gagal menyimpan: '+(err&&err.message?err.message:'cek koneksi'),'error');
         if(btn){ btn.disabled=false; btn.innerHTML='<i data-lucide="check-circle-2" style="width:9px;"></i>Selesai'; }
       })
-      .setWaktuSelesai(rowIndex, formatTimeHHMM(endTime));
+      .setWaktuSelesai(rowIndex, formatTimeHHMM(endTime),spm);
   } else {
     setTimeout(function(){
       showToast('? Selesai (lokal): SPM '+spm,'success');
@@ -3589,7 +3575,7 @@ function renderKemarinPendingList(rows){
   wrap.innerHTML = rows.map(function(r,idx){
     return '<div class="kemarin-pending-row">'+
       '<div class="kpr-info"><b>'+escHtml(r.spm)+'</b> — '+escHtml(r.agen)+'</div>'+
-      '<div class="kpr-sub">'+escHtml(r.nopol||'-')+' · '+escHtml(r.jenisKendaraan||'-')+' · '+escHtml(r.tanggal)+' · Status: '+escHtml(r.statusSaatIni)+'</div>'+
+      '<div class="kpr-sub">'+escHtml(r.nopol||'-')+' · '+escHtml(r.jenisKendaraan||'-')+' · '+escHtml(r.tanggal)+(r.hariLalu?' ('+r.hariLalu+' hari lalu)':'')+' · Status: '+escHtml(r.statusSaatIni)+'</div>'+
       '<div class="kpr-actions">'+
         '<button class="kpr-btn kpr-btn-fitting" onclick="resolveKemarinFitting('+idx+')"><i data-lucide="package-check" style="width:10px;"></i>Ikut Fitting</button>'+
         '<button class="kpr-btn kpr-btn-batal" onclick="resolveKemarinBatal('+idx+')"><i data-lucide="x-circle" style="width:10px;"></i>Batal</button>'+
@@ -3611,7 +3597,7 @@ function resolveKemarinFitting(idx){
       }
     })
     .withFailureHandler(function(err){ showToast('❌ Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .setIkutFittingRucika(r.rowIndex);
+    .setIkutFittingRucika(r.rowIndex, r.spm);
 }
 function resolveKemarinBatal(idx){
   var r = kemarinPendingData[idx];
@@ -3626,7 +3612,7 @@ function resolveKemarinBatal(idx){
       }
     })
     .withFailureHandler(function(err){ showToast('❌ Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .setStatusBatal(r.rowIndex, 'Sisa kiriman kemarin - tidak terpakai', '');
+    .setStatusBatal(r.rowIndex, 'Sisa kiriman kemarin - tidak terpakai', '', r.spm);
 }
 
 // ================================================================

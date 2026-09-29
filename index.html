@@ -1441,24 +1441,18 @@ function renderRekap(){
    not pre-aggregate, so we derive total/selesai/batal/avg/distribusi
    from monthRows client-side)
 ================================================================ */
-function timeToMin(s){ if(!s) return null; var p=String(s).split(':'); if(p.length<2) return null; var h=parseInt(p[0],10), m=parseInt(p[1],10); if(isNaN(h)||isNaN(m)) return null; return h*60+m; }
+// PENTING: statistik "Bulan Ini" (total/selesai/batal/avgMin/dist) TIDAK
+// dihitung ulang di sini lagi -- dulu ada 2 definisi terpisah (di sini &
+// di residance_time.html) yang beda aturan (mis. "selesai" di sini cuma
+// mulai+selesai terisi, sementara halaman Loading Time juga menghitung
+// "Ikut Fitting"/Terkirim/Gagal sebagai selesai) -- makanya kedua halaman
+// bisa menampilkan angka yang beda utk periode yang sama. Sekarang KEDUA
+// halaman memakai satu definisi yang sama, dihitung backend sekali
+// (fungsi _ltRingkasan di kode.gs) dan dikirim lewat field
+// d.ringkasanBulan -- di sini cuma dibaca, tidak dihitung ulang.
 function computeLTStats(d){
-  var rows=(d&&d.monthRows)||[];
-  var total=rows.length, batal=0, selesai=0, durs=[];
-  rows.forEach(function(r){
-    if(r.isCancelled){ batal++; return; }
-    if(r.waktuMulai && r.waktuSelesai){
-      selesai++;
-      var a=timeToMin(r.waktuMulai), b=timeToMin(r.waktuSelesai);
-      if(a!==null&&b!==null){ var diff=b-a; if(diff<0) diff+=1440; if(diff>=0&&diff<720) durs.push(diff); }
-    }
-  });
-  var avgMin = durs.length ? Math.round(durs.reduce(function(a,b){return a+b;},0)/durs.length) : 0;
-  var dist=[0,0,0,0,0]; // <30 / 30-60 / 60-120 / 120-180 / >180
-  durs.forEach(function(m){
-    if(m<30) dist[0]++; else if(m<60) dist[1]++; else if(m<120) dist[2]++; else if(m<180) dist[3]++; else dist[4]++;
-  });
-  return {total:total,selesai:selesai,batal:batal,avgMin:avgMin,dist:dist};
+  var rb=(d&&d.ringkasanBulan)||{};
+  return {total:rb.total||0, selesai:rb.selesai||0, batal:rb.batal||0, avgMin:rb.avgMin||0, dist:rb.dist||[0,0,0,0,0]};
 }
 function renderLT(){
   if(!_dataLT) return;
@@ -1618,7 +1612,23 @@ function demoLT(){
   }
   var trend7=[]; var days=['10 Jul','11 Jul','12 Jul','13 Jul','14 Jul','15 Jul','16 Jul'];
   days.forEach(function(d){ trend7.push({label:d,total:Math.round(Math.random()*7)}); });
-  return {success:true,monthRows:rows,trend7:trend7};
+  // Demo mode tidak punya backend -- hitung ringkasanBulan lokal supaya
+  // computeLTStats() (yang sekarang cuma MEMBACA field ini) tetap dapat
+  // datanya, sama seperti data asli dari getResidenceTimeData().
+  var batal=0, selesai=0, durs=[];
+  rows.forEach(function(r){
+    if(r.isCancelled){ batal++; return; }
+    if(r.waktuMulai&&r.waktuSelesai){
+      selesai++;
+      var p1=r.waktuMulai.split(':'),p2b=r.waktuSelesai.split(':');
+      var d=parseInt(p2b[0])*60+parseInt(p2b[1])-parseInt(p1[0])*60-parseInt(p1[1]);
+      if(d>0) durs.push(d);
+    }
+  });
+  var avgMin=durs.length?Math.round(durs.reduce(function(a,b){return a+b;},0)/durs.length):0;
+  var dist=[0,0,0,0,0];
+  durs.forEach(function(m){ if(m<30)dist[0]++; else if(m<60)dist[1]++; else if(m<120)dist[2]++; else if(m<180)dist[3]++; else dist[4]++; });
+  return {success:true,monthRows:rows,trend7:trend7,ringkasanBulan:{total:rows.length,selesai:selesai,batal:batal,avgMin:avgMin,dist:dist}};
 }
 
 /* ================================================================

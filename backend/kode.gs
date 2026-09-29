@@ -567,6 +567,12 @@ function getResidenceTimeData(filter) {
     var data         = sheet.getDataRange().getValues();
     var today        = new Date(); today.setHours(0,0,0,0);
     var firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    // Batas ATAS bulan berjalan. Sebelumnya monthRows cuma dibatasi dari
+    // bawah (tgl >= awal bulan), jadi jadwal BULAN DEPAN yang sudah masuk
+    // sheet (mis. tanggal 2 Okt yang disiapkan di akhir September) ikut
+    // terhitung "Total Pengiriman bulan ini" dan tampil sbg "belum
+    // selesai".
+    var firstOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
     var todayRows    = [];
     var monthRows    = [];
     var allRows      = [];
@@ -600,8 +606,7 @@ function getResidenceTimeData(filter) {
       if (!spm) continue;
 
       var tglRaw = row[0];
-      var tgl    = tglRaw ? new Date(tglRaw) : null;
-      if (tgl) tgl.setHours(0,0,0,0);
+      var tgl    = _tglPengiriman(tglRaw);
 
       var statusRaw      = String(row[9] || '').trim(); // kolom J = STATUS (PENDING/BATAL/TERKIRIM/GAGAL)
       var isBatal        = statusRaw.indexOf('BATAL') === 0 || statusRaw.toUpperCase().indexOf('BATAL') === 0;
@@ -635,7 +640,7 @@ function getResidenceTimeData(filter) {
       if (tgl) {
         var key = _fmtYMD(tgl);
         if (tgl.getTime() === today.getTime()) todayRows.push(rec);
-        if (tgl >= firstOfMonth) monthRows.push(rec);
+        if (tgl >= firstOfMonth && tgl < firstOfNextMonth) monthRows.push(rec);
         if (customDateKey && key === customDateKey) customRows.push(rec);
         if (customMonthKey && key.substring(0,7) === customMonthKey) customRows.push(rec);
         if (trend7Map[key] !== undefined) trend7Map[key].total++;
@@ -648,6 +653,19 @@ function getResidenceTimeData(filter) {
       }
     }
 
+    // Urutkan kronologis (tanggal lalu nomor baris). Sheet PENGIRIMAN
+    // ditambah lewat sync dari BAWAH, jadi baris yang belakangan dibuat
+    // utk tanggal lebih awal (mis. sync ulang tab tanggal 2 dijalankan
+    // tgl 25) fisiknya duduk di antara baris tanggal 25 -- tampilan
+    // tidak boleh ikut berantakan karena urutan fisik itu.
+    function _urutTgl(a, b) {
+      var ta = a.tanggal || '~', tb = b.tanggal || '~'; // tanpa tanggal -> paling bawah
+      if (ta < tb) return -1;
+      if (ta > tb) return 1;
+      return a.rowIndex - b.rowIndex;
+    }
+    todayRows.sort(_urutTgl); monthRows.sort(_urutTgl); allRows.sort(_urutTgl); customRows.sort(_urutTgl);
+
     return {
       success    : true,
       todayRows  : todayRows,
@@ -655,11 +673,68 @@ function getResidenceTimeData(filter) {
       allRows    : allRows,
       customRows : customRows,
       customDate : customDateKey,
-      trend7     : Object.values(trend7Map)
+      trend7     : Object.values(trend7Map),
+      // SATU definisi angka "Statistik Bulan Ini" utk Loading Time DAN
+      // Control Tower (lihat _ltRingkasan) -- dulu masing-masing hitung
+      // sendiri dgn aturan berbeda sehingga angkanya selisih.
+      ringkasanBulan: _ltRingkasan(customMonthKey ? customRows : monthRows)
     };
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+// Sel Tanggal (kolom A) -> Date (jam 00:00) atau null. Menerima Date asli
+// maupun teks "25/09/2026" / "2026-09-25" -- new Date("25/09/2026") di
+// JS = Invalid Date (dan "2/9/2026" terbaca 9 Februari, format AS), jadi
+// baris dgn tanggal teks dulu diam-diam salah bulan / hilang dari semua
+// daftar.
+function _tglPengiriman(raw) {
+  if (!raw) return null;
+  var d = (raw instanceof Date) ? new Date(raw) : _parseTanggalFleksibel(raw);
+  if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Durasi muat (menit) dari 2 jam "HH:MM". null kalau bukan jam valid
+// (mis. marker "Ikut Fitting"/"Rucika") atau selesai <= mulai.
+function _ltDurasiMenit(mulai, selesai) {
+  var re = /^(\d{1,2}):(\d{2})$/;
+  var a = re.exec(String(mulai || '').trim()), b = re.exec(String(selesai || '').trim());
+  if (!a || !b) return null;
+  var d = (parseInt(b[1], 10) * 60 + parseInt(b[2], 10)) - (parseInt(a[1], 10) * 60 + parseInt(a[2], 10));
+  return d > 0 ? d : null;
+}
+
+// ================================================================
+//  RINGKASAN BULAN -- definisi baku, dipakai Loading Time & Control Tower
+//   BATAL   : kolom STATUS "BATAL ..." (prioritas mutlak)
+//   SELESAI : Waktu Mulai+Selesai terisi, ATAU "Ikut Fitting Rucika",
+//             ATAU status TERKIRIM / GAGAL kirim (sudah lewat tahap muat)
+//   PROSES  : sudah Mulai tapi belum Selesai
+//   MENUNGGU: belum Mulai
+//   Durasi/rata-rata/distribusi cuma dari baris yang punya 2 jam valid
+//   (Ikut Fitting tidak punya durasi muat asli).
+// ================================================================
+function _ltRingkasan(rows) {
+  var total = rows.length, selesai = 0, batal = 0, proses = 0, menunggu = 0, durs = [];
+  var dist = [0, 0, 0, 0, 0]; // <30 / 30-60 / 60-120 / 120-180 / >=180 menit
+  rows.forEach(function (r) {
+    if (r.isCancelled) { batal++; return; }
+    var selesaiMuat = (r.waktuMulai && r.waktuSelesai) || r.waktuMulai === 'Ikut Fitting' || r.isTerkirim || r.isGagalKirim;
+    if (selesaiMuat) {
+      selesai++;
+      var d = _ltDurasiMenit(r.waktuMulai, r.waktuSelesai);
+      if (d !== null) {
+        durs.push(d);
+        if (d < 30) dist[0]++; else if (d < 60) dist[1]++; else if (d < 120) dist[2]++; else if (d < 180) dist[3]++; else dist[4]++;
+      }
+    } else if (r.waktuMulai) proses++;
+    else menunggu++;
+  });
+  var avg = durs.length ? Math.round(durs.reduce(function (a, b) { return a + b; }, 0) / durs.length) : 0;
+  return { total: total, selesai: selesai, batal: batal, proses: proses, menunggu: menunggu, avgMin: avg, dist: dist };
 }
 
 // ================================================================
@@ -845,12 +920,19 @@ function getPendingRows() {
 }
 
 // ================================================================
-//  Daftar kiriman KEMARIN yang statusnya masih "menunggu" (sudah
-//  didaftar PIC tapi belum di-mulai-muat / belum Ikut Fitting / belum
-//  dibatalkan) -- dipakai untuk MENGUNCI tombol "Mulai Muat" hari ini
-//  sampai semua sisa kiriman kemarin diberi keputusan (Ikut Fitting
-//  atau Batal). Supaya tidak ada kiriman yang "ketinggalan"/terlupa
-//  begitu saja saat hari berganti.
+//  Daftar kiriman dari TANGGAL SEBELUM HARI INI yang statusnya masih
+//  "menunggu" (sudah didaftar PIC tapi belum di-mulai-muat / belum Ikut
+//  Fitting / belum dibatalkan) -- dipakai untuk MENGUNCI tombol "Mulai
+//  Muat" hari ini sampai semua sisa kiriman itu diberi keputusan (Ikut
+//  Fitting atau Batal). Supaya tidak ada kiriman yang "ketinggalan"/
+//  terlupa begitu saja saat hari berganti.
+//
+//  PERBAIKAN: dulu HANYA mengecek persis "kemarin". Akibatnya hari
+//  Senin (kemarin = Minggu, tidak ada kiriman) sisa kiriman hari
+//  Sabtu -- atau libur/tanggal merah, atau tanggal mana pun yang
+//  terlewat -- TIDAK PERNAH memunculkan kartu notif sama sekali. Sekarang
+//  mencakup semua tanggal sebelum hari ini sampai 31 hari ke belakang
+//  (nama fungsi dipertahankan supaya frontend lama tetap jalan).
 // ================================================================
 function getPendingRowsKemarin() {
   try {
@@ -859,7 +941,8 @@ function getPendingRowsKemarin() {
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
 
     var data      = sheet.getDataRange().getValues();
-    var kemarin   = new Date(); kemarin.setDate(kemarin.getDate() - 1); kemarin.setHours(0,0,0,0);
+    var today     = new Date(); today.setHours(0,0,0,0);
+    var batasAwal = new Date(today); batasAwal.setDate(batasAwal.getDate() - 31);
     var pending   = [];
 
     for (var i = 1; i < data.length; i++) {
@@ -870,19 +953,21 @@ function getPendingRowsKemarin() {
       var jenis      = String(row[6] || '').trim();   // G = Jenis Kendaraan
       var waktuMulai = row[7];                          // H = Waktu Mulai
       var statusJ    = String(row[9] || '').trim();    // J = Status (Batal/Pending/dst)
+      var statusUp   = statusJ.toUpperCase();
 
       if (!spm || !agen) continue;                    // baris belum diisi PIC, lewati
       if (waktuMulai) continue;                        // sudah mulai muat / Ikut Fitting, lewati
-      if (statusJ.toUpperCase().indexOf('BATAL') === 0) continue; // sudah dibatalkan, lewati
+      if (statusUp.indexOf('BATAL') === 0 || statusUp.indexOf('TERKIRIM') === 0 || statusUp.indexOf('GAGAL') === 0) continue; // sudah ada keputusan akhir
 
-      var tglRaw = row[0];
-      var tgl    = tglRaw ? new Date(tglRaw) : null;
-      if (tgl) tgl.setHours(0,0,0,0);
-      if (!tgl || tgl.getTime() !== kemarin.getTime()) continue; // hanya kiriman KEMARIN
+      var tgl = _tglPengiriman(row[0]);
+      if (!tgl) continue;
+      if (tgl.getTime() >= today.getTime()) continue;   // hari ini / masa depan bukan "tertinggal"
+      if (tgl.getTime() < batasAwal.getTime()) continue; // terlalu lama -> bukan urusan kartu notif harian
 
       pending.push({
         rowIndex : i + 1,
         tanggal  : _fmtYMD(tgl),
+        hariLalu : Math.round((today.getTime() - tgl.getTime()) / 86400000),
         spm      : spm,
         agen     : agen,
         nopol    : nopol,
@@ -890,6 +975,7 @@ function getPendingRowsKemarin() {
         statusSaatIni: statusJ || 'Menunggu'
       });
     }
+    pending.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : (a.tanggal > b.tanggal ? 1 : a.rowIndex - b.rowIndex); });
 
     return { success: true, rows: pending };
   } catch (err) {
@@ -897,30 +983,74 @@ function getPendingRowsKemarin() {
   }
 }
 
-function setWaktuMulai(row, waktu) {
+// ================================================================
+//  PENGAMAN NOMOR BARIS -- frontend menulis ke sheet memakai nomor
+//  baris yang diambil saat halaman dimuat. Kalau sesudah itu ada baris
+//  yang dihapus/ditambah di atasnya (sync jadwal membersihkan baris
+//  basi, PIC menghapus baris manual, dst), nomor itu BERGESER dan
+//  Waktu Mulai/Selesai/Status bisa tertulis ke kiriman LAIN -- kiriman
+//  yang sebenarnya diklik malah tetap "belum selesai".
+//  Maka tiap aksi tulis kini membawa nomor SPM-nya; sebelum menulis,
+//  dicek kolom E di baris itu memang SPM yang sama. Kalau bergeser,
+//  dicari baris SPM yang sama (terdekat dari nomor lama); kalau tidak
+//  ketemu, ditolak dgn pesan jelas -- tidak menimpa data orang lain.
+//  Parameter spm opsional: frontend lama yang belum kirim spm tetap
+//  jalan seperti sebelumnya.
+// ================================================================
+function _pastikanBarisSpm(sheet, row, spm) {
+  row = Number(row);
+  spm = String(spm == null ? '' : spm).trim();
+  if (!spm) return { ok: true, row: row };
+  var lastRow = sheet.getLastRow();
+  if (row >= 2 && row <= lastRow && String(sheet.getRange(row, 5).getValue() || '').trim() === spm) {
+    return { ok: true, row: row };
+  }
+  if (lastRow >= 2) {
+    var vals = sheet.getRange(2, 5, lastRow - 1, 1).getValues();
+    var best = -1, bestDist = Infinity;
+    for (var i = 0; i < vals.length; i++) {
+      if (String(vals[i][0] || '').trim() !== spm) continue;
+      var d = Math.abs((i + 2) - row);
+      if (d < bestDist) { best = i + 2; bestDist = d; }
+    }
+    if (best > 0) {
+      Logger.log('Baris SPM ' + spm + ' bergeser: frontend kirim ' + row + ', sebenarnya ' + best);
+      return { ok: true, row: best, digeser: true };
+    }
+  }
+  return { ok: false, error: 'Kiriman SPM ' + spm + ' tidak ditemukan di baris ' + row + ' (isi sheet berubah sejak halaman dimuat). Klik Refresh lalu ulangi.' };
+}
+
+function setWaktuMulai(row, waktu, spm) {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    var pb = _pastikanBarisSpm(sheet, row, spm);
+    if (!pb.ok) return { success: false, error: pb.error };
+    row = pb.row;
     sheet.getRange(row, 8).setValue(waktu);
     // Bersihkan status BATAL/PENDING lama (kolom J) kalau ada — user
     // secara eksplisit klik Mulai, artinya kiriman ini AKTIF lagi,
     // status lama sudah tidak relevan dan harus tidak lagi menutupi.
     _clearStaleCancelStatus(sheet, row);
-    return { success: true };
+    return { success: true, row: row };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
-function setWaktuSelesai(row, waktu) {
+function setWaktuSelesai(row, waktu, spm) {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    var pb = _pastikanBarisSpm(sheet, row, spm);
+    if (!pb.ok) return { success: false, error: pb.error };
+    row = pb.row;
     sheet.getRange(row, 9).setValue(waktu);
     _clearStaleCancelStatus(sheet, row);
-    return { success: true };
+    return { success: true, row: row };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -944,15 +1074,18 @@ function _clearStaleCancelStatus(sheet, row) {
 //  browser/cancelledList, jadi hilang setiap reload).
 //  Kolom K dipakai untuk catatan tambahan (opsional).
 // ================================================================
-function setStatusBatal(row, reason, notes) {
+function setStatusBatal(row, reason, notes, spm) {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    var pb = _pastikanBarisSpm(sheet, row, spm);
+    if (!pb.ok) return { success: false, error: pb.error };
+    row = pb.row;
     var label = 'BATAL' + (reason ? (' - ' + reason) : '');
     sheet.getRange(row, 10).setValue(label); // J = Status Batal
     if (notes) sheet.getRange(row, 11).setValue(notes); // K = Catatan Batal
-    return { success: true };
+    return { success: true, row: row };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -967,15 +1100,18 @@ function setStatusBatal(row, reason, notes) {
 //   - status baris tetap terbaca "selesai" (H & I sama-sama terisi)
 //   - durasi TIDAK dihitung ke rata-rata muat (teks bukan format jam)
 // ================================================================
-function setIkutFittingRucika(row) {
+function setIkutFittingRucika(row, spm) {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    var pb = _pastikanBarisSpm(sheet, row, spm);
+    if (!pb.ok) return { success: false, error: pb.error };
+    row = pb.row;
     sheet.getRange(row, 8).setValue('Ikut Fitting');   // H = Waktu Mulai (marker)
     sheet.getRange(row, 9).setValue('Rucika');          // I = Waktu Selesai (marker)
     _clearStaleCancelStatus(sheet, row);
-    return { success: true };
+    return { success: true, row: row };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -986,11 +1122,14 @@ function setIkutFittingRucika(row) {
 //  Dipanggil saat operator menunda kiriman (Tunda/Pending).
 //  Format: "PENDING - alasan | catatan | HH:MM DD/M"
 // ================================================================
-function setStatusPending(row, reason, notes, tujuan) {
+function setStatusPending(row, reason, notes, tujuan, spm) {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    var pb = _pastikanBarisSpm(sheet, row, spm);
+    if (!pb.ok) return { success: false, error: pb.error };
+    row = pb.row;
     var now   = new Date();
     var waktu = _pad2(now.getHours()) + ':' + _pad2(now.getMinutes()) +
                 ' ' + now.getDate() + '/' + (now.getMonth() + 1);
@@ -1000,7 +1139,7 @@ function setStatusPending(row, reason, notes, tujuan) {
     if (tujuan) label += ' | Tujuan: ' + tujuan;
     label += ' | ' + waktu;
     sheet.getRange(row, 10).setValue(label); // J = STATUS
-    return { success: true };
+    return { success: true, row: row };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -1010,17 +1149,20 @@ function setStatusPending(row, reason, notes, tujuan) {
 //  Hapus/reset status PENDING di kolom J (saat pending dibatalkan
 //  atau sudah dikirim ? agar baris bersih kembali)
 // ================================================================
-function clearStatusPending(row) {
+function clearStatusPending(row, spm) {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    var pb = _pastikanBarisSpm(sheet, row, spm);
+    if (!pb.ok) return { success: false, error: pb.error };
+    row = pb.row;
     var cur   = String(sheet.getRange(row, 10).getValue() || '').trim();
     // Hanya hapus jika isinya PENDING (jangan hapus BATAL atau TERKIRIM)
     if (cur.indexOf('PENDING') === 0) {
       sheet.getRange(row, 10).setValue('');
     }
-    return { success: true };
+    return { success: true, row: row };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -1034,13 +1176,16 @@ function clearStatusPending(row) {
 //    "TERKIRIM - 14:30 | catatan opsional"
 //    "GAGAL - alasan | catatan opsional"
 // ================================================================
-function setStatusTerkirim(row, label) {
+function setStatusTerkirim(row, label, spm) {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
+    var pb = _pastikanBarisSpm(sheet, row, spm);
+    if (!pb.ok) return { success: false, error: pb.error };
+    row = pb.row;
     sheet.getRange(row, 10).setValue(label); // J = STATUS
-    return { success: true };
+    return { success: true, row: row };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -5526,20 +5671,113 @@ function onJadwalSumberEdit(e) {
 }
 
 // Jalankan syncJadwalPengirimanHarian utk 1 workspace + 1 nama tab
-// tanggal (mis. "14") -- tanggal dihitung dari BULAN & TAHUN SEKARANG
-// (asumsi spreadsheet sumber yg terpasang di properti
-// JADWAL_PENGIRIMAN_FITTING_ID_<workspace> selalu spreadsheet BULAN
-// BERJALAN, sama seperti asumsi yg sudah dipakai di seluruh kode ini).
+// tanggal (mis. "14").
+//
+// PERBAIKAN BUG BULAN SALAH: dulu tanggalnya SELALU dihitung dari bulan
+// & tahun SEKARANG (new Date(tahunIni, bulanIni, hari)). Padahal di
+// akhir bulan orang sudah menyiapkan jadwal awal bulan DEPAN -- mis.
+// tgl 25-30 September mengedit tab "2" untuk 2 Oktober. Tab itu lalu
+// disinkron sebagai 2 SEPTEMBER: baris kiriman "tanggal 2" muncul di
+// antara baris tanggal 25 (ditambahkan dari bawah), statusnya tidak
+// pernah selesai karena tanggalnya sudah lewat & tak ada yang memuat.
+// Sekarang bulan ditentukan dulu dari NAMA file spreadsheet sumber
+// (mis. "... Oktober 2026"), dan kalau namanya tidak memuat bulan,
+// lewat aturan jendela tanggal (_tentukanTanggalTabSumber).
 function _jalankanSyncJadwalUntukTab(workspaceKey, sheetName) {
   var hari = parseInt(sheetName, 10);
   if (isNaN(hari)) return;
-  var now = new Date();
-  var tanggal = new Date(now.getFullYear(), now.getMonth(), hari);
   ACTIVE_WORKSPACE = workspaceKey;
   SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(workspaceKey);
+  var tanggal = _tentukanTanggalTabSumber(hari, workspaceKey);
+  if (!tanggal) {
+    Logger.log('Auto-sync jadwal DILEWATI (' + workspaceKey + ', tab ' + sheetName + '): tanggal tidak bisa ditentukan dgn aman (di luar rentang wajar / tab tidak valid utk bulannya).');
+    return { success: false, error: 'Tanggal tab tidak bisa ditentukan dgn aman -- dilewati.' };
+  }
   var tglStr = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), 'dd/MM/yyyy');
   var hasil = syncJadwalPengirimanHarian(tglStr);
-  Logger.log('Auto-sync jadwal (' + workspaceKey + ', tab ' + sheetName + '): ' + JSON.stringify(hasil));
+  Logger.log('Auto-sync jadwal (' + workspaceKey + ', tab ' + sheetName + ' -> ' + tglStr + '): ' + JSON.stringify(hasil));
+  return hasil;
+}
+
+// Cari nama bulan (Indonesia/Inggris, panjang/singkat) & tahun di teks
+// (nama file). Kembalikan {bulan:0-11, tahun:number|null} atau null kalau
+// tidak ada / ambigu (lebih dari 1 bulan berbeda).
+function _bulanTahunDariNama(nama) {
+  var t = String(nama || '').toUpperCase();
+  if (!t) return null;
+  var daftar = [
+    ['JANUARI','JANUARY','JAN'], ['FEBRUARI','FEBRUARY','FEB'], ['MARET','MARCH','MAR'],
+    ['APRIL','APR'], ['MEI','MAY'], ['JUNI','JUNE','JUN'], ['JULI','JULY','JUL'],
+    ['AGUSTUS','AUGUST','AGT','AGS','AUG'], ['SEPTEMBER','SEPT','SEP'],
+    ['OKTOBER','OCTOBER','OKT','OCT'], ['NOVEMBER','NOV'], ['DESEMBER','DECEMBER','DES','DEC']
+  ];
+  var ketemu = [];
+  daftar.forEach(function (namaNama, idx) {
+    namaNama.forEach(function (nm) {
+      if (new RegExp('(^|[^A-Z])' + nm + '([^A-Z]|$)').test(t) && ketemu.indexOf(idx) === -1) ketemu.push(idx);
+    });
+  });
+  if (ketemu.length !== 1) return null;
+  var y = /(^|[^0-9])(20\d{2})([^0-9]|$)/.exec(t);
+  return { bulan: ketemu[0], tahun: y ? parseInt(y[2], 10) : null };
+}
+
+// Tanggal lengkap (Date jam 00:00) utk tab bernomor `hari` di spreadsheet
+// sumber workspace ini, atau null kalau tidak bisa ditentukan dgn aman.
+function _tentukanTanggalTabSumber(hari, workspaceKey) {
+  var now = new Date(); now.setHours(0, 0, 0, 0);
+  var sourceId = PropertiesService.getScriptProperties().getProperty('JADWAL_PENGIRIMAN_FITTING_ID_' + workspaceKey);
+
+  function valid(tahun, bulan) { // Date valid (tab "31" tidak ada di bulan 30 hari) atau null
+    var d = new Date(tahun, bulan, hari);
+    return (d.getMonth() === bulan && d.getDate() === hari) ? d : null;
+  }
+  function selisihHari(d) { return Math.round((d.getTime() - now.getTime()) / 86400000); }
+
+  var hasil = null;
+
+  // 1) Dari NAMA file sumber (paling bisa dipercaya).
+  if (sourceId) {
+    try {
+      var cache = CacheService.getScriptCache();
+      var ck = 'JADWAL_NAMA_FILE_' + sourceId;
+      var namaFile = cache.get(ck);
+      if (namaFile === null) {
+        namaFile = SpreadsheetApp.openById(sourceId).getName();
+        cache.put(ck, namaFile, 21600); // 6 jam
+      }
+      var bt = _bulanTahunDariNama(namaFile);
+      if (bt) {
+        var tahun = bt.tahun;
+        if (tahun === null) { // nama cuma memuat bulan -> pilih tahun yang paling dekat dgn hari ini
+          var kandidat = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]
+            .map(function (y) { return valid(y, bt.bulan); }).filter(Boolean);
+          kandidat.sort(function (a, b) { return Math.abs(selisihHari(a)) - Math.abs(selisihHari(b)); });
+          hasil = kandidat.length ? kandidat[0] : null;
+        } else {
+          hasil = valid(tahun, bt.bulan);
+        }
+        if (!hasil) return null; // nama file menunjuk bulan yang tab-nya tidak valid -> jangan tebak
+      }
+    } catch (err) { Logger.log('Baca nama file sumber gagal: ' + err.message); }
+  }
+
+  // 2) Kalau nama file tidak memuat bulan: jendela tanggal.
+  //    Default bulan berjalan; geser ke bulan DEPAN kalau tanggal bulan
+  //    depan itu jatuh <=10 hari ke depan (menyiapkan jadwal awal bulan
+  //    depan di akhir bulan), geser ke bulan LALU kalau <=10 hari ke
+  //    belakang (link belum diganti di awal bulan baru).
+  if (!hasil) {
+    var cur = valid(now.getFullYear(), now.getMonth());
+    var nxt = valid(now.getFullYear(), now.getMonth() + 1);
+    var prv = valid(now.getFullYear(), now.getMonth() - 1);
+    if (nxt && selisihHari(nxt) >= 0 && selisihHari(nxt) <= 10 && !(cur && Math.abs(selisihHari(cur)) <= 10)) hasil = nxt;
+    else if (prv && selisihHari(prv) <= 0 && selisihHari(prv) >= -10 && !(cur && Math.abs(selisihHari(cur)) <= 10)) hasil = prv;
+    else hasil = cur || nxt || prv;
+  }
+
+  // 3) Pagar akhir: jangan pernah membuat baris utk tanggal yang jauh dari hari ini.
+  if (!hasil || Math.abs(selisihHari(hasil)) > 45) return null;
   return hasil;
 }
 
