@@ -319,6 +319,10 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <span id="fte-sync-label">Sync Sekarang</span>
         </button>
         <span id="fte-sync-result" style="font-size:10px;color:var(--text-muted);"></span>
+        <button class="btn-icon" title="Diagnosa Lembur 1 Karyawan -- lihat data mentah per baris, utk telusur kalau total jam di FTE/Print beda dgn Riwayat Lembur" onclick="diagnosaLembur()" style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:6px;color:var(--text-muted);cursor:pointer;font-size:10.5px;width:auto;height:auto;">
+          <i data-lucide="search" style="width:12px;"></i>
+          <span>Diagnosa Lembur</span>
+        </button>
       </div>
 
       <div class="hero-row">
@@ -588,6 +592,32 @@ function onPeriodeChange(){
 // Berguna kalau baru saja input lembur/absensi/upload Outbound-Inbound
 // tapi angkanya di layar masih kelihatan belum berubah (paling lama
 // nunggu 5 menit otomatis, tapi ini supaya bisa langsung tanpa nunggu).
+// Diagnosa data lembur mentah 1 karyawan -- utk telusur kalau total jam
+// beda antara Riwayat Lembur, Monitoring FTE, & Print SPL. Ketiganya
+// pakai sumber yg sama (getLemburList), jadi kalau beda, pasti kelihatan
+// di sini baris mana yg beda/hilang.
+function diagnosaLembur(){
+  var kode = prompt('Masukkan NIK/Kode karyawan yang mau didiagnosa:');
+  if (!kode) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ alert('Gagal: '+(res&&res.error?res.error:'tidak diketahui')); return; }
+      var teks = 'NIK: '+kode+' | Periode: '+curBulan+'/'+curTahun+'\n'+
+        'Jumlah entri: '+res.jumlahEntri+'\n'+
+        'Total SEMUA status (ini yg dipakai Monitoring FTE & Print SPL): '+res.totalSemua+' jam\n'+
+        'Total Disetujui saja: '+res.totalDisetujui+' jam\n'+
+        'Total Pending saja: '+res.totalPending+' jam\n\n'+
+        'RINCIAN PER BARIS:\n'+
+        res.data.map(function(l){
+          return '  '+l.tanggal+' | '+l.jamMulai+'-'+l.jamSelesai+' | '+l.totalJam+' jam | Status: '+l.approvalStatus+' | Kategori: '+(l.kategoriLembur||'-')+' | '+(l.keterangan||'');
+        }).join('\n');
+      alert(teks);
+      console.log('Diagnosa Lembur (detail lengkap):', res);
+    })
+    .withFailureHandler(function(err){ alert('Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi')); })
+    .diagnosaLemburKaryawan(kode, curBulan, curTahun);
+}
+
 function syncFteSekarang(){
   var icon = document.getElementById('fte-sync-icon');
   var label = document.getElementById('fte-sync-label');

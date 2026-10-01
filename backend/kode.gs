@@ -61,6 +61,7 @@ var API_FUNCTIONS = {
   getAbsensiList          : getAbsensiList,
   deleteAbsensi           : deleteAbsensi,
   getAbsensiFTEData       : getAbsensiFTEData,
+  diagnosaLemburKaryawan  : diagnosaLemburKaryawan,
   exportSPL               : exportSPL,
   previewSPL              : previewSPL,
   // Multi-workspace (Plant & Departemen)
@@ -6140,6 +6141,34 @@ function getLemburKategoriTrend6Bulan(bulanAkhir, tahunAkhir) {
       scriptCacheKat.put(cacheKeyKat, JSON.stringify(hasilKat), isBulanBerjalanKat ? 180 : 21600);
     } catch (cacheErrKat) { /* gagal cache tidak masalah, tetap return data */ }
     return hasilKat;
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  DIAGNOSA LEMBUR 1 KARYAWAN -- alat bantu telusur kalau total jam
+//  lembur beda antara Input Lembur (riwayat), Monitoring FTE, dan Print
+//  SPL. Menampilkan SETIAP baris lembur milik 1 kode utk 1 bulan, APA
+//  ADANYA dari sheet (bukan hasil hitungan ulang) -- tanggal, jam,
+//  totalJam TERSIMPAN (sudah/belum kepotong istirahat), status approval,
+//  & kategori. Ketiga tempat itu (Input Lembur riwayat, Monitoring FTE,
+//  Print SPL) SAMA-SAMA memanggil getLemburList() yang sama persis --
+//  kalau datanya beda, pasti kelihatan di sini row mana yang beda/hilang.
+// ================================================================
+function diagnosaLemburKaryawan(kode, bulan, tahun) {
+  try {
+    var res = getLemburList({ kode: kode, bulan: bulan, tahun: tahun });
+    if (!res.success) return res;
+    var totalSemua = Math.round(res.data.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
+    var totalDisetujui = Math.round(res.data.filter(function (l) { return l.approvalStatus === 'Disetujui'; }).reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
+    var totalPending = Math.round(res.data.filter(function (l) { return l.approvalStatus === 'Pending'; }).reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
+    return {
+      success: true,
+      jumlahEntri: res.data.length,
+      totalSemua: totalSemua,       // SEMUA entri apapun statusnya -- ini yg dipakai Monitoring FTE & Print SPL (lihat getAbsensiFTEData/_buildSPLDocument, keduanya TIDAK menyaring status)
+      totalDisetujui: totalDisetujui,
+      totalPending: totalPending,
+      data: res.data
+    };
   } catch (err) { return { success: false, error: err.message }; }
 }
 

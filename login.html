@@ -428,8 +428,15 @@
               return '<option value="' + lbl.replace(/"/g, '&quot;') + '">Plant ' + lbl + '</option>';
             }).join('');
         })
-        .withFailureHandler(function () {
-          plantSel.innerHTML = '<option value="" disabled selected>— Gagal memuat, cek koneksi —</option>';
+        .withFailureHandler(function (err) {
+          // Pesan di dropdown dibuat SINGKAT (keterbatasan ruang <option>),
+          // tapi detail lengkap tetap dicatat di console browser (F12 ->
+          // Console) -- err.message di sini biasanya sudah diperjelas oleh
+          // parseJsonSafe() di api-shim.js (mis. "Respon server bukan
+          // JSON... kemungkinan link Apps Script tidak valid/perlu
+          // redeploy") kalau penyebabnya link/deployment Apps Script.
+          console.error('[login] Gagal memuat daftar plant:', err);
+          plantSel.innerHTML = '<option value="" disabled selected>— Gagal memuat, cek koneksi (lihat Console utk detail) —</option>';
         })
         .getAvailablePlantsForLogin();
     }
