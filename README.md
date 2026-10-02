@@ -225,16 +225,26 @@ Cache yang **masih dipakai** cuma satu lapis:
 ## Akurasi Scan Barcode (menu Monitoring)
 
 Halaman `akurasi_scan.html` memantau akurasi scan barcode dengan tampilan
-progress ala kanban. Semua file dibaca di browser (SheetJS) dan disimpan di
-IndexedDB perangkat pengguna, tidak ada perubahan backend yang wajib.
+progress ala kanban. **Upload dilakukan di menu Upload Data Harian, tab
+"Akurasi Scan"** (`upload_data.html#akurasi`).
+
+Data disimpan di **server** (sheet `AKURASI_DATA` di spreadsheet workspace,
+lewat `getAkurasiData` / `saveAkurasiData` / `hapusAkurasiData` di
+`backend/kode.gs`), jadi tampil sama di PC / akun mana pun. IndexedDB
+browser hanya cadangan kalau server tidak terjangkau. **Setelah mengubah
+`kode.gs`, deploy ulang Web App Apps Script.**
+
+| File | Fungsi |
+|------|--------|
+| `akurasi_scan.html` | Dashboard (baca saja) |
+| `assets/js/akurasi-core.js` | Parser Excel/TXT dan aturan hitung (tanpa DOM) |
+| `assets/js/akurasi-store.js` | Simpan/baca server, gabung upload per nomor voucher / SPM |
 
 | Jalur | Sumber data | Aturan |
 |-------|-------------|--------|
-| Voucher vs Box ID | Master Voucher & Box ID (.xlsx) + Standar Isi Box (.xlsx) | Box ID x standar isi box (cocok per Item Number) = qty voucher -> sesuai. Box ID = 1 sesuai hanya jika voucher = standar. Box ID kosong / "?" = selisih. |
+| Voucher vs Box ID | Master Voucher & Box ID + Standar Isi Box (.xlsx) | Box ID x standar isi box (cocok per Item Number) = qty voucher -> sesuai. Box ID = 1 sesuai bila voucher <= standar; voucher > standar -> tidak sesuai. Box ID kosong / "?" = selisih. Akurasi proporsional: voucher 10, Box ID 9 = 90%. |
 | Voucher vs Backflush | Status di Master Voucher + Master Backflush (.xlsx) | BFL dan MANUAL = OK, TRM / tanpa status = selisih. |
 | Barcode Out | Master TER (.txt, pemisah `|`) | Item, Qty SPM, Qty Check. % = total Qty Check / total Qty SPM per tanggal kirim. |
 
-Menu baru terdaftar dengan key `akurasi_scan` di `auth-guard.js`, `PAGE_MAP`
-tiap halaman, dan `MENU_CATALOG` di `backend/kode.gs`. Setelah `kode.gs`
-di-deploy ulang, menu ini bisa diatur per departemen lewat Panel Admin >
-Kelola Menu. Untuk Warehouse Fitting Import (TL/Admin) menu langsung muncul.
+Menu terdaftar dengan key `akurasi_scan` di `auth-guard.js`, `PAGE_MAP`
+tiap halaman, dan `MENU_CATALOG` di `backend/kode.gs`.

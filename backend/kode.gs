@@ -119,7 +119,11 @@ var API_FUNCTIONS = {
   adminGetJadwalPengirimanSumberStatus: adminGetJadwalPengirimanSumberStatus,
   syncJadwalPengirimanHarian: syncJadwalPengirimanHarian,
   hapusDataPengirimanByTanggal: hapusDataPengirimanByTanggal,
-  resyncBersihJadwalTanggal: resyncBersihJadwalTanggal
+  resyncBersihJadwalTanggal: resyncBersihJadwalTanggal,
+  // Akurasi Scan Barcode (data dibagi antar PC)
+  getAkurasiData          : getAkurasiData,
+  saveAkurasiData         : saveAkurasiData,
+  hapusAkurasiData        : hapusAkurasiData
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -7419,5 +7423,104 @@ function previewSPL(kode, bulan, tahun) {
   } catch (err) {
     if (tmpDocId) { try { DriveApp.getFileById(tmpDocId).setTrashed(true); } catch (e2) {} }
     return { success: false, error: err.message };
+  }
+}
+
+
+// ================================================================
+//  AKURASI SCAN BARCODE -- penyimpanan bersama
+//  Sheet AKURASI_DATA: A=kind (voucher|std|bfl|ter), B=part, C=potongan JSON
+//  Satu sel maksimal 50.000 karakter, jadi JSON dipotong 40.000 karakter.
+//  Dipakai halaman Upload Data Harian (tab Akurasi Scan) untuk menulis dan
+//  halaman Monitoring > Akurasi Scan Barcode untuk membaca, sehingga data
+//  yang sama tampil di PC / akun mana pun (per workspace).
+// ================================================================
+var SH_AKURASI = 'AKURASI_DATA';
+var AKURASI_KINDS = { voucher: 1, std: 1, bfl: 1, ter: 1 };
+var AKURASI_CHUNK = 40000;
+
+function _getOrCreateAkurasiSheet() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_AKURASI);
+  if (!sh) {
+    sh = ss.insertSheet(SH_AKURASI);
+    sh.getRange('A1:C1').setValues([['kind', 'part', 'json']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function getAkurasiData() {
+  try {
+    var sh = _getOrCreateAkurasiSheet();
+    var last = sh.getLastRow();
+    var out = {};
+    if (last >= 2) {
+      var vals = sh.getRange(2, 1, last - 1, 3).getValues();
+      var by = {};
+      vals.forEach(function (r) {
+        var k = String(r[0] || '');
+        if (!AKURASI_KINDS[k]) return;
+        (by[k] = by[k] || []).push({ part: Number(r[1]) || 0, txt: String(r[2] || '') });
+      });
+      Object.keys(by).forEach(function (k) {
+        by[k].sort(function (a, b) { return a.part - b.part; });
+        try { out[k] = JSON.parse(by[k].map(function (x) { return x.txt; }).join('')); }
+        catch (e) { out[k] = null; }
+      });
+    }
+    return { success: true, data: out };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  }
+}
+
+// kind: voucher|std|bfl|ter ; jsonStr: seluruh dataset terbaru (sudah digabung di browser)
+function saveAkurasiData(kind, jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    kind = String(kind || '');
+    if (!AKURASI_KINDS[kind]) return { success: false, error: 'Jenis data tidak dikenal: ' + kind };
+    jsonStr = String(jsonStr || '');
+    if (!jsonStr) return { success: false, error: 'Data kosong' };
+    JSON.parse(jsonStr); // validasi
+    lock.waitLock(25000);
+    var sh = _getOrCreateAkurasiSheet();
+    _akurasiHapusKind(sh, kind);
+    var rows = [];
+    for (var i = 0, n = 0; i < jsonStr.length; i += AKURASI_CHUNK, n++) {
+      rows.push([kind, n, jsonStr.substr(i, AKURASI_CHUNK)]);
+    }
+    var start = sh.getLastRow() + 1;
+    sh.getRange(start, 1, rows.length, 3).setNumberFormat('@').setValues(rows);
+    return { success: true, parts: rows.length, bytes: jsonStr.length };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+function hapusAkurasiData(kind) {
+  var lock = LockService.getScriptLock();
+  try {
+    kind = String(kind || '');
+    if (!AKURASI_KINDS[kind]) return { success: false, error: 'Jenis data tidak dikenal: ' + kind };
+    lock.waitLock(25000);
+    _akurasiHapusKind(_getOrCreateAkurasiSheet(), kind);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+function _akurasiHapusKind(sh, kind) {
+  var last = sh.getLastRow();
+  if (last < 2) return;
+  var col = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = col.length - 1; i >= 0; i--) {   // dari bawah supaya index tidak bergeser
+    if (String(col[i][0]) === kind) sh.deleteRow(i + 2);
   }
 }

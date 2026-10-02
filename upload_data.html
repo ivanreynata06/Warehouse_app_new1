@@ -5,7 +5,7 @@
 <script src="./assets/js/auth-guard.js?v=20261002a"></script>
 <script src="./assets/js/config.js?v=20260722d"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20260722d"></script>
+<script src="./assets/js/api-shim.js?v=20261002a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -17,6 +17,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="./assets/js/akurasi-core.js?v=20261002b"></script>
+<script src="./assets/js/akurasi-store.js?v=20261002b"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -283,6 +285,10 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Inbound (Produksi)
       </button>
+      <button class="tab-btn" id="tabbtn-akurasi" onclick="switchTab('akurasi')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M15 8v8M18 8v8"/></svg>
+        Akurasi Scan
+      </button>
     </div>
 
     <!-- ============== KATA KUNCI KATEGORI TAMBAHAN (Super Admin) ============== -->
@@ -301,6 +307,33 @@ table.preview-table tr.row-valid td{color:var(--txt);}
           <span class="status-msg" id="status-keyword-tambahan"></span>
         </div>
       </div>
+    </div>
+
+
+    <!-- ============== TAB: AKURASI SCAN BARCODE ============== -->
+    <div class="tab-panel" id="tab-akurasi">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Upload Data Akurasi Scan Barcode</div></div>
+        <div class="card-body">
+          <div class="col-ref">
+            Data ini tersimpan di <b>server</b> dan tampil di menu <b>Monitoring &gt; Akurasi Scan Barcode</b> pada PC / akun mana pun.
+            Upload ulang file yang sama aman: baris yang sama (nomor voucher / SPM) hanya diperbarui, tidak dobel.
+          </div>
+          <div class="status-msg" id="akurasi-conn" style="margin-top:8px;"></div>
+        </div>
+      </div>
+      <div id="akurasi-cards" style="display:flex;flex-direction:column;gap:12px;"></div>
+      <div class="card">
+        <div class="card-body">
+          <div class="col-ref" style="margin-bottom:8px;"><b>Format tanggal Master Voucher</b><br>Export Excel kadang membaca 01/09 sebagai 9 Januari. Mode otomatis mendeteksi dan membetulkannya.</div>
+          <select id="akurasi-datemode" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--txt);font-size:11.5px;">
+            <option value="auto">Otomatis (disarankan)</option>
+            <option value="swap">Selalu tukar bulan dan hari</option>
+            <option value="none">Jangan tukar</option>
+          </select>
+        </div>
+      </div>
+      <input type="file" id="akurasi-file" style="display:none;">
     </div>
 
     <!-- ============== TAB: STOCK ============== -->
@@ -568,10 +601,11 @@ function toggleSidebar(){
 })();
 
 function switchTab(name){
-  ['stock','outbound','inbound'].forEach(function(t){
+  ['stock','outbound','inbound','akurasi'].forEach(function(t){
     document.getElementById('tab-'+t).classList.toggle('active', t===name);
     document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
   });
+  if (name === 'akurasi' && window.AkurasiUpload) window.AkurasiUpload.init();
 }
 
 // ================================================================
@@ -1256,6 +1290,79 @@ function handleSyncNow(tab){
     })
     .manualSyncNow(tab === 'stock' ? 'stock' : 'io');
 }
+</script>
+
+<script>
+// ================================================================
+//  TAB AKURASI SCAN -- upload ke server lewat AkurasiStore
+// ================================================================
+window.AkurasiUpload = (function(){
+  var S = AkurasiStore, SPECS = [
+    { k:'voucher', desc:'Export "Laporan Scan Voucher & Box id" (.xlsx). Dipakai untuk Voucher vs Box ID dan status backflush.', accept:'.xlsx,.xls,.csv' },
+    { k:'std',     desc:'Tabel Item Number dan satuan isi box (.xlsx). Kolom dikenali otomatis dari judul (contoh: ITEM NUMBER dan SATUAN BOX). Upload baru menggantikan yang lama.', accept:'.xlsx,.xls,.csv' },
+    { k:'bfl',     desc:'Export "Voucher Produksi Fitting Browse" (.xlsx) dengan kolom Voucher ID, Status, Tgl Voucher, Item, Qty.', accept:'.xlsx,.xls,.csv' },
+    { k:'ter',     desc:'File .txt dengan pemisah "|". Boleh pilih beberapa file sekaligus. Baris SPM yang sama diperbarui.', accept:'.txt,.csv', multi:true }
+  ], data = {}, loaded = false, busy = false;
+  function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function n(v){ return (Number(v)||0).toLocaleString('id-ID'); }
+  function note(msg, kind){
+    var el = document.getElementById('akurasi-conn');
+    el.textContent = msg || ''; el.style.color = kind === 'err' ? '#ff8f8f' : (kind === 'warn' ? '#f3c46b' : 'var(--txt2)');
+  }
+  function draw(){
+    document.getElementById('akurasi-cards').innerHTML = SPECS.map(function(sp){
+      var d = data[sp.k], m = d && d.meta || {};
+      var st = d ? '<span style="color:var(--green);font-weight:600;">Terisi</span> · ' + n(d.count) + (sp.k === 'std' ? ' item' : ' baris') + ' · ' + esc(m.name || '') +
+                   '<br><span style="color:var(--txt3);">' + esc(m.at || '') + (m.by ? ' oleh ' + esc(m.by) : '') + '</span>'
+                 : '<span style="color:var(--txt3);">Belum ada data</span>';
+      return '<div class="card"><div class="card-header"><div class="card-title">' + S.TITLES[sp.k] + '</div></div><div class="card-body">' +
+        '<div class="col-ref">' + sp.desc + '</div><div class="col-ref" style="margin-top:6px;">' + st + '</div>' +
+        '<div class="btn-row" style="margin-top:10px;">' +
+        '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.pick(\'' + sp.k + '\')">' + (d ? 'Ganti / tambah file' : 'Pilih file') + '</button>' +
+        (sp.k === 'std' && data.voucher ? '<button class="btn" onclick="AkurasiUpload.template()">Unduh daftar item</button>' : '') +
+        (d ? '<button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.remove(\'' + sp.k + '\')">Hapus</button>' : '') +
+        '</div></div></div>';
+    }).join('');
+  }
+  function refresh(){
+    note('Memuat data dari server...');
+    return S.load().then(function(r){
+      data = r.data; loaded = true; draw();
+      note(r.source === 'server' ? 'Tersambung ke server. Data di bawah sama untuk semua PC.' : 'Server tidak terjangkau: ' + r.warn + ' Upload hanya tersimpan di perangkat ini sampai backend aktif.', r.source === 'server' ? '' : 'warn');
+    });
+  }
+  function pick(k){
+    var sp = SPECS.filter(function(x){ return x.k === k; })[0], inp = document.getElementById('akurasi-file');
+    inp.value = ''; inp.accept = sp.accept; inp.multiple = !!sp.multi;
+    inp.onchange = function(){ run(k, inp.files); };
+    inp.click();
+  }
+  function run(k, files){
+    if (!files || !files.length) return;
+    busy = true; draw(); note('Membaca dan menyimpan ' + S.TITLES[k] + '...');
+    S.ingest(k, files, { dateMode: document.getElementById('akurasi-datemode').value }).then(function(r){
+      busy = false; return refresh().then(function(){
+        if (r.remote) note(r.msg + ' Tersimpan di server.');
+        else note(r.msg + ' Tapi BELUM tersimpan di server: ' + r.warn, 'warn');
+      });
+    }).catch(function(e){ busy = false; draw(); note(e.message || String(e), 'err'); });
+  }
+  function remove(k){
+    if (!confirm('Hapus ' + S.TITLES[k] + ' dari server? Dashboard Akurasi Scan di semua PC ikut kosong untuk data ini.')) return;
+    busy = true; draw();
+    S.clear(k).then(function(r){ busy = false; return refresh().then(function(){ note(r.remote ? S.TITLES[k] + ' dihapus.' : 'Dihapus di perangkat ini saja: ' + r.warn, r.remote ? '' : 'warn'); }); })
+      .catch(function(e){ busy = false; draw(); note(e.message || String(e), 'err'); });
+  }
+  function template(){
+    var seen = {}, rows = [['ITEM NUMBER','DESC','SATUAN BOX']], std = data.std && data.std.map || {};
+    (data.voucher && data.voucher.rows || []).forEach(function(r){ if (!seen[r.item]) { seen[r.item] = 1; rows.push([r.item, r.desc, std[r.item] || '']); } });
+    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'STANDAR BOX');
+    XLSX.writeFile(wb, 'daftar_item_standar_box.xlsx');
+  }
+  function init(){ if (!loaded) refresh(); }
+  if (location.hash === '#akurasi') setTimeout(function(){ switchTab('akurasi'); }, 0);
+  return { init: init, pick: pick, remove: remove, template: template };
+})();
 </script>
 </body>
 </html>

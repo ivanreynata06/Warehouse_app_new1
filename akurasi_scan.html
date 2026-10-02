@@ -167,27 +167,11 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 .empty h2{font-family:'Outfit',sans-serif;font-size:18px;font-weight:600;}
 .empty p{font-size:12px;color:var(--txt2);line-height:1.6;}
 
-/* drawer upload */
-.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:opacity .2s;z-index:300;}
-.scrim.on{opacity:1;pointer-events:auto;}
-.drawer{position:fixed;top:0;right:0;height:100%;width:min(460px,100vw);background:var(--bg2);border-left:1px solid var(--line2);transform:translateX(100%);transition:transform .25s ease;z-index:310;display:flex;flex-direction:column;}
-.drawer.on{transform:none;}
-.dr-h{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
-.dr-h h3{font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;} .dr-h p{font-size:11px;color:var(--txt2);margin-top:3px;line-height:1.5;}
-.dr-b{padding:14px 18px 24px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
-.up{border:1px dashed var(--line2);border-radius:12px;padding:12px 13px;background:var(--card);display:flex;flex-direction:column;gap:7px;transition:border-color .15s,background .15s;}
-.up.drag{border-color:var(--green);background:var(--green-bg);}
-.up.done{border-style:solid;}
-.up-t{display:flex;justify-content:space-between;align-items:center;gap:8px;}
-.up-t b{font-size:12.5px;font-weight:600;}
-.up-d{font-size:10.5px;color:var(--txt2);line-height:1.5;}
-.up-s{font-size:10.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.up-s .ok{color:var(--green);font-weight:600;} .up-s .er{color:var(--red);font-weight:600;}
-.up-a{display:flex;gap:6px;flex-wrap:wrap;}
-.set{display:flex;flex-direction:column;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 13px;}
-.set label{display:flex;gap:9px;align-items:flex-start;font-size:11px;color:var(--txt2);line-height:1.5;cursor:pointer;}
-.set label b{color:var(--txt);font-weight:600;display:block;}
-.set input[type=checkbox]{margin-top:2px;accent-color:var(--green);}
+.src-note{font-size:10.5px;color:var(--txt3);line-height:1.6;margin:0 0 12px;}
+.src-note.warn{background:var(--amber-bg);color:#f3c46b;border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;}
+.src-note.warn b{color:var(--amber);}
+.tolbtn{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:var(--txt2);cursor:pointer;padding:6px 4px;}
+.tolbtn input{accent-color:var(--green);}
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--card2);border:1px solid var(--line2);padding:9px 16px;border-radius:10px;font-size:11.5px;opacity:0;pointer-events:none;transition:all .25s;z-index:400;max-width:90vw;}
 .toast.on{opacity:1;transform:translate(-50%,0);}
 .toast.er{border-color:var(--red);color:#ffb4b4;}
@@ -273,9 +257,10 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Unduh rekap
       </button>
-      <button class="btn primary" onclick="openDrawer()">
+      <button class="btn" id="btn-reload" onclick="reloadData()">Muat ulang</button>
+      <button class="btn primary" onclick="goUpload()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Muat data
+        Upload data
       </button>
     </div>
   </div>
@@ -284,11 +269,14 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
     <div class="empty" id="empty" hidden>
       <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--txt3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M15 8v8M18 8v8"/></svg>
       <h2>Belum ada data scan</h2>
-      <p>Muat Master Voucher &amp; Box ID, Standar Isi Box, Master Backflush, atau Master TER (.txt). Hasil akurasi langsung dihitung otomatis di halaman ini.</p>
-      <button class="btn primary" onclick="openDrawer()">Muat data</button>
+      <p>Upload Master Voucher &amp; Box ID, Standar Isi Box, Master Backflush, atau Master TER (.txt) lewat menu Upload Data Harian, tab Akurasi Scan. Hasil akurasi dihitung otomatis dan tampil di semua PC.</p>
+      <p id="empty-warn" class="src-note warn" hidden></p>
+      <button class="btn primary" onclick="goUpload()">Buka Upload Data Harian</button>
     </div>
+    <div class="empty" id="loading" hidden><p>Memuat data dari server...</p></div>
 
     <div id="app" hidden>
+      <div class="src-note" id="src-note" hidden></div>
       <div class="lanes" id="lanes"></div>
 
       <div class="panel-head" style="margin-top:6px;">
@@ -297,6 +285,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
           <p id="lane-desc"></p>
         </div>
         <div class="filters">
+          <label class="tolbtn" title="Box ID lebih dari 1 dan box terakhir tidak penuh dianggap sesuai"><input type="checkbox" id="tol" onchange="setTol(this.checked)"> Toleransi box sisa</label>
           <input class="inp" id="q" type="search" placeholder="Cari item, deskripsi, voucher / SPM" oninput="onSearch(this.value)">
         </div>
       </div>
@@ -319,19 +308,10 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 </div>
 </div>
 
-<!-- ═════════ DRAWER UPLOAD ═════════ -->
-<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
-<aside class="drawer" id="drawer" aria-label="Muat data">
-  <div class="dr-h">
-    <div><h3>Muat data</h3><p>File dibaca di browser Anda dan disimpan di perangkat ini. Data tidak dikirim ke server.</p></div>
-    <button class="btn sm ghost" onclick="closeDrawer()">Tutup</button>
-  </div>
-  <div class="dr-b" id="dr-b"></div>
-</aside>
 <div class="toast" id="toast"></div>
-<input type="file" id="file-in" hidden>
 
-<script src="./assets/js/akurasi-core.js?v=20261002a"></script>
+<script src="./assets/js/akurasi-core.js?v=20261002b"></script>
+<script src="./assets/js/akurasi-store.js?v=20261002b"></script>
 <script>
 (function(){
 'use strict';
@@ -340,44 +320,11 @@ var DAY_NAME = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
 var MONTH_FULL = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 var PAGE = 40;
 
-/* ───────── penyimpanan lokal (IndexedDB, fallback memori) ───────── */
-var MEM = {}, DB = null;
-function ws(){ try{ return (window.getWorkspace && window.getWorkspace()) || 'default'; }catch(e){ return 'default'; } }
-function K(n){ return 'akurasi::' + ws() + '::' + n; }
-function idb(){
-  return new Promise(function(res, rej){
-    if (DB) return res(DB);
-    if (!window.indexedDB) return rej(new Error('no idb'));
-    var rq = indexedDB.open('wh_akurasi', 1);
-    rq.onupgradeneeded = function(){ rq.result.createObjectStore('kv'); };
-    rq.onsuccess = function(){ DB = rq.result; res(DB); };
-    rq.onerror = function(){ rej(rq.error); };
-  });
-}
-function kvGet(k){
-  return idb().then(function(db){ return new Promise(function(res, rej){
-    var r = db.transaction('kv').objectStore('kv').get(k);
-    r.onsuccess = function(){ res(r.result); }; r.onerror = function(){ rej(r.error); };
-  }); }).catch(function(){ return MEM[k]; });
-}
-function kvSet(k, v){
-  MEM[k] = v;
-  return idb().then(function(db){ return new Promise(function(res, rej){
-    var tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k);
-    tx.oncomplete = res; tx.onerror = function(){ rej(tx.error); };
-  }); }).catch(function(){ /* tetap tersimpan di memori sesi ini */ });
-}
-function kvDel(k){
-  delete MEM[k];
-  return idb().then(function(db){ return new Promise(function(res){
-    var tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = res; tx.onerror = res;
-  }); }).catch(function(){});
-}
-
 /* ───────── state ───────── */
 var S = {
-  data: { voucher: null, std: null, bfl: null, ter: null },   // {rows|map, meta}
-  opts: { dateMode: 'auto', tol: false },
+  data: { voucher: null, std: null, bfl: null, ter: null },   // {rows|map, meta}, dari server
+  opts: { tol: false },                // tampilan saja, disimpan di perangkat ini
+  source: '', warn: '', needStd: false,
   lane: 'in', month: '', day: 'all', q: '', shown: {}, res: null, resRaw: null
 };
 
@@ -403,22 +350,18 @@ function ring(p, size){
 }
 
 /* ───────── hitung ───────── */
-function batchRows(){
-  var d = S.data.voucher; if (!d) return [];
-  var by = {}; d.rows.forEach(function(r){ (by[r.batch] = by[r.batch] || []).push(r); });
-  var out = [];
-  Object.keys(by).forEach(function(b){ out = out.concat(C.resolveVoucherDates(by[b], S.opts.dateMode).rows); });
-  return out;
-}
 function compute(){
-  var vr = batchRows();
-  var std = S.data.std ? S.data.std.map : {};
+  var vr = S.data.voucher ? S.data.voucher.rows : [];
+  var stdMap = S.data.std ? S.data.std.map : {};
+  var hasStd = Object.keys(stdMap).length > 0;
+  // Tanpa Standar Isi Box, voucher yang Box ID-nya terisi tidak bisa dicek. Daripada
+  // menampilkan 0% yang menyesatkan, jalur ini ditandai "butuh standar".
+  S.needStd = vr.length > 0 && !hasStd;
   S.resRaw = {
-    in:  vr.length ? C.summarizeIn(vr, std, { tol: S.opts.tol }) : null,
+    in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol }) : null,
     bfl: (vr.length || S.data.bfl) ? C.summarizeBfl(vr, S.data.bfl ? S.data.bfl.rows : []) : null,
     out: S.data.ter ? C.summarizeOut(S.data.ter.rows) : null
   };
-  if (S.resRaw.in && !S.data.std) S.resRaw.in.noStd = true;
 }
 function months(){
   var set = {};
@@ -527,10 +470,14 @@ function cardHtml(item, group, desc, line, chip, ref){
 function render(){
   var any = S.data.voucher || S.data.bfl || S.data.ter;
   document.getElementById('empty').hidden = !!any;
+  var ew = document.getElementById('empty-warn');
+  ew.hidden = !(S.warn && !any);
+  ew.innerHTML = '<b>Server tidak terjangkau.</b> ' + esc(S.warn);
   document.getElementById('app').hidden = !any;
   document.getElementById('btn-export').disabled = !any;
   if (!any) { fillMonths(); return; }
-  compute(); fillMonths();
+  document.getElementById('tol').checked = !!S.opts.tol;
+  compute(); fillMonths(); banner();
   renderLanes(); renderLane();
 }
 function fillMonths(){
@@ -553,7 +500,9 @@ function renderLanes(){
     var L = LANES[k], v = view(k);
     var active = S.lane === k ? ' active' : '';
     if (!v || !v.days.length) {
-      var need = k === 'out' ? 'Muat Master TER (.txt) untuk melihat berapa persen barang yang sudah di-scan saat muat.' : 'Muat Master Voucher &amp; Box ID' + (k === 'in' ? ' dan Standar Isi Box' : '') + ' untuk menghitung jalur ini.';
+      var need = k === 'out' ? 'Upload Master TER (.txt) di menu Upload Data Harian untuk melihat berapa persen barang yang sudah di-scan saat muat.'
+        : (k === 'in' && S.needStd) ? 'Standar Isi Box belum diupload. Upload di menu Upload Data Harian, tab Akurasi Scan, supaya Box ID bisa dicek.'
+        : 'Upload Master Voucher &amp; Box ID' + (k === 'in' ? ' dan Standar Isi Box' : ' atau Master Backflush') + ' di menu Upload Data Harian.';
       html += '<button class="lane nodata' + active + '" style="--c:' + L.color + '" onclick="pickLane(\'' + k + '\')"><div class="ring">' + ring(null) + '</div><div><h3>' + L.name + '</h3><div class="sub">' + L.tag + '</div><div class="nums"><span class="big">' + need + '</span></div></div></button>';
       return;
     }
@@ -571,12 +520,11 @@ function renderLane(){
   var L = LANES[S.lane], v = view(S.lane);
   document.getElementById('lane-title').textContent = L.name;
   var desc = L.desc;
-  if (S.lane === 'in' && !S.data.std) desc += ' Standar Isi Box belum dimuat, jadi voucher yang Box ID-nya terisi belum bisa dicek.';
   document.getElementById('lane-desc').textContent = desc;
   var rail = document.getElementById('rail'), kp = document.getElementById('kpis'), bd = document.getElementById('board'), tb = document.getElementById('tbl');
   if (!v || !v.days.length) {
     rail.innerHTML = ''; kp.innerHTML = ''; tb.innerHTML = '';
-    bd.className = 'board'; bd.innerHTML = '<div class="empty" style="grid-column:1/-1;margin:30px auto;"><h2>Belum ada data untuk jalur ini</h2><p>Muat file yang dibutuhkan, atau ganti periode di kanan atas.</p><button class="btn primary" onclick="openDrawer()">Muat data</button></div>';
+    bd.className = 'board'; bd.innerHTML = '<div class="empty" style="grid-column:1/-1;margin:30px auto;"><h2>Belum ada data untuk jalur ini</h2><p>' + (S.lane === 'in' && S.needStd ? 'Standar Isi Box belum diupload.' : 'Data belum diupload, atau periode ini kosong.') + ' Upload di menu Upload Data Harian, tab Akurasi Scan.</p><button class="btn primary" onclick="goUpload()">Buka Upload Data Harian</button></div>';
     document.getElementById('rules').innerHTML = ''; return;
   }
   if (S.day !== 'all' && !v.days.some(function(d){ return d.date === S.day; })) S.day = 'all';
@@ -637,10 +585,11 @@ function renderRules(){
   if (S.lane === 'in') r = [
     'Qty Box ID = jumlah box yang ter-scan <code>x</code> standar isi box item tersebut (dicocokkan lewat Item Number).',
     'Nilai sama dengan qty voucher berarti <b>sesuai</b>, selain itu <b>tidak sesuai</b> (kemungkinan ada barang yang tidak ter-scan).',
-    'Box ID bernilai 1: sesuai hanya kalau qty voucher sama dengan standar isi box. Kalau voucher lebih besar dari standar tetapi Box ID hanya 1, hasilnya tidak sesuai.',
+    'Box ID bernilai 1: sesuai kalau qty voucher sama dengan atau di bawah standar isi box (satu box saja sudah cukup). Kalau voucher lebih besar dari standar tetapi Box ID hanya 1, hasilnya tidak sesuai karena kemungkinan ada box yang tidak ter-scan.',
     'Box ID kosong atau "?" selalu dihitung selisih sebesar qty voucher.',
-    'Selisih SKU = jumlah voucher tidak sesuai. Total selisih = Qty Box ID dikurangi Qty voucher. Akurasi = qty voucher yang terverifikasi dibagi total qty voucher.',
-    S.opts.tol ? 'Toleransi box sisa <b>aktif</b>: box terakhir boleh tidak penuh.' : 'Toleransi box sisa <b>nonaktif</b>: box terakhir yang tidak penuh dihitung tidak sesuai. Bisa diaktifkan di Muat data.'
+    'Selisih SKU = jumlah voucher tidak sesuai. Total selisih = Qty Box ID dikurangi Qty voucher.',
+    'Akurasi dihitung proporsional: voucher 10 dengan Box ID 9 = 90%. Tiap voucher bernilai (qty voucher dikurangi selisihnya), lalu dijumlahkan dan dibagi total qty voucher.',
+    S.opts.tol ? 'Toleransi box sisa <b>aktif</b>: box terakhir boleh tidak penuh.' : 'Toleransi box sisa <b>nonaktif</b>: kalau Box ID lebih dari 1 dan box terakhir tidak penuh, dihitung tidak sesuai. Bisa diaktifkan lewat tombol di bawah judul.'
   ];
   else if (S.lane === 'bfl') r = [
     'Status <code>BFL</code> dan <code>MANUAL</code> dianggap OK. Status <code>TRM</code> atau voucher tanpa status dianggap selisih.',
@@ -678,113 +627,38 @@ window.navTo = function(pg){
   if (window.top !== window.self) window.top.location.href = t; else window.location.href = t;
 };
 
-/* ───────── drawer & upload ───────── */
-var SPECS = [
-  { k: 'voucher', title: 'Master Voucher & Box ID', desc: 'Export "Laporan Scan Voucher & Box id" (.xlsx). Dipakai untuk Voucher vs Box ID dan status backflush. Upload berikutnya digabung berdasarkan nomor voucher.', accept: '.xlsx,.xls,.csv', multi: false },
-  { k: 'std', title: 'Standar Isi Box', desc: 'Tabel Item Number dan qty per box (sheet STANDAR BOX). Kolom dikenali otomatis dari judulnya. Upload baru menggantikan yang lama.', accept: '.xlsx,.xls,.csv', multi: false, tpl: true },
-  { k: 'bfl', title: 'Master Backflush', desc: 'Export "Voucher Produksi Fitting Browse" (.xlsx), kolom Voucher ID, Status, Tgl Voucher, Item, Qty.', accept: '.xlsx,.xls,.csv', multi: false },
-  { k: 'ter', title: 'Master TER (Barcode Out)', desc: 'File .txt dengan pemisah "|". Boleh pilih beberapa file sekaligus. Baris SPM yang sama akan diperbarui.', accept: '.txt,.csv', multi: true }
-];
-function renderDrawer(){
-  var h = SPECS.map(function(s){
-    var d = S.data[s.k];
-    var st = d ? '<span class="ok">Terisi</span><span>' + esc(metaLine(s.k)) + '</span>' : '<span>Belum ada data</span>';
-    if (d && d.meta.at) st += '<span style="color:var(--txt3)">' + esc(d.meta.at) + '</span>';
-    if (d && d.meta.info) st += '<span style="color:var(--txt3)">' + esc(d.meta.info) + '</span>';
-    return '<div class="up' + (d ? ' done' : '') + '" data-k="' + s.k + '"><div class="up-t"><b>' + s.title + '</b></div><div class="up-d">' + s.desc + '</div>' +
-      '<div class="up-s">' + st + '</div><div class="up-a"><button class="btn sm primary" onclick="pickFile(\'' + s.k + '\')">' + (d ? 'Ganti / tambah file' : 'Pilih file') + '</button>' +
-      (s.tpl && S.data.voucher ? '<button class="btn sm" onclick="downloadStdTemplate()">Unduh template item</button>' : '') +
-      (d ? '<button class="btn sm danger" onclick="clearData(\'' + s.k + '\')">Hapus</button>' : '') + '</div></div>';
-  }).join('');
-  h += '<div class="set"><label><input type="checkbox" id="opt-tol" ' + (S.opts.tol ? 'checked' : '') + ' onchange="setOpt(\'tol\',this.checked)"><span><b>Toleransi box sisa</b>Box terakhir boleh tidak penuh (jumlah box = voucher dibagi standar, dibulatkan ke atas). Biarkan mati kalau Anda ingin aturan ketat.</span></label>' +
-    '<div style="font-size:11px;color:var(--txt2);display:flex;gap:9px;align-items:center;flex-wrap:wrap;"><span><b style="color:var(--txt);font-weight:600;">Format tanggal Master Voucher</b></span>' +
-    '<select class="sel" onchange="setOpt(\'dateMode\',this.value)"><option value="auto"' + (S.opts.dateMode === 'auto' ? ' selected' : '') + '>Otomatis (disarankan)</option><option value="swap"' + (S.opts.dateMode === 'swap' ? ' selected' : '') + '>Tukar bulan dan hari</option><option value="none"' + (S.opts.dateMode === 'none' ? ' selected' : '') + '>Jangan tukar</option></select></div>' +
-    '<div style="font-size:10.5px;color:var(--txt3);line-height:1.5;">Export Excel kadang membaca 01/09 sebagai 9 Januari. Mode otomatis mendeteksi dan memperbaikinya.</div></div>';
-  document.getElementById('dr-b').innerHTML = h;
-  document.querySelectorAll('.up').forEach(function(el){
-    el.addEventListener('dragover', function(e){ e.preventDefault(); el.classList.add('drag'); });
-    el.addEventListener('dragleave', function(){ el.classList.remove('drag'); });
-    el.addEventListener('drop', function(e){ e.preventDefault(); el.classList.remove('drag'); handleFiles(el.getAttribute('data-k'), e.dataTransfer.files); });
-  });
-}
-window.openDrawer = function(){ renderDrawer(); document.getElementById('drawer').classList.add('on'); document.getElementById('scrim').classList.add('on'); };
-window.closeDrawer = function(){ document.getElementById('drawer').classList.remove('on'); document.getElementById('scrim').classList.remove('on'); };
-document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDrawer(); });
-window.pickFile = function(k){
-  var spec = SPECS.filter(function(s){ return s.k === k; })[0], inp = document.getElementById('file-in');
-  inp.value = ''; inp.accept = spec.accept; inp.multiple = spec.multi;
-  inp.onchange = function(){ handleFiles(k, inp.files); };
-  inp.click();
+/* ───────── muat data dari server ───────── */
+window.goUpload = function(){
+  var t = 'upload_data.html?v=' + (window.SITE_VERSION || Date.now()) + '#akurasi';
+  if (window.top !== window.self) window.top.location.href = t; else window.location.href = t;
 };
-window.setOpt = function(k, v){ S.opts[k] = v; kvSet(K('opts'), S.opts); render(); renderDrawer(); };
-window.clearData = function(k){
-  if (!confirm('Hapus data ' + SPECS.filter(function(s){ return s.k === k; })[0].title + ' dari perangkat ini?')) return;
-  S.data[k] = null; kvDel(K(k)); S.day = 'all'; render(); renderDrawer(); toast('Data dihapus');
+window.setTol = function(v){
+  S.opts.tol = !!v;
+  try { localStorage.setItem('akurasi_tol', v ? '1' : '0'); } catch (e) {}
+  renderLanes(); renderLane();
 };
-function stamp(){ var d = new Date(); return d.getDate() + ' ' + C.MONTHS[d.getMonth()] + ' ' + d.getFullYear() + ', ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
-function readAoa(file){
-  return file.arrayBuffer().then(function(buf){
-    var wb = XLSX.read(buf, { type: 'array' });
-    return wb.SheetNames.map(function(n){ return { name: n, aoa: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }) }; });
-  });
-}
-function handleFiles(k, files){
-  if (!files || !files.length) return;
-  if (typeof XLSX === 'undefined') { toast('Library Excel belum termuat. Periksa koneksi lalu coba lagi.', true); return; }
-  var list = Array.prototype.slice.call(files);
-  var job;
-  if (k === 'ter') job = loadTER(list);
-  else job = readAoa(list[0]).then(function(sheets){ return loadSheet(k, list[0], sheets); });
-  job.then(function(msg){
-    S.day = 'all'; S.shown = {}; S._monthTouched = false; S.month = '';
-    render(); renderDrawer(); toast(msg);
-    if (k === 'ter') S.lane = 'out'; else if (k === 'bfl') S.lane = 'bfl'; else S.lane = 'in';
-    renderLanes(); renderLane();
-  }).catch(function(err){ toast(err.message || String(err), true); });
-}
-function pickSheet(sheets, parse){
-  var best = null;
-  sheets.forEach(function(s){ var r = parse(s.aoa); var n = r.rows ? r.rows.length : r.count; if (!r.error && (!best || n > best.n)) best = { r: r, n: n, s: s }; });
-  if (!best) { var e = parse(sheets[0].aoa); throw new Error(e.error || 'File tidak dikenali.'); }
-  return best;
-}
-function loadSheet(k, file, sheets){
-  var b = pickSheet(sheets, k === 'voucher' ? C.parseVoucherSheet : k === 'std' ? C.parseStdSheet : C.parseBflSheet);
-  var rec;
-  if (k === 'std') {
-    rec = { map: b.r.map, count: b.r.count, meta: { name: file.name, at: stamp(), info: b.r.info } };
-  } else {
-    var key = k === 'voucher' ? function(r){ return r.voucher; } : function(r){ return r.voucher; };
-    var batch = Date.now(), old = S.data[k] ? S.data[k].rows : [], map = {};
-    old.forEach(function(r){ map[key(r)] = r; });
-    b.r.rows.forEach(function(r){ r.batch = batch; map[key(r)] = r; });
-    var rows = Object.keys(map).map(function(x){ return map[x]; });
-    rec = { rows: rows, count: rows.length, meta: { name: file.name, at: stamp() } };
+function banner(){
+  var el = document.getElementById('src-note'), parts = [];
+  var any = S.data.voucher || S.data.bfl || S.data.ter;
+  if (S.warn) parts.push('<b>Data dari cache perangkat ini.</b> ' + esc(S.warn) + ' Data di PC lain bisa berbeda sampai backend aktif.');
+  if (any) {
+    var info = ['voucher', 'std', 'bfl', 'ter'].filter(function(k){ return S.data[k]; }).map(function(k){
+      var m = S.data[k].meta || {}; return window.AkurasiStore.TITLES[k] + ': ' + esc(m.at || '-') + (m.by ? ' oleh ' + esc(m.by) : '');
+    });
+    parts.push('Update terakhir. ' + info.join(' · '));
   }
-  S.data[k] = rec;
-  return kvSet(K(k), rec).then(function(){
-    return k === 'std' ? 'Standar isi box dimuat: ' + fmt(rec.count) + ' item' : 'Dimuat ' + fmt(b.r.rows.length) + ' baris dari ' + file.name;
-  });
+  el.className = 'src-note' + (S.warn ? ' warn' : '');
+  el.innerHTML = parts.join('<br>');
+  el.hidden = !parts.length;
 }
-function loadTER(files){
-  return Promise.all(files.map(function(f){ return f.text().then(function(t){ return { f: f, p: C.parseTER(t) }; }); })).then(function(rs){
-    var bad = rs.filter(function(x){ return x.p.error; });
-    if (bad.length === rs.length) throw new Error(bad[0].p.error);
-    var map = {}; (S.data.ter ? S.data.ter.rows : []).forEach(function(r){ map[r.spm + '|' + r.item + '|' + r.group] = r; });
-    var added = 0;
-    rs.forEach(function(x){ x.p.rows.forEach(function(r){ map[r.spm + '|' + r.item + '|' + r.group] = r; added++; }); });
-    var rows = Object.keys(map).map(function(x){ return map[x]; });
-    var names = rs.map(function(x){ return x.f.name; }).join(', ');
-    var rec = { rows: rows, count: rows.length, meta: { name: names.length > 60 ? rs.length + ' file TER' : names, at: stamp() } };
-    S.data.ter = rec;
-    return kvSet(K('ter'), rec).then(function(){ return 'Dimuat ' + fmt(added) + ' baris SPM' + (bad.length ? ' (' + bad.length + ' file dilewati)' : ''); });
-  });
-}
-window.downloadStdTemplate = function(){
-  var seen = {}, rows = [['Item Number', 'Description', 'Standar Isi Box']];
-  batchRows().forEach(function(r){ if (!seen[r.item]) { seen[r.item] = 1; rows.push([r.item, r.desc, S.data.std && S.data.std.map[r.item] || '']); } });
-  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'STANDAR BOX');
-  XLSX.writeFile(wb, 'template_standar_isi_box.xlsx');
+window.reloadData = function(){
+  var btn = document.getElementById('btn-reload'); btn.disabled = true; btn.textContent = 'Memuat...';
+  window.AkurasiStore.load().then(function(r){
+    S.data = r.data; S.source = r.source; S.warn = r.warn; S.day = 'all'; S.shown = {}; S._monthTouched = false; S.month = '';
+    S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
+    render(); toast(r.source === 'server' ? 'Data terbaru dimuat dari server' : 'Server tidak terjangkau, memakai cache perangkat', r.source !== 'server');
+  }).catch(function(e){ toast(e.message || String(e), true); })
+  .then(function(){ btn.disabled = false; btn.textContent = 'Muat ulang'; });
 };
 
 /* ───────── unduh rekap ───────── */
@@ -809,13 +683,13 @@ window.exportXlsx = function(){
 
 /* ───────── init ───────── */
 (function init(){
-  var sub = document.getElementById('tb-sub');
-  if (window.WH_SESSION && window.WH_SESSION.nama) sub.textContent = 'Voucher vs Box ID, Backflush, dan Barcode Out (TER)';
-  Promise.all([kvGet(K('voucher')), kvGet(K('std')), kvGet(K('bfl')), kvGet(K('ter')), kvGet(K('opts'))]).then(function(r){
-    S.data.voucher = r[0] || null; S.data.std = r[1] || null; S.data.bfl = r[2] || null; S.data.ter = r[3] || null;
-    if (r[4]) S.opts = Object.assign(S.opts, r[4]);
-    // pilih jalur pertama yang punya data
+  try { S.opts.tol = localStorage.getItem('akurasi_tol') === '1'; } catch (e) {}
+  document.getElementById('app').hidden = true;
+  document.getElementById('loading').hidden = false;
+  window.AkurasiStore.load().then(function(r){
+    S.data = r.data; S.source = r.source; S.warn = r.warn;
     S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
+    document.getElementById('loading').hidden = true;
     render();
   });
 })();

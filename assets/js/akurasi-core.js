@@ -134,6 +134,18 @@
     };
   }
 
+  // Siap simpan: tanggal sudah final (mm/dd tertukar dibereskan), field bantu dibuang
+  function prepareVoucherRows(rows, mode) {
+    var r = resolveVoucherDates(rows, mode);
+    return {
+      swapped: r.swapped,
+      rows: r.rows.map(function (x) {
+        return { voucher: x.voucher, type: x.type, status: x.status, date: x.date, item: x.item,
+          desc: x.desc, group: x.group, qty: x.qty, box: x.box };
+      })
+    };
+  }
+
   // ---------- parser: Standar Isi Box ----------
   function parseStdSheet(aoa) {
     var h = findHeader(aoa, function (r) { return r.some(function (c) { return /item/.test(c); }); });
@@ -142,8 +154,10 @@
     if (h >= 0) {
       var H = aoa[h].map(norm);
       ci = colOf(H, /item/);
-      cq = colOf(H, /std|standar|isi|per\s*box|qty|pcs|quantity|jumlah/, [ci]);
-      if (cq < 0) cq = ci + 1;
+      var skip = [ci];
+      H.forEach(function (x, i) { if (/^desc|nama|uraian/.test(x)) skip.push(i); });   // kolom deskripsi jangan sampai terambil
+      cq = colOf(H, /satuan\s*box|std|standar|isi|per\s*box|box|qty|pcs|quantity|jumlah|satuan/, skip);
+      if (cq < 0) { cq = ci + 1; while (skip.indexOf(cq) !== -1) cq++; }
       start = h + 1;
       info = 'Item Number = "' + (aoa[h][ci] || '') + '", Standar = "' + (aoa[h][cq] || '') + '"';
     }
@@ -234,9 +248,11 @@
     }
     if (!s) { o.status = 'nostd'; o.aktual = null; o.selisih = 0; return o; }
     if (v.box === 1) {
-      // 1 box: sesuai hanya bila isi voucher = standar isi box
-      // (atau <= standar kalau toleransi box sisa diaktifkan)
-      var ok1 = v.qty === s || (tol && v.qty < s);
+      // 1 box: sesuai bila isi voucher <= standar isi box (box penuh atau box
+      // parsial, mis. voucher 6 pcs untuk standar 24). Kalau voucher LEBIH
+      // BESAR dari standar tetapi Box ID hanya 1 -> tidak sesuai
+      // (kemungkinan ada box yang tidak ter-scan).
+      var ok1 = v.qty <= s;
       o.aktual = ok1 ? v.qty : s;
       o.status = ok1 ? 'sesuai' : 'beda';
     } else {
@@ -265,7 +281,7 @@
       [d, tot].forEach(function (b) {
         b.lines++; b.qty += v.qty; b.aktual += e.aktual; b.selisih += e.selisih;
         if (e.status === 'sesuai') { b.sesuai++; b.credit += v.qty; }
-        else { b.skuSelisih++; b.credit += Math.max(0, Math.min(e.aktual, v.qty)); }
+        else { b.skuSelisih++; b.credit += Math.max(0, v.qty - Math.abs(e.selisih)); }
       });
     });
     return finish(days, items, tot);
@@ -333,7 +349,7 @@
 
   var api = {
     MONTHS: MONTHS, num: num, digits: digits,
-    parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates,
+    parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,
     parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER,
     evalIn: evalIn, summarizeIn: summarizeIn, summarizeBfl: summarizeBfl, summarizeOut: summarizeOut,
     isBflOk: isBflOk
