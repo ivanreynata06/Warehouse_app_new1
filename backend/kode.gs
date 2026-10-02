@@ -309,6 +309,7 @@ var MENU_CATALOG = [
   { key: 'index',            label: 'Monitoring Stock, Inbound & Outbound', file: 'monitoring_stock.html' },
   { key: 'kanban',           label: 'Monitoring Kanban', file: 'kanban.html' },
   { key: 'fte_dashboard',    label: 'Monitoring FTE', file: 'fte_dashboard.html' },
+  { key: 'akurasi_scan',     label: 'Akurasi Scan Barcode', file: 'akurasi_scan.html' },
   { key: 'rekap',            label: 'Rekap Muatan', file: 'rekap_muatan.html' },
   { key: 'residance',        label: 'Loading Time (Jadwal Pengiriman)', file: 'residance_time.html' },
   { key: 'input_lembur',     label: 'Input Lembur & Cuti', file: 'input_lembur.html' },

@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20260729a"></script>
+<script src="./assets/js/auth-guard.js?v=20261002a"></script>
 <script src="./assets/js/config.js?v=20260722d"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
 <script src="./assets/js/api-shim.js?v=20260722d"></script>
@@ -570,7 +570,7 @@
       </div>
       <div class="mgroup-body">
         <div class="mitem" onclick="navTo('input_lembur')"><i data-lucide="clock" style="width:12px;"></i><span>Input Lembur</span></div>
-        <div class="mitem" onclick="navTo('fte_dashboard')"><i data-lucide="bar-chart-3" style="width:12px;"></i><span>Monitoring FTE</span></div>
+        <div class="mitem" onclick="navTo('fte_dashboard')"><i data-lucide="bar-chart-3" style="width:12px;"></i><span>Monitoring FTE</span></div><div class="mitem" onclick="navTo('akurasi_scan')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M15 8v8M18 8v8"/></svg><span>Akurasi Scan Barcode</span></div>
       </div>
     </div>
   </div>
@@ -1167,6 +1167,7 @@ var PAGE_MAP = {
   'residance'       : 'residance_time.html',
   'input_lembur'    : 'input_lembur.html',
   'fte_dashboard'   : 'fte_dashboard.html',
+  'akurasi_scan'    : 'akurasi_scan.html',
   'upload'          : 'upload_data.html'
 };
 function navTo(page) {

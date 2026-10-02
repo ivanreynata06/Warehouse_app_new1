@@ -18,6 +18,8 @@ kanban.html               <- Dashboard Kanban PPR
 rekap_muatan.html         <- Monitoring Tonase Persiapan
 monitoring_stock.html     <- Dashboard Pipa & Fitting PPR (Monitoring Stock, Inbound & Outbound)
 residance_time.html       <- Loading Time Pengiriman
+akurasi_scan.html         <- Akurasi Scan Barcode (Monitoring > Akurasi Scan Barcode)
+assets/js/akurasi-core.js  <- logika hitung Akurasi Scan (parser Excel/TXT + aturan sesuai/selisih)
 assets/js/config.js        <- ISI URL WEB APP APPS SCRIPT DI SINI
 assets/js/api-shim.js      <- pengganti google.script.run, tidak perlu diubah
 assets/js/sw-register.js   <- pembersih Service Worker lama, tidak perlu diubah
@@ -218,3 +220,21 @@ Cache yang **masih dipakai** cuma satu lapis:
   tambah token rahasia sederhana (cek `params.token` di
   `handleApiRequest`) yang juga dikirim dari `api-shim.js`.
 
+
+
+## Akurasi Scan Barcode (menu Monitoring)
+
+Halaman `akurasi_scan.html` memantau akurasi scan barcode dengan tampilan
+progress ala kanban. Semua file dibaca di browser (SheetJS) dan disimpan di
+IndexedDB perangkat pengguna, tidak ada perubahan backend yang wajib.
+
+| Jalur | Sumber data | Aturan |
+|-------|-------------|--------|
+| Voucher vs Box ID | Master Voucher & Box ID (.xlsx) + Standar Isi Box (.xlsx) | Box ID x standar isi box (cocok per Item Number) = qty voucher -> sesuai. Box ID = 1 sesuai hanya jika voucher = standar. Box ID kosong / "?" = selisih. |
+| Voucher vs Backflush | Status di Master Voucher + Master Backflush (.xlsx) | BFL dan MANUAL = OK, TRM / tanpa status = selisih. |
+| Barcode Out | Master TER (.txt, pemisah `|`) | Item, Qty SPM, Qty Check. % = total Qty Check / total Qty SPM per tanggal kirim. |
+
+Menu baru terdaftar dengan key `akurasi_scan` di `auth-guard.js`, `PAGE_MAP`
+tiap halaman, dan `MENU_CATALOG` di `backend/kode.gs`. Setelah `kode.gs`
+di-deploy ulang, menu ini bisa diatur per departemen lewat Panel Admin >
+Kelola Menu. Untuk Warehouse Fitting Import (TL/Admin) menu langsung muncul.

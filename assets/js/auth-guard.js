@@ -47,6 +47,7 @@
     'index'           : 'monitoring_stock.html',
     'kanban'          : 'kanban.html',
     'fte_dashboard'   : 'fte_dashboard.html',
+    'akurasi_scan'    : 'akurasi_scan.html',
     'rekap'           : 'rekap_muatan.html',
     'residance'       : 'residance_time.html',
     'input_lembur'    : 'input_lembur.html',
@@ -65,6 +66,16 @@
     // perilaku sebelum fitur ini) spy departemen yg sudah berjalan tidak
     // berubah tiba2 cuma krn sesi browser belum di-refresh/login ulang.
     menuKeys = isFittingImport ? Object.keys(fileForKey) : ['index', 'fte_dashboard', 'input_lembur', 'upload'];
+  }
+
+  // Akurasi Scan Barcode: menu baru. Sesi login yang dibuat SEBELUM menu ini
+  // ada (atau sebelum backend/kode.gs di-deploy ulang) belum membawa key
+  // 'akurasi_scan' di wh_menu_keys, jadi untuk TL/Admin Warehouse Fitting
+  // Import (departemen yg defaultnya memang dapat SEMUA menu) key ini
+  // ditambahkan otomatis supaya langsung bisa dibuka tanpa login ulang.
+  // Departemen lain tetap mengikuti Kelola Menu (Panel Admin).
+  if (fullAccess && isFittingImport && menuKeys.indexOf('akurasi_scan') === -1) {
+    menuKeys = menuKeys.concat(['akurasi_scan']);
   }
 
   // Menu yg boleh dilihat role TERBATAS (Technician dkk) -- LAPISAN
@@ -321,6 +332,7 @@
       var kanbanEl = document.querySelector('[onclick*="\'kanban\'"]');
       var fteEl    = document.querySelector('[onclick*="\'fte_dashboard\'"]');
       var rekapEl  = document.querySelector('[onclick*="\'rekap\'"]');
+      var akurasiEl = document.querySelector('[onclick*="\'akurasi_scan\'"]');
       if (!stockEl && !kanbanEl && !fteEl && !rekapEl) return; // halaman ini tidak punya menu-menu ini
 
       var wrapper = document.createElement('div');
@@ -338,6 +350,9 @@
       if (stockEl)  body.appendChild(stockEl);
       if (kanbanEl) body.appendChild(kanbanEl);
       if (fteEl)    body.appendChild(fteEl);
+      // Akurasi Scan Barcode: ikut masuk dropdown Monitoring (tetap disembunyikan
+      // lebih dulu oleh loop menuKeys di atas kalau departemennya tidak boleh).
+      if (akurasiEl) body.appendChild(akurasiEl);
       // Rekap Muatan: cuma dipindah ke grup Monitoring kalau memang boleh
       // tampil (departemen Fitting Import); kalau tidak, biarkan tetap di
       // luar supaya logic sembunyikan di bawah (hasRekapMuatan false) tetap

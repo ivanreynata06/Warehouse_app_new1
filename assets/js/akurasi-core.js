@@ -1,0 +1,343 @@
+/*!
+ * akurasi-core.js
+ * -----------------------------------------------------------------
+ * Logika perhitungan "Akurasi Scan Barcode" (tanpa DOM, tanpa library
+ * eksternal) -- dipisah dari akurasi_scan.html supaya mudah dites.
+ *
+ *  IN  : Voucher vs Box ID   -> evalIn / summarizeIn
+ *  IN  : Voucher vs Backflush -> summarizeBfl
+ *  OUT : Master TER (txt)     -> parseTER / summarizeOut
+ *
+ * Konvensi tanda selisih: NEGATIF = kurang (barang/box/backflush/scan
+ * lebih sedikit dari seharusnya), sama seperti kolom TOTAL SELISIH di
+ * sheet SUM.
+ * -----------------------------------------------------------------
+ */
+(function (root) {
+  'use strict';
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+  // ---------- util ----------
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function iso(y, m, d) { return y + '-' + pad(m) + '-' + pad(d); }
+  function digits(v) { return v == null ? '' : String(v).replace(/\D/g, ''); }
+  function num(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (v == null) return null;
+    var s = String(v).trim().replace(/\s/g, '');
+    if (!s || s === '?') return null;
+    // 1.440,00 (id) atau 1,440.00 (en)
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+    else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
+    else s = s.replace(',', '.');
+    var n = parseFloat(s);
+    return isFinite(n) ? n : null;
+  }
+  function serialToYMD(serial) {
+    var dt = new Date(Math.round((serial - 25569) * 86400000));
+    return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
+  }
+  function norm(s) { return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim(); }
+
+  // Tanggal teks. order: 'dmy' (Indonesia) | 'mdy' (TER). Juga yyyy-mm-dd.
+  function parseDateText(s, order) {
+    s = String(s == null ? '' : s).trim();
+    var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return { y: +m[1], m: +m[2], d: +m[3] };
+    m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+    if (!m) return null;
+    var a = +m[1], b = +m[2], y = +m[3];
+    if (y < 100) y += 2000;
+    if (a > 12) order = 'dmy'; else if (b > 12) order = 'mdy';   // tak ambigu -> pakai yang masuk akal
+    var d = order === 'mdy' ? b : a, mo = order === 'mdy' ? a : b;
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return { y: y, m: mo, d: d };
+  }
+
+  // Cari baris header: baris pertama (dalam 15 baris awal) yang cocok pola.
+  function findHeader(aoa, test) {
+    for (var i = 0; i < Math.min(aoa.length, 15); i++) {
+      var row = (aoa[i] || []).map(norm);
+      if (test(row)) return i;
+    }
+    return -1;
+  }
+  function colOf(headers, re, skip) {
+    for (var i = 0; i < headers.length; i++) {
+      if (skip && skip.indexOf(i) !== -1) continue;
+      if (re.test(headers[i])) return i;
+    }
+    return -1;
+  }
+
+  // ---------- parser: Master Voucher & Box ID ----------
+  // Mengembalikan {rows, error}. Baris sampah (judul laporan, "Page: 2",
+  // garis ------) otomatis terbuang karena No.Voucher & Item harus angka.
+  function parseVoucherSheet(aoa) {
+    var h = findHeader(aoa, function (r) { return r.some(function (c) { return /no\.?\s*voucher/.test(c); }); });
+    if (h < 0) return { rows: [], error: 'Header "No.Voucher" tidak ditemukan. Pastikan ini file Master Voucher & Box ID.' };
+    var H = aoa[h].map(norm);
+    var c = {
+      v: colOf(H, /no\.?\s*voucher/), type: colOf(H, /^type/), st: colOf(H, /^status/),
+      dt: colOf(H, /tgl/), it: colOf(H, /item/), ds: colOf(H, /desc/),
+      gr: colOf(H, /shift|group/), qv: colOf(H, /qty\s*voucher/), qb: colOf(H, /qty\s*box/)
+    };
+    if (c.v < 0 || c.it < 0 || c.qv < 0 || c.qb < 0)
+      return { rows: [], error: 'Kolom wajib (No.Voucher, Item Number, QTY Voucher, Qty Box Id) tidak lengkap.' };
+    var rows = [];
+    for (var i = h + 1; i < aoa.length; i++) {
+      var r = aoa[i] || [];
+      var vno = digits(r[c.v]), item = digits(r[c.it]), qty = num(r[c.qv]);
+      if (vno.length < 8 || item.length < 8 || qty == null) continue;
+      var rawDt = c.dt >= 0 ? r[c.dt] : null, ymd = null, serial = false;
+      if (typeof rawDt === 'number') { ymd = serialToYMD(rawDt); serial = true; }
+      else ymd = parseDateText(rawDt, 'mdy');   // teks hasil export = mm/dd/yyyy
+      var box = num(r[c.qb]);
+      rows.push({
+        voucher: vno, type: c.type >= 0 ? String(r[c.type] || '').trim() : '',
+        status: c.st >= 0 ? String(r[c.st] || '').trim().toUpperCase() : '',
+        ymd: ymd, serial: serial, item: item,
+        desc: c.ds >= 0 ? String(r[c.ds] || '').trim() : '',
+        group: c.gr >= 0 ? String(r[c.gr] || '').trim() : '',
+        qty: qty, box: (box != null && box > 0) ? box : null
+      });
+    }
+    return { rows: rows, error: rows.length ? null : 'Tidak ada baris voucher yang valid di file ini.' };
+  }
+
+  // Tanggal Master Voucher kadang tertukar bulan<->hari (di-export sebagai
+  // "dd/mm" tapi dibaca Excel sbg "mm/dd": 1 Sep -> 9 Jan). mode:
+  //  'auto'  : tukar kalau semua tanggal-serial punya "hari" yang SAMA
+  //            tapi "bulan"-nya beda-beda (tanda khas tertukar)
+  //  'swap'  : selalu tukar | 'none': jangan tukar
+  function resolveVoucherDates(rows, mode) {
+    var ser = rows.filter(function (r) { return r.serial && r.ymd; });
+    var doSwap = false;
+    if (mode === 'swap') doSwap = true;
+    else if (mode !== 'none' && ser.length) {
+      var days = {}, mons = {};
+      ser.forEach(function (r) { days[r.ymd.d] = 1; mons[r.ymd.m] = 1; });
+      doSwap = Object.keys(days).length === 1 && Object.keys(mons).length > 1;
+    }
+    return {
+      swapped: doSwap,
+      rows: rows.map(function (r) {
+        var y = r.ymd;
+        if (y && r.serial && doSwap) {
+          if (y.d <= 12) y = { y: y.y, m: y.d, d: y.m };
+        }
+        var o = {}; for (var k in r) o[k] = r[k];
+        o.date = y ? iso(y.y, y.m, y.d) : '';
+        return o;
+      })
+    };
+  }
+
+  // ---------- parser: Standar Isi Box ----------
+  function parseStdSheet(aoa) {
+    var h = findHeader(aoa, function (r) { return r.some(function (c) { return /item/.test(c); }); });
+    var ci = 0, cq = 1, info = 'kolom A = Item Number, kolom B = Standar isi box (tebakan, header tidak ketemu)';
+    var start = 0;
+    if (h >= 0) {
+      var H = aoa[h].map(norm);
+      ci = colOf(H, /item/);
+      cq = colOf(H, /std|standar|isi|per\s*box|qty|pcs|quantity|jumlah/, [ci]);
+      if (cq < 0) cq = ci + 1;
+      start = h + 1;
+      info = 'Item Number = "' + (aoa[h][ci] || '') + '", Standar = "' + (aoa[h][cq] || '') + '"';
+    }
+    var map = {}, n = 0;
+    for (var i = start; i < aoa.length; i++) {
+      var r = aoa[i] || [];
+      var item = digits(r[ci]), q = num(r[cq]);
+      if (item.length < 8 || q == null || q <= 0) continue;
+      if (!(item in map)) n++;
+      map[item] = q;
+    }
+    return { map: map, count: n, info: info, error: n ? null : 'Tidak ada pasangan Item Number & standar isi box yang terbaca.' };
+  }
+
+  // ---------- parser: Master Backflush ----------
+  function parseBflSheet(aoa) {
+    var h = findHeader(aoa, function (r) { return r.some(function (c) { return /voucher\s*id|no\.?\s*voucher/.test(c); }); });
+    if (h < 0) return { rows: [], error: 'Header "Voucher ID" tidak ditemukan. Pastikan ini file Master Backflush.' };
+    var H = aoa[h].map(norm);
+    var c = {
+      v: colOf(H, /voucher\s*id|no\.?\s*voucher/), st: colOf(H, /^status/), dt: colOf(H, /tgl/),
+      it: colOf(H, /item/), gr: colOf(H, /shift|group/), qty: colOf(H, /^qty/)
+    };
+    var descCols = []; H.forEach(function (x, i) { if (/^desc/.test(x)) descCols.push(i); });
+    if (c.v < 0 || c.qty < 0) return { rows: [], error: 'Kolom Voucher ID / Qty tidak ditemukan.' };
+    var rows = [];
+    for (var i = h + 1; i < aoa.length; i++) {
+      var r = aoa[i] || [];
+      var vno = digits(r[c.v]), qty = num(r[c.qty]);
+      if (vno.length < 8 || qty == null) continue;
+      var rawDt = c.dt >= 0 ? r[c.dt] : null, ymd = null;
+      if (typeof rawDt === 'number') ymd = serialToYMD(rawDt); else ymd = parseDateText(rawDt, 'mdy');
+      rows.push({
+        voucher: vno, status: c.st >= 0 ? String(r[c.st] || '').trim().toUpperCase() : '',
+        date: ymd ? iso(ymd.y, ymd.m, ymd.d) : '', item: c.it >= 0 ? digits(r[c.it]) : '',
+        desc: descCols.map(function (j) { return String(r[j] || '').trim(); }).join(' ').trim(),
+        group: c.gr >= 0 ? String(r[c.gr] || '').trim() : '', qty: qty
+      });
+    }
+    return { rows: rows, error: rows.length ? null : 'Tidak ada baris backflush yang valid.' };
+  }
+
+  // ---------- parser: Master TER (txt, pemisah "|") ----------
+  function parseTER(text) {
+    var lines = String(text || '').split(/\r?\n/);
+    var idx = { spm: 0, site: 1, item: 2, desc: 3, group: 4, qspm: 5, qchk: 6, qship: 9, batal: 11, dchk: 12, dship: 13, ket: 8, veh: 14, tuj: 15 };
+    var rows = [];
+    lines.forEach(function (ln) {
+      if (ln.indexOf('|') === -1) return;
+      var p = ln.split('|').map(function (x) { return x.trim(); });
+      var first = norm(p[0]);
+      if (first === 'spm') {            // baris header -> petakan kolom berdasarkan nama
+        var m = {};
+        p.forEach(function (name, i) {
+          var n = norm(name);
+          if (n === 'item') m.item = i; else if (n === 'description') m.desc = i; else if (n === 'group') m.group = i;
+          else if (n === 'qty spm') m.qspm = i; else if (n === 'qty check') m.qchk = i;
+          else if (n === 'keterangan selisih') m.ket = i; else if (n === 'qty shipped') m.qship = i;
+          else if (n === 'batal muat') m.batal = i; else if (n === 'date check') m.dchk = i;
+          else if (n === 'ship date') m.dship = i; else if (n === 'no kendaraan') m.veh = i; else if (n === 'tujuan') m.tuj = i;
+        });
+        for (var k in m) idx[k] = m[k];
+        return;
+      }
+      if (!first || first === 'total' || !/^\d/.test(first)) return;
+      var item = digits(p[idx.item]), qs = num(p[idx.qspm]), qc = num(p[idx.qchk]);
+      if (item.length < 8 || qs == null) return;
+      var dc = parseDateText(p[idx.dchk], 'mdy'), ds = parseDateText(p[idx.dship], 'mdy');
+      var d = ds || dc;
+      rows.push({
+        spm: p[0], item: item, desc: p[idx.desc] || '', group: p[idx.group] || '',
+        qspm: qs, qchk: qc == null ? 0 : qc, qship: num(p[idx.qship]) || 0, batal: num(p[idx.batal]) || 0,
+        ket: p[idx.ket] || '', veh: p[idx.veh] || '', tuj: p[idx.tuj] || '',
+        date: d ? iso(d.y, d.m, d.d) : ''
+      });
+    });
+    return { rows: rows, error: rows.length ? null : 'Tidak ada baris SPM yang valid. Pastikan ini file TER (.txt) dengan pemisah "|".' };
+  }
+
+  // ---------- perhitungan: Voucher vs Box ID ----------
+  // opt.tol (default false): toleransi box sisa -- box terakhir boleh
+  // tidak penuh (jumlah box = pembulatan ke atas voucher / standar).
+  function evalIn(v, std, opt) {
+    var s = std[v.item] || null, tol = !!(opt && opt.tol);
+    var o = { status: '', aktual: 0, selisih: 0, std: s };
+    if (v.box == null) {                       // Box ID kosong / "?"
+      o.status = 'kosong'; o.aktual = 0; o.selisih = -v.qty; return o;
+    }
+    if (!s) { o.status = 'nostd'; o.aktual = null; o.selisih = 0; return o; }
+    if (v.box === 1) {
+      // 1 box: sesuai hanya bila isi voucher = standar isi box
+      // (atau <= standar kalau toleransi box sisa diaktifkan)
+      var ok1 = v.qty === s || (tol && v.qty < s);
+      o.aktual = ok1 ? v.qty : s;
+      o.status = ok1 ? 'sesuai' : 'beda';
+    } else {
+      var akt = v.box * s;
+      var ok = akt === v.qty || (tol && v.box === Math.ceil(v.qty / s));
+      o.aktual = ok ? v.qty : akt;
+      o.status = ok ? 'sesuai' : 'beda';
+    }
+    o.selisih = o.aktual - v.qty;
+    return o;
+  }
+
+  function newBucket() {
+    return { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0 };
+  }
+  function pct(a, b) { return b > 0 ? Math.max(0, Math.min(100, a / b * 100)) : null; }
+
+  function summarizeIn(vouchers, std, opt) {
+    var days = {}, items = [], tot = newBucket();
+    vouchers.forEach(function (v) {
+      var e = evalIn(v, std, opt);
+      var it = { v: v, e: e, date: v.date };
+      items.push(it);
+      var d = days[v.date] || (days[v.date] = newBucket());
+      if (e.status === 'nostd') { d.nostd++; tot.nostd++; return; }
+      [d, tot].forEach(function (b) {
+        b.lines++; b.qty += v.qty; b.aktual += e.aktual; b.selisih += e.selisih;
+        if (e.status === 'sesuai') { b.sesuai++; b.credit += v.qty; }
+        else { b.skuSelisih++; b.credit += Math.max(0, Math.min(e.aktual, v.qty)); }
+      });
+    });
+    return finish(days, items, tot);
+  }
+
+  // ---------- perhitungan: Voucher vs Backflush ----------
+  // Status "BFL" dan "MANUAL" = OK. "TRM" (dan status kosong / lainnya)
+  // = selisih. Kalau file Master Backflush diupload, statusnya MENIMPA
+  // status di Master Voucher untuk nomor voucher yang sama; voucher yang
+  // hanya ada di file Backflush ikut dihitung sebagai voucher sendiri.
+  function isBflOk(st) { return st === 'BFL' || st === 'MANUAL'; }
+  function summarizeBfl(vouchers, bflRows) {
+    var byNo = {}, seen = {}, recs = [];
+    (bflRows || []).forEach(function (b) { byNo[b.voucher] = b; });
+    vouchers.forEach(function (v) {
+      var b = byNo[v.voucher]; seen[v.voucher] = 1;
+      recs.push({ voucher: v.voucher, item: v.item, desc: v.desc, group: v.group, qty: v.qty,
+        status: b && b.status ? b.status : v.status, date: v.date, src: b ? 'bfl' : 'voucher' });
+    });
+    (bflRows || []).forEach(function (b) {
+      if (seen[b.voucher]) return;
+      recs.push({ voucher: b.voucher, item: b.item, desc: b.desc, group: b.group, qty: b.qty,
+        status: b.status, date: b.date, src: 'bfl' });
+    });
+    var days = {}, items = [], tot = newBucket();
+    recs.forEach(function (r) {
+      var ok = isBflOk(r.status);
+      var it = { v: r, e: { status: ok ? (r.status === 'MANUAL' ? 'manual' : 'bfl') : 'selisih',
+        aktual: ok ? r.qty : 0, selisih: ok ? 0 : -r.qty }, date: r.date };
+      items.push(it);
+      var d = days[r.date] || (days[r.date] = newBucket());
+      [d, tot].forEach(function (b) {
+        b.lines++; b.qty += r.qty; b.aktual += it.e.aktual; b.selisih += it.e.selisih;
+        if (ok) { b.sesuai++; b.credit += r.qty; } else b.skuSelisih++;
+      });
+    });
+    return finish(days, items, tot);
+  }
+
+  // ---------- perhitungan: Barcode OUT (TER) ----------
+  function summarizeOut(rows) {
+    var days = {}, items = [], tot = newBucket();
+    rows.forEach(function (r) {
+      var chk = Math.min(r.qchk, r.qspm), kurang = Math.max(0, r.qspm - r.qchk);
+      var st = r.qchk >= r.qspm ? 'full' : (r.qchk > 0 ? 'part' : 'none');
+      var it = { v: r, e: { status: st, aktual: chk, selisih: -kurang }, date: r.date };
+      items.push(it);
+      var d = days[r.date] || (days[r.date] = newBucket());
+      [d, tot].forEach(function (b) {
+        b.lines++; b.qty += r.qspm; b.aktual += r.qchk; b.selisih += -kurang; b.credit += chk;
+        if (st === 'full') b.sesuai++; else b.skuSelisih++;
+      });
+    });
+    return finish(days, items, tot);
+  }
+
+  function finish(days, items, tot) {
+    var list = Object.keys(days).filter(Boolean).sort().map(function (k) {
+      var b = days[k]; b.date = k; b.pct = pct(b.credit, b.qty);
+      b.pctLines = pct(b.sesuai, b.lines); return b;
+    });
+    tot.pct = pct(tot.credit, tot.qty); tot.pctLines = pct(tot.sesuai, tot.lines);
+    return { days: list, items: items, total: tot };
+  }
+
+  var api = {
+    MONTHS: MONTHS, num: num, digits: digits,
+    parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates,
+    parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER,
+    evalIn: evalIn, summarizeIn: summarizeIn, summarizeBfl: summarizeBfl, summarizeOut: summarizeOut,
+    isBflOk: isBflOk
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.AkurasiCore = api;
+})(typeof window !== 'undefined' ? window : this);
