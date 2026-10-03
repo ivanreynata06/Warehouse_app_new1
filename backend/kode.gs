@@ -1542,14 +1542,25 @@ function katDariGroupRucika(g) {
   if (g.indexOf('CONTAINER') !== -1) return 'container';
   return 'fitting';
 }
+function _mirip_drawing(v) { return /^(FITTING|LEM|GLUE|RUTAPE|COMM-ART)/.test(normStr(v)); }
+// Baris DASHBOARD_STOCK (0-based): E=4, F=5, I=8 (Drawing hasil rumus).
+// Layout A (upload mentah dari Excel Rucika): E=Drawing, F=Description.
+// Layout B (seperti Import): E=Description, I=Drawing.
+function getKategoriRucikaStockRow(row) {
+  var eDraw = _mirip_drawing(row[4]);
+  var drawing = normStr(row[8]) || (eDraw ? row[4] : '');
+  var desc = eDraw ? (row[5] || '') : (row[4] || row[5] || ''); // E kosong (Drawing kosong, layout A) -> pakai F
+  return getKategoriRucika(drawing, desc);
+}
 function isRucikaFitting() { return ACTIVE_WORKSPACE === 'cibitung_fitting_rucika'; }
 var KATEGORI_RUCIKA = ['lem', 'fitting', 'rutape', 'container'];
+function _adaKataLem(t) { return /(^|[^A-Z])LEM([^A-Z]|$)/.test(t); }
 function getKategoriRucika(drawing, desc) {
   var d = normStr(drawing), ds = normStr(desc);
   if (d) {
     if (d.indexOf('COMM-ART') !== -1) return 'container';
     if (d.indexOf('RUTAPE') !== -1)   return 'rutape';
-    if (d.indexOf('LEM') !== -1 || d.indexOf('GLUE') !== -1) return 'lem';
+    if (_adaKataLem(d) || d.indexOf('GLUE') !== -1) return 'lem';
     if (d.indexOf('FITTING') !== -1)  return 'fitting';
   }
   if (ds.indexOf('CONTAINER BOX') !== -1 && ds.indexOf('SCRAP') !== -1) return 'container';
@@ -1760,7 +1771,7 @@ function getStockData(ss, range, group) {
     // (Stock LEM / Stock Fitting / Rutape / Container Box), bukan kode group.
     if (group) {
       if (rucika) {
-        if (getKategoriRucika(row[8], row[4]) !== katDariGroupRucika(group)) continue;
+        if (getKategoriRucikaStockRow(row) !== katDariGroupRucika(group)) continue;
       } else {
         var rowGroup = normStr(row[3]);
         if (rowGroup !== group) continue;
@@ -1772,7 +1783,7 @@ function getStockData(ss, range, group) {
 
     var kat;
     if (rucika) {
-      kat = getKategoriRucika(row[8], row[4]); // Drawing (I) -> fallback Description (E)
+      kat = getKategoriRucikaStockRow(row); // Drawing (I atau E) -> fallback Description
     } else {
       kat = getKategoriStock(row[8]);
       if (!kat) kat = getKategoriStockFallback(row[4]); // fallback: baca Description (kolom E)

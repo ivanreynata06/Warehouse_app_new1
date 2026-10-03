@@ -613,7 +613,7 @@ function switchTab(name){
 //  (stok per plant beda sistemnya) -- cuma tampilkan Outbound & Inbound.
 // ================================================================
 (function restrictStockTabForOtherDept(){
-  if (window.WH_SESSION && window.WH_SESSION.isFittingImport === false) {
+  if (window.WH_SESSION && window.WH_SESSION.isFittingImport === false && window.WH_SESSION.workspace !== 'cibitung_fitting_rucika') {
     var stockBtn = document.getElementById('tabbtn-stock');
     var stockPanel = document.getElementById('tab-stock');
     if (stockBtn) stockBtn.style.display = 'none';
@@ -647,6 +647,17 @@ var TAB_CONFIG = {
     dateCols: [4]
   }
 };
+
+// Fitting Rucika: format file Excel = hasil export Inventory Detail
+// (Item Number, Site, Unit of Measure, Group, Drawing, Description, Qty, Weight).
+(function adaptStockColsForRucika(){
+  if (!window.WH_SESSION || window.WH_SESSION.workspace !== 'cibitung_fitting_rucika') return;
+  TAB_CONFIG.stock.cols = ['Item Number','Site','Unit of Measure','Group','Drawing','Description','Qty On Hand - Inv Detail','Weight per Loc'];
+  var ref = document.querySelector('#tab-stock .col-ref');
+  if (ref) ref.innerHTML = 'Upload file <b>Excel (.xlsx)</b> hasil export Inventory Detail — kolom <b>A sampai H</b>:<br>' +
+    '<code>A: Item Number</code> · <code>B: Site</code> · <code>C: Unit of Measure</code> · <code>D: Group</code> · <code>E: Drawing</code> · <code>F: Description</code> · <code>G: Qty On Hand</code> · <code>H: Weight per Loc</code><br>' +
+    'Kategori (LEM / Fitting / Rutape / Container Box) dihitung otomatis dari Drawing; kalau Drawing kosong, dari awalan Description (RUGLUE = Lem, selain itu Fitting).';
+})();
 
 var PARSED_ROWS = { stock: null, outbound: null, inbound: null };
 
