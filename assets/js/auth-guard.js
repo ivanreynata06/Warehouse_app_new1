@@ -54,6 +54,7 @@
     'upload'          : 'upload_data.html'
   };
   var isFittingImport = workspace === 'cibitung_fitting_import';
+  var isFittingRucika = workspace === 'cibitung_fitting_rucika';
 
   var menuKeys;
   try {
@@ -75,6 +76,12 @@
   // ditambahkan otomatis supaya langsung bisa dibuka tanpa login ulang.
   // Departemen lain tetap mengikuti Kelola Menu (Panel Admin).
   if (fullAccess && isFittingImport && menuKeys.indexOf('akurasi_scan') === -1) {
+    menuKeys = menuKeys.concat(['akurasi_scan']);
+  }
+  // Fitting Rucika: Akurasi Scan Barcode juga tersedia, tetapi HANYA untuk
+  // role TL dan Admin (fullAccess). Role terbatas (Technician dkk) tetap tidak
+  // dapat -- 'akurasi_scan' memang tidak ada di MENU_KEYS_RESTRICTED_ROLE.
+  if (fullAccess && isFittingRucika && menuKeys.indexOf('akurasi_scan') === -1) {
     menuKeys = menuKeys.concat(['akurasi_scan']);
   }
 
