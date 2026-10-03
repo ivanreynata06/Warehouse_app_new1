@@ -1693,17 +1693,21 @@ function changeFontSize(dir) {
 (function adaptRucika(){
   if (!window.WH_SESSION || window.WH_SESSION.workspace !== 'cibitung_fitting_rucika') return;
   var KAT = [
-    {k:'lem', nm:'Stock LEM', c:'#16a34a'}, {k:'fitting', nm:'Stock Fitting', c:'#4ade80'},
-    {k:'rutape', nm:'Rutape', c:'#6b7280'}, {k:'container', nm:'Container Box', c:'#9ca3af'}
+    {k:'lem', nm:'Stock LEM', c:'#16a34a'}, {k:'fitting', nm:'Stock Fitting', c:'#4ade80'}
   ];
   var q = function(s){ return document.querySelector(s); };
   var kb = document.getElementById('kanbanBar'); if (kb) kb.style.display = 'none'; // kanban PPR = khusus Import
+  // Teks khas PPR (Fitting Import) -> netral untuk Rucika
+  document.querySelectorAll('.logo span, .sidebar-logo span, .brand span').forEach(function(el){ if (/^\s*PPR Stock\s*$/i.test(el.textContent)) el.textContent = 'Warehouse Stock'; });
+  document.querySelectorAll('span, div').forEach(function(el){
+    if (el.children.length === 0 && /Rincian Drawing KELEN/i.test(el.textContent)) el.textContent = el.textContent.replace(/Rincian Drawing KELEN/i, 'Rincian Kategori');
+  });
 
   // Judul & legenda
   var t = q('.dash-title'); if (t) t.textContent = 'Dashboard Stock, Inbound dan Outbound';
   document.title = 'Dashboard Stock, Inbound dan Outbound - Fitting Rucika';
   document.querySelectorAll('.card-title').forEach(function(el){
-    if (/Total Stock Pipa/i.test(el.textContent)) el.textContent = 'Total Stock LEM, Fitting, Rutape & Container Box';
+    if (/Total Stock Pipa/i.test(el.textContent)) el.textContent = 'Total Stock LEM & Fitting';
   });
   var legend = q('.donut-row .legend');
   if (legend) legend.innerHTML = KAT.map(function(c){
@@ -1716,24 +1720,24 @@ function changeFontSize(dir) {
     return '<tr><td><div class="stok-lbl"><span class="dot" style="background:'+c.c+'"></span>'+c.nm+'</div></td><td class="stok-v" id="val-stok-'+c.k+'">&#8212;</td><td class="stok-u">Pcs</td></tr>';
   }).join('');
   document.querySelectorAll('.io-label').forEach(function(el){
-    if (/Pipa PPR/i.test(el.textContent)) el.textContent = 'LEM + Rutape + Container';
+    if (/Pipa PPR/i.test(el.textContent)) el.textContent = 'LEM';
     else if (/Fitting PPR/i.test(el.textContent)) el.textContent = 'Fitting';
   });
   document.querySelectorAll('.lc-leg').forEach(function(el){
-    if (/Pipa PPR/i.test(el.textContent)) el.lastChild.textContent = 'LEM + Rutape + Container';
+    if (/Pipa PPR/i.test(el.textContent)) el.lastChild.textContent = 'LEM';
     else if (/Fitting PPR/i.test(el.textContent)) el.lastChild.textContent = 'Fitting';
   });
 
   // Fast moving: 4 tab
   var tabs = q('.fm-tabs');
   if (tabs) {
-    var JN = ['Lem','Fitting','Rutape','Container Box'];
+    var JN = ['Lem','Fitting'];
     tabs.innerHTML = JN.map(function(j,i){ return '<button class="fm-tab'+(i===0?' active':'')+'" onclick="switchFMTab(\''+j+'\',this)">'+j+'</button>'; }).join('');
     fmTab = 'Lem';
   }
 
   window.renderBar = function(vals){
-    var maxV = Math.max.apply(null, vals.concat([1])), H = 36, lb = ['LEM','FIT','RTP','CBX'];
+    var maxV = Math.max.apply(null, vals.concat([1])), H = 36, lb = ['LEM','FIT'];
     document.getElementById('bar-stok-chart').innerHTML = vals.map(function(v,i){
       return '<div class="bar-col"><div class="bar-rect" style="height:'+Math.max(3,Math.round(v/maxV*H))+'px;background:'+KAT[i].c+';"></div><div class="bar-lbl">'+lb[i]+'</div></div>';
     }).join('');

@@ -366,7 +366,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <div class="kpi-card c-cyan">
             <div class="kpi-label"><i data-lucide="truck" style="width:10px;"></i>Kiriman + Penerimaan</div>
             <div class="kpi-val c-cyan" id="kpi-kirimterima-kg">—</div>
-            <div class="kpi-sub">Kg, rata-rata bulan ini (Pipa+Fitting)</div>
+            <div class="kpi-sub" id="kpi-kirim-sub">Kg, rata-rata bulan ini (Pipa+Fitting)</div>
           </div>
           <div class="kpi-card c-orange">
             <div class="kpi-label"><i data-lucide="zap" style="width:10px;"></i>Produktivitas Kg/FTE</div>
@@ -660,6 +660,8 @@ function loadAll(){
       fteData = res;
       renderAll();
       showLoading(false);
+      try { if (window.WH_SESSION && window.WH_SESSION.workspace === 'cibitung_fitting_rucika') { var ks=document.getElementById('kpi-kirim-sub'); if(ks) ks.textContent='Kg, rata-rata bulan ini (LEM+Fitting)'; } } catch(e){}
+      prefetchSPL();   // siapkan data SPL di latar belakang supaya klik Print langsung membuka dialog
     })
     .withFailureHandler(function(err){ showToast('Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'),'error'); showLoading(false); })
     .getAbsensiFTEData(curBulan, curTahun);
@@ -1252,7 +1254,88 @@ function renderKategoriChart(months, results){
   });
 }
 
+// ================================================================
+//  PRINT SPL CEPAT
+//  Data SPL (karyawan OS + lembur bulan ini + tanda tangan TL) diambil
+//  di latar belakang begitu halaman selesai dimuat (prefetchSPL), lalu
+//  klik Print langsung membuat halaman cetak di iframe tersembunyi dan
+//  memanggil dialog print browser. Tidak ada proses Google Doc / PDF,
+//  tidak membuka tab baru (jadi tidak diblokir popup blocker).
+//  Formulir SPL asli (Word) tetap ada lewat tombol "SPL".
+// ================================================================
+var splCache = {};      // key 'bulan-tahun' -> respons getSPLDataBulk
+var splLoading = {};    // key -> true selagi diambil
+function _splKey(){ return curBulan+'-'+curTahun; }
+function prefetchSPL(cb){
+  var key = _splKey();
+  if (splCache[key]) { if (cb) cb(splCache[key]); return; }
+  if (splLoading[key]) { if (cb) (splLoading[key].cbs = splLoading[key].cbs || []).push(cb); return; }
+  splLoading[key] = { cbs: cb ? [cb] : [] };
+  google.script.run
+    .withSuccessHandler(function(res){
+      var l = splLoading[key]; delete splLoading[key];
+      if (res && res.success) splCache[key] = res;
+      ((l && l.cbs) || []).forEach(function(f){ f(res && res.success ? res : null); });
+    })
+    .withFailureHandler(function(){
+      var l = splLoading[key]; delete splLoading[key];
+      ((l && l.cbs) || []).forEach(function(f){ f(null); });
+    })
+    .getSPLDataBulk(curBulan, curTahun);
+}
+function _escH(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function _splHtml(res, p){
+  var MIN = 8, rows = p.rows.slice(), body = '';
+  while (rows.length < MIN) rows.push(null);
+  rows.forEach(function(r, i){
+    body += '<tr><td class="c">'+(i+1)+'</td><td class="c">'+(r?_escH(r.tgl):'')+'</td><td>'+(r?_escH(p.nama):'')+'</td><td class="c">'+(r?_escH(p.kode):'')+'</td>'+
+      '<td class="c">'+(r?_escH(r.awal):'')+'</td><td class="c">'+(r?_escH(r.akhir):'')+'</td><td class="c">'+(r?_escH(r.total):'')+'</td><td>'+(r?_escH(r.ket):'')+'</td></tr>';
+  });
+  var ttd = p.ttd ? '<img src="'+p.ttd+'" style="max-width:110px;max-height:52px;">' : '';
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>SPL '+_escH(p.nama)+' '+_escH(res.periode)+'</title><style>'+
+    '@page{size:A4 landscape;margin:12mm;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;margin:0;}'+
+    'h1{font-size:16px;text-align:center;margin:0 0 2px;letter-spacing:.5px;}h2{font-size:11px;text-align:center;margin:0 0 12px;font-weight:normal;}'+
+    '.meta{margin-bottom:10px;}.meta td{padding:2px 6px 2px 0;border:0;font-size:11px;}'+
+    'table.t{width:100%;border-collapse:collapse;}table.t th,table.t td{border:1px solid #000;padding:6px 6px;height:26px;}table.t th{background:#eee;font-size:10.5px;}'+
+    '.c{text-align:center;}.tot td{font-weight:bold;height:22px;}'+
+    '.sign{width:100%;margin-top:18px;border-collapse:collapse;}.sign td{border:1px solid #000;width:25%;height:96px;vertical-align:top;text-align:center;padding:6px;font-size:10.5px;}'+
+    '.sign .nm{margin-top:4px;font-size:10px;}'+
+    '</style></head><body>'+
+    '<h1>SURAT PERINTAH LEMBUR (SPL)</h1><h2>Periode '+_escH(res.periode)+'</h2>'+
+    '<table class="meta"><tr><td>Job</td><td>: '+_escH(p.job)+'</td><td style="padding-left:40px;">Bagian</td><td>: '+_escH(p.bagian)+'</td></tr></table>'+
+    '<table class="t"><thead><tr><th style="width:30px;">No</th><th style="width:78px;">Tanggal</th><th>Nama</th><th style="width:96px;">SIMID</th><th style="width:56px;">Awal</th><th style="width:56px;">Akhir</th><th style="width:56px;">Total (jam)</th><th>Keterangan</th></tr></thead><tbody>'+body+
+    '<tr class="tot"><td colspan="6" style="text-align:right;">Total jam lembur</td><td class="c">'+_escH(p.total)+'</td><td></td></tr></tbody></table>'+
+    '<table class="sign"><tr><td>Dibuat oleh<div class="nm">&nbsp;</div></td><td>Diperiksa oleh<div class="nm">&nbsp;</div></td><td>Disetujui oleh (TL)<div style="height:56px;display:flex;align-items:center;justify-content:center;">'+ttd+'</div></td><td>Diketahui oleh<div class="nm">&nbsp;</div></td></tr></table>'+
+    '</body></html>';
+}
+function _printHtmlLangsung(html){
+  var old = document.getElementById('spl-print-frame'); if (old) old.remove();
+  var fr = document.createElement('iframe');
+  fr.id = 'spl-print-frame';
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  document.body.appendChild(fr);
+  var doc = fr.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  var done = false;
+  function go(){ if (done) return; done = true; try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch(e){ showToast('Gagal membuka dialog print: '+e.message,'error'); } }
+  var imgs = doc.images, pending = 0;
+  for (var i=0;i<imgs.length;i++){ if(!imgs[i].complete){ pending++; imgs[i].onload = imgs[i].onerror = function(){ if(--pending<=0) go(); }; } }
+  if (!pending) go(); else setTimeout(go, 1200);
+}
 function previewSPL(kode, nama){
+  var key = _splKey();
+  function tampil(res){
+    var p = res && res.people && res.people[kode];
+    if (!p) { showToast('Data SPL '+nama+' tidak ditemukan, memakai cara lama...','info'); return previewSPLLama(kode, nama); }
+    _printHtmlLangsung(_splHtml(res, p));
+  }
+  if (splCache[key]) { tampil(splCache[key]); return; }          // normal: sudah disiapkan, langsung print
+  showToast('Mengambil data SPL...','info');                     // hanya jika klik sebelum data latar belakang selesai
+  prefetchSPL(function(res){ if (res) tampil(res); else previewSPLLama(kode, nama); });
+}
+
+// Cara lama (Google Doc -> PDF di tab baru). Dipakai hanya sebagai cadangan.
+function previewSPLLama(kode, nama){
   showToast('Menyiapkan preview SPL untuk '+nama+'...','info');
   google.script.run
     .withSuccessHandler(function(res){
@@ -1261,17 +1344,12 @@ function previewSPL(kode, nama){
         var byteChars = atob(res.base64);
         var byteNumbers = new Array(byteChars.length);
         for (var i=0;i<byteChars.length;i++) byteNumbers[i] = byteChars.charCodeAt(i);
-        var byteArray = new Uint8Array(byteNumbers);
-        var blob = new Blob([byteArray], {type:'application/pdf'});
+        var blob = new Blob([new Uint8Array(byteNumbers)], {type:'application/pdf'});
         var url = URL.createObjectURL(blob);
-        // Buka di tab baru -> browser tampilkan PDF viewer bawaan lengkap
-        // dengan tombol Print, tanpa perlu UI preview custom.
         window.open(url, '_blank');
         setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
-        showToast('Preview SPL '+nama+' siap ('+res.totalJamLembur+' jam, '+res.jumlahEntri+' entri) — klik ikon print di tab baru','success');
-      } catch(e) {
-        showToast('Gagal memproses preview: '+e.message,'error');
-      }
+        showToast('Preview SPL '+nama+' siap','success');
+      } catch(e) { showToast('Gagal memproses preview: '+e.message,'error'); }
     })
     .withFailureHandler(function(err){ showToast('Gagal preview SPL: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
     .previewSPL(kode, curBulan, curTahun);

@@ -121,6 +121,7 @@ var API_FUNCTIONS = {
   hapusDataPengirimanByTanggal: hapusDataPengirimanByTanggal,
   resyncBersihJadwalTanggal: resyncBersihJadwalTanggal,
   // Akurasi Scan Barcode (data dibagi antar PC)
+  getSPLDataBulk          : getSPLDataBulk,
   getAkurasiData          : getAkurasiData,
   saveAkurasiData         : saveAkurasiData,
   hapusAkurasiData        : hapusAkurasiData
@@ -1572,12 +1573,10 @@ function getKategoriStock(drawingVal) {
 //    - Drawing KOSONG: Description diawali RUGLUE -> lem,
 //      Description mengandung RUTAPE -> rutape, selain itu -> fitting
 // ================================================================
-var GROUP_LABEL_RUCIKA = ['Stock LEM', 'Stock Fitting', 'Rutape', 'Container Box'];
+var GROUP_LABEL_RUCIKA = ['Stock LEM', 'Stock Fitting']; // Rutape & Container Box (Scrap) sudah digabung ke Stock Fitting
 function katDariGroupRucika(g) {
   g = normStr(g);
   if (g.indexOf('LEM') !== -1)       return 'lem';
-  if (g.indexOf('RUTAPE') !== -1)    return 'rutape';
-  if (g.indexOf('CONTAINER') !== -1) return 'container';
   return 'fitting';
 }
 function _mirip_drawing(v) { return /^(FITTING|LEM|GLUE|RUTAPE|COMM-ART)/.test(normStr(v)); }
@@ -1591,18 +1590,16 @@ function getKategoriRucikaStockRow(row) {
   return getKategoriRucika(drawing, desc);
 }
 function isRucikaFitting() { return ACTIVE_WORKSPACE === 'cibitung_fitting_rucika'; }
-var KATEGORI_RUCIKA = ['lem', 'fitting', 'rutape', 'container'];
+var KATEGORI_RUCIKA = ['lem', 'fitting', 'rutape', 'container']; // rutape/container tetap ada di respons (selalu 0) supaya frontend lama tidak error
 function _adaKataLem(t) { return /(^|[^A-Z])LEM([^A-Z]|$)/.test(t); }
 function getKategoriRucika(drawing, desc) {
   var d = normStr(drawing), ds = normStr(desc);
+  // Hanya 2 kategori: lem dan fitting. Rutape & Container Box Scrap (COMM-ART)
+  // DIGABUNG ke fitting, jadi cukup cek LEM/GLUE; selain itu otomatis fitting.
   if (d) {
-    if (d.indexOf('COMM-ART') !== -1) return 'container';
-    if (d.indexOf('RUTAPE') !== -1)   return 'rutape';
     if (_adaKataLem(d) || d.indexOf('GLUE') !== -1) return 'lem';
-    if (d.indexOf('FITTING') !== -1)  return 'fitting';
+    return 'fitting';
   }
-  if (ds.indexOf('CONTAINER BOX') !== -1 && ds.indexOf('SCRAP') !== -1) return 'container';
-  if (ds.indexOf('RUTAPE') !== -1) return 'rutape';
   if (ds.indexOf('RUGLUE') === 0)  return 'lem';
   return 'fitting'; // drawing kosong / tidak dikenal & bukan RUGLUE -> fitting
 }
@@ -2540,10 +2537,10 @@ function readTransaksi(ss, sheetName, range) {
     if (kat === 'fittingGreen' || kat === 'fittingGrey') trendMap[key].fitting += weight;
   }
   if (rucika) {
-    // 'pipa' = non-fitting (Lem+Rutape+Container) agar grafik 2-garis lama tetap bisa dipakai
-    out.pipa = out.lem + out.rutape + out.container;
+    // 'pipa' = non-fitting (= LEM) agar grafik 2-garis lama tetap bisa dipakai
+    out.pipa = out.lem;
     Object.keys(trendMap).forEach(function(k){
-      var t = trendMap[k]; t.pipa = t.lem + t.rutape + t.container;
+      var t = trendMap[k]; t.pipa = t.lem;
     });
   }
   out.trend = Object.values(trendMap).sort(function(a,b){ return a.label<b.label?-1:1; });
@@ -2590,7 +2587,7 @@ function getFastMovingByRange(ss, range) {
       itemMap[kode] = {
         kode  : kode,
         nama  : nama,
-        jenis : rucika ? ({lem:'Lem', fitting:'Fitting', rutape:'Rutape', container:'Container Box'}[kat])
+        jenis : rucika ? ({lem:'Lem', fitting:'Fitting'}[kat] || 'Fitting')
                        : ((kat === 'pipaGreen' || kat === 'pipaGrey') ? 'Pipa' : 'Fitting'),
         kat   : kat,
         tonase: 0
@@ -2601,7 +2598,7 @@ function getFastMovingByRange(ss, range) {
   var all = Object.values(itemMap).sort(function(a, b) { return b.tonase - a.tonase; });
   if (rucika) { // Top 5 per kategori Rucika
     var hasilR = [];
-    ['Lem', 'Fitting', 'Rutape', 'Container Box'].forEach(function(j) {
+    ['Lem', 'Fitting'].forEach(function(j) {
       hasilR = hasilR.concat(all.filter(function(x){ return x.jenis === j; }).slice(0, 5));
     });
     return hasilR;
@@ -7706,4 +7703,60 @@ function _akurasiHapusKind(sh, kind) {
   for (var i = col.length - 1; i >= 0; i--) {   // dari bawah supaya index tidak bergeser
     if (String(col[i][0]) === kind) sh.deleteRow(i + 2);
   }
+}
+
+
+// ================================================================
+//  SPL CEPAT -- data mentah untuk dicetak langsung di browser.
+//  Cara lama (previewSPL) menyalin template Google Doc, mengisi ~60
+//  placeholder, export PDF, lalu mengirim PDF base64 ke browser: bisa
+//  10 detik lebih dan tab PDF-nya kena blokir popup. Fungsi ini hanya
+//  membaca data (karyawan, lembur satu bulan, tanda tangan TL), dan
+//  halaman Monitoring FTE langsung membuka dialog print dari HTML.
+//  kodeList (opsional): batasi ke kode karyawan tertentu.
+// ================================================================
+function getSPLDataBulk(bulan, tahun, kodeList) {
+  try {
+    bulan = Number(bulan); tahun = Number(tahun);
+    var kr = getKaryawanList();
+    if (!kr.success) return kr;
+    var lr = getLemburList({ bulan: bulan, tahun: tahun });
+    var semua = lr.success ? lr.data : [];
+    var perKode = {};
+    semua.forEach(function (l) { (perKode[l.kode] = perKode[l.kode] || []).push(l); });
+    var want = null;
+    if (kodeList && kodeList.length) { want = {}; kodeList.forEach(function (c) { want[String(c)] = 1; }); }
+    var bulanNamaArr = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
+    var sigCache = {};
+    var people = {};
+    kr.data.forEach(function (k) {
+      if (want && !want[k.kode]) return;
+      if (!want && k.kategori !== 'OS') return;   // default: hanya karyawan OS (yang memakai SPL)
+      var list = (perKode[k.kode] || []).slice().sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
+      var jb = SPL_JOB_BAGIAN_MAP[k.kode] || SPL_JOB_BAGIAN_DEFAULT;
+      var rows = list.map(function (l) {
+        var rawMin = _timeStrToMinutes(l.jamSelesai) - _timeStrToMinutes(l.jamMulai);
+        if (rawMin < 0) rawMin += 24 * 60;
+        var p = l.tanggal.split('-');
+        return { tgl: p[2] + '/' + p[1] + '/' + p[0], awal: l.jamMulai, akhir: l.jamSelesai,
+                 total: Math.round((rawMin / 60) * 100) / 100, ket: l.keterangan || '' };
+      });
+      var ap = list.filter(function (l) { return l.approvalStatus === 'Disetujui' && l.approvedBy; })[0];
+      var sig = '';
+      if (ap) {
+        if (!(ap.approvedBy in sigCache)) {
+          var data = '';
+          try {
+            var blob = _getTlSignatureBlob(ap.approvedBy);
+            if (blob) data = 'data:' + (blob.getContentType() || 'image/png') + ';base64,' + Utilities.base64Encode(blob.getBytes());
+          } catch (e) { data = ''; }
+          sigCache[ap.approvedBy] = data;
+        }
+        sig = sigCache[ap.approvedBy];
+      }
+      people[k.kode] = { kode: k.kode, nama: k.nama, job: jb.job, bagian: jb.bagian, rows: rows,
+                         total: Math.round(rows.reduce(function (a, r) { return a + r.total; }, 0) * 100) / 100, ttd: sig };
+    });
+    return { success: true, bulan: bulan, tahun: tahun, periode: tahun + '/' + bulanNamaArr[bulan], people: people };
+  } catch (err) { return { success: false, error: err.message }; }
 }

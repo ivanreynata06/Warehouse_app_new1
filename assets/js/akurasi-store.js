@@ -146,19 +146,31 @@
 
   function ingest(kind, files, opts) {
     opts = opts || {};
+    var prog = function (pct, label) { try { if (opts.onProgress) opts.onProgress(pct, label); } catch (e) {} };
+    prog(5, 'Mengambil data terbaru dari server...');
     files = Array.prototype.slice.call(files || []);
     if (!files.length) return Promise.reject(new Error('Pilih file dulu.'));
     // Selalu bandingkan dengan data TERBARU di server (bukan cache), supaya upload dari
     // dua PC tidak saling menimpa.
     return load().then(function (cur) {
       var old = cur.data[kind], now = nowInfo();
-      if (kind === 'std' && old && !opts.force) {
+      var stdLengkapi = kind === 'std' && old && !opts.force && !(old.desc && Object.keys(old.desc).length);
+      if (kind === 'std' && old && !opts.force && !stdLengkapi) {
         throw new Error('Standar Isi Box bersifat permanen dan sudah pernah diupload. Tidak bisa ditimpa.');
       }
+      prog(20, 'Membaca file...');
       if (kind === 'ter') return mergeOut(files, old, opts, now);
       return readSheets(files[0]).then(function (sheets) {
+        prog(40, 'Memeriksa isi file...');
         if (kind === 'std') {
           var p = bestSheet(sheets, C.parseStdSheet);
+          if (stdLengkapi) {
+            // Standar lama dipertahankan (permanen), hanya deskripsi item yang dilengkapi.
+            var nd = Object.keys(p.desc || {}).length;
+            if (!nd) throw new Error('File ini tidak punya kolom deskripsi (DESC). Tidak ada yang dilengkapi.');
+            return { rec: { map: old.map, desc: p.desc, count: old.count, meta: old.meta }, force: true,
+                     msg: 'Deskripsi ' + nd.toLocaleString('id-ID') + ' item dilengkapi. Standar isi box lama tidak diubah.' };
+          }
           return { rec: { map: p.map, desc: p.desc, count: p.count, meta: { name: files[0].name, at: now.text, by: now.by, info: p.info } },
                    force: !!opts.force, msg: 'Standar isi box tersimpan permanen: ' + p.count.toLocaleString('id-ID') + ' item (' + p.info + ')' };
         }
@@ -201,7 +213,9 @@
                  msg: 'Berhasil: ' + msgStats(mb.stats) };
       });
     }).then(function (o) {
+      prog(70, 'Menyimpan ke server...');
       return save(kind, o.rec, o.force).then(function (s) {
+        prog(100, 'Selesai');
         return { msg: o.msg, remote: s.remote, warn: s.warn || '', rec: o.rec, stats: o.stats };
       });
     });

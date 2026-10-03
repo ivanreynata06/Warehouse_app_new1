@@ -17,8 +17,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="./assets/js/akurasi-core.js?v=20261003a"></script>
-<script src="./assets/js/akurasi-store.js?v=20261003a"></script>
+<script src="./assets/js/akurasi-core.js?v=20261003b"></script>
+<script src="./assets/js/akurasi-store.js?v=20261003b"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -202,7 +202,7 @@ table.preview-table tr.row-valid td{color:var(--txt);}
 <div class="sidebar" id="sidebar">
   <div class="logo">
     <img src="./assets/img/rucika-logo.png" alt="Rucika" style="height:22px;width:auto;object-fit:contain;">
-    <div><div class="logo-text">PPR Stock</div><div class="logo-sub">Tonase Persiapan</div></div>
+    <div><div class="logo-text" id="logo-title">PPR Stock</div><div class="logo-sub" id="logo-sub">Tonase Persiapan</div></div>
   </div>
   <div class="sec-title">Menu</div>
   <div class="mitem" onclick="navTo('wh_control_tower')">
@@ -320,6 +320,7 @@ table.preview-table tr.row-valid td{color:var(--txt);}
             Upload ulang file yang sama aman: baris yang sama (nomor voucher / SPM) hanya diperbarui, tidak dobel.
           </div>
           <div class="status-msg" id="akurasi-conn" style="margin-top:8px;"></div>
+          <div id="akurasi-prog" style="display:none;margin-top:10px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);margin-bottom:5px;"><span id="akurasi-prog-label">Memproses...</span><b id="akurasi-prog-pct">0%</b></div><div style="height:8px;border-radius:8px;background:var(--bg2);overflow:hidden;border:1px solid var(--border);"><div id="akurasi-prog-bar" style="height:100%;width:0;background:linear-gradient(90deg,#10b981,#34d399);border-radius:8px;transition:width .25s ease;"></div></div></div>
         </div>
       </div>
       <div id="akurasi-cards" style="display:flex;flex-direction:column;gap:12px;"></div>
@@ -753,6 +754,9 @@ function cekItemTakTerkategori(rows){
 function tampilkanWarningTakTerkategori(tab, items){
   var el = document.getElementById('uncat-warn-'+tab);
   if (!el) return;
+  // Fitting Rucika: semua item selain LEM otomatis masuk Fitting (termasuk Rutape &
+  // Container Box), jadi tidak ada konsep "tidak masuk kategori Pipa/Fitting PPR".
+  if (window.WH_SESSION && window.WH_SESSION.workspace === 'cibitung_fitting_rucika') { el.style.display = 'none'; return; }
   if (!items || !items.length){ el.style.display = 'none'; return; }
   var totalBerat = items.reduce(function(a,it){ return a+it.totalBerat; }, 0);
   var listHtml = items.slice(0, 10).map(function(it){
@@ -1022,9 +1026,14 @@ function handleExcelFile(evt, tab){
 
 function downloadTemplate(tab){
   var cfg = TAB_CONFIG[tab];
-  var exampleRow = tab === 'stock'
-    ? ['PPR001','Cibitung','PCS','GroupA','Pipa PPR 20mm','-',1000,520.5]
-    : ['PPR001','PIPA PPR KELEN GREEN','Pipa PPR 20mm','-','2026-08-05',350.2];
+  var rucika = window.WH_SESSION && window.WH_SESSION.workspace === 'cibitung_fitting_rucika';
+  var exampleRow = rucika
+    ? (tab === 'stock'
+        ? ['20250400000000','10021','BX','R010','LEM 400 GR','RUGLUE 400 GR',5839,28027.2]
+        : ['20014103026000','FITTING','ELBOW AW 3/4"','-','2026-10-03',350.2])
+    : (tab === 'stock'
+        ? ['PPR001','Cibitung','PCS','GroupA','Pipa PPR 20mm','-',1000,520.5]
+        : ['PPR001','PIPA PPR KELEN GREEN','Pipa PPR 20mm','-','2026-08-05',350.2]);
   var aoa = [cfg.cols, exampleRow];
   var ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = cfg.cols.map(function(){ return {wch:18}; });
@@ -1331,7 +1340,8 @@ window.AkurasiUpload = (function(){
         '<div class="col-ref">' + sp.desc + '</div><div class="col-ref" style="margin-top:6px;">' + st + '</div>' +
         (sp.k === 'ter' ? '<div class="col-ref" style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b>Tanggal kirim</b> <input type="date" id="akurasi-date" value="' + esc(dateVal()) + '" onchange="AkurasiUpload.setDate(this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--txt);font-size:11.5px;"> <span style="color:var(--txt3);">berlaku untuk semua baris di file yang diupload</span></div>' : '') +
         '<div class="btn-row" style="margin-top:10px;">' +
-        (sp.k === 'std' && d ? '<span style="font-size:11px;color:var(--txt3);">Terkunci. Standar isi box permanen dan tidak bisa diganti dari sini.</span>'
+        (sp.k === 'std' && d && !(d.desc && Object.keys(d.desc).length) ? '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.pick(\'std\')">Lengkapi deskripsi item</button><span style="font-size:11px;color:var(--txt3);">Standar lama tetap, hanya deskripsi (kolom DESC) yang ditambahkan.</span>'
+          : sp.k === 'std' && d ? '<span style="font-size:11px;color:var(--txt3);">Terkunci. Standar isi box permanen dan tidak bisa diganti dari sini.</span>'
           : '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.pick(\'' + sp.k + '\')">' + (d ? 'Ganti / tambah file' : 'Pilih file') + '</button>') +
         (sp.k === 'std' && data.voucher ? '<button class="btn" onclick="AkurasiUpload.template()">Unduh daftar item</button>' : '') +
         (d && sp.k !== 'std' ? '<button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.remove(\'' + sp.k + '\')">Hapus</button>' : '') +
@@ -1353,18 +1363,34 @@ window.AkurasiUpload = (function(){
   }
   function run(k, files){
     if (!files || !files.length) return;
-    busy = true; draw(); note('Membaca dan menyimpan ' + S.TITLES[k] + '...');
-    S.ingest(k, files, { dateMode: document.getElementById('akurasi-datemode').value, date: (document.getElementById('akurasi-date') || {}).value || pickedDate }).then(function(r){
-      busy = false; return refresh().then(function(){
+    busy = true; draw(); note('Memproses ' + S.TITLES[k] + '...');
+    var pt = startProg();
+    S.ingest(k, files, { dateMode: document.getElementById('akurasi-datemode').value, date: (document.getElementById('akurasi-date') || {}).value || pickedDate, onProgress: pt.set }).then(function(r){
+      pt.set(100, 'Selesai'); pt.stop(); busy = false; return refresh().then(function(){
         if (r.remote) note(r.msg + ' Tersimpan di server.');
         else note(r.msg + ' Tapi BELUM tersimpan di server: ' + r.warn, 'warn');
       });
-    }).catch(function(e){ busy = false; draw(); note(e.message || String(e), 'err'); });
+    }).catch(function(e){ pt.stop(true); busy = false; draw(); note(e.message || String(e), 'err'); });
+  }
+  // Loading bar: persentase mengikuti tahap (baca, periksa, simpan); saat menunggu server
+  // bar merayap pelan sampai 95% supaya terlihat tetap bekerja, lalu 100% saat selesai.
+  function startProg(){
+    var box = document.getElementById('akurasi-prog'), bar = document.getElementById('akurasi-prog-bar'),
+        lab = document.getElementById('akurasi-prog-label'), pct = document.getElementById('akurasi-prog-pct');
+    var cur = 0, floor = 0, timer = null;
+    box.style.display = 'block';
+    function paint(v, l){ cur = Math.max(cur, Math.min(100, v)); bar.style.width = cur + '%'; pct.textContent = Math.round(cur) + '%'; if (l) lab.textContent = l; }
+    paint(2, 'Memulai...');
+    timer = setInterval(function(){ if (cur < 95 && cur >= floor) paint(cur + Math.max(0.15, (95 - cur) * 0.03)); }, 250);
+    return {
+      set: function(v, l){ floor = v; paint(v, l); },
+      stop: function(err){ clearInterval(timer); if (err) { bar.style.background = '#ef4444'; lab.textContent = 'Gagal'; } else setTimeout(function(){ box.style.display = 'none'; }, 1800); }
+    };
   }
   function remove(k){
     if (!confirm('Hapus ' + S.TITLES[k] + ' dari server? Dashboard Akurasi Scan di semua PC ikut kosong untuk data ini.')) return;
     busy = true; draw();
-    S.clear(k).then(function(r){ busy = false; return refresh().then(function(){ note(r.remote ? S.TITLES[k] + ' dihapus.' : 'Dihapus di perangkat ini saja: ' + r.warn, r.remote ? '' : 'warn'); }); })
+    var pt2 = startProg(); pt2.set(30, 'Menghapus dari server...'); S.clear(k).then(function(r){ pt2.set(100, 'Selesai'); pt2.stop(); busy = false; return refresh().then(function(){ note(r.remote ? S.TITLES[k] + ' dihapus.' : 'Dihapus di perangkat ini saja: ' + r.warn, r.remote ? '' : 'warn'); }); })
       .catch(function(e){ busy = false; draw(); note(e.message || String(e), 'err'); });
   }
   function template(){
@@ -1377,6 +1403,14 @@ window.AkurasiUpload = (function(){
   function init(){ if (!loaded) refresh(); }
   if (location.hash === '#akurasi') setTimeout(function(){ switchTab('akurasi'); }, 0);
   return { init: init, pick: pick, remove: remove, template: template, setDate: setDate };
+})();
+</script>
+<script>
+(function(){
+  if (!window.WH_SESSION || window.WH_SESSION.workspace !== 'cibitung_fitting_rucika') return;
+  var t = document.getElementById('logo-title'), u = document.getElementById('logo-sub');
+  if (t) t.textContent = 'Warehouse Stock';
+  if (u) u.textContent = 'Fitting Rucika';
 })();
 </script>
 </body>

@@ -1,7 +1,7 @@
 /*!
  * rucika-profile.js
  * Profil tampilan Control Tower khusus workspace "cibitung_fitting_rucika".
- * Kategori: LEM | FITTING | RUTAPE | CONTAINER BOX SCRAP (dari backend, lihat
+ * Kategori: LEM | FITTING (Rutape & Container Box Scrap digabung ke FITTING; dari backend, lihat
  * getKategoriRucika() di backend/kode.gs). Untuk workspace lain file ini
  * tidak melakukan apa-apa.
  *
@@ -14,12 +14,10 @@
   window.IS_RUCIKA = true;
 
   // Kapasitas rak per kategori. ISI angka sebenarnya; 0 = belum diatur ("—").
-  var RAK_CAP = { lem: 0, fitting: 0, rutape: 0, container: 0 };
+  var RAK_CAP = { lem: 0, fitting: 0 };
   var KAT = [
     { k: 'lem',       nm: 'LEM',                 rak: 'Rak Lem',               col: '#3b9dff', cls: 'c-blue'   },
-    { k: 'fitting',   nm: 'Fitting',             rak: 'Rak Fitting',           col: '#22d3a5', cls: 'c-green'  },
-    { k: 'rutape',    nm: 'Rutape',              rak: 'Rak Rutape',            col: '#ffb020', cls: 'c-amber'  },
-    { k: 'container', nm: 'Container Box',       rak: 'Container Box Scrap',   col: '#a78bfa', cls: 'c-purple' }
+    { k: 'fitting',   nm: 'Fitting',             rak: 'Rak Fitting',           col: '#22d3a5', cls: 'c-green'  }
   ];
 
   function $(id) { return document.getElementById(id); }
@@ -52,7 +50,7 @@
     }
     // Judul grafik IO
     document.querySelectorAll('.card-title').forEach(function (el) {
-      if (/Outbound vs Inbound\s+—\s+PIPA/i.test(el.textContent)) el.lastChild.textContent = 'Outbound vs Inbound — LEM, RUTAPE & CONTAINER (kg)';
+      if (/Outbound vs Inbound\s+—\s+PIPA/i.test(el.textContent)) el.lastChild.textContent = 'Outbound vs Inbound — LEM (kg)';
     });
     // Section kapasitas rak/kanban: sumber data Rucika belum ditentukan -> sembunyikan
     document.querySelectorAll('.sec-divider-label').forEach(function (el) {
@@ -77,7 +75,7 @@
       });
     }
     var o = window._dataIOOut || {}, i = window._dataIOIn || {};
-    var allK = ['lem', 'fitting', 'rutape', 'container'];
+    var allK = ['lem', 'fitting'];
     setText('kpi-out', fmt(sumKeys(o, allK)));
     setText('kpi-in', fmt(sumKeys(i, allK)));
     if (window._dataLT) {
@@ -101,12 +99,12 @@
   };
 
   window.loadStockTrend = function (months) {
-    window._stockTrend = months.map(function (m) { return { label: m.label, lem: 0, fitting: 0, rutape: 0, container: 0, total: 0 }; });
+    window._stockTrend = months.map(function (m) { return { label: m.label, lem: 0, fitting: 0, total: 0 }; });
     google.script.run.withSuccessHandler(function (resp) {
       if (!resp || !resp.success || !resp.results) { showChartError('chart-stock-trend', resp && resp.error); renderStockTrendChart(); return; }
       window._stockTrend = resp.results.map(function (d, idx) {
         var t = (d && d.stock && d.stock.tonase) || {};
-        return { label: (months[idx] && months[idx].label) || '', lem: t.lem || 0, fitting: t.fitting || 0, rutape: t.rutape || 0, container: t.container || 0, total: t.total || 0 };
+        return { label: (months[idx] && months[idx].label) || '', lem: t.lem || 0, fitting: t.fitting || 0, total: t.total || 0 };
       });
       renderStockTrendChart();
     }).withFailureHandler(function (err) {
@@ -128,8 +126,8 @@
       '<div class="leg-item"><div class="leg-dot" style="background:#5be3ff;color:#5be3ff"></div>Total Tonase</div>';
   };
 
-  // IO: kiri = Lem+Rutape+Container, kanan = Fitting
-  function nonFit(o) { return sumKeys(o, ['lem', 'rutape', 'container']); }
+  // IO: kiri = LEM, kanan = Fitting (Rutape & Container sudah masuk Fitting)
+  function nonFit(o) { return sumKeys(o, ['lem']); }
   window.loadIOTrend = function (months) {
     window._ioTrend = months.map(function (m) { return { label: m.label, outPipa: 0, inPipa: 0, outFit: 0, inFit: 0, outAll: 0, inAll: 0 }; });
     google.script.run.withSuccessHandler(function (resp) {
@@ -153,9 +151,23 @@
     setText('io-pipa-badge', 'Out: ' + fmt(outP) + ' | In: ' + fmt(inP) + ' kg');
     setText('io-fit-badge', 'Out: ' + fmt(outF) + ' | In: ' + fmt(inF) + ' kg');
     var np = $('io-pipa-notif'), nf = $('io-fit-notif');
-    if (np) { if (outP > inP * 1.15) { np.style.display = 'flex'; np.textContent = '⚠️ Outbound Lem/Rutape/Container (' + fmt(outP) + ' kg) melebihi Inbound (' + fmt(inP) + ' kg)'; } else np.style.display = 'none'; }
+    if (np) { if (outP > inP * 1.15) { np.style.display = 'flex'; np.textContent = '⚠️ Outbound LEM (' + fmt(outP) + ' kg) melebihi Inbound (' + fmt(inP) + ' kg)'; } else np.style.display = 'none'; }
     if (nf) { if (outF > inF * 1.15) { nf.style.display = 'flex'; nf.textContent = '⚠️ Outbound Fitting (' + fmt(outF) + ' kg) melebihi Inbound (' + fmt(inF) + ' kg)!'; } else nf.style.display = 'none'; }
   };
+
+  // Notifikasi "Persiapan Pipa / Rak Pipa" adalah konsep Fitting Import (target PPR),
+  // tidak relevan untuk Rucika -> buang dari strip notifikasi.
+  if (typeof window.renderNotifs === 'function') {
+    var _rn = window.renderNotifs;
+    window.renderNotifs = function () {
+      _rn.apply(this, arguments);
+      document.querySelectorAll('#notif-strip .notif-item').forEach(function (el) {
+        if (/Persiapan Pipa|Rak Pipa|Rak Fitting|Box Fitting/i.test(el.textContent)) el.remove();
+      });
+    };
+  }
+  // Rekap muatan per PIC (target persiapan Pipa & Fitting PPR) khusus Fitting Import
+  var rm = document.getElementById('section-rekap-muatan'); if (rm) rm.style.display = 'none';
 
   buildLayout();
 })();
