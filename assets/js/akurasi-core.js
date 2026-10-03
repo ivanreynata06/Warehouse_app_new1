@@ -317,7 +317,8 @@
   }
 
   function newBucket() {
-    return { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0 };
+    return { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0,
+             nBfl: 0, nManual: 0, nTrm: 0, qBfl: 0, qManual: 0, qTrm: 0 };
   }
   function pct(a, b) { return b > 0 ? Math.max(0, Math.min(100, a / b * 100)) : null; }
 
@@ -360,15 +361,22 @@
         status: b.status, date: b.date, src: 'bfl', close: b.closeBfl || null });
     });
     var days = {}, items = [], tot = newBucket();
+    // BFL = di-scan barcode scanner (wajib). MANUAL = diinput manual di sistem. TRM (atau
+    // status kosong) = belum ter-scan sama sekali / belum masuk stok.
+    // Akurasi scan = hanya BFL; MANUAL dan TRM sama-sama dihitung belum ter-scan, tetapi
+    // dipisah supaya kelihatan mana yang manual dan mana yang masih TRM.
     recs.forEach(function (r) {
-      var ok = isBflOk(r.status);
-      var it = { v: r, e: { status: ok ? (r.status === 'MANUAL' ? 'manual' : 'bfl') : 'selisih',
-        aktual: ok ? r.qty : 0, selisih: ok ? 0 : -r.qty }, date: r.date, close: ok ? (r.close || null) : null };
+      var kind = r.status === 'BFL' ? 'bfl' : (r.status === 'MANUAL' ? 'manual' : 'trm');
+      var ok = kind !== 'trm';
+      var it = { v: r, e: { status: kind === 'trm' ? 'selisih' : kind,
+        aktual: kind === 'bfl' ? r.qty : 0, selisih: kind === 'bfl' ? 0 : -r.qty }, date: r.date, close: ok ? (r.close || null) : null };
       items.push(it);
       var d = days[r.date] || (days[r.date] = newBucket());
       [d, tot].forEach(function (b) {
         b.lines++; b.qty += r.qty; b.aktual += it.e.aktual; b.selisih += it.e.selisih;
-        if (ok) { b.sesuai++; b.credit += r.qty; if (it.close) b.closed = (b.closed || 0) + 1; } else b.skuSelisih++;
+        if (kind === 'bfl') { b.nBfl++; b.qBfl += r.qty; b.sesuai++; b.credit += r.qty; }
+        else { b.skuSelisih++; if (kind === 'manual') { b.nManual++; b.qManual += r.qty; } else { b.nTrm++; b.qTrm += r.qty; } }
+        if (it.close) b.closed = (b.closed || 0) + 1;
       });
     });
     return finish(days, items, tot);

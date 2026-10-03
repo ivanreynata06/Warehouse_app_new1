@@ -178,6 +178,20 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 .empty h2{font-family:'Outfit',sans-serif;font-size:18px;font-weight:600;}
 .empty p{font-size:12px;color:var(--txt2);line-height:1.6;}
 
+.day .bar.stack{display:flex;}
+.comp{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
+.comp-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px;font-size:11px;color:var(--txt3);}
+.comp-h b{font-family:'Outfit',sans-serif;font-size:12.5px;color:var(--txt);font-weight:600;}
+.comp-bar{display:flex;height:12px;border-radius:8px;overflow:hidden;background:var(--line);}
+.comp-bar i{display:block;height:100%;}
+.comp-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--txt2);}
+.comp-leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;}
+.comp-leg b{color:var(--txt);font-variant-numeric:tabular-nums;margin-left:3px;}
+.seg{display:inline-flex;align-items:center;gap:0;font-size:10.5px;color:var(--txt3);}
+.seg span{margin-right:8px;}
+.seg button{background:var(--card2);border:1px solid var(--line2);color:var(--txt2);padding:5px 12px;font-size:10.5px;font-weight:600;cursor:pointer;}
+.seg button:first-of-type{border-radius:8px 0 0 8px;} .seg button:last-of-type{border-radius:0 8px 8px 0;border-left:0;}
+.seg button.on{background:var(--green);border-color:var(--green);color:#04130d;}
 .src-note{font-size:10.5px;color:var(--txt3);line-height:1.6;margin:0 0 12px;}
 .src-note.warn{background:var(--amber-bg);color:#f3c46b;border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;}
 .src-note.warn b{color:var(--amber);}
@@ -296,12 +310,14 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
           <p id="lane-desc"></p>
         </div>
         <div class="filters">
+          <div class="seg" id="basis-seg" hidden></div>
           <label class="tolbtn" title="Box ID lebih dari 1 dan box terakhir tidak penuh dianggap sesuai"><input type="checkbox" id="tol" onchange="setTol(this.checked)"> Toleransi box sisa</label>
           <input class="inp" id="q" type="search" placeholder="Cari item, deskripsi, voucher / SPM" oninput="onSearch(this.value)">
         </div>
       </div>
 
       <div class="rail" id="rail" aria-label="Pilih tanggal"></div>
+      <div class="comp" id="comp" hidden></div>
       <div class="kpis" id="kpis"></div>
       <div class="closep" id="closep" hidden></div>
       <div class="board" id="board"></div>
@@ -322,8 +338,8 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261003e"></script>
-<script src="./assets/js/akurasi-store.js?v=20261003e"></script>
+<script src="./assets/js/akurasi-core.js?v=20261003d"></script>
+<script src="./assets/js/akurasi-store.js?v=20261003d"></script>
 <script>
 (function(){
 'use strict';
@@ -335,7 +351,8 @@ var PAGE = 40;
 /* ───────── state ───────── */
 var S = {
   data: { voucher: null, std: null, bfl: null, ter: null },   // {rows|map, meta}, dari server
-  opts: { tol: false },                // tampilan saja, disimpan di perangkat ini
+  opts: { tol: false },
+  basis: 'item',                      // Backflush: hitung persen per 'item' (voucher) atau per 'qty'                // tampilan saja, disimpan di perangkat ini
   source: '', warn: '', needStd: false,
   lane: 'in', month: '', day: 'all', q: '', shown: {}, res: null, resRaw: null
 };
@@ -392,18 +409,22 @@ function laneMonths(k){
   if (r) r.days.forEach(function(d){ set[d.date.slice(0, 7)] = 1; });
   return Object.keys(set).sort();
 }
-function sumDays(days){
-  var t = { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0 };
-  days.forEach(function(d){ for (var k in t) t[k] += d[k]; });
+function sumDays(days, k){
+  var t = { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0, nBfl: 0, nManual: 0, nTrm: 0, qBfl: 0, qManual: 0, qTrm: 0 };
+  days.forEach(function(d){ for (var f in t) t[f] += d[f] || 0; });
   t.pct = t.qty > 0 ? Math.max(0, Math.min(100, t.credit / t.qty * 100)) : null;
   t.pctLines = t.lines > 0 ? t.sesuai / t.lines * 100 : null;
+  if (k === 'bfl' && S.basis === 'item') t.pct = t.pctLines;
   return t;
 }
+// Backflush: persen per item (jumlah voucher) atau per qty, sesuai pilihan
+function share(n, q, t){ return S.basis === 'item' ? (t.lines ? n / t.lines * 100 : null) : (t.qty ? q / t.qty * 100 : null); }
 function view(k){
   var r = S.resRaw[k]; if (!r) return null;
   var days = r.days.filter(function(d){ return !S.month || d.date.indexOf(S.month) === 0; });
   var items = r.items.filter(function(i){ return !S.month || (i.date || '').indexOf(S.month) === 0; });
-  return { days: days, items: items, total: sumDays(days), noStd: r.noStd };
+  if (k === 'bfl') days = days.map(function(d){ var o = {}; for (var f in d) o[f] = d[f]; o.pct = S.basis === 'item' ? d.pctLines : d.pct; return o; });
+  return { days: days, items: items, total: sumDays(days, k), noStd: r.noStd };
 }
 
 /* ───────── definisi jalur ───────── */
@@ -439,25 +460,26 @@ var LANES = {
   },
   bfl: {
     name: 'Voucher vs Backflush', tag: 'Barcode In', color: 'var(--blue)',
-    desc: 'Status BFL dan MANUAL dianggap sudah backflush (OK). Status TRM atau belum ada status dianggap selisih.',
+    desc: 'BFL = di-scan dengan barcode scanner (yang diwajibkan). MANUAL = diinput manual di sistem. TRM = belum ter-scan sama sekali atau item belum masuk stok.',
     kpi: function(t){ return [
-      ['Voucher', fmt(t.lines), 'dokumen produksi'],
-      ['Qty scan', fmt(t.qty), 'pcs'],
-      ['Qty backflush', fmt(t.aktual), 'BFL + manual'],
-      ['Selisih SKU', fmt(t.skuSelisih), 'TRM / belum backflush'],
-      ['Total selisih', sgn(t.selisih), 'pcs, minus = kurang'],
-      ['Akurasi backflush', fmtP(t.pct), fmt(t.sesuai) + ' dari ' + fmt(t.lines) + ' voucher OK']
+      ['Total item', fmt(t.lines), fmt(t.qty) + ' pcs voucher'],
+      ['Di-scan (BFL)', fmt(t.nBfl), fmtP(share(t.nBfl, t.qBfl, t)) + ' · ' + fmt(t.qBfl) + ' pcs'],
+      ['Input manual', fmt(t.nManual), fmtP(share(t.nManual, t.qManual, t)) + ' · ' + fmt(t.qManual) + ' pcs'],
+      ['Masih TRM', fmt(t.nTrm), fmtP(share(t.nTrm, t.qTrm, t)) + ' · ' + fmt(t.qTrm) + ' pcs'],
+      ['Belum ter-scan', fmt(t.nManual + t.nTrm), 'manual + TRM, ' + fmt(t.qManual + t.qTrm) + ' pcs'],
+      ['Akurasi scan', fmtP(t.pct), 'BFL dari semua item' + (S.basis === 'qty' ? ' (per qty)' : '')]
     ]; },
     cols: [
-      { key: 'bfl', label: 'Sudah backflush', cls: 'ok', hint: 'Status BFL' },
-      { key: 'manual', label: 'Manual', cls: 'info', hint: 'Dianggap OK' },
-      { key: 'selisih', label: 'Selisih', cls: 'bad', hint: 'TRM atau belum backflush' }
+      { key: 'bfl', label: 'Di-scan (BFL)', cls: 'ok', hint: 'Diinput pakai barcode scanner' },
+      { key: 'manual', label: 'Input manual', cls: 'warn', hint: 'Diinput manual di sistem, bukan scan' },
+      { key: 'selisih', label: 'Masih TRM', cls: 'bad', hint: 'Belum ter-scan / belum masuk stok' }
     ],
-    th: ['Tanggal', 'Scan', 'Backflush', 'Selisih SKU', 'Total selisih', 'Akurasi'],
-    row: function(d){ return [fmt(d.qty), fmt(d.aktual), fmt(d.skuSelisih), sgn(d.selisih)]; },
-    foot: function(t){ return [fmt(t.qty), fmt(t.aktual), fmt(t.skuSelisih), sgn(t.selisih)]; },
+    th: ['Tanggal', 'Item', 'Scan (BFL)', 'Manual', 'TRM', '% Scan'],
+    cells: function(d){ return [[fmt(d.lines), ''], [fmt(d.nBfl) + ' <span style="color:var(--txt3)">(' + fmtP(share(d.nBfl, d.qBfl, d)) + ')</span>', ''],
+      [fmt(d.nManual), d.nManual ? 'pos' : 'zero'], [fmt(d.nTrm), d.nTrm ? 'neg' : 'zero']]; },
+    row: function(d){ return []; }, foot: function(t){ return []; },
     card: function(i){ var v = i.v, e = i.e;
-      var chip = e.status === 'selisih' ? '<span class="chip bad">' + sgn(e.selisih) + '</span>' : e.status === 'manual' ? '<span class="chip info">manual</span>' : '<span class="chip ok">BFL</span>';
+      var chip = e.status === 'selisih' ? '<span class="chip bad">TRM</span>' : e.status === 'manual' ? '<span class="chip warn">manual</span>' : '<span class="chip ok">BFL</span>';
       return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status'), chip, v.voucher, i.close);
     }
   },
@@ -541,6 +563,13 @@ function renderLanes(){
     var miss = k === 'out'
       ? (t.skuSelisih ? '<span class="miss c-bad">' + fmt(t.skuSelisih) + ' item belum penuh</span>' : '<span class="miss c-ok">Semua item sudah ter-scan</span>')
       : (t.skuSelisih ? '<span class="miss c-bad">' + fmt(t.skuSelisih) + ' voucher selisih</span>' : '<span class="miss c-ok">Tidak ada selisih</span>');
+    if (k === 'bfl') {
+      var shp = share(t.nBfl, t.qBfl, t);
+      html += '<button class="lane' + active + '" style="--c:' + L.color + '" onclick="pickLane(\'bfl\')">' + ring(t.pct) +
+        '<div><h3>' + L.name + '</h3><div class="sub">Di-scan (BFL) · ' + fmt(v.days.length) + ' hari</div><div class="nums"><span>Di-scan <b>' + fmt(t.nBfl) + ' dari ' + fmt(t.lines) + ' item</b></span>' +
+        '<span>Manual <b>' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'c-bad' : '') + '">' + fmt(t.nTrm) + '</b></span></div></div></button>';
+      return;
+    }
     var n1 = k === 'out' ? ['Qty check', fmt(t.aktual) + ' dari ' + fmt(t.qty)] : (k === 'bfl' ? ['Backflush', fmt(t.aktual) + ' dari ' + fmt(t.qty)] : ['Box ID', fmt(t.aktual) + ' dari ' + fmt(t.qty)]);
     html += '<button class="lane' + active + '" style="--c:' + L.color + '" onclick="pickLane(\'' + k + '\')">' + ring(t.pct) +
       '<div><h3>' + L.name + '</h3><div class="sub">' + L.tag + ' · ' + fmt(v.days.length) + ' hari</div><div class="nums"><span>' + n1[0] + ' <b>' + n1[1] + '</b></span>' + miss + '</div></div></button>';
@@ -565,15 +594,16 @@ function renderLane(){
   var rh = '<button class="day all' + (S.day === 'all' ? ' sel' : '') + '" onclick="pickDay(\'all\')"><span class="dn">Semua</span><span class="dm">' + v.days.length + ' hari</span><span class="dp c-' + cls(allT.pct) + '">' + fmtP(allT.pct) + '</span><span class="bar"><i class="f-' + cls(allT.pct) + '" style="width:' + (allT.pct || 0) + '%"></i></span></button>';
   v.days.forEach(function(d){
     var i = dayInfo(d.date), c = cls(d.pct);
-    rh += '<button class="day' + (S.day === d.date ? ' sel' : '') + '" onclick="pickDay(\'' + d.date + '\')" title="' + i.full + '"><span class="dn">' + i.d + '</span><span class="dm">' + i.wd + ' ' + i.mon + '</span><span class="dp c-' + c + '">' + fmtP(d.pct) + '</span><span class="bar"><i class="f-' + c + '" style="width:' + (d.pct || 0) + '%"></i></span></button>';
+    var bar = S.lane === 'bfl' ? stackBar(d) : '<span class="bar"><i class="f-' + c + '" style="width:' + (d.pct || 0) + '%"></i></span>';
+    rh += '<button class="day' + (S.day === d.date ? ' sel' : '') + '" onclick="pickDay(\'' + d.date + '\')" title="' + i.full + '"><span class="dn">' + i.d + '</span><span class="dm">' + i.wd + ' ' + i.mon + '</span><span class="dp c-' + c + '">' + fmtP(d.pct) + '</span>' + bar + '</button>';
   });
   rail.innerHTML = rh;
 
   // KPI untuk cakupan terpilih
-  var scope = S.day === 'all' ? allT : sumDays(v.days.filter(function(d){ return d.date === S.day; }));
+  var scope = S.day === 'all' ? allT : sumDays(v.days.filter(function(d){ return d.date === S.day; }), S.lane);
   var cap = S.day === 'all' ? '' : '';
   kp.innerHTML = L.kpi(scope).map(function(a, idx){
-    var accent = idx === 5 ? ' c-' + cls(scope.pct) : (idx === 3 && scope.skuSelisih ? ' c-bad' : '');
+    var accent = idx === 5 ? ' c-' + cls(scope.pct) : (idx === 3 && (S.lane === 'bfl' ? scope.nTrm : scope.skuSelisih) ? ' c-bad' : '');
     return '<div class="kpi"><div class="l">' + a[0] + '</div><div class="v' + accent + '">' + a[1] + '</div><div class="s">' + a[2] + '</div></div>';
   }).join('');
 
@@ -584,7 +614,7 @@ function renderLane(){
     if (!q) return true;
     var x = i.v; return (x.item + ' ' + (x.desc || '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
   });
-  renderClose(items);
+  renderClose(items); renderComp(scope);
   bd.className = 'board n' + L.cols.length;
   bd.innerHTML = L.cols.map(function(col){
     if (S.lane === 'in' && col.key === 'nostd' && !items.some(function(i){ return i.e.status === 'nostd'; })) return '';
@@ -604,15 +634,18 @@ function renderLane(){
   var body = v.days.map(function(d){
     var c = cls(d.pct), vals = L.row(d);
     var selCls = d.selisih < 0 ? 'neg' : (d.selisih > 0 ? 'pos' : 'zero');
-    return '<tr class="' + (S.day === d.date ? 'sel' : '') + '" onclick="pickDay(\'' + d.date + '\')"><td>' + dayInfo(d.date).d + ' ' + dayInfo(d.date).mon + ' ' + ymd(d.date).y + '</td><td>' + vals[0] + '</td><td>' + vals[1] + '</td><td class="' + (d.skuSelisih ? 'neg' : 'zero') + '">' + vals[2] + '</td><td class="' + selCls + '">' + vals[3] + '</td>' +
+    var cc = L.cells ? L.cells(d) : [[vals[0], ''], [vals[1], ''], [vals[2], d.skuSelisih ? 'neg' : 'zero'], [vals[3], selCls]];
+    return '<tr class="' + (S.day === d.date ? 'sel' : '') + '" onclick="pickDay(\'' + d.date + '\')"><td>' + dayInfo(d.date).d + ' ' + dayInfo(d.date).mon + ' ' + ymd(d.date).y + '</td>' + cc.map(function(x){ return '<td class="' + x[1] + '">' + x[0] + '</td>'; }).join('') +
       '<td><div class="pcell"><span class="bar"><i class="f-' + c + '" style="width:' + (d.pct || 0) + '%"></i></span><b class="c-' + c + '">' + fmtP(d.pct) + '</b></div></td></tr>';
   }).join('');
-  var f = L.foot(allT);
+  var f = L.foot(allT), fc = L.cells ? L.cells(allT).map(function(x){ return x[0]; }) : f;
+  f = fc;
   tb.innerHTML = '<thead><tr>' + th + '</tr></thead><tbody>' + body + '</tbody><tfoot><tr><td>Total</td><td>' + f[0] + '</td><td>' + f[1] + '</td><td>' + f[2] + '</td><td>' + f[3] + '</td><td><div class="pcell"><b class="c-' + cls(allT.pct) + '">' + fmtP(allT.pct) + '</b></div></td></tr></tfoot>';
   document.getElementById('tbl-title').textContent = 'Rekap harian · ' + L.name;
   renderRules();
 }
 function renderClose(items){
+  var tl = document.querySelector('.tolbtn'); if (tl) tl.style.display = S.lane === 'in' ? '' : 'none';
   var el = document.getElementById('closep');
   var list = items.filter(function(i){ return i.close; });
   var qty = list.reduce(function(a, i){ return a + (i.v.qty != null ? i.v.qty : i.v.qspm || 0); }, 0);
@@ -631,6 +664,23 @@ function renderClose(items){
   el.innerHTML = '<div class="closep-h"><div><b>Item sudah Close</b><span class="hint">' + what + '. Tanda ini muncul saat upload data baru memperbaiki data lama.</span></div><div class="closep-n">' + fmt(list.length) + '<span style="font-size:11px;color:var(--txt3);font-weight:400;"> item · ' + fmt(qty) + ' pcs</span></div></div>' +
     (list.length ? '<div class="closep-g">' + cards + '</div>' + more : '<div class="closep-empty">Belum ada item yang Close pada pilihan ini.</div>');
 }
+// Bar bertumpuk: hijau = BFL (scan), kuning = manual, merah = TRM
+function stackBar(d){
+  var a = share(d.nBfl, d.qBfl, d) || 0, m = share(d.nManual, d.qManual, d) || 0, r = share(d.nTrm, d.qTrm, d) || 0;
+  return '<span class="bar stack"><i class="f-ok" style="width:' + a + '%"></i><i class="f-warn" style="width:' + m + '%"></i><i class="f-bad" style="width:' + r + '%"></i></span>';
+}
+function renderComp(scope){
+  var el = document.getElementById('comp'), seg = document.getElementById('basis-seg');
+  var on = S.lane === 'bfl';
+  el.hidden = !on; seg.hidden = !on;
+  if (!on) return;
+  seg.innerHTML = '<span>Hitung per</span><button class="' + (S.basis === 'item' ? 'on' : '') + '" onclick="setBasis(\'item\')">Item</button><button class="' + (S.basis === 'qty' ? 'on' : '') + '" onclick="setBasis(\'qty\')">Qty</button>';
+  var a = share(scope.nBfl, scope.qBfl, scope) || 0, m = share(scope.nManual, scope.qManual, scope) || 0, r = share(scope.nTrm, scope.qTrm, scope) || 0;
+  el.innerHTML = '<div class="comp-h"><b>Komposisi input' + (S.day === 'all' ? '' : ' · ' + dayInfo(S.day).full) + '</b><span>' + (S.basis === 'item' ? 'berdasarkan jumlah item (voucher)' : 'berdasarkan qty (pcs)') + '</span></div>' +
+    '<div class="comp-bar"><i class="f-ok" style="width:' + a + '%"></i><i class="f-warn" style="width:' + m + '%"></i><i class="f-bad" style="width:' + r + '%"></i></div>' +
+    '<div class="comp-leg"><span><i class="f-ok"></i>Di-scan (BFL) <b>' + fmtP(a) + '</b></span><span><i class="f-warn"></i>Input manual <b>' + fmtP(m) + '</b></span><span><i class="f-bad"></i>Masih TRM <b>' + fmtP(r) + '</b></span></div>';
+}
+window.setBasis = function(b){ S.basis = b; try { localStorage.setItem('akurasi_basis', b); } catch (e) {} renderLanes(); renderLane(); };
 function renderRules(){
   var r = [];
   if (S.lane === 'in') r = [
@@ -644,10 +694,12 @@ function renderRules(){
     S.opts.tol ? 'Toleransi box sisa <b>aktif</b>: box terakhir boleh tidak penuh.' : 'Toleransi box sisa <b>nonaktif</b>: kalau Box ID lebih dari 1 dan box terakhir tidak penuh, dihitung tidak sesuai. Bisa diaktifkan lewat tombol di bawah judul.'
   ];
   else if (S.lane === 'bfl') r = [
-    'Status <code>BFL</code> dan <code>MANUAL</code> dianggap OK. Status <code>TRM</code> atau voucher tanpa status dianggap selisih.',
-    'Kalau Master Backflush dimuat, statusnya dipakai menggantikan status di Master Voucher untuk nomor voucher yang sama.',
-    'Tanda Close: voucher yang tadinya TRM lalu pada upload berikutnya berubah menjadi BFL atau MANUAL. Voucher yang tidak berubah tidak diperbarui.',
-    'Kolom Scan = total qty voucher per tanggal. Kolom Backflush = total qty voucher yang OK. Total selisih bernilai minus kalau backflush lebih kecil dari scan.'
+    '<code>BFL</code> = item diinput memakai barcode scanner. Ini yang diwajibkan, jadi hanya BFL yang dihitung sebagai ter-scan.',
+    '<code>MANUAL</code> = item diinput manual di sistem (bukan scan). Dihitung terpisah supaya kelihatan berapa yang tidak di-scan.',
+    '<code>TRM</code> atau status kosong = belum ter-scan sama sekali atau item belum masuk stok.',
+    'Akurasi scan = item BFL dibagi seluruh item pada tanggal tersebut. Pilih hitung per Item (jumlah voucher) atau per Qty (pcs) lewat tombol di atas.',
+    'Kalau Master Backflush diupload, statusnya dipakai menggantikan status di Master Voucher untuk nomor voucher yang sama.',
+    'Tanda Close: voucher yang tadinya TRM lalu pada upload berikutnya berubah menjadi BFL atau MANUAL. Voucher yang tidak berubah tidak diperbarui.'
   ];
   else r = [
     'Data diambil dari Master Scan Out: Item Number, Qty SPM, Qty Check, dan Status. Tanggal adalah tanggal kirim yang dipilih saat upload.',
@@ -723,7 +775,18 @@ window.exportXlsx = function(){
   var wb = XLSX.utils.book_new(), n = 0;
   [['in', 'SUM Voucher vs Box ID'], ['bfl', 'SUM Backflush'], ['out', 'SUM Barcode Out']].forEach(function(p){
     var v = view(p[0]); if (!v || !v.days.length) return;
-    var L = LANES[p[0]], rows = [L.th.slice(0, 5).concat(['Akurasi (%)'])];
+    var L = LANES[p[0]], rows;
+    if (p[0] === 'bfl') {
+      rows = [['Tanggal', 'Item', 'Scan (BFL)', 'Manual', 'TRM', 'Qty voucher', 'Qty BFL', 'Qty manual', 'Qty TRM', '% Scan (item)', '% Scan (qty)']];
+      v.days.forEach(function(d){ rows.push([d.date, d.lines, d.nBfl, d.nManual, d.nTrm, d.qty, d.qBfl, d.qManual, d.qTrm, d.pctLines == null ? '' : Math.round(d.pctLines * 10) / 10, d.qty ? Math.round(d.qBfl / d.qty * 1000) / 10 : '']); });
+      var T = v.total; rows.push(['Total', T.lines, T.nBfl, T.nManual, T.nTrm, T.qty, T.qBfl, T.qManual, T.qTrm, T.pctLines == null ? '' : Math.round(T.pctLines * 10) / 10, T.qty ? Math.round(T.qBfl / T.qty * 1000) / 10 : '']);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'SUM Backflush'); n++;
+      var det0 = [['Tanggal', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty']];
+      v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, x.status || 'TRM', x.qty]); });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det0), 'Detail Manual & TRM');
+      return;
+    }
+    rows = [L.th.slice(0, 5).concat(['Akurasi (%)'])];
     v.days.forEach(function(d){ rows.push([d.date].concat([d.qty, d.aktual, d.skuSelisih, p[0] === 'out' ? -d.selisih : d.selisih, d.pct == null ? '' : Math.round(d.pct * 10) / 10])); });
     rows.push(['Total', v.total.qty, v.total.aktual, v.total.skuSelisih, p[0] === 'out' ? -v.total.selisih : v.total.selisih, v.total.pct == null ? '' : Math.round(v.total.pct * 10) / 10]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), p[1]); n++;
@@ -739,7 +802,7 @@ window.exportXlsx = function(){
 
 /* ───────── init ───────── */
 (function init(){
-  try { S.opts.tol = localStorage.getItem('akurasi_tol') === '1'; } catch (e) {}
+  try { S.opts.tol = localStorage.getItem('akurasi_tol') === '1'; S.basis = localStorage.getItem('akurasi_basis') === 'qty' ? 'qty' : 'item'; } catch (e) {}
   document.getElementById('app').hidden = true;
   document.getElementById('loading').hidden = false;
   window.AkurasiStore.load().then(function(r){

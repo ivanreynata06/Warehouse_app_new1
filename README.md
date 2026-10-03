@@ -243,7 +243,7 @@ browser hanya cadangan kalau server tidak terjangkau. **Setelah mengubah
 | Jalur | Sumber data | Aturan |
 |-------|-------------|--------|
 | Voucher vs Box ID | Master Voucher & Box ID + Standar Isi Box (.xlsx) | Box ID x standar isi box (cocok per Item Number) = qty voucher -> sesuai. Box ID = 1 sesuai bila voucher <= standar; voucher > standar -> tidak sesuai. Box ID kosong / "?" = selisih. Akurasi proporsional: voucher 10, Box ID 9 = 90%. |
-| Voucher vs Backflush | Status di Master Voucher + Master Backflush (.xlsx) | BFL dan MANUAL = OK, TRM / tanpa status = selisih. |
+| Voucher vs Backflush | Status di Master Voucher + Master Backflush (.xlsx) | BFL = di-scan barcode scanner (diwajibkan), MANUAL = input manual, TRM / tanpa status = belum ter-scan / belum masuk stok. Akurasi scan = % item BFL per tanggal (bisa dihitung per item atau per qty); manual dan TRM ditampilkan terpisah. |
 | Barcode Out | Master Scan Out (.xlsx; file TER .txt lama masih terbaca) | Status PICK = belum ter-scan, CHECK = sudah. CHECK dengan Qty Check < Qty SPM = sebagian. Tanggal kirim dipilih saat upload karena tarikan sistem tidak membawa tanggal. % = total Qty Check / total Qty SPM. |
 
 Menu terdaftar dengan key `akurasi_scan` di `auth-guard.js`, `PAGE_MAP`
