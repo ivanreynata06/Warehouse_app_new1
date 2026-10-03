@@ -180,11 +180,12 @@
           var pr = C.prepareVoucherRows(rows, opts.dateMode || 'auto');
           rows = pr.rows;
           extra = pr.swapped ? ' Tanggal bulan/hari yang tertukar sudah dibetulkan otomatis.' : '';
-          var stdMap = cur.data.std ? cur.data.std.map : {}, hasStd = Object.keys(stdMap).length > 0;
-          var boxState = function (r) { var e = C.evalIn(r, stdMap, {}); return { ok: e.status === 'sesuai', label: e.status === 'kosong' ? 'Box ID kosong' : 'Tidak sesuai' }; };
+          var selMode = C.selMode();   // Fitting Rucika: cek Box ID lewat kolom Selisih, tanpa standar isi
+          var stdMap = cur.data.std ? cur.data.std.map : {}, hasStd = selMode || Object.keys(stdMap).length > 0;
+          var boxState = function (r) { var e = C.evalIn(r, stdMap, { selisih: selMode }); return { ok: e.status === 'sesuai', label: e.status === 'kosong' ? 'Box ID kosong' : 'Tidak sesuai' }; };
           // dua pola yang sama: status backflush (TRM -> BFL/MANUAL) dan Box ID (kosong/tidak sesuai -> sesuai)
           var m1 = C.mergeRecords(old && old.rows, rows, { key: function (r) { return r.voucher; }, closeField: 'closeBfl', state: OK_BFL,
-            fields: ['item', 'qty', 'status', 'box', 'date', 'desc', 'group', 'type'] }, now);
+            fields: ['item', 'qty', 'status', 'box', 'sel', 'date', 'desc', 'group', 'type'] }, now);
           var all = m1.rows;
           if (hasStd && old && old.rows) {
             var oldBy = {}; old.rows.forEach(function (r) { oldBy[r.voucher] = r; });

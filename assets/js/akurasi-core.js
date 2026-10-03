@@ -81,7 +81,8 @@
     var c = {
       v: colOf(H, /no\.?\s*voucher/), type: colOf(H, /^type/), st: colOf(H, /^status/),
       dt: colOf(H, /tgl/), it: colOf(H, /item/), ds: colOf(H, /desc/),
-      gr: colOf(H, /shift|group/), qv: colOf(H, /qty\s*voucher/), qb: colOf(H, /qty\s*box/)
+      gr: colOf(H, /shift|group/), qv: colOf(H, /qty\s*voucher/), qb: colOf(H, /qty\s*box/),
+      sl: colOf(H, /^selisih/)
     };
     if (c.v < 0 || c.it < 0 || c.qv < 0 || c.qb < 0)
       return { rows: [], error: 'Kolom wajib (No.Voucher, Item Number, QTY Voucher, Qty Box Id) tidak lengkap.' };
@@ -100,7 +101,8 @@
         ymd: ymd, serial: serial, item: item,
         desc: c.ds >= 0 ? String(r[c.ds] || '').trim() : '',
         group: c.gr >= 0 ? String(r[c.gr] || '').trim() : '',
-        qty: qty, box: (box != null && box > 0) ? box : null
+        qty: qty, box: (box != null && box > 0) ? box : null,
+        sel: c.sl >= 0 ? num(r[c.sl]) : null          // kolom Selisih (dipakai mode Fitting Rucika)
       });
     }
     return { rows: rows, error: rows.length ? null : 'Tidak ada baris voucher yang valid di file ini.' };
@@ -270,7 +272,26 @@
   // ---------- perhitungan: Voucher vs Box ID ----------
   // opt.tol (default false): toleransi box sisa -- box terakhir boleh
   // tidak penuh (jumlah box = pembulatan ke atas voucher / standar).
+  // Mode SELISIH (Fitting Rucika, opt.selisih = true): tanpa Standar Isi Box.
+  // Parameter = kolom Selisih di file voucher. Selisih 0 -> sesuai; selain 0 ->
+  // tidak sesuai. Kalau kolom Selisih tidak ada, dipakai QTY Voucher - Qty Box Id.
+  // Tanda hasil mengikuti konvensi dashboard: NEGATIF = kurang, POSITIF = lebih
+  // (dilihat dari Qty Box Id vs QTY Voucher, bukan dari tanda di file).
+  function evalSelisih(v) {
+    var o = { status: '', aktual: 0, selisih: 0, std: null };
+    var sel = (v.sel != null) ? v.sel : (v.box != null ? v.qty - v.box : null);
+    if (sel == null) { o.status = 'kosong'; o.aktual = 0; o.selisih = -v.qty; return o; }
+    if (sel === 0) { o.status = 'sesuai'; o.aktual = v.qty; o.selisih = 0; return o; }
+    if (v.box == null) { o.status = 'kosong'; o.aktual = 0; o.selisih = -v.qty; return o; }
+    var mag = Math.abs(sel);
+    o.status = 'beda';
+    o.selisih = (v.box > v.qty) ? mag : -mag;
+    o.aktual = v.qty + o.selisih;
+    return o;
+  }
+
   function evalIn(v, std, opt) {
+    if (opt && opt.selisih) return evalSelisih(v);
     var s = std[v.item] || null, tol = !!(opt && opt.tol);
     var o = { status: '', aktual: 0, selisih: 0, std: s };
     if (v.box == null) {                       // Box ID kosong / "?"
@@ -429,7 +450,11 @@
     parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER, parseScanOut: parseScanOut,
     outState: outState, mergeRecords: mergeRecords,
     evalIn: evalIn, summarizeIn: summarizeIn, summarizeBfl: summarizeBfl, summarizeOut: summarizeOut,
-    isBflOk: isBflOk
+    isBflOk: isBflOk,
+    // true bila sesi login = workspace Fitting Rucika (akurasi Box ID pakai kolom Selisih, tanpa Standar Isi Box)
+    selMode: function () {
+      try { return !!(root.WH_SESSION && root.WH_SESSION.workspace === 'cibitung_fitting_rucika'); } catch (e) { return false; }
+    }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AkurasiCore = api;

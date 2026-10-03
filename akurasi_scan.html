@@ -322,8 +322,8 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261003b"></script>
-<script src="./assets/js/akurasi-store.js?v=20261003b"></script>
+<script src="./assets/js/akurasi-core.js?v=20261003e"></script>
+<script src="./assets/js/akurasi-store.js?v=20261003e"></script>
 <script>
 (function(){
 'use strict';
@@ -365,7 +365,8 @@ function ring(p, size){
 function compute(){
   var vr = S.data.voucher ? S.data.voucher.rows : [];
   var stdMap = S.data.std ? S.data.std.map : {};
-  var hasStd = Object.keys(stdMap).length > 0;
+  var selMode = C.selMode();   // Fitting Rucika: tanpa Standar Isi Box, parameter = kolom Selisih
+  var hasStd = selMode || Object.keys(stdMap).length > 0;
   // Tanpa Standar Isi Box, voucher yang Box ID-nya terisi tidak bisa dicek. Daripada
   // menampilkan 0% yang menyesatkan, jalur ini ditandai "butuh standar".
   S.needStd = vr.length > 0 && !hasStd;
@@ -376,7 +377,7 @@ function compute(){
   if (S.data.std && S.data.std.desc) for (var dk in S.data.std.desc) if (S.data.std.desc[dk]) dm[dk] = S.data.std.desc[dk];
   S.descMap = dm;
   S.resRaw = {
-    in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol }) : null,
+    in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol, selisih: selMode }) : null,
     bfl: (vr.length || S.data.bfl) ? C.summarizeBfl(vr, S.data.bfl ? S.data.bfl.rows : []) : null,
     out: S.data.ter ? C.summarizeOut(S.data.ter.rows) : null
   };
@@ -429,6 +430,7 @@ var LANES = {
     foot: function(t){ return [fmt(t.qty), fmt(t.aktual), fmt(t.skuSelisih), sgn(t.selisih)]; },
     card: function(i){ var v = i.v, e = i.e;
       var line = e.status === 'kosong' ? 'Voucher ' + fmt(v.qty) + ', Box ID belum terscan'
+        : C.selMode() ? 'Voucher ' + fmt(v.qty) + ' · Box ID ' + fmt(v.box) + ' · Selisih ' + sgn(e.selisih)
         : e.status === 'nostd' ? 'Voucher ' + fmt(v.qty) + ' dalam ' + fmt(v.box) + ' box'
         : 'Voucher ' + fmt(v.qty) + ' · ' + fmt(v.box) + ' box x ' + fmt(e.std);
       var chip = e.status === 'sesuai' ? '<span class="chip ok">sesuai</span>' : e.status === 'nostd' ? '<span class="chip warn">tanpa standar</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
