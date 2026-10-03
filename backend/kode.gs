@@ -571,7 +571,7 @@ function getResidenceTimeData(filter) {
     if (!sheet) throw new Error('Sheet PENGIRIMAN tidak ditemukan. Pastikan nama sheet tepat.');
 
     var data         = sheet.getDataRange().getValues();
-    var today        = new Date(); today.setHours(0,0,0,0);
+    var today        = _hariIniKerja();
     var firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     // Batas ATAS bulan berjalan. Sebelumnya monthRows cuma dibatasi dari
     // bawah (tgl >= awal bulan), jadi jadwal BULAN DEPAN yang sudah masuk
@@ -697,10 +697,48 @@ function getResidenceTimeData(filter) {
 // daftar.
 function _tglPengiriman(raw) {
   if (!raw) return null;
-  var d = (raw instanceof Date) ? new Date(raw) : _parseTanggalFleksibel(raw);
+  var d;
+  if (raw instanceof Date) {
+    if (isNaN(raw.getTime())) return null;
+    // Ambil Y-M-D PERSIS seperti yang tampil di sheet (zona waktu spreadsheet),
+    // lalu bangun ulang jadi tengah malam di zona script. Kalau zona script &
+    // sheet beda (mis. script GMT, sheet WIB), memakai setHours() langsung
+    // menggeser tanggal 1 hari mundur -> kiriman HARI INI terbaca "kemarin".
+    var ymd = Utilities.formatDate(raw, _tzKerja(), 'yyyy-MM-dd').split('-');
+    return new Date(+ymd[0], +ymd[1] - 1, +ymd[2], 0, 0, 0, 0);
+  }
+  d = _parseTanggalFleksibel(raw);
   if (!(d instanceof Date) || isNaN(d.getTime())) return null;
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+// Zona waktu kerja = zona waktu SPREADSHEET (sama dgn yang dilihat user di
+// sheet). Fallback Asia/Jakarta kalau gagal dibaca.
+var _TZ_KERJA_CACHE = null;
+function _tzKerja() {
+  if (_TZ_KERJA_CACHE) return _TZ_KERJA_CACHE;
+  try { _TZ_KERJA_CACHE = SpreadsheetApp.openById(SPREADSHEET_ID).getSpreadsheetTimeZone() || 'Asia/Jakarta'; }
+  catch (e) { _TZ_KERJA_CACHE = 'Asia/Jakarta'; }
+  return _TZ_KERJA_CACHE;
+}
+// "Hari ini" (00:00) menurut zona waktu spreadsheet, bukan zona script.
+function _hariIniKerja() {
+  var ymd = Utilities.formatDate(new Date(), _tzKerja(), 'yyyy-MM-dd').split('-');
+  return new Date(+ymd[0], +ymd[1] - 1, +ymd[2], 0, 0, 0, 0);
+}
+// Jalankan manual dari editor Apps Script utk melihat zona waktu & nilai tanggal mentah.
+function diagZonaWaktuPengiriman() {
+  _TZ_KERJA_CACHE = null;
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(SH_PENGIRIMAN);
+  Logger.log('Zona script: ' + Session.getScriptTimeZone() + ' | Zona spreadsheet: ' + ss.getSpreadsheetTimeZone());
+  Logger.log('Sekarang (script): ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') +
+             ' | (spreadsheet): ' + Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm'));
+  var v = sh.getRange(Math.max(2, sh.getLastRow() - 9), 1, Math.min(10, sh.getLastRow() - 1), 5).getValues();
+  v.forEach(function (r) {
+    Logger.log('A=' + (r[0] instanceof Date ? r[0].toISOString() : JSON.stringify(r[0])) + ' | SPM=' + r[4] +
+               ' | dibaca sbg ' + (_tglPengiriman(r[0]) ? _fmtYMD(_tglPengiriman(r[0])) : '-'));
+  });
 }
 
 // Durasi muat (menit) dari 2 jam "HH:MM". null kalau bukan jam valid
@@ -888,7 +926,7 @@ function getPendingRows() {
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
 
     var data    = sheet.getDataRange().getValues();
-    var today   = new Date(); today.setHours(0,0,0,0);
+    var today   = _hariIniKerja();
     var pending = [];
 
     for (var i = 1; i < data.length; i++) {
@@ -947,7 +985,7 @@ function getPendingRowsKemarin() {
     if (!sheet) return { success: false, error: 'Sheet PENGIRIMAN tidak ditemukan' };
 
     var data      = sheet.getDataRange().getValues();
-    var today     = new Date(); today.setHours(0,0,0,0);
+    var today     = _hariIniKerja();
     var batasAwal = new Date(today); batasAwal.setDate(batasAwal.getDate() - 31);
     var pending   = [];
 
@@ -3883,12 +3921,14 @@ var SH_HARI_LIBUR      = 'HARI_LIBUR';
 var FTE_STANDAR_JAM_BULAN = 173; // standar jam kerja/bulan, sama untuk semua kategori
 
 // Kategori karyawan SEKARANG OTOMATIS dari awalan kode/NIK -- bukan lagi
-// manual per baris di sheet KARYAWAN_LEMBUR. NIK berawalan "PEG" = OS
-// (Outsourcing), selain itu = Internal. Ini supaya akun baru (PEG...)
+// manual per baris di sheet KARYAWAN_LEMBUR. NIK berawalan HURUF = OS
+// (Outsourcing), berawalan angka = Internal. Ini supaya akun baru (PEG...)
 // yang lupa/belum di-set manual di sheet tetap otomatis kebaca sebagai
 // OS, tidak perlu edit sheet satu-satu lagi.
 function _kategoriDariNIK(kode) {
-  return /^PEG/i.test(String(kode || '').trim()) ? 'OS' : 'Internal';
+  // Aturan: NIK diawali HURUF (PEG..., dst) = OS (Outsourcing);
+  // NIK diawali ANGKA = Internal.
+  return /^[A-Za-z]/.test(String(kode || '').trim()) ? 'OS' : 'Internal';
 }
 
 // Data master 6 karyawan (dipakai buat auto-isi sheet KARYAWAN_LEMBUR
@@ -4321,7 +4361,7 @@ function getAkunList(actorNik, targetWorkspace) {
         nama: String(r[1] || ''),
         role: String(r[2] || ''),
         aktif: r[4] === true || String(r[4]).toUpperCase() === 'TRUE',
-        kategori: /^PEG/i.test(String(r[0])) ? 'OS' : 'Internal',
+        kategori: _kategoriDariNIK(r[0]),
         adaTandaTangan: !!String(r[5] || '')
       });
     }

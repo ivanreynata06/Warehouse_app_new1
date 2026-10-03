@@ -476,7 +476,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <span class="card-badge badge-gold" id="badge-karyawan">0 karyawan</span>
         </div>
         <div class="modal-note" style="margin:0 0 10px;">
-          Daftar ini menentukan siapa yang tampil di <b>Monitoring FTE</b> (Rincian FTE Internal &amp; Rekap Lembur Outsourcing), dropdown <b>Form Lembur/Absensi</b>, dan tombol <b>Print/SPL</b> karyawan OS. Ini <b>terpisah dari akun login</b> — karyawan yang punya akun belum otomatis masuk sini. NIK berawalan <b>PEG</b> otomatis dianggap Outsourcing (OS), selain itu Internal.
+          Daftar ini menentukan siapa yang tampil di <b>Monitoring FTE</b> (Rincian FTE Internal &amp; Rekap Lembur Outsourcing), dropdown <b>Form Lembur/Absensi</b>, dan tombol <b>Print/SPL</b> karyawan OS. Ini <b>terpisah dari akun login</b> — karyawan yang punya akun belum otomatis masuk sini. NIK berawalan <b>huruf</b> (mis. PEG...) otomatis dianggap Outsourcing (OS); berawalan angka = Internal.
         </div>
 
         <div id="karyawan-kandidat" style="display:none;margin-bottom:12px;padding:10px;border:1px dashed var(--border-color);border-radius:8px;">
@@ -558,7 +558,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
       <label for="tambah-pwd">Password Awal</label>
       <input type="text" id="tambah-pwd" placeholder="Minimal 6 karakter">
     </div>
-    <div class="modal-note">NIK diawali <b>PEG</b> otomatis terdeteksi kategori <b>OS</b> (outsourcing); selain itu otomatis <b>Internal</b> — sama seperti aturan lama.</div>
+    <div class="modal-note">NIK diawali <b>huruf</b> (mis. PEG) otomatis terdeteksi kategori <b>OS</b> (outsourcing); NIK diawali <b>angka</b> otomatis <b>Internal</b>.</div>
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeModal('modal-tambah')">Batal</button>
       <button class="btn-modal-save" onclick="submitTambahUser()">Simpan</button>
