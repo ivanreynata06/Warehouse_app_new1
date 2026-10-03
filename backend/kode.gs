@@ -7476,7 +7476,7 @@ function getAkurasiData() {
 }
 
 // kind: voucher|std|bfl|ter ; jsonStr: seluruh dataset terbaru (sudah digabung di browser)
-function saveAkurasiData(kind, jsonStr) {
+function saveAkurasiData(kind, jsonStr, force) {
   var lock = LockService.getScriptLock();
   try {
     kind = String(kind || '');
@@ -7486,6 +7486,11 @@ function saveAkurasiData(kind, jsonStr) {
     JSON.parse(jsonStr); // validasi
     lock.waitLock(25000);
     var sh = _getOrCreateAkurasiSheet();
+    // Standar Isi Box bersifat PERMANEN: kalau sudah ada, tidak boleh ditimpa
+    // kecuali permintaan membawa force (konfirmasi eksplisit dari halaman upload).
+    if (kind === 'std' && !Number(force) && _akurasiAda(sh, kind)) {
+      return { success: false, error: 'Standar Isi Box sudah ada dan bersifat permanen.' };
+    }
     _akurasiHapusKind(sh, kind);
     var rows = [];
     for (var i = 0, n = 0; i < jsonStr.length; i += AKURASI_CHUNK, n++) {
@@ -7514,6 +7519,14 @@ function hapusAkurasiData(kind) {
   } finally {
     try { lock.releaseLock(); } catch (e) {}
   }
+}
+
+function _akurasiAda(sh, kind) {
+  var last = sh.getLastRow();
+  if (last < 2) return false;
+  var col = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) if (String(col[i][0]) === kind) return true;
+  return false;
 }
 
 function _akurasiHapusKind(sh, kind) {

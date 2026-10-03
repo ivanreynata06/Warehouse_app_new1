@@ -18,7 +18,7 @@
   'use strict';
   var C = root.AkurasiCore;
   var KINDS = ['voucher', 'std', 'bfl', 'ter'];
-  var TITLES = { voucher: 'Master Voucher & Box ID', std: 'Standar Isi Box', bfl: 'Master Backflush', ter: 'Master TER (Barcode Out)' };
+  var TITLES = { voucher: 'Master Voucher & Box ID', std: 'Standar Isi Box', bfl: 'Master Backflush', ter: 'Master Scan Out (Barcode Out)' };
   var DBN = 'wh_akurasi2';
 
   function ws() { try { return (root.getWorkspace && root.getWorkspace()) || 'default'; } catch (e) { return 'default'; } }
@@ -95,9 +95,9 @@
   }
   function pick(d) { var o = {}; KINDS.forEach(function (k) { o[k] = d[k] || null; }); return o; }
 
-  function save(kind, rec) {
+  function save(kind, rec, force) {
     return lset(kind, rec).then(function () {
-      return api('saveAkurasiData', [kind, JSON.stringify(rec)]).then(function () { return { remote: true }; })
+      return api('saveAkurasiData', [kind, JSON.stringify(rec), force ? 1 : 0]).then(function () { return { remote: true }; })
         .catch(function (err) { return { remote: false, warn: friendly(err) }; });
     });
   }
@@ -126,23 +126,41 @@
     return best.r;
   }
 
-  /* ---------- ingest: parse file -> gabung dengan data server -> simpan ---------- */
-  // opts.dateMode: 'auto' | 'swap' | 'none' (khusus Master Voucher)
-  // Mengembalikan { msg, remote, warn, rec }
+  /* ---------- ingest: parse file -> bandingkan dengan data server -> simpan ---------- */
+  // opts.dateMode : 'auto' | 'swap' | 'none' (Master Voucher)
+  // opts.date     : 'yyyy-mm-dd' tanggal kirim (Master Scan Out, tarikan sistem tidak membawa tanggal)
+  // opts.force    : izinkan mengganti Standar Isi Box yang sudah ada
+  // Mengembalikan { msg, remote, warn, rec, stats }
+  function nowInfo() {
+    var d = new Date();
+    return { text: stamp(), iso: d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2), by: who() };
+  }
+  var OK_BFL = function (r) { return { ok: C.isBflOk(r.status), label: r.status || 'belum ada status' }; };
+
+  function msgStats(st, extra) {
+    var n = function (x) { return x.toLocaleString('id-ID'); };
+    var m = n(st.added) + ' baris baru, ' + n(st.updated) + ' diperbarui, ' + n(st.same) + ' tidak berubah (dibiarkan).';
+    if (st.closed) m += ' ' + n(st.closed) + ' item Close.';
+    return m + (extra || '');
+  }
+
   function ingest(kind, files, opts) {
     opts = opts || {};
     files = Array.prototype.slice.call(files || []);
     if (!files.length) return Promise.reject(new Error('Pilih file dulu.'));
-    // Selalu gabung dengan data TERBARU di server (bukan cache), supaya upload dari
+    // Selalu bandingkan dengan data TERBARU di server (bukan cache), supaya upload dari
     // dua PC tidak saling menimpa.
     return load().then(function (cur) {
-      var old = cur.data[kind];
-      if (kind === 'ter') return mergeTer(files, old);
+      var old = cur.data[kind], now = nowInfo();
+      if (kind === 'std' && old && !opts.force) {
+        throw new Error('Standar Isi Box bersifat permanen dan sudah pernah diupload. Tidak bisa ditimpa.');
+      }
+      if (kind === 'ter') return mergeOut(files, old, opts, now);
       return readSheets(files[0]).then(function (sheets) {
         if (kind === 'std') {
           var p = bestSheet(sheets, C.parseStdSheet);
-          return { rec: { map: p.map, count: p.count, meta: { name: files[0].name, at: stamp(), by: who(), info: p.info } },
-                   msg: 'Standar isi box dimuat: ' + p.count.toLocaleString('id-ID') + ' item (' + p.info + ')' };
+          return { rec: { map: p.map, desc: p.desc, count: p.count, meta: { name: files[0].name, at: now.text, by: now.by, info: p.info } },
+                   force: !!opts.force, msg: 'Standar isi box tersimpan permanen: ' + p.count.toLocaleString('id-ID') + ' item (' + p.info + ')' };
         }
         var parsed = bestSheet(sheets, kind === 'voucher' ? C.parseVoucherSheet : C.parseBflSheet);
         var rows = parsed.rows, extra = '';
@@ -150,34 +168,67 @@
           var pr = C.prepareVoucherRows(rows, opts.dateMode || 'auto');
           rows = pr.rows;
           extra = pr.swapped ? ' Tanggal bulan/hari yang tertukar sudah dibetulkan otomatis.' : '';
+          var stdMap = cur.data.std ? cur.data.std.map : {}, hasStd = Object.keys(stdMap).length > 0;
+          var boxState = function (r) { var e = C.evalIn(r, stdMap, {}); return { ok: e.status === 'sesuai', label: e.status === 'kosong' ? 'Box ID kosong' : 'Tidak sesuai' }; };
+          // dua pola yang sama: status backflush (TRM -> BFL/MANUAL) dan Box ID (kosong/tidak sesuai -> sesuai)
+          var m1 = C.mergeRecords(old && old.rows, rows, { key: function (r) { return r.voucher; }, closeField: 'closeBfl', state: OK_BFL,
+            fields: ['item', 'qty', 'status', 'box', 'date', 'desc', 'group', 'type'] }, now);
+          var all = m1.rows;
+          if (hasStd && old && old.rows) {
+            var oldBy = {}; old.rows.forEach(function (r) { oldBy[r.voucher] = r; });
+            all = all.map(function (r) {
+              var o = oldBy[r.voucher]; if (!o) return r;
+              var ps = boxState(o), ns = boxState(r);
+              if (ns.ok && !ps.ok) { r.closeBox = { from: ps.label, to: 'Sesuai', at: now.text, iso: now.iso, by: now.by }; }
+              else if (ns.ok && o.closeBox) r.closeBox = o.closeBox;
+              else if (!ns.ok) delete r.closeBox;
+              return r;
+            });
+          }
+          var st = m1.stats;
+          st.closed = all.filter(function (r) {
+            return (r.closeBfl && r.closeBfl.at === now.text) || (r.closeBox && r.closeBox.at === now.text);
+          }).length;
+          return { rec: { rows: all, count: all.length, meta: { name: files[0].name, at: now.text, by: now.by } }, stats: st,
+                   msg: 'Berhasil: ' + msgStats(st, extra) };
         }
-        var map = {};
-        ((old && old.rows) || []).forEach(function (r) { map[r.voucher] = r; });
-        var added = 0, updated = 0;
-        rows.forEach(function (r) { if (map[r.voucher]) updated++; else added++; map[r.voucher] = r; });
-        var all = Object.keys(map).map(function (x) { return map[x]; });
-        return { rec: { rows: all, count: all.length, meta: { name: files[0].name, at: stamp(), by: who() } },
-                 msg: 'Berhasil: ' + added.toLocaleString('id-ID') + ' baris baru, ' + updated.toLocaleString('id-ID') + ' diperbarui.' + extra };
+        // backflush: bandingkan dengan baris backflush lama, atau status di Master Voucher kalau belum ada
+        var vBy = {}; ((cur.data.voucher && cur.data.voucher.rows) || []).forEach(function (r) { vBy[r.voucher] = r; });
+        var mb = C.mergeRecords(old && old.rows, parsed.rows, { key: function (r) { return r.voucher; }, closeField: 'closeBfl', state: OK_BFL,
+          lookupOld: function (r) { return vBy[r.voucher] || null; },
+          fields: ['item', 'qty', 'status', 'date', 'desc', 'group'] }, now);
+        return { rec: { rows: mb.rows, count: mb.rows.length, meta: { name: files[0].name, at: now.text, by: now.by } }, stats: mb.stats,
+                 msg: 'Berhasil: ' + msgStats(mb.stats) };
       });
     }).then(function (o) {
-      return save(kind, o.rec).then(function (s) {
-        return { msg: o.msg, remote: s.remote, warn: s.warn || '', rec: o.rec };
+      return save(kind, o.rec, o.force).then(function (s) {
+        return { msg: o.msg, remote: s.remote, warn: s.warn || '', rec: o.rec, stats: o.stats };
       });
     });
   }
-  function mergeTer(files, old) {
-    return Promise.all(files.map(function (f) { return f.text().then(function (t) { return { f: f, p: C.parseTER(t) }; }); })).then(function (rs) {
+
+  // Master Scan Out (.xlsx, tanggal dipilih saat upload) dan file TER lama (.txt)
+  function mergeOut(files, old, opts, now) {
+    var xl = files.filter(function (f) { return /\.(xlsx|xls)$/i.test(f.name); });
+    if (xl.length && !opts.date) throw new Error('Pilih tanggal kirim dulu. Tarikan sistem Master Scan Out tidak membawa tanggal.');
+    return Promise.all(files.map(function (f) {
+      if (/\.(xlsx|xls)$/i.test(f.name)) {
+        return readSheets(f).then(function (sheets) { return { f: f, p: bestSheet2(sheets, function (a) { return C.parseScanOut(a, opts.date); }) }; });
+      }
+      return f.text().then(function (t) { return { f: f, p: C.parseTER(t) }; });
+    })).then(function (rs) {
       var bad = rs.filter(function (x) { return x.p.error; });
       if (bad.length === rs.length) throw new Error(bad[0].p.error);
-      var map = {}, added = 0;
-      ((old && old.rows) || []).forEach(function (r) { map[r.spm + '|' + r.item + '|' + r.group] = r; });
-      rs.forEach(function (x) { x.p.rows.forEach(function (r) { map[r.spm + '|' + r.item + '|' + r.group] = r; added++; }); });
-      var all = Object.keys(map).map(function (x) { return map[x]; });
+      var rows = []; rs.forEach(function (x) { if (!x.p.error) rows = rows.concat(x.p.rows); });
+      var outState = function (r) { return { ok: C.outState(r) === 'full', label: r.status || (C.outState(r) === 'part' ? 'Sebagian' : 'Belum scan') }; };
+      var m = C.mergeRecords(old && old.rows, rows, { key: function (r) { return r.key || (r.spm + '|' + r.item + '|' + r.group); }, closeField: 'close', state: outState,
+        fields: ['qspm', 'qchk', 'status', 'date', 'tuj', 'qpick'] }, now);
       var names = rs.map(function (x) { return x.f.name; }).join(', ');
-      return { rec: { rows: all, count: all.length, meta: { name: names.length > 60 ? rs.length + ' file TER' : names, at: stamp(), by: who() } },
-               msg: 'Berhasil: ' + added.toLocaleString('id-ID') + ' baris SPM' + (bad.length ? ' (' + bad.length + ' file dilewati)' : '') + '.' };
+      return { rec: { rows: m.rows, count: m.rows.length, meta: { name: names.length > 60 ? rs.length + ' file' : names, at: now.text, by: now.by } },
+               stats: m.stats, msg: 'Berhasil: ' + msgStats(m.stats, bad.length ? ' (' + bad.length + ' file dilewati)' : '') };
     });
   }
+  function bestSheet2(sheets, parse) { try { return { rows: bestSheet(sheets, parse).rows || [], error: null }; } catch (e) { return { rows: [], error: e.message }; } }
 
   root.AkurasiStore = { KINDS: KINDS, TITLES: TITLES, load: load, save: save, clear: clear, ingest: ingest };
 })(typeof window !== 'undefined' ? window : this);

@@ -244,7 +244,11 @@ browser hanya cadangan kalau server tidak terjangkau. **Setelah mengubah
 |-------|-------------|--------|
 | Voucher vs Box ID | Master Voucher & Box ID + Standar Isi Box (.xlsx) | Box ID x standar isi box (cocok per Item Number) = qty voucher -> sesuai. Box ID = 1 sesuai bila voucher <= standar; voucher > standar -> tidak sesuai. Box ID kosong / "?" = selisih. Akurasi proporsional: voucher 10, Box ID 9 = 90%. |
 | Voucher vs Backflush | Status di Master Voucher + Master Backflush (.xlsx) | BFL dan MANUAL = OK, TRM / tanpa status = selisih. |
-| Barcode Out | Master TER (.txt, pemisah `|`) | Item, Qty SPM, Qty Check. % = total Qty Check / total Qty SPM per tanggal kirim. |
+| Barcode Out | Master Scan Out (.xlsx; file TER .txt lama masih terbaca) | Status PICK = belum ter-scan, CHECK = sudah. CHECK dengan Qty Check < Qty SPM = sebagian. Tanggal kirim dipilih saat upload karena tarikan sistem tidak membawa tanggal. % = total Qty Check / total Qty SPM. |
 
 Menu terdaftar dengan key `akurasi_scan` di `auth-guard.js`, `PAGE_MAP`
 tiap halaman, dan `MENU_CATALOG` di `backend/kode.gs`.
+
+### Aturan upload
+- **Standar Isi Box**: permanen, sekali upload. Upload berikutnya ditolak (di browser dan di `saveAkurasiData`).
+- **Master Voucher, Backflush, Scan Out**: baris yang semua nilainya sama dengan data lama dibiarkan. Baris yang berubah diperbarui. Kalau perubahan itu membuat item yang tadinya selisih menjadi beres (TRM menjadi BFL/MANUAL, Box ID kosong/tidak sesuai menjadi sesuai, PICK menjadi CHECK penuh), baris diberi tanda **Close** (status sebelum, sesudah, waktu, pengguna). Daftarnya tampil di panel "Item sudah Close" pada dashboard.

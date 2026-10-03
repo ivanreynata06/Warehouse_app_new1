@@ -136,10 +136,21 @@ input.inp::placeholder{color:var(--txt3);}
 .card .ds{font-size:11px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .card .ft{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:10.5px;color:var(--txt2);font-variant-numeric:tabular-nums;}
 .chip{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.chip.close{background:rgba(168,85,247,.16);color:#c084fc;}
 .chip.bad{background:var(--red-bg);color:var(--red);} .chip.ok{background:var(--green-bg);color:var(--green);} .chip.warn{background:var(--amber-bg);color:var(--amber);} .chip.info{background:var(--blue-bg);color:var(--blue);}
 .more{align-self:center;margin:4px 0 2px;}
 .col-empty{font-size:11px;color:var(--txt3);text-align:center;padding:22px 10px;}
 
+/* panel Close */
+.closep{background:var(--card);border:1px solid var(--line);border-top:3px solid #a855f7;border-radius:13px;padding:12px 14px 14px;}
+.closep-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.closep-h b{font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:600;}
+.closep-h span.hint{display:block;font-size:10.5px;color:var(--txt3);font-weight:400;margin-top:2px;}
+.closep-n{font-family:'Outfit',sans-serif;font-size:22px;font-weight:600;color:#c084fc;font-variant-numeric:tabular-nums;}
+.closep-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;}
+.closep-g .card{background:var(--bg2);}
+.arrow{color:var(--txt3);}
+.closep-empty{font-size:11px;color:var(--txt3);padding:6px 0;}
 /* tabel rekap */
 .sect-t{font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;}
 .tbl-wrap{background:var(--card);border:1px solid var(--line);border-radius:13px;overflow:auto;}
@@ -249,7 +260,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
   <div class="topbar">
     <div>
       <div class="tb-title">Akurasi Scan Barcode</div>
-      <div class="tb-sub" id="tb-sub">Voucher vs Box ID, Backflush, dan Barcode Out (TER)</div>
+      <div class="tb-sub" id="tb-sub">Voucher vs Box ID, Backflush, dan Barcode Out (Scan Out)</div>
     </div>
     <div class="topbar-right">
       <select class="sel" id="sel-month" title="Periode" onchange="onMonth(this.value)"></select>
@@ -269,7 +280,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
     <div class="empty" id="empty" hidden>
       <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--txt3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M15 8v8M18 8v8"/></svg>
       <h2>Belum ada data scan</h2>
-      <p>Upload Master Voucher &amp; Box ID, Standar Isi Box, Master Backflush, atau Master TER (.txt) lewat menu Upload Data Harian, tab Akurasi Scan. Hasil akurasi dihitung otomatis dan tampil di semua PC.</p>
+      <p>Upload Master Voucher &amp; Box ID, Standar Isi Box, Master Backflush, atau Master Scan Out lewat menu Upload Data Harian, tab Akurasi Scan. Hasil akurasi dihitung otomatis dan tampil di semua PC.</p>
       <p id="empty-warn" class="src-note warn" hidden></p>
       <button class="btn primary" onclick="goUpload()">Buka Upload Data Harian</button>
     </div>
@@ -292,6 +303,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
       <div class="rail" id="rail" aria-label="Pilih tanggal"></div>
       <div class="kpis" id="kpis"></div>
+      <div class="closep" id="closep" hidden></div>
       <div class="board" id="board"></div>
 
       <div>
@@ -310,8 +322,8 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261002b"></script>
-<script src="./assets/js/akurasi-store.js?v=20261002b"></script>
+<script src="./assets/js/akurasi-core.js?v=20261003a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261003a"></script>
 <script>
 (function(){
 'use strict';
@@ -357,6 +369,11 @@ function compute(){
   // Tanpa Standar Isi Box, voucher yang Box ID-nya terisi tidak bisa dicek. Daripada
   // menampilkan 0% yang menyesatkan, jalur ini ditandai "butuh standar".
   S.needStd = vr.length > 0 && !hasStd;
+  var dm = {};
+  if (S.data.std && S.data.std.desc) for (var dk in S.data.std.desc) dm[dk] = S.data.std.desc[dk];
+  vr.forEach(function(r){ if (r.desc && !dm[r.item]) dm[r.item] = r.desc; });
+  (S.data.bfl ? S.data.bfl.rows : []).forEach(function(r){ if (r.desc && !dm[r.item]) dm[r.item] = r.desc; });
+  S.descMap = dm;
   S.resRaw = {
     in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol }) : null,
     bfl: (vr.length || S.data.bfl) ? C.summarizeBfl(vr, S.data.bfl ? S.data.bfl.rows : []) : null,
@@ -368,8 +385,13 @@ function months(){
   ['in', 'bfl', 'out'].forEach(function(k){ var r = S.resRaw[k]; if (r) r.days.forEach(function(d){ set[d.date.slice(0, 7)] = 1; }); });
   return Object.keys(set).sort();
 }
+function laneMonths(k){
+  var r = S.resRaw && S.resRaw[k], set = {};
+  if (r) r.days.forEach(function(d){ set[d.date.slice(0, 7)] = 1; });
+  return Object.keys(set).sort();
+}
 function sumDays(days){
-  var t = { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0 };
+  var t = { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0 };
   days.forEach(function(d){ for (var k in t) t[k] += d[k]; });
   t.pct = t.qty > 0 ? Math.max(0, Math.min(100, t.credit / t.qty * 100)) : null;
   t.pctLines = t.lines > 0 ? t.sesuai / t.lines * 100 : null;
@@ -409,7 +431,7 @@ var LANES = {
         : e.status === 'nostd' ? 'Voucher ' + fmt(v.qty) + ' dalam ' + fmt(v.box) + ' box'
         : 'Voucher ' + fmt(v.qty) + ' · ' + fmt(v.box) + ' box x ' + fmt(e.std);
       var chip = e.status === 'sesuai' ? '<span class="chip ok">sesuai</span>' : e.status === 'nostd' ? '<span class="chip warn">tanpa standar</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
-      return cardHtml(v.item, v.group, v.desc, line, chip, v.voucher);
+      return cardHtml(v.item, v.group, v.desc || descOf(v.item), line, chip, v.voucher, i.close);
     }
   },
   bfl: {
@@ -433,37 +455,39 @@ var LANES = {
     foot: function(t){ return [fmt(t.qty), fmt(t.aktual), fmt(t.skuSelisih), sgn(t.selisih)]; },
     card: function(i){ var v = i.v, e = i.e;
       var chip = e.status === 'selisih' ? '<span class="chip bad">' + sgn(e.selisih) + '</span>' : e.status === 'manual' ? '<span class="chip info">manual</span>' : '<span class="chip ok">BFL</span>';
-      return cardHtml(v.item, v.group, v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status'), chip, v.voucher);
+      return cardHtml(v.item, v.group, v.desc || descOf(v.item), 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status'), chip, v.voucher, i.close);
     }
   },
   out: {
-    name: 'Barcode Out (TER)', tag: 'Barcode Out', color: 'var(--amber)',
-    desc: 'Qty check dibandingkan qty SPM per item. Item yang qty check-nya kurang berarti ada barang yang belum ter-scan saat muat.',
+    name: 'Barcode Out (Scan Out)', tag: 'Barcode Out', color: 'var(--amber)',
+    desc: 'Dari Master Scan Out. Status PICK berarti item belum ter-scan, status CHECK berarti sudah ter-scan. Persentase = qty check dibagi qty SPM.',
     kpi: function(t){ return [
       ['Item SPM', fmt(t.lines), 'baris item'],
       ['Qty SPM', fmt(t.qty), 'pcs'],
       ['Qty check', fmt(t.aktual), 'pcs ter-scan'],
-      ['Item belum penuh', fmt(t.skuSelisih), 'qty check kurang dari SPM'],
+      ['Item belum selesai', fmt(t.skuSelisih), 'PICK atau qty check kurang'],
       ['Belum ter-scan', fmt(-t.selisih), 'pcs'],
-      ['Sudah di-scan', fmtP(t.pct), fmt(t.sesuai) + ' dari ' + fmt(t.lines) + ' item penuh']
+      ['Sudah di-scan', fmtP(t.pct), fmt(t.sesuai) + ' dari ' + fmt(t.lines) + ' item selesai']
     ]; },
     cols: [
-      { key: 'full', label: 'Selesai scan', cls: 'ok', hint: 'Qty check = qty SPM' },
-      { key: 'part', label: 'Sebagian', cls: 'warn', hint: 'Sebagian barang belum ter-scan' },
-      { key: 'none', label: 'Belum scan', cls: 'bad', hint: 'Qty check 0' }
+      { key: 'full', label: 'Sudah ter-scan', cls: 'ok', hint: 'Status CHECK, qty check = qty SPM' },
+      { key: 'part', label: 'Sebagian', cls: 'warn', hint: 'Status CHECK, qty check kurang dari SPM' },
+      { key: 'none', label: 'Belum ter-scan', cls: 'bad', hint: 'Status PICK' }
     ],
-    th: ['Tanggal kirim', 'Qty SPM', 'Qty check', 'Item kurang', 'Belum ter-scan', 'Sudah di-scan'],
+    th: ['Tanggal kirim', 'Qty SPM', 'Qty check', 'Item belum selesai', 'Belum ter-scan', 'Sudah di-scan'],
     row: function(d){ return [fmt(d.qty), fmt(d.aktual), fmt(d.skuSelisih), fmt(-d.selisih)]; },
     foot: function(t){ return [fmt(t.qty), fmt(t.aktual), fmt(t.skuSelisih), fmt(-t.selisih)]; },
     card: function(i){ var v = i.v, e = i.e;
-      var chip = e.status === 'full' ? '<span class="chip ok">penuh</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
-      return cardHtml(v.item, v.group, v.desc, 'SPM ' + fmt(v.qspm) + ' · check ' + fmt(v.qchk) + (v.tuj ? ' · ' + esc(v.tuj) : ''), chip, v.spm);
+      var chip = e.status === 'full' ? '<span class="chip ok">CHECK</span>' : e.status === 'part' ? '<span class="chip warn">' + sgn(e.selisih) + '</span>' : '<span class="chip bad">PICK</span>';
+      return cardHtml(v.item, v.group, v.desc || descOf(v.item), 'SPM ' + fmt(v.qspm) + ' · check ' + fmt(v.qchk) + (v.tuj ? ' · ' + esc(v.tuj) : ''), chip, v.spm, i.close);
     }
   }
 };
-function cardHtml(item, group, desc, line, chip, ref){
+function descOf(item){ return (S.descMap && S.descMap[item]) || ''; }
+function cardHtml(item, group, desc, line, chip, ref, close){
+  var tag = close ? '<span class="chip close" title="Close ' + esc(close.at || '') + '">Close</span>' : '';
   return '<div class="card"><div class="t"><span class="it">' + esc(item) + '</span><span class="gr">' + esc(group) + (ref ? ' · ' + esc(ref) : '') + '</span></div>' +
-    '<div class="ds" title="' + esc(desc) + '">' + esc(desc) + '</div><div class="ft"><span>' + line + '</span>' + chip + '</div></div>';
+    '<div class="ds" title="' + esc(desc) + '">' + esc(desc) + '</div><div class="ft"><span>' + line + '</span><span style="display:flex;gap:5px;align-items:center;">' + tag + chip + '</span></div></div>';
 }
 
 /* ───────── render ───────── */
@@ -484,7 +508,7 @@ function fillMonths(){
   var ms = S.resRaw ? months() : [];
   var sel = document.getElementById('sel-month');
   if (S.month && ms.indexOf(S.month) === -1) S.month = '';
-  if (!S.month && ms.length && !S._monthTouched) S.month = ms[ms.length - 1];
+  if (!S.month && ms.length && !S._monthTouched) { var lm = laneMonths(S.lane); S.month = (lm.length ? lm : ms)[(lm.length ? lm : ms).length - 1]; }
   sel.innerHTML = '<option value="">Semua periode</option>' + ms.map(function(m){
     var a = m.split('-'); return '<option value="' + m + '"' + (m === S.month ? ' selected' : '') + '>' + MONTH_FULL[+a[1] - 1] + ' ' + a[0] + '</option>';
   }).join('');
@@ -499,8 +523,12 @@ function renderLanes(){
   ['in', 'bfl', 'out'].forEach(function(k){
     var L = LANES[k], v = view(k);
     var active = S.lane === k ? ' active' : '';
+    if ((!v || !v.days.length) && S.resRaw[k] && S.resRaw[k].days.length) {
+      html += '<button class="lane nodata' + active + '" style="--c:' + L.color + '" onclick="pickLane(\'' + k + '\')"><div class="ring">' + ring(null) + '</div><div><h3>' + L.name + '</h3><div class="sub">' + L.tag + '</div><div class="nums"><span class="big">Tidak ada data di periode ini. Klik untuk pindah ke periode terakhir yang ada datanya.</span></div></div></button>';
+      return;
+    }
     if (!v || !v.days.length) {
-      var need = k === 'out' ? 'Upload Master TER (.txt) di menu Upload Data Harian untuk melihat berapa persen barang yang sudah di-scan saat muat.'
+      var need = k === 'out' ? 'Upload Master Scan Out di menu Upload Data Harian untuk melihat berapa persen barang yang sudah di-scan saat muat.'
         : (k === 'in' && S.needStd) ? 'Standar Isi Box belum diupload. Upload di menu Upload Data Harian, tab Akurasi Scan, supaya Box ID bisa dicek.'
         : 'Upload Master Voucher &amp; Box ID' + (k === 'in' ? ' dan Standar Isi Box' : ' atau Master Backflush') + ' di menu Upload Data Harian.';
       html += '<button class="lane nodata' + active + '" style="--c:' + L.color + '" onclick="pickLane(\'' + k + '\')"><div class="ring">' + ring(null) + '</div><div><h3>' + L.name + '</h3><div class="sub">' + L.tag + '</div><div class="nums"><span class="big">' + need + '</span></div></div></button>';
@@ -523,7 +551,7 @@ function renderLane(){
   document.getElementById('lane-desc').textContent = desc;
   var rail = document.getElementById('rail'), kp = document.getElementById('kpis'), bd = document.getElementById('board'), tb = document.getElementById('tbl');
   if (!v || !v.days.length) {
-    rail.innerHTML = ''; kp.innerHTML = ''; tb.innerHTML = '';
+    rail.innerHTML = ''; kp.innerHTML = ''; tb.innerHTML = ''; document.getElementById('closep').hidden = true;
     bd.className = 'board'; bd.innerHTML = '<div class="empty" style="grid-column:1/-1;margin:30px auto;"><h2>Belum ada data untuk jalur ini</h2><p>' + (S.lane === 'in' && S.needStd ? 'Standar Isi Box belum diupload.' : 'Data belum diupload, atau periode ini kosong.') + ' Upload di menu Upload Data Harian, tab Akurasi Scan.</p><button class="btn primary" onclick="goUpload()">Buka Upload Data Harian</button></div>';
     document.getElementById('rules').innerHTML = ''; return;
   }
@@ -553,6 +581,7 @@ function renderLane(){
     if (!q) return true;
     var x = i.v; return (x.item + ' ' + (x.desc || '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
   });
+  renderClose(items);
   bd.className = 'board n' + L.cols.length;
   bd.innerHTML = L.cols.map(function(col){
     if (S.lane === 'in' && col.key === 'nostd' && !items.some(function(i){ return i.e.status === 'nostd'; })) return '';
@@ -580,6 +609,25 @@ function renderLane(){
   document.getElementById('tbl-title').textContent = 'Rekap harian · ' + L.name;
   renderRules();
 }
+function renderClose(items){
+  var el = document.getElementById('closep');
+  var list = items.filter(function(i){ return i.close; });
+  var qty = list.reduce(function(a, i){ return a + (i.v.qty != null ? i.v.qty : i.v.qspm || 0); }, 0);
+  var key = S.lane + ':close', n = S.shown[key] || 12;
+  list.sort(function(a, b){ return (b.close.iso || '') < (a.close.iso || '') ? -1 : (b.close.iso || '') > (a.close.iso || '') ? 1 : (a.v.item < b.v.item ? -1 : 1); });
+  var what = S.lane === 'out' ? 'sebelumnya PICK, kini sudah ter-scan' : (S.lane === 'bfl' ? 'sebelumnya TRM, kini BFL atau MANUAL' : 'sebelumnya Box ID kosong atau tidak sesuai, kini sesuai');
+  var cards = list.slice(0, n).map(function(i){
+    var v = i.v, c = i.close;
+    var line = '<span>' + esc(c.from) + ' <span class="arrow">→</span> ' + esc(c.to) + ' · ' + esc(c.at || '') + '</span>';
+    var qv = v.qty != null ? v.qty : v.qspm;
+    return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + esc(v.voucher || v.spm) + '</span></div>' +
+      '<div class="ds">' + esc(v.desc || descOf(v.item)) + '</div><div class="ft">' + line + '<span class="chip close">Qty ' + fmt(qv) + '</span></div></div>';
+  }).join('');
+  var more = list.length > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(12, list.length - n) + ' lagi</button>' : '';
+  el.hidden = false;
+  el.innerHTML = '<div class="closep-h"><div><b>Item sudah Close</b><span class="hint">' + what + '. Tanda ini muncul saat upload data baru memperbaiki data lama.</span></div><div class="closep-n">' + fmt(list.length) + '<span style="font-size:11px;color:var(--txt3);font-weight:400;"> item · ' + fmt(qty) + ' pcs</span></div></div>' +
+    (list.length ? '<div class="closep-g">' + cards + '</div>' + more : '<div class="closep-empty">Belum ada item yang Close pada pilihan ini.</div>');
+}
 function renderRules(){
   var r = [];
   if (S.lane === 'in') r = [
@@ -587,6 +635,7 @@ function renderRules(){
     'Nilai sama dengan qty voucher berarti <b>sesuai</b>, selain itu <b>tidak sesuai</b> (kemungkinan ada barang yang tidak ter-scan).',
     'Box ID bernilai 1: sesuai kalau qty voucher sama dengan atau di bawah standar isi box (satu box saja sudah cukup). Kalau voucher lebih besar dari standar tetapi Box ID hanya 1, hasilnya tidak sesuai karena kemungkinan ada box yang tidak ter-scan.',
     'Box ID kosong atau "?" selalu dihitung selisih sebesar qty voucher.',
+    'Tanda Close: voucher yang tadinya Box ID kosong atau tidak sesuai lalu pada upload berikutnya menjadi sesuai. Voucher yang nilainya sama dengan data lama tidak diperbarui.',
     'Selisih SKU = jumlah voucher tidak sesuai. Total selisih = Qty Box ID dikurangi Qty voucher.',
     'Akurasi dihitung proporsional: voucher 10 dengan Box ID 9 = 90%. Tiap voucher bernilai (qty voucher dikurangi selisihnya), lalu dijumlahkan dan dibagi total qty voucher.',
     S.opts.tol ? 'Toleransi box sisa <b>aktif</b>: box terakhir boleh tidak penuh.' : 'Toleransi box sisa <b>nonaktif</b>: kalau Box ID lebih dari 1 dan box terakhir tidak penuh, dihitung tidak sesuai. Bisa diaktifkan lewat tombol di bawah judul.'
@@ -594,22 +643,26 @@ function renderRules(){
   else if (S.lane === 'bfl') r = [
     'Status <code>BFL</code> dan <code>MANUAL</code> dianggap OK. Status <code>TRM</code> atau voucher tanpa status dianggap selisih.',
     'Kalau Master Backflush dimuat, statusnya dipakai menggantikan status di Master Voucher untuk nomor voucher yang sama.',
+    'Tanda Close: voucher yang tadinya TRM lalu pada upload berikutnya berubah menjadi BFL atau MANUAL. Voucher yang tidak berubah tidak diperbarui.',
     'Kolom Scan = total qty voucher per tanggal. Kolom Backflush = total qty voucher yang OK. Total selisih bernilai minus kalau backflush lebih kecil dari scan.'
   ];
   else r = [
-    'Data diambil dari Master TER (.txt): Item Number, Qty SPM, dan Qty Check. Tanggal memakai Ship Date.',
-    'Item penuh = Qty Check sama atau lebih besar dari Qty SPM. Selisih = Qty SPM dikurangi Qty Check.',
-    'Persentase = total Qty Check dibagi total Qty SPM pada tanggal tersebut. File TER yang dimuat lagi akan menimpa baris SPM yang sama.'
+    'Data diambil dari Master Scan Out: Item Number, Qty SPM, Qty Check, dan Status. Tanggal adalah tanggal kirim yang dipilih saat upload.',
+    'Status PICK = item belum ter-scan. Status CHECK = sudah ter-scan. Kalau sudah ter-scan semua, Qty Check sama dengan Qty SPM. CHECK dengan Qty Check di bawah Qty SPM masuk kolom Sebagian.',
+    'Persentase = total Qty Check dibagi total Qty SPM pada tanggal tersebut. Upload ulang SPM yang sama memperbarui barisnya: PICK yang berubah menjadi CHECK penuh diberi tanda Close, yang tidak berubah dibiarkan.'
   ];
   document.getElementById('rules').innerHTML = r.map(function(x){ return '<li>' + x + '</li>'; }).join('');
 }
 
 /* ───────── interaksi ───────── */
-window.pickLane = function(k){ S.lane = k; S.day = 'all'; S.q = ''; document.getElementById('q').value = ''; S.shown = {}; renderLanes(); renderLane(); };
+window.pickLane = function(k){
+  var lm = laneMonths(k);
+  if (lm.length && S.month && lm.indexOf(S.month) === -1) { S.month = lm[lm.length - 1]; fillMonths(); }
+  S.lane = k; S.day = 'all'; S.q = ''; document.getElementById('q').value = ''; S.shown = {}; renderLanes(); renderLane(); };
 window.pickDay = function(d){ S.day = (S.day === d ? 'all' : d); S.shown = {}; renderLane(); };
 window.onMonth = function(m){ S.month = m; S._monthTouched = true; S.day = 'all'; S.shown = {}; renderLanes(); renderLane(); };
 window.onSearch = function(v){ S.q = v; S.shown = {}; renderLane(); };
-window.moreCards = function(key){ S.shown[key] = (S.shown[key] || PAGE) + PAGE; renderLane(); };
+window.moreCards = function(key){ S.shown[key] = (S.shown[key] || (/:close$/.test(key) ? 12 : PAGE)) + (/:close$/.test(key) ? 12 : PAGE); renderLane(); };
 window.toggleSidebar = function(){
   var sb = document.getElementById('sidebar'), btn = document.getElementById('toggle-btn'), icon = document.getElementById('toggle-icon');
   var col = sb.classList.toggle('collapsed'); btn.classList.toggle('collapsed', col);

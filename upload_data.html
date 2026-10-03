@@ -17,8 +17,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="./assets/js/akurasi-core.js?v=20261002b"></script>
-<script src="./assets/js/akurasi-store.js?v=20261002b"></script>
+<script src="./assets/js/akurasi-core.js?v=20261003a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261003a"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -1297,12 +1297,13 @@ function handleSyncNow(tab){
 //  TAB AKURASI SCAN -- upload ke server lewat AkurasiStore
 // ================================================================
 window.AkurasiUpload = (function(){
-  var S = AkurasiStore, SPECS = [
-    { k:'voucher', desc:'Export "Laporan Scan Voucher & Box id" (.xlsx). Dipakai untuk Voucher vs Box ID dan status backflush.', accept:'.xlsx,.xls,.csv' },
-    { k:'std',     desc:'Tabel Item Number dan satuan isi box (.xlsx). Kolom dikenali otomatis dari judul (contoh: ITEM NUMBER dan SATUAN BOX). Upload baru menggantikan yang lama.', accept:'.xlsx,.xls,.csv' },
-    { k:'bfl',     desc:'Export "Voucher Produksi Fitting Browse" (.xlsx) dengan kolom Voucher ID, Status, Tgl Voucher, Item, Qty.', accept:'.xlsx,.xls,.csv' },
-    { k:'ter',     desc:'File .txt dengan pemisah "|". Boleh pilih beberapa file sekaligus. Baris SPM yang sama diperbarui.', accept:'.txt,.csv', multi:true }
+  var S = AkurasiStore, pickedDate = '', SPECS = [
+    { k:'voucher', desc:'Export "Laporan Scan Voucher & Box id" (.xlsx). Dipakai untuk Voucher vs Box ID dan status backflush. Upload ulang aman: baris yang nilainya sama dibiarkan, baris yang berubah diperbarui. Kalau berubah dari selisih menjadi beres (mis. TRM menjadi BFL/MANUAL, atau Box ID kosong menjadi sesuai) otomatis diberi tanda <b>Close</b>.', accept:'.xlsx,.xls,.csv' },
+    { k:'std',     desc:'Tabel Item Number dan satuan isi box (.xlsx). Kolom dikenali otomatis dari judul (contoh: ITEM NUMBER dan SATUAN BOX). <b>Cukup sekali upload, bersifat permanen</b> dan tidak bisa ditimpa upload berikutnya.', accept:'.xlsx,.xls,.csv' },
+    { k:'bfl',     desc:'Export "Voucher Produksi Fitting Browse" (.xlsx) dengan kolom Voucher ID, Status, Tgl Voucher, Item, Qty. Aturan timpa dan tanda Close sama seperti Master Voucher.', accept:'.xlsx,.xls,.csv' },
+    { k:'ter',     desc:'Master Scan Out (.xlsx) hasil tarikan sistem per NO SPM. Status PICK = belum ter-scan, CHECK = sudah ter-scan. Tarikan sistem tidak membawa tanggal, jadi <b>pilih tanggal kirim</b> di bawah sebelum upload. File TER (.txt) lama juga masih bisa dibaca.', accept:'.xlsx,.xls,.txt,.csv', multi:true }
   ], data = {}, loaded = false, busy = false;
+  function dateVal(){ if (pickedDate) return pickedDate; var d = new Date(); return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2); }
   function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function n(v){ return (Number(v)||0).toLocaleString('id-ID'); }
   function note(msg, kind){
@@ -1317,10 +1318,12 @@ window.AkurasiUpload = (function(){
                  : '<span style="color:var(--txt3);">Belum ada data</span>';
       return '<div class="card"><div class="card-header"><div class="card-title">' + S.TITLES[sp.k] + '</div></div><div class="card-body">' +
         '<div class="col-ref">' + sp.desc + '</div><div class="col-ref" style="margin-top:6px;">' + st + '</div>' +
+        (sp.k === 'ter' ? '<div class="col-ref" style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b>Tanggal kirim</b> <input type="date" id="akurasi-date" value="' + esc(dateVal()) + '" onchange="AkurasiUpload.setDate(this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--txt);font-size:11.5px;"> <span style="color:var(--txt3);">berlaku untuk semua baris di file yang diupload</span></div>' : '') +
         '<div class="btn-row" style="margin-top:10px;">' +
-        '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.pick(\'' + sp.k + '\')">' + (d ? 'Ganti / tambah file' : 'Pilih file') + '</button>' +
+        (sp.k === 'std' && d ? '<span style="font-size:11px;color:var(--txt3);">Terkunci. Standar isi box permanen dan tidak bisa diganti dari sini.</span>'
+          : '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.pick(\'' + sp.k + '\')">' + (d ? 'Ganti / tambah file' : 'Pilih file') + '</button>') +
         (sp.k === 'std' && data.voucher ? '<button class="btn" onclick="AkurasiUpload.template()">Unduh daftar item</button>' : '') +
-        (d ? '<button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.remove(\'' + sp.k + '\')">Hapus</button>' : '') +
+        (d && sp.k !== 'std' ? '<button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.remove(\'' + sp.k + '\')">Hapus</button>' : '') +
         '</div></div></div>';
     }).join('');
   }
@@ -1340,7 +1343,7 @@ window.AkurasiUpload = (function(){
   function run(k, files){
     if (!files || !files.length) return;
     busy = true; draw(); note('Membaca dan menyimpan ' + S.TITLES[k] + '...');
-    S.ingest(k, files, { dateMode: document.getElementById('akurasi-datemode').value }).then(function(r){
+    S.ingest(k, files, { dateMode: document.getElementById('akurasi-datemode').value, date: (document.getElementById('akurasi-date') || {}).value || pickedDate }).then(function(r){
       busy = false; return refresh().then(function(){
         if (r.remote) note(r.msg + ' Tersimpan di server.');
         else note(r.msg + ' Tapi BELUM tersimpan di server: ' + r.warn, 'warn');
@@ -1359,9 +1362,10 @@ window.AkurasiUpload = (function(){
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'STANDAR BOX');
     XLSX.writeFile(wb, 'daftar_item_standar_box.xlsx');
   }
+  function setDate(v){ pickedDate = v; }
   function init(){ if (!loaded) refresh(); }
   if (location.hash === '#akurasi') setTimeout(function(){ switchTab('akurasi'); }, 0);
-  return { init: init, pick: pick, remove: remove, template: template };
+  return { init: init, pick: pick, remove: remove, template: template, setDate: setDate };
 })();
 </script>
 </body>

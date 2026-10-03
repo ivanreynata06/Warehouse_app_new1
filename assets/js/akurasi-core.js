@@ -161,15 +161,17 @@
       start = h + 1;
       info = 'Item Number = "' + (aoa[h][ci] || '') + '", Standar = "' + (aoa[h][cq] || '') + '"';
     }
-    var map = {}, n = 0;
+    var map = {}, desc = {}, n = 0, cd = -1;
+    if (h >= 0) cd = colOf(aoa[h].map(norm), /^desc|nama|uraian/);
     for (var i = start; i < aoa.length; i++) {
       var r = aoa[i] || [];
       var item = digits(r[ci]), q = num(r[cq]);
       if (item.length < 8 || q == null || q <= 0) continue;
       if (!(item in map)) n++;
       map[item] = q;
+      if (cd >= 0 && r[cd]) desc[item] = String(r[cd]).trim();
     }
-    return { map: map, count: n, info: info, error: n ? null : 'Tidak ada pasangan Item Number & standar isi box yang terbaca.' };
+    return { map: map, desc: desc, count: n, info: info, error: n ? null : 'Tidak ada pasangan Item Number & standar isi box yang terbaca.' };
   }
 
   // ---------- parser: Master Backflush ----------
@@ -229,12 +231,40 @@
       var d = ds || dc;
       rows.push({
         spm: p[0], item: item, desc: p[idx.desc] || '', group: p[idx.group] || '',
-        qspm: qs, qchk: qc == null ? 0 : qc, qship: num(p[idx.qship]) || 0, batal: num(p[idx.batal]) || 0,
+        qspm: qs, qchk: qc == null ? 0 : qc, status: '', key: p[0] + '|' + item + '|' + (p[idx.group] || ''), qship: num(p[idx.qship]) || 0, batal: num(p[idx.batal]) || 0,
         ket: p[idx.ket] || '', veh: p[idx.veh] || '', tuj: p[idx.tuj] || '',
         date: d ? iso(d.y, d.m, d.d) : ''
       });
     });
     return { rows: rows, error: rows.length ? null : 'Tidak ada baris SPM yang valid. Pastikan ini file TER (.txt) dengan pemisah "|".' };
+  }
+
+  // ---------- parser: Master Scan Out (xlsx, hasil tarikan sistem per NO SPM) ----------
+  // Tarikan sistem TIDAK membawa tanggal, jadi tanggal kirim dipilih saat upload
+  // (dateIso 'yyyy-mm-dd') dan dipakai untuk semua baris file tsb.
+  // Status PICK = belum ter-scan, CHECK = sudah ter-scan.
+  function parseScanOut(aoa, dateIso) {
+    var h = findHeader(aoa, function (r) { return r.some(function (c) { return /no\.?\s*spm/.test(c); }) && r.some(function (c) { return /qty\s*spm/.test(c); }); });
+    if (h < 0) return { rows: [], error: 'Header "NO SPM" / "QTY SPM" tidak ditemukan. Pastikan ini file Master Scan Out.' };
+    var H = aoa[h].map(norm);
+    var c = { spm: colOf(H, /no\.?\s*spm/), it: colOf(H, /item/), qs: colOf(H, /qty\s*spm/), qp: colOf(H, /qty\s*pick/),
+              qc: colOf(H, /qty\s*check/), st: colOf(H, /^status/), tj: colOf(H, /tujuan/) };
+    if (c.it < 0 || c.qc < 0) return { rows: [], error: 'Kolom Item Number / Qty Check tidak ditemukan.' };
+    var rows = [], occ = {};
+    for (var i = h + 1; i < aoa.length; i++) {
+      var r = aoa[i] || [];
+      var spm = digits(r[c.spm]), item = digits(r[c.it]), qs = num(r[c.qs]), qc = num(r[c.qc]);
+      if (!spm || item.length < 8 || qs == null) continue;
+      // Satu SPM bisa memuat item yang sama di beberapa baris (qty berbeda), jadi kunci
+      // memakai urutan kemunculan.
+      var base = spm + '|' + item + '|' + qs, k = (occ[base] = (occ[base] || 0) + 1);
+      rows.push({
+        spm: spm, item: item, desc: '', group: '', qspm: qs, qpick: c.qp >= 0 ? (num(r[c.qp]) || 0) : 0, qchk: qc == null ? 0 : qc,
+        status: c.st >= 0 ? String(r[c.st] || '').trim().toUpperCase() : '', tuj: c.tj >= 0 ? String(r[c.tj] || '').trim() : '',
+        date: dateIso || '', key: base + '|' + k
+      });
+    }
+    return { rows: rows, error: rows.length ? null : 'Tidak ada baris SPM yang valid di file ini.' };
   }
 
   // ---------- perhitungan: Voucher vs Box ID ----------
@@ -266,7 +296,7 @@
   }
 
   function newBucket() {
-    return { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0 };
+    return { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0 };
   }
   function pct(a, b) { return b > 0 ? Math.max(0, Math.min(100, a / b * 100)) : null; }
 
@@ -274,11 +304,12 @@
     var days = {}, items = [], tot = newBucket();
     vouchers.forEach(function (v) {
       var e = evalIn(v, std, opt);
-      var it = { v: v, e: e, date: v.date };
+      var it = { v: v, e: e, date: v.date, close: v.closeBox || null };
       items.push(it);
       var d = days[v.date] || (days[v.date] = newBucket());
       if (e.status === 'nostd') { d.nostd++; tot.nostd++; return; }
       [d, tot].forEach(function (b) {
+        if (it.close && e.status === 'sesuai') b.closed = (b.closed || 0) + 1;
         b.lines++; b.qty += v.qty; b.aktual += e.aktual; b.selisih += e.selisih;
         if (e.status === 'sesuai') { b.sesuai++; b.credit += v.qty; }
         else { b.skuSelisih++; b.credit += Math.max(0, v.qty - Math.abs(e.selisih)); }
@@ -299,43 +330,88 @@
     vouchers.forEach(function (v) {
       var b = byNo[v.voucher]; seen[v.voucher] = 1;
       recs.push({ voucher: v.voucher, item: v.item, desc: v.desc, group: v.group, qty: v.qty,
-        status: b && b.status ? b.status : v.status, date: v.date, src: b ? 'bfl' : 'voucher' });
+        status: b && b.status ? b.status : v.status, date: v.date, src: b ? 'bfl' : 'voucher',
+        close: (b && b.closeBfl) || v.closeBfl || null });
     });
     (bflRows || []).forEach(function (b) {
       if (seen[b.voucher]) return;
       recs.push({ voucher: b.voucher, item: b.item, desc: b.desc, group: b.group, qty: b.qty,
-        status: b.status, date: b.date, src: 'bfl' });
+        status: b.status, date: b.date, src: 'bfl', close: b.closeBfl || null });
     });
     var days = {}, items = [], tot = newBucket();
     recs.forEach(function (r) {
       var ok = isBflOk(r.status);
       var it = { v: r, e: { status: ok ? (r.status === 'MANUAL' ? 'manual' : 'bfl') : 'selisih',
-        aktual: ok ? r.qty : 0, selisih: ok ? 0 : -r.qty }, date: r.date };
+        aktual: ok ? r.qty : 0, selisih: ok ? 0 : -r.qty }, date: r.date, close: ok ? (r.close || null) : null };
       items.push(it);
       var d = days[r.date] || (days[r.date] = newBucket());
       [d, tot].forEach(function (b) {
         b.lines++; b.qty += r.qty; b.aktual += it.e.aktual; b.selisih += it.e.selisih;
-        if (ok) { b.sesuai++; b.credit += r.qty; } else b.skuSelisih++;
+        if (ok) { b.sesuai++; b.credit += r.qty; if (it.close) b.closed = (b.closed || 0) + 1; } else b.skuSelisih++;
       });
     });
     return finish(days, items, tot);
   }
 
-  // ---------- perhitungan: Barcode OUT (TER) ----------
+  // ---------- perhitungan: Barcode OUT (Master Scan Out) ----------
+  // PICK = belum ter-scan. CHECK + Qty Check >= Qty SPM = selesai. CHECK tapi
+  // Qty Check < Qty SPM = sebagian. Tanpa kolom status (file TER lama) dinilai dari qty.
+  function outState(r) {
+    if (r.status === 'PICK') return 'none';
+    if (r.qchk >= r.qspm && r.qspm > 0) return 'full';
+    return r.qchk > 0 ? 'part' : 'none';
+  }
   function summarizeOut(rows) {
     var days = {}, items = [], tot = newBucket();
     rows.forEach(function (r) {
-      var chk = Math.min(r.qchk, r.qspm), kurang = Math.max(0, r.qspm - r.qchk);
-      var st = r.qchk >= r.qspm ? 'full' : (r.qchk > 0 ? 'part' : 'none');
-      var it = { v: r, e: { status: st, aktual: chk, selisih: -kurang }, date: r.date };
+      var st = outState(r);
+      var chk = st === 'none' ? 0 : Math.min(r.qchk, r.qspm);
+      var kurang = r.qspm - chk;
+      var it = { v: r, e: { status: st, aktual: chk, selisih: -kurang }, date: r.date, close: r.close || null };
       items.push(it);
       var d = days[r.date] || (days[r.date] = newBucket());
       [d, tot].forEach(function (b) {
-        b.lines++; b.qty += r.qspm; b.aktual += r.qchk; b.selisih += -kurang; b.credit += chk;
+        b.lines++; b.qty += r.qspm; b.aktual += chk; b.selisih += -kurang; b.credit += chk;
         if (st === 'full') b.sesuai++; else b.skuSelisih++;
+        if (it.close) b.closed = (b.closed || 0) + 1;
       });
     });
     return finish(days, items, tot);
+  }
+
+  // ---------- gabung hasil upload baru dengan data lama ----------
+  // Aturan: baris yang SEMUA nilainya sama dengan data lama dibiarkan (tidak diperbarui).
+  // Kalau ada perbedaan, baris diganti. Kalau perbedaannya membuat item yang tadinya
+  // selisih (mis. status TRM) menjadi beres (BFL / MANUAL / sesuai), baris diberi tanda
+  // "close" berisi status sebelum -> sesudah dan waktu upload.
+  //  opt.key(row)        -> kunci unik baris
+  //  opt.fields          -> daftar field yang dibandingkan
+  //  opt.closeField      -> nama field penanda close di baris (mis. 'closeBfl')
+  //  opt.state(row)      -> { ok: bool, label: 'TRM' }  (kondisi baris)
+  //  opt.lookupOld(row)  -> (opsional) baris lama pembanding kalau baris ini belum ada
+  function mergeRecords(oldRows, newRows, opt, now) {
+    var map = {}, order = [];
+    (oldRows || []).forEach(function (r) { var k = opt.key(r); if (!(k in map)) order.push(k); map[k] = r; });
+    var st = { added: 0, updated: 0, same: 0, closed: 0, closedItems: [] };
+    newRows.forEach(function (n) {
+      var k = opt.key(n), o = map[k];
+      var prev = o || (opt.lookupOld ? opt.lookupOld(n) : null);
+      if (o) {
+        var same = opt.fields.every(function (f) { return String(o[f] == null ? '' : o[f]) === String(n[f] == null ? '' : n[f]); });
+        if (same) { st.same++; return; }
+      }
+      var row = {}; for (var f in n) row[f] = n[f];
+      var ns = opt.state(row), ps = prev ? opt.state(prev) : null;
+      if (ns.ok && ps && !ps.ok) {
+        row[opt.closeField] = { from: ps.label, to: ns.label, at: now.text, iso: now.iso, by: now.by };
+        st.closed++; st.closedItems.push(row);
+      } else if (ns.ok && prev && prev[opt.closeField]) {
+        row[opt.closeField] = prev[opt.closeField];      // tetap tercatat pernah Close
+      }
+      if (o) st.updated++; else { st.added++; order.push(k); }
+      map[k] = row;
+    });
+    return { rows: order.map(function (k) { return map[k]; }), stats: st };
   }
 
   function finish(days, items, tot) {
@@ -350,7 +426,8 @@
   var api = {
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,
-    parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER,
+    parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER, parseScanOut: parseScanOut,
+    outState: outState, mergeRecords: mergeRecords,
     evalIn: evalIn, summarizeIn: summarizeIn, summarizeBfl: summarizeBfl, summarizeOut: summarizeOut,
     isBflOk: isBflOk
   };
