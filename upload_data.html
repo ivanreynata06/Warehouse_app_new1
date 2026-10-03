@@ -1325,7 +1325,7 @@ window.AkurasiUpload = (function(){
   ], data = {}, loaded = false, busy = false;
   // Fitting Rucika: Standar Isi Box tidak dipakai; Box ID dicek dari kolom Selisih (0 = sesuai).
   if (window.AkurasiCore && AkurasiCore.selMode()) {
-    SPECS[0].desc = 'Export \"Laporan Scan Voucher & Box id\" (.xlsx) dengan kolom No.Voucher, Item Number, Description, QTY Voucher, Qty Box Id, dan <b>Selisih</b>. <b>Tidak perlu upload Standar Isi Box</b>: Selisih 0 = sesuai, selain 0 = tidak sesuai. Upload ulang aman: baris yang nilainya sama dibiarkan, baris yang berubah diperbarui, dan yang berubah dari selisih menjadi beres otomatis diberi tanda <b>Close</b>.';
+    SPECS[0].desc = 'Export \"Laporan Scan Voucher & Box id\" (.xlsx) dengan kolom No.Voucher, Item Number, Description, QTY Voucher, Qty Box Id, dan <b>Selisih</b>. Satuan sudah <b>Box (Bx)</b>, jadi <b>tidak perlu upload Standar Isi Box</b>: Selisih 0 = sesuai, selain 0 = tidak sesuai (contoh: voucher 2 Bx, Box ID 1 Bx = selisih 1 Bx, ada 1 box belum ter-scan). Upload ulang aman: baris yang nilainya sama dibiarkan, baris yang berubah diperbarui, dan yang berubah dari selisih menjadi beres otomatis diberi tanda <b>Close</b>.';
   }
   function dateVal(){ if (pickedDate) return pickedDate; var d = new Date(); return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2); }
   function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
