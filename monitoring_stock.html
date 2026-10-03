@@ -1046,6 +1046,7 @@ lucide.createIcons();
 // ----------------------------------------------------------------
 (function simplifyDashboardForOtherDept(){
   if (!window.WH_SESSION || window.WH_SESSION.isFittingImport !== false) return; // Fitting Import -> biarkan seperti biasa
+  if (window.WH_SESSION.workspace === 'cibitung_fitting_rucika') return; // Fitting Rucika -> layout penuh, diatur adaptRucika() di bawah
 
   var titleEl = document.querySelector('.dash-title');
   if (titleEl) titleEl.textContent = 'Dashboard Inbound dan Outbound';
@@ -1680,6 +1681,73 @@ function changeFontSize(dir) {
       if (lbl) lbl.textContent = _fontLabels[savedStep];
     });
   }
+})();
+</script>
+
+<script>
+/* ================================================================
+   Fitting Rucika: layout sama dengan Fitting Import (grafik IO tampil),
+   tetapi kategori = Stock LEM | Stock Fitting | Rutape | Container Box.
+   Grafik IO: garis 1 = LEM+Rutape+Container, garis 2 = Fitting.
+================================================================ */
+(function adaptRucika(){
+  if (!window.WH_SESSION || window.WH_SESSION.workspace !== 'cibitung_fitting_rucika') return;
+  var KAT = [
+    {k:'lem', nm:'Stock LEM', c:'#16a34a'}, {k:'fitting', nm:'Stock Fitting', c:'#4ade80'},
+    {k:'rutape', nm:'Rutape', c:'#6b7280'}, {k:'container', nm:'Container Box', c:'#9ca3af'}
+  ];
+  var q = function(s){ return document.querySelector(s); };
+  var kb = document.getElementById('kanbanBar'); if (kb) kb.style.display = 'none'; // kanban PPR = khusus Import
+
+  // Judul & legenda
+  var t = q('.dash-title'); if (t) t.textContent = 'Dashboard Stock, Inbound dan Outbound';
+  document.title = 'Dashboard Stock, Inbound dan Outbound - Fitting Rucika';
+  document.querySelectorAll('.card-title').forEach(function(el){
+    if (/Total Stock Pipa/i.test(el.textContent)) el.textContent = 'Total Stock LEM, Fitting, Rutape & Container Box';
+  });
+  var legend = q('.donut-row .legend');
+  if (legend) legend.innerHTML = KAT.map(function(c){
+    return '<div class="leg-row"><div class="leg-label"><span class="dot" style="background:'+c.c+'"></span>'+c.nm+'</div><div class="leg-val" id="val-ton-'+c.k+'">&#8212;</div></div>';
+  }).join('');
+  var barLeg = q('.bar-legend');
+  if (barLeg) barLeg.innerHTML = KAT.map(function(c){ return '<div class="bar-leg-item"><span class="dot" style="background:'+c.c+'"></span>'+c.nm+'</div>'; }).join('');
+  var tbl = q('.stok-tbl');
+  if (tbl) tbl.innerHTML = KAT.map(function(c){
+    return '<tr><td><div class="stok-lbl"><span class="dot" style="background:'+c.c+'"></span>'+c.nm+'</div></td><td class="stok-v" id="val-stok-'+c.k+'">&#8212;</td><td class="stok-u">Pcs</td></tr>';
+  }).join('');
+  document.querySelectorAll('.io-label').forEach(function(el){
+    if (/Pipa PPR/i.test(el.textContent)) el.textContent = 'LEM + Rutape + Container';
+    else if (/Fitting PPR/i.test(el.textContent)) el.textContent = 'Fitting';
+  });
+  document.querySelectorAll('.lc-leg').forEach(function(el){
+    if (/Pipa PPR/i.test(el.textContent)) el.lastChild.textContent = 'LEM + Rutape + Container';
+    else if (/Fitting PPR/i.test(el.textContent)) el.lastChild.textContent = 'Fitting';
+  });
+
+  // Fast moving: 4 tab
+  var tabs = q('.fm-tabs');
+  if (tabs) {
+    var JN = ['Lem','Fitting','Rutape','Container Box'];
+    tabs.innerHTML = JN.map(function(j,i){ return '<button class="fm-tab'+(i===0?' active':'')+'" onclick="switchFMTab(\''+j+'\',this)">'+j+'</button>'; }).join('');
+    fmTab = 'Lem';
+  }
+
+  window.renderBar = function(vals){
+    var maxV = Math.max.apply(null, vals.concat([1])), H = 36, lb = ['LEM','FIT','RTP','CBX'];
+    document.getElementById('bar-stok-chart').innerHTML = vals.map(function(v,i){
+      return '<div class="bar-col"><div class="bar-rect" style="height:'+Math.max(3,Math.round(v/maxV*H))+'px;background:'+KAT[i].c+';"></div><div class="bar-lbl">'+lb[i]+'</div></div>';
+    }).join('');
+  };
+  // Render stok (donut + bar + angka) dengan 4 kategori Rucika
+  window.renderStock = function(data){
+    var st = data.stock || {}, ton = st.tonase || {}, stok = st.stok || {};
+    set('val-global-tonase', fmt(st.globalTonase) + ' kg');
+    KAT.forEach(function(c){ set('val-ton-'+c.k, fmt(ton[c.k]) + ' kg'); set('val-stok-'+c.k, fmt(stok[c.k])); });
+    updateDonut('donut-tonase', KAT.map(function(c){ return ton[c.k]||0; }), KAT.map(function(c){ return c.c; }));
+    set('val-stok-total', fmt(stok.total));
+    renderBar(KAT.map(function(c){ return stok[c.k]||0; }));
+    lucide.createIcons();
+  };
 })();
 </script>
 </body>

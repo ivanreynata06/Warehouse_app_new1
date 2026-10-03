@@ -1396,6 +1396,7 @@ function getIOTrendBatch(monthsList) {
 
 function getGroupList() {
   try {
+    if (isRucikaFitting()) return { success: true, groups: GROUP_LABEL_RUCIKA.slice() };
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_STOCK);
     if (!sheet) return { success: true, groups: [] };
@@ -1520,6 +1521,41 @@ function getKategoriStock(drawingVal) {
   if (d === DRAW_FITTING_GREEN.toUpperCase()) return 'fittingGreen';
   if (d === DRAW_FITTING_GREY.toUpperCase())  return 'fittingGrey';
   return null;
+}
+
+// ================================================================
+//  KATEGORI KHUSUS FITTING RUCIKA (workspace cibitung_fitting_rucika)
+//  Kategori: lem | fitting | rutape | container (Container Box Scrap)
+//  Aturan (sumber: kolom Drawing, fallback Description):
+//    - Drawing mengandung COMM-ART            -> container
+//    - Drawing mengandung RUTAPE              -> rutape
+//    - Drawing mengandung LEM / GLUE          -> lem
+//    - Drawing mengandung FITTING             -> fitting
+//    - Drawing KOSONG: Description diawali RUGLUE -> lem,
+//      Description mengandung RUTAPE -> rutape, selain itu -> fitting
+// ================================================================
+var GROUP_LABEL_RUCIKA = ['Stock LEM', 'Stock Fitting', 'Rutape', 'Container Box'];
+function katDariGroupRucika(g) {
+  g = normStr(g);
+  if (g.indexOf('LEM') !== -1)       return 'lem';
+  if (g.indexOf('RUTAPE') !== -1)    return 'rutape';
+  if (g.indexOf('CONTAINER') !== -1) return 'container';
+  return 'fitting';
+}
+function isRucikaFitting() { return ACTIVE_WORKSPACE === 'cibitung_fitting_rucika'; }
+var KATEGORI_RUCIKA = ['lem', 'fitting', 'rutape', 'container'];
+function getKategoriRucika(drawing, desc) {
+  var d = normStr(drawing), ds = normStr(desc);
+  if (d) {
+    if (d.indexOf('COMM-ART') !== -1) return 'container';
+    if (d.indexOf('RUTAPE') !== -1)   return 'rutape';
+    if (d.indexOf('LEM') !== -1 || d.indexOf('GLUE') !== -1) return 'lem';
+    if (d.indexOf('FITTING') !== -1)  return 'fitting';
+  }
+  if (ds.indexOf('CONTAINER BOX') !== -1 && ds.indexOf('SCRAP') !== -1) return 'container';
+  if (ds.indexOf('RUTAPE') !== -1) return 'rutape';
+  if (ds.indexOf('RUGLUE') === 0)  return 'lem';
+  return 'fitting'; // drawing kosong / tidak dikenal & bukan RUGLUE -> fitting
 }
 
 // ================================================================
@@ -1707,6 +1743,8 @@ function getStockData(ss, range, group) {
     tonase : { pipaGreen:0, pipaGrey:0, fittingGreen:0, fittingGrey:0, total:0 },
     stok   : { pipaGreen:0, pipaGrey:0, fittingGreen:0, fittingGrey:0, total:0 }
   };
+  var rucika = isRucikaFitting();
+  if (rucika) KATEGORI_RUCIKA.forEach(function(k){ out.tonase[k] = 0; out.stok[k] = 0; });
   if (!sheet) return out;
 
   var data = sheet.getDataRange().getValues();
@@ -1718,17 +1756,27 @@ function getStockData(ss, range, group) {
     var tonnaseH = parseFloat(row[7]) || 0;
     out.globalTonase += tonnaseH;  // selalu akumulasi semua (tidak filter group)
 
-    // Filter group jika ada (kolom D)
+    // Filter group jika ada (kolom D). Di Fitting Rucika "group" = kategori
+    // (Stock LEM / Stock Fitting / Rutape / Container Box), bukan kode group.
     if (group) {
-      var rowGroup = normStr(row[3]);
-      if (rowGroup !== group) continue;
+      if (rucika) {
+        if (getKategoriRucika(row[8], row[4]) !== katDariGroupRucika(group)) continue;
+      } else {
+        var rowGroup = normStr(row[3]);
+        if (rowGroup !== group) continue;
+      }
     }
 
     // Baris ini lolos filter group (atau tidak ada filter)
     out.groupTonase += tonnaseH;
 
-    var kat = getKategoriStock(row[8]);
-    if (!kat) kat = getKategoriStockFallback(row[4]); // fallback: baca Description (kolom E)
+    var kat;
+    if (rucika) {
+      kat = getKategoriRucika(row[8], row[4]); // Drawing (I) -> fallback Description (E)
+    } else {
+      kat = getKategoriStock(row[8]);
+      if (!kat) kat = getKategoriStockFallback(row[4]); // fallback: baca Description (kolom E)
+    }
     if (!kat) continue;
 
     var pcs = parseFloat(row[6]) || 0;
@@ -1736,6 +1784,11 @@ function getStockData(ss, range, group) {
     out.stok[kat]   += pcs;
   }
 
+  if (rucika) {
+    out.tonase.total = out.tonase.lem + out.tonase.fitting + out.tonase.rutape + out.tonase.container;
+    out.stok.total   = out.stok.lem   + out.stok.fitting   + out.stok.rutape   + out.stok.container;
+    return out;
+  }
   out.tonase.total = out.tonase.pipaGreen + out.tonase.pipaGrey
                    + out.tonase.fittingGreen + out.tonase.fittingGrey;
   out.stok.total   = out.stok.pipaGreen + out.stok.pipaGrey
@@ -2407,15 +2460,25 @@ function perbaikiAnomaliRetutKirimAgustus2026() {
 function readTransaksi(ss, sheetName, range) {
   var sheet = ss.getSheetByName(sheetName);
   var out = { total:0, pipa:0, fitting:0, pipaGreen:0, pipaGrey:0,
-              fittingGreen:0, fittingGrey:0, trend:[] };
+              fittingGreen:0, fittingGrey:0, lem:0, rutape:0, container:0, trend:[] };
   if (!sheet) return out;
   var data     = sheet.getDataRange().getValues();
   var trendMap = {};
+  var rucika   = isRucikaFitting();
   for (var i = 1; i < data.length; i++) {
     var row    = data[i];
     var tgl    = toDate(row[4]);
     if (!tgl || !inRange(tgl, range)) continue;
     var weight = parseFloat(row[5]) || 0;
+    if (rucika) {
+      var katR = getKategoriRucika(row[1], String(row[6] || '') + ' ' + String(row[3] || '') + ' ' + String(row[2] || ''));
+      out.total += weight;
+      out[katR] += weight;
+      var keyR = fmtD(tgl);
+      if (!trendMap[keyR]) trendMap[keyR] = { label:keyR, lem:0, fitting:0, rutape:0, container:0 };
+      trendMap[keyR][katR] += weight;
+      continue;
+    }
     var kat    = getKategoriTransaksiV2(row[1], row[2], row[3]);
     if (!kat) continue;
     out.total  += weight;
@@ -2426,6 +2489,13 @@ function readTransaksi(ss, sheetName, range) {
     if (!trendMap[key]) trendMap[key] = { label:key, pipa:0, fitting:0 };
     if (kat === 'pipaGreen'    || kat === 'pipaGrey')    trendMap[key].pipa    += weight;
     if (kat === 'fittingGreen' || kat === 'fittingGrey') trendMap[key].fitting += weight;
+  }
+  if (rucika) {
+    // 'pipa' = non-fitting (Lem+Rutape+Container) agar grafik 2-garis lama tetap bisa dipakai
+    out.pipa = out.lem + out.rutape + out.container;
+    Object.keys(trendMap).forEach(function(k){
+      var t = trendMap[k]; t.pipa = t.lem + t.rutape + t.container;
+    });
   }
   out.trend = Object.values(trendMap).sort(function(a,b){ return a.label<b.label?-1:1; });
   if (out.trend.length > 6) out.trend = out.trend.slice(-6);
@@ -2450,11 +2520,14 @@ function getFastMovingByRange(ss, range) {
   if (!sheet) return [];
   var data    = sheet.getDataRange().getValues();
   var itemMap = {};
+  var rucika = isRucikaFitting();
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
     var tgl = toDate(row[4]); // col E = Effective Date
     if (!tgl || !inRange(tgl, range)) continue;
-    var kat = getKategoriTransaksiV2(row[1], row[2], row[3]);
+    var kat = rucika
+      ? getKategoriRucika(row[1], String(row[6] || '') + ' ' + String(row[3] || '') + ' ' + String(row[2] || ''))
+      : getKategoriTransaksiV2(row[1], row[2], row[3]);
     if (!kat) continue;
     var kode = String(row[0] || '').trim();
     // col G = Description lengkap (index 6), fallback ke col D, C, atau kode
@@ -2468,7 +2541,8 @@ function getFastMovingByRange(ss, range) {
       itemMap[kode] = {
         kode  : kode,
         nama  : nama,
-        jenis : (kat === 'pipaGreen' || kat === 'pipaGrey') ? 'Pipa' : 'Fitting',
+        jenis : rucika ? ({lem:'Lem', fitting:'Fitting', rutape:'Rutape', container:'Container Box'}[kat])
+                       : ((kat === 'pipaGreen' || kat === 'pipaGrey') ? 'Pipa' : 'Fitting'),
         kat   : kat,
         tonase: 0
       };
@@ -2476,6 +2550,13 @@ function getFastMovingByRange(ss, range) {
     itemMap[kode].tonase += ton;
   }
   var all = Object.values(itemMap).sort(function(a, b) { return b.tonase - a.tonase; });
+  if (rucika) { // Top 5 per kategori Rucika
+    var hasilR = [];
+    ['Lem', 'Fitting', 'Rutape', 'Container Box'].forEach(function(j) {
+      hasilR = hasilR.concat(all.filter(function(x){ return x.jenis === j; }).slice(0, 5));
+    });
+    return hasilR;
+  }
   // Top 5 Pipa + Top 5 Fitting
   var pipa    = all.filter(function(x){ return x.jenis === 'Pipa';    }).slice(0, 5);
   var fitting = all.filter(function(x){ return x.jenis === 'Fitting'; }).slice(0, 5);
@@ -5023,11 +5104,49 @@ function auditRoleSemuaWorkspace() {
   });
 }
 
+// Sinkron otomatis: setiap akun di AKUN_LOGIN dengan Role "Technician I"
+// otomatis jadi karyawan (master KARYAWAN_LEMBUR) kalau belum ada. Idempotent,
+// aman dipanggil berulang (dibatasi 1x per 10 menit per workspace via cache).
+function syncKaryawanDariRoleTechnician(ss) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var ck = 'syncTechKaryawan::' + ACTIVE_WORKSPACE;
+    if (cache.get(ck)) return 0;
+    var shAkun = ss.getSheetByName(SH_AKUN_LOGIN);
+    if (!shAkun) return 0;
+    var lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    var ditambah = 0;
+    try {
+      var sh = _sheetKaryawanMaster(ss);
+      var sudah = {};
+      var m = sh.getDataRange().getValues();
+      for (var i = 1; i < m.length; i++) sudah[String(m[i][0]).trim().toUpperCase()] = true;
+      var akun = shAkun.getDataRange().getValues();
+      var baru = [];
+      for (var j = 1; j < akun.length; j++) {
+        var nik = String(akun[j][0] || '').trim().toUpperCase();
+        var role = String(akun[j][2] || '').trim().toUpperCase();
+        var aktifAkun = akun[j][4] !== false;
+        if (!nik || sudah[nik] || !aktifAkun || role !== 'TECHNICIAN I') continue;
+        baru.push([nik, String(akun[j][1] || ''), _kategoriDariNIK(nik), 'Staff', 7, 6, 0, true]);
+        sudah[nik] = true;
+      }
+      if (baru.length) sh.getRange(sh.getLastRow() + 1, 1, baru.length, KARYAWAN_HEADER.length).setValues(baru);
+      ditambah = baru.length;
+    } finally { lock.releaseLock(); }
+    cache.put(ck, '1', 600);
+    if (ditambah) _bumpDataCacheVersion();
+    return ditambah;
+  } catch (e) { Logger.log('syncKaryawanDariRoleTechnician gagal: ' + e.message); return 0; }
+}
+
 function getKaryawanList() {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sh = ss.getSheetByName(SH_KARYAWAN_LEMBUR);
     if (!sh) return { success: false, error: 'Sheet KARYAWAN_LEMBUR belum ada. Jalankan setupLemburSheets() dulu di Apps Script editor.' };
+    syncKaryawanDariRoleTechnician(ss);
     var data = sh.getDataRange().getValues();
     var out = [];
     for (var i = 1; i < data.length; i++) {
