@@ -1354,6 +1354,7 @@ function getOutboundData(params) {
       outbound   : data,
       total      : data.total,
       pipa       : data.pipa,
+      lem        : data.lem,
       fitting    : data.fitting,
       trend      : data.trend,
       fastMoving : fastMoving
@@ -1381,6 +1382,7 @@ function getInboundData(params) {
       inbound    : data,
       total      : data.total,
       pipa       : data.pipa,
+      lem        : data.lem,
       fitting    : data.fitting,
       trend      : data.trend,
       fastMoving : fastMoving

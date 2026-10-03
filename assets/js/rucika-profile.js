@@ -75,9 +75,8 @@
       });
     }
     var o = window._dataIOOut || {}, i = window._dataIOIn || {};
-    var allK = ['lem', 'fitting'];
-    setText('kpi-out', fmt(sumKeys(o, allK)));
-    setText('kpi-in', fmt(sumKeys(i, allK)));
+    setText('kpi-out', fmt(lemOf(o) + fitOf(o)));
+    setText('kpi-in', fmt(lemOf(i) + fitOf(i)));
     if (window._dataLT) {
       var s = computeLTStats(_dataLT);
       setText('kpi-loading-avg', s.avgMin ? fmtMin(s.avgMin) : '—');
@@ -127,7 +126,24 @@
   };
 
   // IO: kiri = LEM, kanan = Fitting (Rutape & Container sudah masuk Fitting)
-  function nonFit(o) { return sumKeys(o, ['lem']); }
+  // Respons getOutboundData / getInboundData membawa total di level atas sebagai
+  // { pipa, fitting, ... } (pipa = LEM untuk Rucika) dan rinciannya di .outbound/.inbound.
+  // Dulu kode ini membaca o.lem di level atas yang TIDAK ADA, sehingga grafik LEM selalu 0
+  // setelah Refresh. lemOf() membaca semua kemungkinan lokasinya.
+  function lemOf(o) {
+    if (!o) return 0;
+    if (o.lem != null) return Number(o.lem) || 0;
+    if (o.pipa != null) return Number(o.pipa) || 0;
+    var x = o.outbound || o.inbound;
+    return (x && Number(x.lem)) || 0;
+  }
+  function fitOf(o) {
+    if (!o) return 0;
+    if (o.fitting != null) return Number(o.fitting) || 0;
+    var x = o.outbound || o.inbound;
+    return (x && Number(x.fitting)) || 0;
+  }
+  function nonFit(o) { return lemOf(o); }
   window.loadIOTrend = function (months) {
     window._ioTrend = months.map(function (m) { return { label: m.label, outPipa: 0, inPipa: 0, outFit: 0, inFit: 0, outAll: 0, inAll: 0 }; });
     google.script.run.withSuccessHandler(function (resp) {
@@ -136,8 +152,8 @@
       }
       window._ioTrend = resp.results.map(function (pair, idx) {
         var o = (pair && pair.out) || {}, n = (pair && pair.in) || {};
-        return { label: (months[idx] && months[idx].label) || '', outPipa: nonFit(o), inPipa: nonFit(n), outFit: o.fitting || 0, inFit: n.fitting || 0,
-                 outAll: nonFit(o) + (o.fitting || 0), inAll: nonFit(n) + (n.fitting || 0) };
+        return { label: (months[idx] && months[idx].label) || '', outPipa: nonFit(o), inPipa: nonFit(n), outFit: fitOf(o), inFit: fitOf(n),
+                 outAll: lemOf(o) + fitOf(o), inAll: lemOf(n) + fitOf(n) };
       });
       renderIOTrendCharts();
     }).withFailureHandler(function (err) {
@@ -145,9 +161,24 @@
     }).getIOTrendBatch(months.map(function (m) { return { bulan: m.bulan, tahun: m.tahun }; }));
   };
 
+  window.renderIOTrendCharts = function () {
+    if (!window._ioTrend || !_ioTrend.length) return;
+    var labels = _ioTrend.map(function (r) { return r.label; });
+    var opt = { plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + fmt(c.parsed.y) + ' kg'; } } } },
+                scales: { x: { grid: { display: false } }, y: { ticks: { callback: function (v) { return fmt(v); } } } } };
+    function ds(nmOut, nmIn, kOut, kIn, c1, c2) {
+      return [
+        { type: 'bar', label: nmOut, data: _ioTrend.map(function (r) { return r[kOut]; }), backgroundColor: mkGrad(c1), borderColor: c1, borderWidth: 1.5, borderRadius: 6, order: 2, barPercentage: .6 },
+        { type: 'line', label: nmIn, data: _ioTrend.map(function (r) { return r[kIn]; }), borderColor: c2, borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: c2, pointBorderColor: '#04101f', tension: .35, fill: false, order: 1 }
+      ];
+    }
+    buildChart('chart-io-pipa', 'bar', { labels: labels, datasets: ds('Outbound LEM', 'Inbound LEM', 'outPipa', 'inPipa', '#ffb020', '#00d4ff') }, opt);
+    buildChart('chart-io-fitting', 'bar', { labels: labels, datasets: ds('Outbound Fitting', 'Inbound Fitting', 'outFit', 'inFit', '#a78bfa', '#22d3a5') }, opt);
+  };
+
   window.renderIO = function () {
     var o = window._dataIOOut || {}, n = window._dataIOIn || {};
-    var outP = nonFit(o), inP = nonFit(n), outF = o.fitting || 0, inF = n.fitting || 0;
+    var outP = lemOf(o), inP = lemOf(n), outF = fitOf(o), inF = fitOf(n);
     setText('io-pipa-badge', 'Out: ' + fmt(outP) + ' | In: ' + fmt(inP) + ' kg');
     setText('io-fit-badge', 'Out: ' + fmt(outF) + ' | In: ' + fmt(inF) + ' kg');
     var np = $('io-pipa-notif'), nf = $('io-fit-notif');
