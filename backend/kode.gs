@@ -4360,7 +4360,7 @@ function getAkunList(actorNik, targetWorkspace) {
         nama: String(r[1] || ''),
         role: String(r[2] || ''),
         aktif: r[4] === true || String(r[4]).toUpperCase() === 'TRUE',
-        kategori: _kategoriDariNIK(r[0]),
+        kategori: (/^OS\b/i.test(String(r[2] || '').trim()) ? 'OS' : _kategoriDariNIK(r[0])), // role "OS (Outsourcing)" juga = OS
         adaTandaTangan: !!String(r[5] || '')
       });
     }

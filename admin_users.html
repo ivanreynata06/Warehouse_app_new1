@@ -1073,6 +1073,13 @@ function perbaikiSheetDepartemen(){
     .adminRepairWorkspaceSheets(actorNik, '');
 }
 
+// Kategori efektif: NIK diawali HURUF, atau role diawali "OS", = OS. Dihitung juga
+// di sisi browser supaya benar walau backend Apps Script belum di-deploy ulang.
+function katEfektif(u){
+  if (/^[A-Za-z]/.test(String(u.nik||'').trim())) return 'OS';
+  if (/^OS\b/i.test(String(u.role||'').trim())) return 'OS';
+  return u.kategori === 'OS' ? 'OS' : 'Internal';
+}
 function renderUserTable(){
   var tb = document.getElementById('tbody-users');
   document.getElementById('badge-total').textContent = userListCache.length + ' user';
@@ -1086,7 +1093,7 @@ function renderUserTable(){
     var statusChip = u.aktif
       ? '<span class="chip chip-aktif"><i data-lucide="check" style="width:9px;"></i>Aktif</span>'
       : '<span class="chip chip-nonaktif"><i data-lucide="x" style="width:9px;"></i>Nonaktif</span>';
-    var katChip = u.kategori === 'OS'
+    var katChip = katEfektif(u) === 'OS'
       ? '<span class="chip chip-os">OS</span>'
       : '<span class="chip chip-internal">Internal</span>';
     return '<tr>'+
@@ -1153,7 +1160,7 @@ function openLihatModal(u){
   document.getElementById('lihat-nik').textContent = u.nik;
   document.getElementById('lihat-nama').textContent = u.nama;
   document.getElementById('lihat-role').textContent = u.role;
-  document.getElementById('lihat-kategori').textContent = u.kategori;
+  document.getElementById('lihat-kategori').textContent = katEfektif(u);
   document.getElementById('lihat-status').textContent = u.aktif ? 'Aktif' : 'Nonaktif';
   document.getElementById('lihat-ttd').textContent = u.adaTandaTangan ? 'Sudah upload' : 'Belum upload';
   document.getElementById('modal-lihat').classList.add('open');
