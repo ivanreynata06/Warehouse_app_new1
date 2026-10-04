@@ -80,13 +80,18 @@
 
   /* ---------- load / save / clear ---------- */
   // Mengembalikan { data:{voucher,std,bfl,ter}, source:'server'|'local', warn:'' }
-  function load() {
+  // onProg(persen, tahap) opsional, dipakai halaman untuk loading bar
+  function load(onProg) {
+    var prog = function (v, t) { try { if (onProg) onProg(v, t); } catch (e) {} };
+    prog(8, 'Menghubungi server');
     return api('getAkurasiData', []).then(function (r) {
+      prog(70, 'Menyimpan salinan di perangkat');
       var d = (r && r.data) || {};
       return Promise.all(KINDS.map(function (k) { return lset(k, d[k] || null); })).then(function () {
         return { data: pick(d), source: 'server', warn: '' };
       });
     }).catch(function (err) {
+      prog(70, 'Server tidak terjangkau, memakai salinan perangkat');
       return Promise.all(KINDS.map(lget)).then(function (a) {
         var d = {}; KINDS.forEach(function (k, i) { d[k] = a[i] || null; });
         return { data: pick(d), source: 'local', warn: friendly(err) };

@@ -25,6 +25,7 @@
   --mono:'JetBrains Mono',monospace;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+[hidden]{display:none !important;}   /* display:flex/grid pada kelas lain tidak boleh membatalkan atribut hidden */
 html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;}
 button{font-family:inherit;color:inherit;}
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
@@ -192,6 +193,35 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 .seg button{background:var(--card2);border:1px solid var(--line2);color:var(--txt2);padding:5px 12px;font-size:10.5px;font-weight:600;cursor:pointer;}
 .seg button:first-of-type{border-radius:8px 0 0 8px;} .seg button:last-of-type{border-radius:0 8px 8px 0;border-left:0;}
 .seg button.on{background:var(--green);border-color:var(--green);color:#04130d;}
+.loader{width:100%;max-width:780px;margin:7vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px 22px;transition:opacity .35s ease,transform .35s ease;}
+.loader.out{opacity:0;transform:translateY(-6px);}
+.ld-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;}
+.ld-head b{display:block;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;}
+.ld-head span{font-size:11px;color:var(--txt2);}
+.ld-head b + span{display:block;margin-top:3px;}
+.ld-pct{font-family:'Outfit',sans-serif;font-size:28px !important;font-weight:600;color:var(--txt) !important;font-variant-numeric:tabular-nums;line-height:1;}
+.ld-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden;margin:14px 0 12px;}
+.ld-bar i{display:block;height:100%;width:0;border-radius:6px;background:var(--green);transition:width .3s ease,background .3s;position:relative;overflow:hidden;}
+.ld-bar i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);transform:translateX(-100%);animation:ldsweep 1.4s ease-in-out infinite;}
+.loader.fin .ld-bar i::after,.loader.err .ld-bar i::after{animation:none;display:none;}
+.loader.err .ld-bar i{background:var(--red);}
+.loader.warn .ld-bar i{background:var(--amber);}
+.ld-steps{list-style:none;display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--txt3);}
+.ld-steps li{display:flex;align-items:center;gap:6px;}
+.ld-steps li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--line2);flex-shrink:0;transition:background .2s;}
+.ld-steps li.on{color:var(--txt);} .ld-steps li.on::before{background:var(--green);}
+.ld-steps li.done{color:var(--txt2);} .ld-steps li.done::before{background:var(--green);}
+.ld-skel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:18px;}
+.ld-skel div{height:64px;border-radius:10px;background:linear-gradient(100deg,var(--card2) 30%,#26263f 50%,var(--card2) 70%);background-size:220% 100%;animation:ldshim 1.5s linear infinite;}
+.loader.compact{position:sticky;top:0;z-index:60;max-width:none;margin:0 0 4px;padding:9px 14px 10px;border-radius:10px;}
+.loader.compact .ld-steps,.loader.compact .ld-skel{display:none;}
+.loader.compact .ld-bar{margin:8px 0 0;}
+.loader.compact .ld-head b{display:inline;font-size:12px;} .loader.compact .ld-head b + span{display:inline;margin:0 0 0 8px;}
+.loader.compact .ld-pct{font-size:14px !important;}
+@keyframes ldsweep{to{transform:translateX(100%);}}
+@keyframes ldshim{to{background-position:-220% 0;}}
+@media(max-width:760px){.loader{margin-top:3vh;padding:16px;}.ld-skel{grid-template-columns:1fr;}.ld-skel div{height:46px;}.ld-steps li:not(.on){font-size:0;gap:0;}.ld-steps li:not(.on)::before{margin-right:0;}}
+@media(prefers-reduced-motion:reduce){.ld-bar i::after,.ld-skel div{animation:none !important;}}
 .src-note{font-size:10.5px;color:var(--txt3);line-height:1.6;margin:0 0 12px;}
 .src-note.warn{background:var(--amber-bg);color:#f3c46b;border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;}
 .src-note.warn b{color:var(--amber);}
@@ -298,7 +328,17 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
       <p id="empty-warn" class="src-note warn" hidden></p>
       <button class="btn primary" onclick="goUpload()">Buka Upload Data Harian</button>
     </div>
-    <div class="empty" id="loading" hidden><p>Memuat data dari server...</p></div>
+    <div class="loader" id="loader" hidden role="status" aria-live="polite">
+      <div class="ld-head">
+        <div><b id="ld-title">Memuat data</b><span id="ld-step">Menghubungi server</span></div>
+        <span class="ld-pct" id="ld-pct">0%</span>
+      </div>
+      <div class="ld-bar"><i id="ld-fill"></i></div>
+      <ol class="ld-steps" id="ld-steps">
+        <li data-at="0">Server</li><li data-at="30">Unduh data</li><li data-at="70">Hitung akurasi</li><li data-at="100">Selesai</li>
+      </ol>
+      <div class="ld-skel" aria-hidden="true"><div></div><div></div><div></div></div>
+    </div>
 
     <div id="app" hidden>
       <div class="src-note" id="src-note" hidden></div>
@@ -338,8 +378,8 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261003d"></script>
-<script src="./assets/js/akurasi-store.js?v=20261003d"></script>
+<script src="./assets/js/akurasi-core.js?v=20261004a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261004a"></script>
 <script>
 (function(){
 'use strict';
@@ -735,6 +775,46 @@ window.navTo = function(pg){
   if (window.top !== window.self) window.top.location.href = t; else window.location.href = t;
 };
 
+/* ───────── loading bar ───────── */
+var Loader = (function(){
+  var el, fill, pct, step, title, steps, timer = null, cur = 0, ceil = 0, hideT = null;
+  function q(id){ return document.getElementById(id); }
+  function paint(v, text){
+    cur = Math.max(cur, Math.min(100, v));
+    fill.style.width = cur + '%'; pct.textContent = Math.round(cur) + '%';
+    if (text) step.textContent = text;
+    var list = steps.querySelectorAll('li'), at = [0, 30, 70, 100], act = 0;
+    for (var i = 0; i < at.length; i++) if (cur >= at[i]) act = i;
+    for (var j = 0; j < list.length; j++) list[j].className = j < act ? 'done' : (j === act ? 'on' : '');
+    if (cur >= 100) for (var k = 0; k < list.length; k++) list[k].className = 'done';
+  }
+  function init(){ el = q('loader'); fill = q('ld-fill'); pct = q('ld-pct'); step = q('ld-step'); title = q('ld-title'); steps = q('ld-steps'); }
+  return {
+    start: function(compact){
+      init(); clearTimeout(hideT); clearInterval(timer);
+      cur = 0; ceil = 28;
+      el.className = 'loader' + (compact ? ' compact' : '');
+      title.textContent = compact ? 'Memuat ulang data' : 'Memuat data';
+      el.hidden = false; paint(2, 'Menghubungi server');
+      // saat menunggu server, bar merayap pelan menuju batas tahap supaya tidak terlihat macet
+      timer = setInterval(function(){ if (cur < ceil) paint(cur + Math.max(0.12, (ceil - cur) * 0.05)); }, 200);
+    },
+    set: function(v, text){ ceil = v >= 70 ? 94 : (v >= 30 ? 68 : 28); paint(v, text); },
+    done: function(kind, msg){
+      clearInterval(timer);
+      var warn = kind === 'warn';
+      el.className = el.className.replace(/\s*(fin|warn|err)/g, '') + (warn ? ' warn' : ' fin');
+      title.textContent = warn ? 'Memakai data cache perangkat' : 'Selesai memuat data';
+      paint(100, msg || (warn ? 'Server tidak terjangkau' : 'Data terbaru dari server sudah dimuat'));
+      hideT = setTimeout(function(){ el.classList.add('out'); setTimeout(function(){ el.hidden = true; }, 380); }, warn ? 2200 : 1000);
+    },
+    fail: function(msg){
+      clearInterval(timer); el.classList.add('err'); title.textContent = 'Gagal memuat data'; step.textContent = msg || 'Coba muat ulang';
+      hideT = setTimeout(function(){ el.classList.add('out'); setTimeout(function(){ el.hidden = true; }, 380); }, 3200);
+    }
+  };
+})();
+
 /* ───────── muat data dari server ───────── */
 window.goUpload = function(){
   var t = 'upload_data.html?v=' + (window.SITE_VERSION || Date.now()) + '#akurasi';
@@ -760,13 +840,16 @@ function banner(){
   el.hidden = !parts.length;
 }
 window.reloadData = function(){
-  var btn = document.getElementById('btn-reload'); btn.disabled = true; btn.textContent = 'Memuat...';
-  window.AkurasiStore.load().then(function(r){
+  var btn = document.getElementById('btn-reload'); btn.disabled = true;
+  Loader.start(true);
+  window.AkurasiStore.load(Loader.set).then(function(r){
+    Loader.set(86, 'Menghitung akurasi');
     S.data = r.data; S.source = r.source; S.warn = r.warn; S.day = 'all'; S.shown = {}; S._monthTouched = false; S.month = '';
     S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
-    render(); toast(r.source === 'server' ? 'Data terbaru dimuat dari server' : 'Server tidak terjangkau, memakai cache perangkat', r.source !== 'server');
-  }).catch(function(e){ toast(e.message || String(e), true); })
-  .then(function(){ btn.disabled = false; btn.textContent = 'Muat ulang'; });
+    render();
+    Loader.done(r.source === 'server' ? 'ok' : 'warn');
+  }).catch(function(e){ Loader.fail(e.message || String(e)); })
+  .then(function(){ btn.disabled = false; });
 };
 
 /* ───────── unduh rekap ───────── */
@@ -804,13 +887,14 @@ window.exportXlsx = function(){
 (function init(){
   try { S.opts.tol = localStorage.getItem('akurasi_tol') === '1'; S.basis = localStorage.getItem('akurasi_basis') === 'qty' ? 'qty' : 'item'; } catch (e) {}
   document.getElementById('app').hidden = true;
-  document.getElementById('loading').hidden = false;
-  window.AkurasiStore.load().then(function(r){
+  document.getElementById('empty').hidden = true;     // jangan tampilkan "belum ada data" sebelum server menjawab
+  Loader.start(false);
+  window.AkurasiStore.load(Loader.set).then(function(r){
     S.data = r.data; S.source = r.source; S.warn = r.warn;
     S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
-    document.getElementById('loading').hidden = true;
-    render();
-  });
+    Loader.set(86, 'Menghitung akurasi');
+    setTimeout(function(){ render(); Loader.done(r.source === 'server' ? 'ok' : 'warn'); }, 60);
+  }).catch(function(e){ Loader.fail(e.message || String(e)); });
 })();
 })();
 </script>
