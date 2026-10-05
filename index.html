@@ -763,6 +763,27 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
         </div>
       </div>
 
+      <!-- ═══════════ REKAP AKURASI SCAN BARCODE ═══════════ -->
+      <!-- Diisi assets/js/akurasi-ct.js (data yang sama dengan Monitoring > Akurasi Scan Barcode).
+           Tersembunyi sampai ada data dan hanya untuk akun yang punya menu Akurasi Scan. -->
+      <div id="section-akurasi" hidden>
+        <div class="sec-divider">
+          <span class="sec-divider-label">📊 Akurasi Scan Barcode</span>
+          <div class="sec-divider-line"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="card-title-dot" style="background:var(--green);color:var(--green)"></div>Rekap Akurasi Scan — Voucher, Backflush &amp; Barcode Out</div>
+            <div class="ak-bar">
+              <span class="card-badge green" id="ak-badge">—</span>
+              <select id="ak-month" onchange="akOnMonth(this.value)" aria-label="Periode"></select>
+              <button type="button" onclick="akOpen()">Buka detail</button>
+            </div>
+          </div>
+          <div class="card-body" id="ak-body"></div>
+        </div>
+      </div>
+
       <!-- ═══════════ SECTION 4: REKAP MUATAN PER PIC ═══════════ -->
       <!-- Cuma relevan untuk workspace cibitung_fitting_import; disembunyikan
            via auth-guard.js untuk departemen lain (sheet-nya sengaja tidak
@@ -1652,6 +1673,10 @@ function showLoading(v,msg){
   if(msg) setText('loading-txt',msg);
 }
 </script>
+<script src="assets/js/akurasi-core.js?v=20261004b"></script>
+<script src="assets/js/akurasi-store.js?v=20261004b"></script>
+<script src="assets/js/akurasi-reasons.js?v=20261004b"></script>
+<script src="assets/js/akurasi-ct.js?v=20261004b"></script>
 <script src="assets/js/rucika-profile.js?v=20261003c"></script>
 </body>
 </html>

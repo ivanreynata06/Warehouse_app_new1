@@ -122,6 +122,7 @@ var API_FUNCTIONS = {
   resyncBersihJadwalTanggal: resyncBersihJadwalTanggal,
   // Akurasi Scan Barcode (data dibagi antar PC)
   getSPLDataBulk          : getSPLDataBulk,
+  simpanAkurasiAlasan     : simpanAkurasiAlasan,
   getAkurasiData          : getAkurasiData,
   saveAkurasiData         : saveAkurasiData,
   hapusAkurasiData        : hapusAkurasiData
@@ -7605,7 +7606,7 @@ function previewSPL(kode, bulan, tahun) {
 //  yang sama tampil di PC / akun mana pun (per workspace).
 // ================================================================
 var SH_AKURASI = 'AKURASI_DATA';
-var AKURASI_KINDS = { voucher: 1, std: 1, bfl: 1, ter: 1 };
+var AKURASI_KINDS = { voucher: 1, std: 1, bfl: 1, ter: 1, alasan: 1 };
 var AKURASI_CHUNK = 40000;
 
 function _getOrCreateAkurasiSheet() {
@@ -7761,4 +7762,56 @@ function getSPLDataBulk(bulan, tahun, kodeList) {
     });
     return { success: true, bulan: bulan, tahun: tahun, periode: tahun + '/' + bulanNamaArr[bulan], people: people };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+
+// ================================================================
+//  AKURASI SCAN -- ALASAN item yang belum ter-scan
+//  Disimpan sebagai kind 'alasan' di sheet AKURASI_DATA: { map: { kunci: {r,t,by,at,iso} } }
+//  kunci: in:<voucher> | bfl:<voucher> | out:<spm>|<item>|<qty>|<n> | outspm:<spm>
+//  Diubah per entri (bukan menimpa seluruh data) supaya beberapa orang yang mengisi
+//  alasan bersamaan tidak saling menimpa. r kosong = hapus alasan.
+// ================================================================
+function simpanAkurasiAlasan(payloadStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    var p = JSON.parse(String(payloadStr || '{}'));
+    var entries = p.entries || [];
+    if (!entries.length) return { success: false, error: 'Tidak ada alasan yang dikirim' };
+    lock.waitLock(25000);
+    var sh = _getOrCreateAkurasiSheet();
+    var obj = { map: {} };
+    var last = sh.getLastRow();
+    if (last >= 2) {
+      var parts = [];
+      sh.getRange(2, 1, last - 1, 3).getValues().forEach(function (r) {
+        if (String(r[0]) === 'alasan') parts.push({ part: Number(r[1]) || 0, txt: String(r[2] || '') });
+      });
+      if (parts.length) {
+        parts.sort(function (a, b) { return a.part - b.part; });
+        try { obj = JSON.parse(parts.map(function (x) { return x.txt; }).join('')) || { map: {} }; } catch (e) { obj = { map: {} }; }
+      }
+    }
+    obj.map = obj.map || {};
+    var now = new Date();
+    var at = Utilities.formatDate(now, 'Asia/Jakarta', 'd MMM yyyy, HH:mm');
+    var iso = Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM-dd');
+    entries.forEach(function (e) {
+      var k = String(e.key || '');
+      if (!k) return;
+      if (!e.r) { delete obj.map[k]; return; }
+      obj.map[k] = { r: String(e.r).slice(0, 80), t: String(e.t || '').slice(0, 200), by: String(p.by || '').slice(0, 60), at: at, iso: iso };
+    });
+    var json = JSON.stringify(obj);
+    _akurasiHapusKind(sh, 'alasan');
+    var rows = [];
+    for (var i = 0, n = 0; i < json.length; i += AKURASI_CHUNK, n++) rows.push(['alasan', n, json.substr(i, AKURASI_CHUNK)]);
+    var start = sh.getLastRow() + 1;
+    sh.getRange(start, 1, rows.length, 3).setNumberFormat('@').setValues(rows);
+    return { success: true, at: at, count: Object.keys(obj.map).length };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }

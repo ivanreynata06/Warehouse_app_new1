@@ -252,3 +252,12 @@ tiap halaman, dan `MENU_CATALOG` di `backend/kode.gs`.
 ### Aturan upload
 - **Standar Isi Box**: permanen, sekali upload. Upload berikutnya ditolak (di browser dan di `saveAkurasiData`).
 - **Master Voucher, Backflush, Scan Out**: baris yang semua nilainya sama dengan data lama dibiarkan. Baris yang berubah diperbarui. Kalau perubahan itu membuat item yang tadinya selisih menjadi beres (TRM menjadi BFL/MANUAL, Box ID kosong/tidak sesuai menjadi sesuai, PICK menjadi CHECK penuh), baris diberi tanda **Close** (status sebelum, sesudah, waktu, pengguna). Daftarnya tampil di panel "Item sudah Close" pada dashboard.
+
+### Alasan belum ter-scan
+Item yang belum ter-scan bisa diberi alasan lewat dropdown di kartu (disimpan di server sebagai kind `alasan`, diubah per entri lewat `simpanAkurasiAlasan`):
+- **Voucher vs Box ID** (Box ID kosong / tidak sesuai): Belum bisa dibuatkan barcode, Lupa scan, Lainnya (ketik).
+- **Voucher vs Backflush** (status MANUAL): Barcode rusak, Terlewat, Tidak bisa dibuat sticker barcode, Lainnya (ketik).
+- **Scan Out** per item (PICK / sebagian): Barcode rusak, Item tidak dapat dibuatkan sticker barcode, Barang lama, Lainnya (ketik).
+- **Scan Out** per SPM yang seluruh itemnya PICK: satu alasan per SPM (Jaringan error, Lupa scan, Tidak paham, Lainnya).
+
+Grafik donut alasan tampil di dashboard Akurasi Scan dan rekapnya di **Control Tower** (`assets/js/akurasi-ct.js`, bagian "Akurasi Scan Barcode").

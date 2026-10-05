@@ -222,6 +222,25 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 @keyframes ldshim{to{background-position:-220% 0;}}
 @media(max-width:760px){.loader{margin-top:3vh;padding:16px;}.ld-skel{grid-template-columns:1fr;}.ld-skel div{height:46px;}.ld-steps li:not(.on){font-size:0;gap:0;}.ld-steps li:not(.on)::before{margin-right:0;}}
 @media(prefers-reduced-motion:reduce){.ld-bar i::after,.ld-skel div{animation:none !important;}}
+.rz{margin-top:2px;padding-top:8px;border-top:1px dashed var(--line2);display:flex;flex-direction:column;gap:6px;}
+.rz-sel,.rz-t{width:100%;background:var(--bg2);border:1px solid rgba(245,158,11,.55);border-radius:8px;color:var(--txt);font-family:inherit;font-size:11px;padding:6px 8px;}
+.rz-sel.ok{border-color:rgba(16,185,129,.55);}
+.rz-sel:focus,.rz-t:focus{outline:2px solid var(--blue);outline-offset:1px;}
+.rz-t{border-color:var(--line2);}
+.rz-st{font-size:10px;color:var(--txt3);min-height:12px;} .rz-st.okk{color:var(--green);} .rz-st.bad{color:var(--red);}
+.card.spm{border-color:rgba(239,68,68,.35);}
+.spm-d{font-size:10.5px;color:var(--txt2);} .spm-d summary{cursor:pointer;color:var(--txt3);padding:2px 0;}
+.spm-d ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:150px;overflow-y:auto;}
+.spm-d li{display:grid;grid-template-columns:118px minmax(0,1fr) auto;gap:8px;align-items:baseline;}
+.spm-d li .it{font-family:var(--mono);font-size:10px;color:var(--txt);} .spm-d li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .spm-d li b{color:var(--txt);font-variant-numeric:tabular-nums;}
+.rzp{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px 16px 16px;}
+.rzp-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+.rzp-h b{display:block;font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:600;}
+.rzp-h span{display:block;font-size:10.5px;color:var(--txt3);margin-top:2px;max-width:560px;line-height:1.5;}
+.rzp-n{font-family:'Outfit',sans-serif;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.rzp-n small{font-size:11px;color:var(--txt3);font-weight:400;} .rzp-n.warn{color:var(--amber);} .rzp-n.ok{color:var(--green);}
+.rzp-g{display:grid;gap:22px;} .rzp-g.c2{grid-template-columns:repeat(2,minmax(0,1fr));}
+@media(max-width:900px){.rzp-g.c2{grid-template-columns:1fr;}}
 .src-note{font-size:10.5px;color:var(--txt3);line-height:1.6;margin:0 0 12px;}
 .src-note.warn{background:var(--amber-bg);color:#f3c46b;border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;}
 .src-note.warn b{color:var(--amber);}
@@ -360,6 +379,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
       <div class="comp" id="comp" hidden></div>
       <div class="kpis" id="kpis"></div>
       <div class="closep" id="closep" hidden></div>
+      <div class="rzp" id="rzp" hidden></div>
       <div class="board" id="board"></div>
 
       <div>
@@ -378,8 +398,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261004a"></script>
-<script src="./assets/js/akurasi-store.js?v=20261004a"></script>
+<script src="./assets/js/akurasi-core.js?v=20261004b"></script>
+<script src="./assets/js/akurasi-store.js?v=20261004b"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261004b"></script>
 <script>
 (function(){
 'use strict';
@@ -393,7 +414,7 @@ var S = {
   data: { voucher: null, std: null, bfl: null, ter: null },   // {rows|map, meta}, dari server
   opts: { tol: false },
   basis: 'item',                      // Backflush: hitung persen per 'item' (voucher) atau per 'qty'                // tampilan saja, disimpan di perangkat ini
-  source: '', warn: '', needStd: false,
+  source: '', warn: '', needStd: false, alasanMap: {}, _items: [],
   lane: 'in', month: '', day: 'all', q: '', shown: {}, res: null, resRaw: null
 };
 
@@ -495,7 +516,7 @@ var LANES = {
         : e.status === 'nostd' ? 'Voucher ' + fmt(v.qty) + ' dalam ' + fmt(v.box) + ' box'
         : 'Voucher ' + fmt(v.qty) + ' · ' + fmt(v.box) + ' box x ' + fmt(e.std);
       var chip = e.status === 'sesuai' ? '<span class="chip ok">sesuai</span>' : e.status === 'nostd' ? '<span class="chip warn">tanpa standar</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
-      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, line, chip, v.voucher, i.close);
+      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, line, chip, v.voucher, i.close, (e.status === 'kosong' || e.status === 'beda') ? rzSel(RZ.keyOf('in', v), 'in') : '');
     }
   },
   bfl: {
@@ -520,7 +541,7 @@ var LANES = {
     row: function(d){ return []; }, foot: function(t){ return []; },
     card: function(i){ var v = i.v, e = i.e;
       var chip = e.status === 'selisih' ? '<span class="chip bad">TRM</span>' : e.status === 'manual' ? '<span class="chip warn">manual</span>' : '<span class="chip ok">BFL</span>';
-      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status'), chip, v.voucher, i.close);
+      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status'), chip, v.voucher, i.close, e.status === 'manual' ? rzSel(RZ.keyOf('bfl', v), 'bfl') : '');
     }
   },
   out: {
@@ -544,19 +565,49 @@ var LANES = {
     foot: function(t){ return [fmt(t.qty), fmt(t.aktual), fmt(t.skuSelisih), fmt(-t.selisih)]; },
     card: function(i){ var v = i.v, e = i.e;
       var chip = e.status === 'full' ? '<span class="chip ok">CHECK</span>' : e.status === 'part' ? '<span class="chip warn">' + sgn(e.selisih) + '</span>' : '<span class="chip bad">PICK</span>';
-      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'SPM ' + fmt(v.qspm) + ' · check ' + fmt(v.qchk) + (v.tuj ? ' · ' + esc(v.tuj) : ''), chip, v.spm, i.close);
+      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'SPM ' + fmt(v.qspm) + ' · check ' + fmt(v.qchk) + (v.tuj ? ' · ' + esc(v.tuj) : ''), chip, v.spm, i.close, (e.status === 'none' || e.status === 'part') ? rzSel(RZ.keyOf('out', v), 'out_item') : '');
     }
   }
 };
 function descOf(item){ return (S.descMap && S.descMap[item]) || ''; }
-function cardHtml(item, group, desc, line, chip, ref, close){
+var RZ = window.AkurasiReasons;
+function who(){ var w = window.WH_SESSION || {}; return w.nama || w.nik || ''; }
+// Dropdown alasan. list = nama daftar di AkurasiReasons.LIST. Pilih "Lainnya" untuk mengetik sendiri.
+function rzSel(key, list){
+  var e = S.alasanMap[key], cur = (e && e.r) || '';
+  var opts = '<option value="">Pilih alasan...</option>' + RZ.LIST[list].map(function(n){ return '<option value="' + esc(n) + '"' + (cur === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') +
+    '<option value="LAINNYA"' + (cur === 'LAINNYA' ? ' selected' : '') + '>Lainnya (ketik sendiri)</option>';
+  return '<div class="rz" data-key="' + esc(key) + '"><select class="rz-sel' + (cur ? ' ok' : '') + '" onchange="setAlasan(this)" aria-label="Alasan belum ter-scan">' + opts + '</select>' +
+    '<input class="rz-t" type="text" maxlength="120" placeholder="Ketik alasan lain" value="' + esc((e && e.t) || '') + '" style="display:' + (cur === 'LAINNYA' ? 'block' : 'none') + '" onchange="setAlasan(this)">' +
+    '<span class="rz-st">' + (e && e.by ? 'oleh ' + esc(e.by) + (e.at ? ', ' + esc(e.at) : '') : '') + '</span></div>';
+}
+window.setAlasan = function(el){
+  var box = el.closest('.rz'), key = box.getAttribute('data-key');
+  var sel = box.querySelector('select'), inp = box.querySelector('.rz-t'), st = box.querySelector('.rz-st');
+  var r = sel.value, t = inp.value.trim();
+  inp.style.display = r === 'LAINNYA' ? 'block' : 'none';
+  sel.className = 'rz-sel' + (r ? ' ok' : '');
+  if (r === 'LAINNYA' && !t) { inp.focus(); return; }       // tunggu sampai teksnya diketik
+  if (r !== 'LAINNYA') t = '';
+  if (r) S.alasanMap[key] = { r: r, t: t, by: who(), at: 'baru saja' }; else delete S.alasanMap[key];
+  renderReasons();
+  st.className = 'rz-st'; st.textContent = 'menyimpan...';
+  window.AkurasiStore.saveAlasan([{ key: key, r: r, t: t }]).then(function(res){
+    st.className = 'rz-st ' + (res.remote ? 'okk' : 'bad');
+    st.textContent = res.remote ? 'tersimpan' : 'belum tersimpan di server';
+    if (!res.remote) toast(res.warn || 'Gagal menyimpan alasan', true);
+    window.AkurasiStore.cacheAlasan({ map: S.alasanMap });
+  });
+};
+function cardHtml(item, group, desc, line, chip, ref, close, rz){
   var tag = close ? '<span class="chip close" title="Close ' + esc(close.at || '') + '">Close</span>' : '';
   return '<div class="card"><div class="t"><span class="it">' + esc(item) + '</span><span class="gr">' + esc(group) + (ref ? ' · ' + esc(ref) : '') + '</span></div>' +
-    '<div class="ds" title="' + esc(desc) + '">' + esc(desc) + '</div><div class="ft"><span>' + line + '</span><span style="display:flex;gap:5px;align-items:center;">' + tag + chip + '</span></div></div>';
+    '<div class="ds" title="' + esc(desc) + '">' + esc(desc) + '</div><div class="ft"><span>' + line + '</span><span style="display:flex;gap:5px;align-items:center;">' + tag + chip + '</span></div>' + (rz || '') + '</div>';
 }
 
 /* ───────── render ───────── */
 function render(){
+  S.alasanMap = (S.data.alasan && S.data.alasan.map) || {};
   var any = S.data.voucher || S.data.bfl || S.data.ter;
   document.getElementById('empty').hidden = !!any;
   var ew = document.getElementById('empty-warn');
@@ -654,16 +705,25 @@ function renderLane(){
     if (!q) return true;
     var x = i.v; return (x.item + ' ' + (x.desc || '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
   });
-  renderClose(items); renderComp(scope);
+  S._items = items; S._allItems = v.items;
+  renderClose(items); renderComp(scope); renderReasons();
   bd.className = 'board n' + L.cols.length;
   bd.innerHTML = L.cols.map(function(col){
     if (S.lane === 'in' && col.key === 'nostd' && !items.some(function(i){ return i.e.status === 'nostd'; })) return '';
     var list = items.filter(function(i){ return i.e.status === col.key; });
     list.sort(function(a, b){ return Math.abs(b.e.selisih) - Math.abs(a.e.selisih) || (a.v.item < b.v.item ? -1 : 1); });
     var key = S.lane + ':' + col.key, n = S.shown[key] || PAGE;
-    var cards = list.slice(0, n).map(L.card).join('');
+    var spmCards = '', rest = list;
+    if (S.lane === 'out' && col.key === 'none') {
+      // SPM yang SELURUH itemnya PICK: cukup 1 kartu + 1 alasan per SPM
+      var groups = RZ.outGroups(v.items), shown = {};
+      list.forEach(function(i){ if (groups[i.v.spm]) shown[i.v.spm] = 1; });
+      spmCards = Object.keys(shown).sort().map(function(k){ return spmCardHtml(groups[k]); }).join('');
+      rest = list.filter(function(i){ return !groups[i.v.spm]; });
+    }
+    var cards = spmCards + rest.slice(0, n).map(L.card).join('');
     if (!cards) cards = '<div class="col-empty">Tidak ada item</div>';
-    var more = list.length > n ? '<button class="btn sm more" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(PAGE, list.length - n) + ' lagi</button>' : '';
+    var more = rest.length > n ? '<button class="btn sm more" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(PAGE, rest.length - n) + ' lagi</button>' : '';
     return '<div class="col ' + col.cls + '"><div class="col-h"><div><b>' + col.label + '</b><span class="hint">' + col.hint + '</span></div><span class="cnt">' + fmt(list.length) + '</span></div><div class="col-body">' + cards + more + '</div></div>';
   }).join('');
   // kalau kolom "nostd" disembunyikan, rapikan jumlah kolom
@@ -721,6 +781,27 @@ function renderComp(scope){
     '<div class="comp-leg"><span><i class="f-ok"></i>Di-scan (BFL) <b>' + fmtP(a) + '</b></span><span><i class="f-warn"></i>Input manual <b>' + fmtP(m) + '</b></span><span><i class="f-bad"></i>Masih TRM <b>' + fmtP(r) + '</b></span></div>';
 }
 window.setBasis = function(b){ S.basis = b; try { localStorage.setItem('akurasi_basis', b); } catch (e) {} renderLanes(); renderLane(); };
+function spmCardHtml(g){
+  var rows = g.items.map(function(i){ return '<li><span class="it">' + esc(i.v.item) + '</span><span>' + esc(descOf(i.v.item) || '') + '</span><b>' + fmt(i.v.qspm) + '</b></li>'; }).join('');
+  return '<div class="card spm"><div class="t"><span class="it">SPM ' + esc(g.spm) + '</span><span class="gr">' + fmt(g.items.length) + ' item · ' + fmt(g.qty) + ' pcs</span></div>' +
+    '<div class="ds" style="white-space:normal;">Seluruh item pada SPM ini masih PICK, belum ada yang ter-scan sama sekali.' + (g.tuj ? ' Tujuan: ' + esc(g.tuj) + '.' : '') + '</div>' +
+    '<div class="ft"><span>Alasan diisi sekali untuk SPM ini</span><span class="chip bad">PICK</span></div>' + rzSel(RZ.spmKey(g.spm), 'out_spm') +
+    '<details class="spm-d"><summary>Lihat ' + fmt(g.items.length) + ' item</summary><ul>' + rows + '</ul></details></div>';
+}
+// Grafik alasan untuk item yang sedang tampil (ikut filter periode / tanggal / pencarian)
+function renderReasons(){
+  var el = document.getElementById('rzp');
+  if (!el || !S._items) return;
+  var sets = RZ.aggregate(S.lane, S._items, S.alasanMap, S._allItems);
+  var any = sets.some(function(x){ return x.total > 0; });
+  if (!any) { el.hidden = true; return; }
+  el.hidden = false;
+  var tot = sets.reduce(function(a, x){ return a + x.total; }, 0), fil = sets.reduce(function(a, x){ return a + x.filled; }, 0);
+  var what = S.lane === 'out' ? 'Item atau SPM yang belum ter-scan' : (S.lane === 'bfl' ? 'Voucher yang diinput manual' : 'Voucher dengan Box ID kosong atau tidak sesuai');
+  el.innerHTML = '<div class="rzp-h"><div><b>Alasan belum ter-scan</b><span>' + what + '. Pilih alasannya di dropdown pada kartu di papan bawah.</span></div>' +
+    '<div class="rzp-n ' + (fil < tot ? 'warn' : 'ok') + '">' + fmt(fil) + '<small> dari ' + fmt(tot) + ' sudah diisi</small></div></div>' +
+    '<div class="rzp-g c' + sets.length + '">' + sets.map(function(x){ return RZ.setHtml(x, { size: 112 }); }).join('') + '</div>';
+}
 function renderRules(){
   var r = [];
   if (S.lane === 'in') r = [
@@ -853,6 +934,10 @@ window.reloadData = function(){
 };
 
 /* ───────── unduh rekap ───────── */
+function reasonText(lane, i, grp){
+  if (lane === 'out' && grp && grp[i.v.spm]) return RZ.label(S.alasanMap[RZ.spmKey(i.v.spm)]);
+  return RZ.label(S.alasanMap[RZ.keyOf(lane, i.v)]);
+}
 window.exportXlsx = function(){
   if (typeof XLSX === 'undefined') { toast('Library Excel belum termuat.', true); return; }
   var wb = XLSX.utils.book_new(), n = 0;
@@ -864,8 +949,8 @@ window.exportXlsx = function(){
       v.days.forEach(function(d){ rows.push([d.date, d.lines, d.nBfl, d.nManual, d.nTrm, d.qty, d.qBfl, d.qManual, d.qTrm, d.pctLines == null ? '' : Math.round(d.pctLines * 10) / 10, d.qty ? Math.round(d.qBfl / d.qty * 1000) / 10 : '']); });
       var T = v.total; rows.push(['Total', T.lines, T.nBfl, T.nManual, T.nTrm, T.qty, T.qBfl, T.qManual, T.qTrm, T.pctLines == null ? '' : Math.round(T.pctLines * 10) / 10, T.qty ? Math.round(T.qBfl / T.qty * 1000) / 10 : '']);
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'SUM Backflush'); n++;
-      var det0 = [['Tanggal', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty']];
-      v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, x.status || 'TRM', x.qty]); });
+      var det0 = [['Tanggal', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty', 'Alasan']];
+      v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, x.status || 'TRM', x.qty, reasonText('bfl', i)]); });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det0), 'Detail Manual & TRM');
       return;
     }
@@ -873,9 +958,10 @@ window.exportXlsx = function(){
     v.days.forEach(function(d){ rows.push([d.date].concat([d.qty, d.aktual, d.skuSelisih, p[0] === 'out' ? -d.selisih : d.selisih, d.pct == null ? '' : Math.round(d.pct * 10) / 10])); });
     rows.push(['Total', v.total.qty, v.total.aktual, v.total.skuSelisih, p[0] === 'out' ? -v.total.selisih : v.total.selisih, v.total.pct == null ? '' : Math.round(v.total.pct * 10) / 10]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), p[1]); n++;
-    var det = [['Tanggal', 'Voucher / SPM', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty', 'Qty terverifikasi', 'Selisih']];
+    var det = [['Tanggal', 'Voucher / SPM', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty', 'Qty terverifikasi', 'Selisih', 'Alasan']];
+    var grp = p[0] === 'out' ? RZ.outGroups(v.items) : null;
     v.items.filter(function(i){ return p[0] === 'out' ? i.e.status !== 'full' : (i.e.status !== 'sesuai' && i.e.status !== 'bfl' && i.e.status !== 'manual'); }).forEach(function(i){
-      var x = i.v; det.push([i.date, x.voucher || x.spm, x.item, x.desc, x.group, i.e.status, x.qty != null ? x.qty : x.qspm, i.e.aktual, i.e.selisih]);
+      var x = i.v; det.push([i.date, x.voucher || x.spm, x.item, x.desc, x.group, i.e.status, x.qty != null ? x.qty : x.qspm, i.e.aktual, i.e.selisih, reasonText(p[0], i, grp)]);
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det), 'Detail ' + p[0].toUpperCase());
   });

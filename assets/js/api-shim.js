@@ -121,7 +121,7 @@
   // URL), gampang melebihi batas panjang URL browser (~8000 karakter)
   // dan request langsung gagal total ("Failed to fetch") sebelum sempat
   // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
-  var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, uploadTlSignature: 1 };
+  var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, uploadTlSignature: 1 };
 
   // Bungkus r.json() supaya kalau Apps Script Web App ternyata
   // mengembalikan HALAMAN HTML (bukan JSON) -- ini SELALU terjadi kalau

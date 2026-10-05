@@ -452,7 +452,17 @@
     return { days: list, items: items, total: tot };
   }
 
+  // Jumlahkan baris harian (bucket) menjadi satu total
+  function sumDays(days, lane, basis) {
+    var t = newBucket();
+    days.forEach(function (d) { for (var f in t) t[f] += d[f] || 0; });
+    t.pct = pct(t.credit, t.qty); t.pctLines = pct(t.sesuai, t.lines);
+    if (lane === 'bfl' && basis !== 'qty') t.pct = t.pctLines;
+    return t;
+  }
+
   var api = {
+    sumDays: sumDays,
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,
     parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER, parseScanOut: parseScanOut,

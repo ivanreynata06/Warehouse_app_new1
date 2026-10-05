@@ -17,7 +17,7 @@
 (function (root) {
   'use strict';
   var C = root.AkurasiCore;
-  var KINDS = ['voucher', 'std', 'bfl', 'ter'];
+  var KINDS = ['voucher', 'std', 'bfl', 'ter', 'alasan'];
   var TITLES = { voucher: 'Master Voucher & Box ID', std: 'Standar Isi Box', bfl: 'Master Backflush', ter: 'Master Scan Out (Barcode Out)' };
   var DBN = 'wh_akurasi2';
 
@@ -250,5 +250,14 @@
   }
   function bestSheet2(sheets, parse) { try { return { rows: bestSheet(sheets, parse).rows || [], error: null }; } catch (e) { return { rows: [], error: e.message }; } }
 
-  root.AkurasiStore = { KINDS: KINDS, TITLES: TITLES, load: load, save: save, clear: clear, ingest: ingest };
+  // Simpan alasan untuk satu / beberapa item. entries: [{ key, r, t }] (r kosong = hapus).
+  // Server memperbarui per entri, jadi aman walau banyak orang mengisi bersamaan.
+  function saveAlasan(entries) {
+    return api('simpanAkurasiAlasan', [JSON.stringify({ by: who(), entries: entries })])
+      .then(function (r) { return { remote: true, at: r && r.at }; })
+      .catch(function (err) { return { remote: false, warn: friendly(err) }; });
+  }
+  function cacheAlasan(obj) { return lset('alasan', obj); }
+
+  root.AkurasiStore = { KINDS: KINDS, TITLES: TITLES, load: load, save: save, clear: clear, ingest: ingest, saveAlasan: saveAlasan, cacheAlasan: cacheAlasan };
 })(typeof window !== 'undefined' ? window : this);
