@@ -254,6 +254,31 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 @media(max-width:980px){.lanes{grid-template-columns:1fr;}}
 @media(max-width:760px){.board.n3,.board.n4{grid-template-columns:1fr;}.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}.content{padding:12px 12px 40px 18px;}}
 @media(prefers-reduced-motion:reduce){*{transition:none !important;}}
+
+/* ───────── tren bulanan (Voucher vs Backflush) ───────── */
+.trend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+@media(max-width:1100px){.trend{grid-template-columns:1fr;}}
+.tcard{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 12px;}
+.tc-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.tc-h h4{font-size:12.5px;font-weight:700;margin:0;}
+.tc-h p{font-size:10.5px;color:var(--txt2);margin:3px 0 0;max-width:280px;line-height:1.45;}
+.tc-big{text-align:right;white-space:nowrap;}
+.tc-big b{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px;}
+.tc-big small{display:block;font-size:10px;color:var(--txt3);margin-top:1px;}
+.tc-d{display:inline-block;margin-top:5px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;}
+.tc-d.up{background:var(--red-bg);color:#fca5a5;}.tc-d.dn{background:var(--green-bg);color:#6ee7b7;}.tc-d.eq{background:rgba(255,255,255,.06);color:var(--txt2);}
+.tc-svg{width:100%;height:auto;display:block;margin-top:6px;overflow:visible;}
+.tc-svg text{font-family:'Inter',sans-serif;fill:var(--txt3);font-size:10px;font-variant-numeric:tabular-nums;}
+.tc-svg .bar{cursor:pointer;transition:opacity .15s;}
+.tc-svg .lbl-v{fill:var(--txt);font-weight:600;font-size:10.5px;stroke:var(--card);stroke-width:3px;paint-order:stroke;stroke-linejoin:round;}
+.tc-svg .sel-m{fill:var(--txt);font-weight:700;}
+.tc-foot{display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:8px;padding-top:10px;font-size:10.5px;color:var(--txt2);}
+.tc-foot b{color:var(--txt);font-weight:600;font-variant-numeric:tabular-nums;}
+.tc-leg{display:flex;gap:14px;font-size:10px;color:var(--txt3);margin-top:2px;}
+.tc-leg i{display:inline-block;vertical-align:middle;margin-right:5px;}
+.tc-empty{padding:34px 10px;text-align:center;color:var(--txt2);font-size:11.5px;line-height:1.6;}
+.tc-tip{position:absolute;pointer-events:none;z-index:5;background:var(--bg);border:1px solid var(--line2);border-radius:8px;padding:8px 10px;font-size:10.5px;line-height:1.6;color:var(--txt2);box-shadow:0 6px 18px rgba(0,0,0,.35);display:none;white-space:nowrap;}
+.tc-tip b{color:var(--txt);}
 </style>
 </head>
 <body>
@@ -377,6 +402,10 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
       <div class="rail" id="rail" aria-label="Pilih tanggal"></div>
       <div class="comp" id="comp" hidden></div>
+      <div id="trend-wrap" hidden>
+        <div class="sect-t"><span>Tren bulanan Backflush</span><span style="font-size:10.5px;color:var(--txt3);font-weight:400;">Klik batang untuk membuka bulan itu</span></div>
+        <div class="trend" id="trend"></div>
+      </div>
       <div class="kpis" id="kpis"></div>
       <div class="closep" id="closep" hidden></div>
       <div class="rzp" id="rzp" hidden></div>
@@ -706,7 +735,7 @@ function renderLane(){
     var x = i.v; return (x.item + ' ' + (x.desc || '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
   });
   S._items = items; S._allItems = v.items;
-  renderClose(items); renderComp(scope); renderReasons();
+  renderClose(items); renderComp(scope); renderTrend(); renderReasons();
   bd.className = 'board n' + L.cols.length;
   bd.innerHTML = L.cols.map(function(col){
     if (S.lane === 'in' && col.key === 'nostd' && !items.some(function(i){ return i.e.status === 'nostd'; })) return '';
@@ -769,6 +798,90 @@ function stackBar(d){
   var a = share(d.nBfl, d.qBfl, d) || 0, m = share(d.nManual, d.qManual, d) || 0, r = share(d.nTrm, d.qTrm, d) || 0;
   return '<span class="bar stack"><i class="f-ok" style="width:' + a + '%"></i><i class="f-warn" style="width:' + m + '%"></i><i class="f-bad" style="width:' + r + '%"></i></span>';
 }
+
+/* ───────── tren bulanan: TRM & Manual ───────── */
+var MON3 = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+function monthlyAgg(){
+  var r = S.resRaw && S.resRaw.bfl; if (!r) return [];
+  var m = {}, F = ['lines','qty','nTrm','qTrm','nManual','qManual','nBfl','qBfl'];
+  r.days.forEach(function(d){
+    var k = d.date.slice(0, 7), o = m[k] || (m[k] = { k: k, days: 0 });
+    o.days++; F.forEach(function(f){ o[f] = (o[f] || 0) + (d[f] || 0); });
+  });
+  return Object.keys(m).sort().slice(-12).map(function(k){ return m[k]; });
+}
+function niceMax(v){ var raw = Math.max(1, v * 1.1) / 4, p = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / p, step = Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p); return step * 4; } // 4 sekat, angka sumbu bulat
+function trendCard(o, M){
+  var K = o.key, byItem = S.basis === 'item';
+  var vals = M.map(function(m){ return byItem ? (m['n' + K] || 0) : (m['q' + K] || 0); });
+  var pct = M.map(function(m){ return share(m['n' + K] || 0, m['q' + K] || 0, m) || 0; });
+  var unit = byItem ? 'item' : 'pcs', n = M.length, last = n - 1;
+  var nowK = new Date().toISOString().slice(0, 7);
+  var tot = vals.reduce(function(a, b){ return a + b; }, 0);
+  var head = '<div class="tc-h"><div><h4>' + o.title + '</h4><p>' + o.sub + '</p></div>';
+  if (!n || !tot) {
+    return '<div class="tcard">' + head + '</div><div class="tc-empty">' + o.none + '</div></div>';
+  }
+  var cur = vals[last], prev = last > 0 ? vals[last - 1] : null, diff = prev == null ? null : cur - prev;
+  var chip = diff == null ? '' : '<span class="tc-d ' + (diff > 0 ? 'up' : diff < 0 ? 'dn' : 'eq') + '">' + (diff > 0 ? '▲ +' : diff < 0 ? '▼ ' : '= ') + fmt(diff) + ' vs ' + MON3[+M[last - 1].k.slice(5) - 1] + '</span>';
+  head += '<div class="tc-big"><b style="color:' + o.color + '">' + fmt(cur) + '</b><small>' + unit + ' · ' + MON3[+M[last].k.slice(5) - 1] + (M[last].k === nowK ? ' (berjalan)' : '') + '</small>' + chip + '</div></div>';
+
+  var W = 560, H = 212, L = 34, R = 38, T = 24, B = 38, pw = W - L - R, ph = H - T - B, slot = pw / n, bw = Math.min(40, slot * .56);
+  var ymax = niceMax(Math.max.apply(null, vals)), pmax = niceMax(Math.max.apply(null, pct) || 1);
+  var yb = function(v){ return T + ph - v / ymax * ph; }, yp = function(v){ return T + ph - v / pmax * ph; }, cx = function(i){ return L + slot * i + slot / 2; };
+  var g = '';
+  for (var t = 0; t <= 4; t++) {
+    var y = T + ph - ph * t / 4;
+    g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="' + (t ? '#26263c' : '#34344f') + '" stroke-dasharray="' + (t ? '3 4' : '0') + '"/>' +
+         '<text x="' + (L - 7) + '" y="' + (y + 3.5) + '" text-anchor="end">' + fmt(Math.round(ymax * t / 4)) + '</text>' +
+         '<text x="' + (W - R + 7) + '" y="' + (y + 3.5) + '">' + Math.round(pmax * t / 4) + '%</text>';
+  }
+  var bars = '', line = '', dots = '', labs = '', hit = '', pts = [];
+  M.forEach(function(m, i){
+    var sel = S.month ? m.k === S.month : i === last, h = Math.max(vals[i] ? 2 : 0, ph * vals[i] / ymax);
+    bars += '<rect class="bar" x="' + (cx(i) - bw / 2) + '" y="' + (T + ph - h) + '" width="' + bw + '" height="' + h + '" rx="3" fill="' + o.color + '" opacity="' + (sel ? 1 : .5) + '"/>';
+    if (vals[i]) labs += '<text class="lbl-v" x="' + cx(i) + '" y="' + (T + ph - h - 6) + '" text-anchor="middle">' + fmt(vals[i]) + '</text>';
+    var mm = +m.k.slice(5) - 1;
+    labs += '<text class="' + (sel ? 'sel-m' : '') + '" x="' + cx(i) + '" y="' + (H - 20) + '" text-anchor="middle">' + MON3[mm] + (mm === 0 || i === 0 ? ' ' + m.k.slice(2, 4) : '') + '</text>' +
+            '<text x="' + cx(i) + '" y="' + (H - 7) + '" text-anchor="middle" style="font-size:9px;opacity:.7">' + m.days + ' hari</text>';
+    pts.push(cx(i) + ',' + yp(pct[i]));
+    dots += '<circle cx="' + cx(i) + '" cy="' + yp(pct[i]) + '" r="3" fill="var(--card)" stroke="' + o.line + '" stroke-width="1.8"/>';
+    hit += '<rect x="' + (L + slot * i) + '" y="' + T + '" width="' + slot + '" height="' + (ph + B) + '" fill="transparent" style="cursor:pointer" onmousemove="trendTip(event,\'' + K + '\',' + i + ')" onmouseleave="trendTip()" onclick="trendPick(\'' + m.k + '\')"/>';
+  });
+  line = n > 1 ? '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + o.line + '" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' : '';
+  var svg = '<svg class="tc-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + o.title + '">' + g + bars + line + dots + labs + hit + '</svg>';
+  var mx = vals.indexOf(Math.max.apply(null, vals)), avg = tot / n;
+  var foot = '<div class="tc-foot"><span>Rata-rata <b>' + fmt(Math.round(avg)) + '</b> ' + unit + '/bulan</span><span>Tertinggi <b>' + MON3[+M[mx].k.slice(5) - 1] + ' ' + M[mx].k.slice(0, 4) + '</b> (' + fmt(vals[mx]) + ')</span><span>Porsi bulan ini <b>' + fmtP(pct[last]) + '</b> dari total ' + unit + '</span></div>';
+  var leg = '<div class="tc-leg"><span><i style="width:10px;height:10px;border-radius:2px;background:' + o.color + '"></i>Jumlah ' + unit + '</span><span><i style="width:14px;height:0;border-top:2px solid ' + o.line + '"></i>Porsi (%) dari voucher</span></div>';
+  return '<div class="tcard" id="tc-' + K + '">' + head + leg + svg + foot + '<div class="tc-tip" id="tip-' + K + '"></div></div>';
+}
+var TREND_DEF = {
+  Trm:    { key: 'Trm',    title: 'Kasus TRM per bulan',    sub: 'Item voucher yang tidak bisa di-backflush: belum ter-scan dan belum masuk stok.', color: '#ef4444', line: '#fca5a5', none: 'Tidak ada kasus TRM pada bulan-bulan yang ada datanya.<br>Semua item voucher berhasil di-backflush.' },
+  Manual: { key: 'Manual', title: 'Kasus input manual per bulan', sub: 'Item yang di-backflush lewat input manual di sistem, tanpa scan barcode.', color: '#f59e0b', line: '#fcd34d', none: 'Tidak ada input manual pada bulan-bulan yang ada datanya.<br>Semua backflush dilakukan lewat scan.' }
+};
+function renderTrend(){
+  var wrap = document.getElementById('trend-wrap');
+  var M = S.lane === 'bfl' ? monthlyAgg() : [];
+  wrap.hidden = !M.length;
+  if (!M.length) return;
+  S._trendM = M;
+  document.getElementById('trend').innerHTML = trendCard(TREND_DEF.Trm, M) + trendCard(TREND_DEF.Manual, M);
+}
+window.trendTip = function(ev, K, i){
+  ['Trm', 'Manual'].forEach(function(k){ var t = document.getElementById('tip-' + k); if (t) t.style.display = 'none'; });
+  if (!ev) return;
+  var m = S._trendM[i], t = document.getElementById('tip-' + K), card = document.getElementById('tc-' + K), cr = card.getBoundingClientRect();
+  var mm = +m.k.slice(5) - 1, n = m['n' + K] || 0, q = m['q' + K] || 0;
+  t.innerHTML = '<b>' + MONTH_FULL[mm] + ' ' + m.k.slice(0, 4) + '</b><br>' + fmt(n) + ' item · ' + fmt(q) + ' pcs<br>' + fmtP(share(n, q, m) || 0) + ' dari ' + fmt(S.basis === 'item' ? m.lines : m.qty) + (S.basis === 'item' ? ' item' : ' pcs') + ' voucher<br>Data ' + m.days + ' hari';
+  t.style.display = 'block';
+  var x = ev.clientX - cr.left + 14, y = ev.clientY - cr.top - 10;
+  if (x + t.offsetWidth > cr.width - 6) x = ev.clientX - cr.left - t.offsetWidth - 14;
+  t.style.left = x + 'px'; t.style.top = Math.max(8, y) + 'px';
+};
+window.trendPick = function(k){
+  var sel = document.getElementById('sel-month'); if (sel) sel.value = k;
+  window.onMonth(k);
+};
 function renderComp(scope){
   var el = document.getElementById('comp'), seg = document.getElementById('basis-seg');
   var on = S.lane === 'bfl';
