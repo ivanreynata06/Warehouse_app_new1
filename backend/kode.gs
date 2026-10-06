@@ -2533,7 +2533,8 @@ function readTransaksi(ss, sheetName, range) {
     if (!tgl || !inRange(tgl, range)) continue;
     var weight = parseFloat(row[5]) || 0;
     if (rucika) {
-      var katR = getKategoriRucika(row[1], String(row[6] || '') + ' ' + String(row[3] || '') + ' ' + String(row[2] || ''));
+      // Drawing = kolom H (index 7) bila ada; fallback kolom B. Deskripsi = G, atau C+D (C dulu).
+      var katR = getKategoriRucika(row[7] || row[1], _namaItemLengkap(row[6], row[2], row[3]));
       out.total += weight;
       out[katR] += weight;
       var keyR = fmtD(tgl);
@@ -2588,7 +2589,7 @@ function getFastMovingByRange(ss, range) {
     var tgl = toDate(row[4]); // col E = Effective Date
     if (!tgl || !inRange(tgl, range)) continue;
     var kat = rucika
-      ? getKategoriRucika(row[1], String(row[6] || '') + ' ' + String(row[3] || '') + ' ' + String(row[2] || ''))
+      ? getKategoriRucika(row[7] || row[1], _namaItemLengkap(row[6], row[2], row[3]))
       : getKategoriTransaksiV2(row[1], row[2], row[3]);
     if (!kat) continue;
     var kode = String(row[0] || '').trim();
