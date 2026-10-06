@@ -1613,6 +1613,32 @@ function _drawingTransaksiRucika(row) {
   if (normStr(row[7])) return row[7];
   return _mirip_drawing(row[1]) ? row[1] : '';
 }
+// Jalankan MANUAL di editor Apps Script (pilih fungsi ini -> Run) pada deployment/
+// spreadsheet yang ingin dicek. Melaporkan: apakah kolom G (Description lengkap) dan
+// H (DRAWING) terisi di DASHBOARD_KIRIM/MASUK, sebaran kategori Rucika, dan contoh nama
+// item hasil gabungan C+D. Hanya membaca, tidak mengubah data.
+function diagKirimMasukRucika() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  ['DASHBOARD_KIRIM', 'DASHBOARD_MASUK'].forEach(function (nm) {
+    var sh = ss.getSheetByName(nm);
+    if (!sh) { Logger.log(nm + ': sheet tidak ada'); return; }
+    var v = sh.getDataRange().getValues();
+    var n = v.length - 1, gIsi = 0, hIsi = 0, bMirip = 0, kat = {}, contoh = [];
+    for (var i = 1; i < v.length; i++) {
+      var r = v[i];
+      if (String(r[6] || '').trim()) gIsi++;
+      if (String(r[7] || '').trim()) hIsi++;
+      if (_mirip_drawing(r[1])) bMirip++;
+      var k = getKategoriRucika(_drawingTransaksiRucika(r), _namaItemLengkap(r[6], r[2], r[3]));
+      kat[k] = (kat[k] || 0) + 1;
+      if (contoh.length < 5 && i > v.length - 40) contoh.push(r[0] + ' | B=' + r[1] + ' | H=' + r[7] + ' | ' + _namaItemLengkap(r[6], r[2], r[3]) + ' -> ' + k);
+    }
+    Logger.log(nm + ': ' + n + ' baris | G terisi: ' + gIsi + ' | H (DRAWING) terisi: ' + hIsi +
+               ' | B mirip drawing: ' + bMirip + ' | kategori: ' + JSON.stringify(kat));
+    contoh.forEach(function (c) { Logger.log('  ' + c); });
+  });
+}
+
 function isRucikaFitting() { return ACTIVE_WORKSPACE === 'cibitung_fitting_rucika'; }
 var KATEGORI_RUCIKA = ['lem', 'fitting', 'rutape', 'container']; // rutape/container tetap ada di respons (selalu 0) supaya frontend lama tidak error
 function _adaKataLem(t) { return /(^|[^A-Z])LEM([^A-Z]|$)/.test(t); }
