@@ -82,7 +82,7 @@
               '<span class="' + (t.skuSelisih ? 'bad' : '') + '"><b>' + fmt(t.skuSelisih) + '</b> voucher selisih (' + fmt(Math.abs(t.selisih)) + ' pcs)</span>';
     } else if (k === 'bfl') {
       lines = '<span>Di-scan (BFL) <b>' + fmt(t.nBfl) + '</b> dari ' + fmt(t.lines) + ' item</span>' +
-              '<span>Manual <b class="' + (t.nManual ? 'warn' : '') + '">' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'bad' : '') + '">' + fmt(t.nTrm) + '</b></span>';
+              '<span>Manual <b class="' + (t.nManual ? 'warn' : '') + '">' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'bad' : '') + '">' + fmt(t.nTrm) + '</b>' + (t.nWait ? ' · Menunggu <b>' + fmt(t.nWait) + '</b>' : '') + '</span>';
     } else {
       lines = '<span><b>' + fmt(t.sesuai) + '</b> dari ' + fmt(t.lines) + ' item sudah ter-scan</span>' +
               '<span class="' + (t.skuSelisih ? 'bad' : '') + '"><b>' + fmt(t.skuSelisih) + '</b> item belum selesai (' + fmt(Math.abs(t.selisih)) + ' pcs)</span>';

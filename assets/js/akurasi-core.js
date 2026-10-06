@@ -318,7 +318,7 @@
 
   function newBucket() {
     return { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0,
-             nBfl: 0, nManual: 0, nTrm: 0, qBfl: 0, qManual: 0, qTrm: 0 };
+             nBfl: 0, nManual: 0, nTrm: 0, qBfl: 0, qManual: 0, qTrm: 0, nWait: 0, qWait: 0 };
   }
   function pct(a, b) { return b > 0 ? Math.max(0, Math.min(100, a / b * 100)) : null; }
 
@@ -346,7 +346,17 @@
   // status di Master Voucher untuk nomor voucher yang sama; voucher yang
   // hanya ada di file Backflush ikut dihitung sebagai voucher sendiri.
   function isBflOk(st) { return st === 'BFL' || st === 'MANUAL'; }
-  function summarizeBfl(vouchers, bflRows) {
+  // ---- Aturan batas input Backflush (H+1) ----
+  // Skema input: voucher Shift 3 diinput Shift 1 (hari berikutnya), Shift 1 diinput
+  // Shift 2, Shift 2 diinput Shift 3. Group TIDAK dipakai, hanya digit pertama = shift.
+  // Voucher berstatus TRM / kosong yang umurnya masih <= H+1 terhadap tanggal data
+  // terbaru BUKAN masalah (status 'wait' = menunggu input). Lewat H+1 = bermasalah.
+  var PENGINPUT = { 1: 'Shift 2', 2: 'Shift 3', 3: 'Shift 1 (hari berikutnya)' };
+  function shiftOf(g) { var m = /^\s*([123])/.exec(String(g || '')); return m ? +m[1] : null; }
+  function dayN(d) { var a = String(d || '').split('-'); return a.length === 3 && +a[0] ? Date.UTC(+a[0], +a[1] - 1, +a[2]) / 86400000 : null; }
+  function plusDay(d, n) { var x = dayN(d); return x == null ? '' : new Date((x + n) * 86400000).toISOString().slice(0, 10); }
+  function summarizeBfl(vouchers, bflRows, opt) {
+    var grace = (opt && opt.grace != null) ? opt.grace : 1;
     var byNo = {}, seen = {}, recs = [];
     (bflRows || []).forEach(function (b) { byNo[b.voucher] = b; });
     vouchers.forEach(function (v) {
@@ -361,25 +371,32 @@
         status: b.status, date: b.date, src: 'bfl', close: b.closeBfl || null });
     });
     var days = {}, items = [], tot = newBucket();
+    var refN = null;   // tanggal acuan = tanggal terbaru yang ada di data voucher/backflush
+    recs.forEach(function (r) { var n = dayN(r.date); if (n != null && (refN == null || n > refN)) refN = n; });
     // BFL = di-scan barcode scanner (wajib). MANUAL = diinput manual di sistem. TRM (atau
     // status kosong) = belum ter-scan sama sekali / belum masuk stok.
     // Akurasi scan = hanya BFL; MANUAL dan TRM sama-sama dihitung belum ter-scan, tetapi
     // dipisah supaya kelihatan mana yang manual dan mana yang masih TRM.
     recs.forEach(function (r) {
       var kind = r.status === 'BFL' ? 'bfl' : (r.status === 'MANUAL' ? 'manual' : 'trm');
-      var ok = kind !== 'trm';
+      r.shift = shiftOf(r.group); r.penginput = PENGINPUT[r.shift] || ''; r.batas = plusDay(r.date, grace);
+      if (kind === 'trm') { var dn = dayN(r.date); if (refN != null && dn != null && refN - dn <= grace) kind = 'wait'; }
+      var ok = kind === 'bfl' || kind === 'manual';
       var it = { v: r, e: { status: kind === 'trm' ? 'selisih' : kind,
-        aktual: kind === 'bfl' ? r.qty : 0, selisih: kind === 'bfl' ? 0 : -r.qty }, date: r.date, close: ok ? (r.close || null) : null };
+        aktual: kind === 'bfl' ? r.qty : 0, selisih: (kind === 'bfl' || kind === 'wait') ? 0 : -r.qty }, date: r.date, close: ok ? (r.close || null) : null };
       items.push(it);
       var d = days[r.date] || (days[r.date] = newBucket());
       [d, tot].forEach(function (b) {
         b.lines++; b.qty += r.qty; b.aktual += it.e.aktual; b.selisih += it.e.selisih;
         if (kind === 'bfl') { b.nBfl++; b.qBfl += r.qty; b.sesuai++; b.credit += r.qty; }
+        else if (kind === 'wait') { b.nWait++; b.qWait += r.qty; }   // masih dalam batas H+1: bukan selisih
         else { b.skuSelisih++; if (kind === 'manual') { b.nManual++; b.qManual += r.qty; } else { b.nTrm++; b.qTrm += r.qty; } }
         if (it.close) b.closed = (b.closed || 0) + 1;
       });
     });
-    return finish(days, items, tot);
+    var res = finish(days, items, tot);
+    res.ref = refN == null ? '' : plusDay('1970-01-01', refN); res.grace = grace;
+    return res;
   }
 
   // ---------- perhitungan: Barcode OUT (Master Scan Out) ----------
@@ -445,10 +462,10 @@
 
   function finish(days, items, tot) {
     var list = Object.keys(days).filter(Boolean).sort().map(function (k) {
-      var b = days[k]; b.date = k; b.pct = pct(b.credit, b.qty);
-      b.pctLines = pct(b.sesuai, b.lines); return b;
+      var b = days[k]; b.date = k; b.pct = pct(b.credit, b.qty - (b.qWait || 0));
+      b.pctLines = pct(b.sesuai, b.lines - (b.nWait || 0)); return b;
     });
-    tot.pct = pct(tot.credit, tot.qty); tot.pctLines = pct(tot.sesuai, tot.lines);
+    tot.pct = pct(tot.credit, tot.qty - (tot.qWait || 0)); tot.pctLines = pct(tot.sesuai, tot.lines - (tot.nWait || 0));
     return { days: list, items: items, total: tot };
   }
 
@@ -456,13 +473,13 @@
   function sumDays(days, lane, basis) {
     var t = newBucket();
     days.forEach(function (d) { for (var f in t) t[f] += d[f] || 0; });
-    t.pct = pct(t.credit, t.qty); t.pctLines = pct(t.sesuai, t.lines);
+    t.pct = pct(t.credit, t.qty - (t.qWait || 0)); t.pctLines = pct(t.sesuai, t.lines - (t.nWait || 0));
     if (lane === 'bfl' && basis !== 'qty') t.pct = t.pctLines;
     return t;
   }
 
   var api = {
-    sumDays: sumDays,
+    sumDays: sumDays, shiftOf: shiftOf, plusDay: plusDay,
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,
     parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER, parseScanOut: parseScanOut,

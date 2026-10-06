@@ -110,7 +110,7 @@ input.inp::placeholder{color:var(--txt3);}
 .day .bar i{display:block;height:100%;border-radius:4px;}
 .day.all{flex-basis:92px;}
 .c-ok{color:var(--green);} .c-warn{color:var(--amber);} .c-bad{color:var(--red);} .c-na{color:var(--txt3);}
-.f-ok{background:var(--green);} .f-warn{background:var(--amber);} .f-bad{background:var(--red);} .f-na{background:var(--gray);}
+.f-wait{background:var(--blue);} .f-ok{background:var(--green);} .f-warn{background:var(--amber);} .f-bad{background:var(--red);} .f-na{background:var(--gray);}
 
 /* KPI */
 .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;}
@@ -427,9 +427,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261004b"></script>
-<script src="./assets/js/akurasi-store.js?v=20261004b"></script>
-<script src="./assets/js/akurasi-reasons.js?v=20261004b"></script>
+<script src="./assets/js/akurasi-core.js?v=20261004c"></script>
+<script src="./assets/js/akurasi-store.js?v=20261004c"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261004c"></script>
 <script>
 (function(){
 'use strict';
@@ -485,7 +485,7 @@ function compute(){
   S.descMap = dm;
   S.resRaw = {
     in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol, selisih: selMode }) : null,
-    bfl: (vr.length || S.data.bfl) ? C.summarizeBfl(vr, S.data.bfl ? S.data.bfl.rows : []) : null,
+    bfl: (vr.length || S.data.bfl) ? C.summarizeBfl(vr, S.data.bfl ? S.data.bfl.rows : [], {}) : null,
     out: S.data.ter ? C.summarizeOut(S.data.ter.rows) : null
   };
 }
@@ -500,10 +500,11 @@ function laneMonths(k){
   return Object.keys(set).sort();
 }
 function sumDays(days, k){
-  var t = { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0, nBfl: 0, nManual: 0, nTrm: 0, qBfl: 0, qManual: 0, qTrm: 0 };
+  var t = { lines: 0, qty: 0, aktual: 0, credit: 0, skuSelisih: 0, selisih: 0, nostd: 0, sesuai: 0, closed: 0, nBfl: 0, nManual: 0, nTrm: 0, qBfl: 0, qManual: 0, qTrm: 0, nWait: 0, qWait: 0 };
   days.forEach(function(d){ for (var f in t) t[f] += d[f] || 0; });
-  t.pct = t.qty > 0 ? Math.max(0, Math.min(100, t.credit / t.qty * 100)) : null;
-  t.pctLines = t.lines > 0 ? t.sesuai / t.lines * 100 : null;
+  var dq = t.qty - t.qWait, dl = t.lines - t.nWait;   // item menunggu input (H+1) tidak ikut penyebut akurasi
+  t.pct = dq > 0 ? Math.max(0, Math.min(100, t.credit / dq * 100)) : null;
+  t.pctLines = dl > 0 ? t.sesuai / dl * 100 : null;
   if (k === 'bfl' && S.basis === 'item') t.pct = t.pctLines;
   return t;
 }
@@ -550,27 +551,28 @@ var LANES = {
   },
   bfl: {
     name: 'Voucher vs Backflush', tag: 'Barcode In', color: 'var(--blue)',
-    desc: 'BFL = di-scan dengan barcode scanner (yang diwajibkan). MANUAL = diinput manual di sistem. TRM = belum ter-scan sama sekali atau item belum masuk stok.',
+    desc: 'BFL = di-scan dengan barcode scanner (yang diwajibkan). MANUAL = diinput manual di sistem. TRM = belum ter-scan atau belum masuk stok. TRM baru dianggap bermasalah kalau belum BFL/MANUAL setelah H+1; sebelum itu statusnya Menunggu input.',
     kpi: function(t){ return [
-      ['Total item', fmt(t.lines), fmt(t.qty) + ' pcs voucher'],
+      ['Total item', fmt(t.lines), fmt(t.qty) + ' pcs voucher' + (t.nWait ? ' · ' + fmt(t.nWait) + ' menunggu input' : '')],
       ['Di-scan (BFL)', fmt(t.nBfl), fmtP(share(t.nBfl, t.qBfl, t)) + ' · ' + fmt(t.qBfl) + ' pcs'],
       ['Input manual', fmt(t.nManual), fmtP(share(t.nManual, t.qManual, t)) + ' · ' + fmt(t.qManual) + ' pcs'],
-      ['Masih TRM', fmt(t.nTrm), fmtP(share(t.nTrm, t.qTrm, t)) + ' · ' + fmt(t.qTrm) + ' pcs'],
-      ['Belum ter-scan', fmt(t.nManual + t.nTrm), 'manual + TRM, ' + fmt(t.qManual + t.qTrm) + ' pcs'],
-      ['Akurasi scan', fmtP(t.pct), 'BFL dari semua item' + (S.basis === 'qty' ? ' (per qty)' : '')]
+      ['TRM bermasalah', fmt(t.nTrm), 'lewat H+1 · ' + fmtP(share(t.nTrm, t.qTrm, t)) + ' · ' + fmt(t.qTrm) + ' pcs'],
+      ['Belum ter-scan', fmt(t.nManual + t.nTrm), 'manual + TRM bermasalah, ' + fmt(t.qManual + t.qTrm) + ' pcs'],
+      ['Akurasi scan', fmtP(t.pct), 'BFL dari item di luar yang menunggu' + (S.basis === 'qty' ? ' (per qty)' : '')]
     ]; },
     cols: [
       { key: 'bfl', label: 'Di-scan (BFL)', cls: 'ok', hint: 'Diinput pakai barcode scanner' },
       { key: 'manual', label: 'Input manual', cls: 'warn', hint: 'Diinput manual di sistem, bukan scan' },
-      { key: 'selisih', label: 'Masih TRM', cls: 'bad', hint: 'Belum ter-scan / belum masuk stok' }
+      { key: 'wait', label: 'Menunggu input (H+1)', cls: 'info', hint: 'TRM, tapi shift berikutnya masih punya waktu sampai H+1' },
+      { key: 'selisih', label: 'TRM bermasalah', cls: 'bad', hint: 'Lewat H+1, belum BFL / MANUAL' }
     ],
-    th: ['Tanggal', 'Item', 'Scan (BFL)', 'Manual', 'TRM', '% Scan'],
+    th: ['Tanggal', 'Item', 'Scan (BFL)', 'Manual', 'Menunggu', 'TRM', '% Scan'],
     cells: function(d){ return [[fmt(d.lines), ''], [fmt(d.nBfl) + ' <span style="color:var(--txt3)">(' + fmtP(share(d.nBfl, d.qBfl, d)) + ')</span>', ''],
-      [fmt(d.nManual), d.nManual ? 'pos' : 'zero'], [fmt(d.nTrm), d.nTrm ? 'neg' : 'zero']]; },
+      [fmt(d.nManual), d.nManual ? 'pos' : 'zero'], [fmt(d.nWait), ''], [fmt(d.nTrm), d.nTrm ? 'neg' : 'zero']]; },
     row: function(d){ return []; }, foot: function(t){ return []; },
     card: function(i){ var v = i.v, e = i.e;
-      var chip = e.status === 'selisih' ? '<span class="chip bad">TRM</span>' : e.status === 'manual' ? '<span class="chip warn">manual</span>' : '<span class="chip ok">BFL</span>';
-      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status'), chip, v.voucher, i.close, e.status === 'manual' ? rzSel(RZ.keyOf('bfl', v), 'bfl') : '');
+      var chip = e.status === 'wait' ? '<span class="chip info">menunggu</span>' : e.status === 'selisih' ? '<span class="chip bad">TRM</span>' : e.status === 'manual' ? '<span class="chip warn">manual</span>' : '<span class="chip ok">BFL</span>';
+      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status') + (e.status === 'wait' ? ' · input oleh ' + esc(v.penginput || 'shift berikutnya') + ', batas ' + esc(v.batas) : e.status === 'selisih' ? ' · lewat batas input ' + esc(v.batas) : ''), chip, v.voucher, i.close, e.status === 'manual' ? rzSel(RZ.keyOf('bfl', v), 'bfl') : '');
     }
   },
   out: {
@@ -687,7 +689,7 @@ function renderLanes(){
       var shp = share(t.nBfl, t.qBfl, t);
       html += '<button class="lane' + active + '" style="--c:' + L.color + '" onclick="pickLane(\'bfl\')">' + ring(t.pct) +
         '<div><h3>' + L.name + '</h3><div class="sub">Di-scan (BFL) · ' + fmt(v.days.length) + ' hari</div><div class="nums"><span>Di-scan <b>' + fmt(t.nBfl) + ' dari ' + fmt(t.lines) + ' item</b></span>' +
-        '<span>Manual <b>' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'c-bad' : '') + '">' + fmt(t.nTrm) + '</b></span></div></div></button>';
+        '<span>Manual <b>' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'c-bad' : '') + '">' + fmt(t.nTrm) + '</b>' + (t.nWait ? ' · Menunggu <b>' + fmt(t.nWait) + '</b>' : '') + '</span></div></div></button>';
       return;
     }
     var n1 = k === 'out' ? ['Qty check', fmt(t.aktual) + ' dari ' + fmt(t.qty)] : (k === 'bfl' ? ['Backflush', fmt(t.aktual) + ' dari ' + fmt(t.qty)] : ['Box ID', fmt(t.aktual) + ' dari ' + fmt(t.qty)]);
@@ -795,20 +797,20 @@ function renderClose(items){
 }
 // Bar bertumpuk: hijau = BFL (scan), kuning = manual, merah = TRM
 function stackBar(d){
-  var a = share(d.nBfl, d.qBfl, d) || 0, m = share(d.nManual, d.qManual, d) || 0, r = share(d.nTrm, d.qTrm, d) || 0;
-  return '<span class="bar stack"><i class="f-ok" style="width:' + a + '%"></i><i class="f-warn" style="width:' + m + '%"></i><i class="f-bad" style="width:' + r + '%"></i></span>';
+  var a = share(d.nBfl, d.qBfl, d) || 0, m = share(d.nManual, d.qManual, d) || 0, r = share(d.nTrm, d.qTrm, d) || 0, w = share(d.nWait, d.qWait, d) || 0;
+  return '<span class="bar stack"><i class="f-ok" style="width:' + a + '%"></i><i class="f-warn" style="width:' + m + '%"></i><i class="f-wait" style="width:' + w + '%"></i><i class="f-bad" style="width:' + r + '%"></i></span>';
 }
 
 /* ───────── tren bulanan: TRM & Manual ───────── */
 var MON3 = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 function monthlyAgg(){
   var r = S.resRaw && S.resRaw.bfl; if (!r) return [];
-  var m = {}, F = ['lines','qty','nTrm','qTrm','nManual','qManual','nBfl','qBfl'];
+  var m = {}, F = ['lines','qty','nTrm','qTrm','nManual','qManual','nBfl','qBfl','nWait','qWait'];
   r.days.forEach(function(d){
     var k = d.date.slice(0, 7), o = m[k] || (m[k] = { k: k, days: 0 });
     o.days++; F.forEach(function(f){ o[f] = (o[f] || 0) + (d[f] || 0); });
   });
-  return Object.keys(m).sort().slice(-12).map(function(k){ return m[k]; });
+  return Object.keys(m).sort().slice(-12).map(function(k){ var o = m[k]; o.lines -= o.nWait; o.qty -= o.qWait; return o; });  // penyebut: tanpa item yang masih menunggu input
 }
 function niceMax(v){ var raw = Math.max(1, v * 1.1) / 4, p = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / p, step = Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p); return step * 4; } // 4 sekat, angka sumbu bulat
 function trendCard(o, M){
@@ -856,7 +858,7 @@ function trendCard(o, M){
   return '<div class="tcard" id="tc-' + K + '">' + head + leg + svg + foot + '<div class="tc-tip" id="tip-' + K + '"></div></div>';
 }
 var TREND_DEF = {
-  Trm:    { key: 'Trm',    title: 'Kasus TRM per bulan',    sub: 'Item voucher yang tidak bisa di-backflush: belum ter-scan dan belum masuk stok.', color: '#ef4444', line: '#fca5a5', none: 'Tidak ada kasus TRM pada bulan-bulan yang ada datanya.<br>Semua item voucher berhasil di-backflush.' },
+  Trm:    { key: 'Trm',    title: 'Kasus TRM per bulan',    sub: 'Item yang masih TRM atau kosong setelah lewat batas input H+1, jadi benar-benar tidak bisa di-backflush.', color: '#ef4444', line: '#fca5a5', none: 'Tidak ada kasus TRM pada bulan-bulan yang ada datanya.<br>Semua item voucher berhasil di-backflush.' },
   Manual: { key: 'Manual', title: 'Kasus input manual per bulan', sub: 'Item yang di-backflush lewat input manual di sistem, tanpa scan barcode.', color: '#f59e0b', line: '#fcd34d', none: 'Tidak ada input manual pada bulan-bulan yang ada datanya.<br>Semua backflush dilakukan lewat scan.' }
 };
 function renderTrend(){
@@ -888,10 +890,10 @@ function renderComp(scope){
   el.hidden = !on; seg.hidden = !on;
   if (!on) return;
   seg.innerHTML = '<span>Hitung per</span><button class="' + (S.basis === 'item' ? 'on' : '') + '" onclick="setBasis(\'item\')">Item</button><button class="' + (S.basis === 'qty' ? 'on' : '') + '" onclick="setBasis(\'qty\')">Qty</button>';
-  var a = share(scope.nBfl, scope.qBfl, scope) || 0, m = share(scope.nManual, scope.qManual, scope) || 0, r = share(scope.nTrm, scope.qTrm, scope) || 0;
+  var a = share(scope.nBfl, scope.qBfl, scope) || 0, m = share(scope.nManual, scope.qManual, scope) || 0, r = share(scope.nTrm, scope.qTrm, scope) || 0, w = share(scope.nWait, scope.qWait, scope) || 0;
   el.innerHTML = '<div class="comp-h"><b>Komposisi input' + (S.day === 'all' ? '' : ' · ' + dayInfo(S.day).full) + '</b><span>' + (S.basis === 'item' ? 'berdasarkan jumlah item (voucher)' : 'berdasarkan qty (pcs)') + '</span></div>' +
-    '<div class="comp-bar"><i class="f-ok" style="width:' + a + '%"></i><i class="f-warn" style="width:' + m + '%"></i><i class="f-bad" style="width:' + r + '%"></i></div>' +
-    '<div class="comp-leg"><span><i class="f-ok"></i>Di-scan (BFL) <b>' + fmtP(a) + '</b></span><span><i class="f-warn"></i>Input manual <b>' + fmtP(m) + '</b></span><span><i class="f-bad"></i>Masih TRM <b>' + fmtP(r) + '</b></span></div>';
+    '<div class="comp-bar"><i class="f-ok" style="width:' + a + '%"></i><i class="f-warn" style="width:' + m + '%"></i><i class="f-wait" style="width:' + w + '%"></i><i class="f-bad" style="width:' + r + '%"></i></div>' +
+    '<div class="comp-leg"><span><i class="f-ok"></i>Di-scan (BFL) <b>' + fmtP(a) + '</b></span><span><i class="f-warn"></i>Input manual <b>' + fmtP(m) + '</b></span><span><i class="f-wait"></i>Menunggu input (H+1) <b>' + fmtP(w) + '</b></span><span><i class="f-bad"></i>TRM bermasalah <b>' + fmtP(r) + '</b></span></div>';
 }
 window.setBasis = function(b){ S.basis = b; try { localStorage.setItem('akurasi_basis', b); } catch (e) {} renderLanes(); renderLane(); };
 function spmCardHtml(g){
@@ -930,7 +932,8 @@ function renderRules(){
   else if (S.lane === 'bfl') r = [
     '<code>BFL</code> = item diinput memakai barcode scanner. Ini yang diwajibkan, jadi hanya BFL yang dihitung sebagai ter-scan.',
     '<code>MANUAL</code> = item diinput manual di sistem (bukan scan). Dihitung terpisah supaya kelihatan berapa yang tidak di-scan.',
-    '<code>TRM</code> atau status kosong = belum ter-scan sama sekali atau item belum masuk stok.',
+    '<code>TRM</code> atau status kosong = belum ter-scan atau belum masuk stok. <b>Batas input H+1</b>: voucher Shift 3 diinput Shift 1 (hari berikutnya), Shift 1 diinput Shift 2, Shift 2 diinput Shift 3. TRM yang umurnya masih H+1 dihitung <b>Menunggu input</b> (biru), bukan kasus. TRM yang masih belum BFL/MANUAL setelah lewat H+1 dihitung <b>TRM bermasalah</b> dan masuk grafik tren.',
+    'Hanya digit pertama group (shift) yang dibaca; huruf group tidak berpengaruh. Tanggal acuan = tanggal voucher terbaru di data' + (S.resRaw && S.resRaw.bfl && S.resRaw.bfl.ref ? ' (<b>' + S.resRaw.bfl.ref + '</b>)' : '') + ', jadi hasil ikut berubah saat master baru diupload.',
     'Akurasi scan = item BFL dibagi seluruh item pada tanggal tersebut. Pilih hitung per Item (jumlah voucher) atau per Qty (pcs) lewat tombol di atas.',
     'Kalau Master Backflush diupload, statusnya dipakai menggantikan status di Master Voucher untuk nomor voucher yang sama.',
     'Tanda Close: voucher yang tadinya TRM lalu pada upload berikutnya berubah menjadi BFL atau MANUAL. Voucher yang tidak berubah tidak diperbarui.'
@@ -1058,12 +1061,12 @@ window.exportXlsx = function(){
     var v = view(p[0]); if (!v || !v.days.length) return;
     var L = LANES[p[0]], rows;
     if (p[0] === 'bfl') {
-      rows = [['Tanggal', 'Item', 'Scan (BFL)', 'Manual', 'TRM', 'Qty voucher', 'Qty BFL', 'Qty manual', 'Qty TRM', '% Scan (item)', '% Scan (qty)']];
-      v.days.forEach(function(d){ rows.push([d.date, d.lines, d.nBfl, d.nManual, d.nTrm, d.qty, d.qBfl, d.qManual, d.qTrm, d.pctLines == null ? '' : Math.round(d.pctLines * 10) / 10, d.qty ? Math.round(d.qBfl / d.qty * 1000) / 10 : '']); });
-      var T = v.total; rows.push(['Total', T.lines, T.nBfl, T.nManual, T.nTrm, T.qty, T.qBfl, T.qManual, T.qTrm, T.pctLines == null ? '' : Math.round(T.pctLines * 10) / 10, T.qty ? Math.round(T.qBfl / T.qty * 1000) / 10 : '']);
+      rows = [['Tanggal', 'Item', 'Scan (BFL)', 'Manual', 'Menunggu H+1', 'TRM', 'Qty voucher', 'Qty BFL', 'Qty manual', 'Qty menunggu', 'Qty TRM', '% Scan (item)', '% Scan (qty)']];
+      v.days.forEach(function(d){ rows.push([d.date, d.lines, d.nBfl, d.nManual, d.nWait, d.nTrm, d.qty, d.qBfl, d.qManual, d.qWait, d.qTrm, d.pctLines == null ? '' : Math.round(d.pctLines * 10) / 10, d.qty ? Math.round(d.qBfl / d.qty * 1000) / 10 : '']); });
+      var T = v.total; rows.push(['Total', T.lines, T.nBfl, T.nManual, T.nWait, T.nTrm, T.qty, T.qBfl, T.qManual, T.qWait, T.qTrm, T.pctLines == null ? '' : Math.round(T.pctLines * 10) / 10, T.qty ? Math.round(T.qBfl / T.qty * 1000) / 10 : '']);
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'SUM Backflush'); n++;
       var det0 = [['Tanggal', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty', 'Alasan']];
-      v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, x.status || 'TRM', x.qty, reasonText('bfl', i)]); });
+      v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, i.e.status === 'wait' ? 'MENUNGGU INPUT (batas ' + x.batas + ')' : (x.status || 'TRM'), x.qty, reasonText('bfl', i)]); });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det0), 'Detail Manual & TRM');
       return;
     }
