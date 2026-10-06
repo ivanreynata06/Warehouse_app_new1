@@ -1605,6 +1605,14 @@ function _namaItemLengkap(g, c, d) {
   }
   return C || D;
 }
+// Drawing untuk baris DASHBOARD_KIRIM/MASUK: kolom H (index 7, "DRAWING") bila terisi.
+// Kolom B di sheet ini umumnya GROUP (mis. Q055/I053), BUKAN drawing, jadi hanya dipakai
+// kalau isinya memang terlihat seperti drawing (FITTING/LEM/GLUE/RUTAPE/COMM-ART...).
+// Drawing kosong -> klasifikasi jatuh ke aturan deskripsi (awalan RUGLUE = Lem, selain itu Fitting).
+function _drawingTransaksiRucika(row) {
+  if (normStr(row[7])) return row[7];
+  return _mirip_drawing(row[1]) ? row[1] : '';
+}
 function isRucikaFitting() { return ACTIVE_WORKSPACE === 'cibitung_fitting_rucika'; }
 var KATEGORI_RUCIKA = ['lem', 'fitting', 'rutape', 'container']; // rutape/container tetap ada di respons (selalu 0) supaya frontend lama tidak error
 function _adaKataLem(t) { return /(^|[^A-Z])LEM([^A-Z]|$)/.test(t); }
@@ -2533,8 +2541,8 @@ function readTransaksi(ss, sheetName, range) {
     if (!tgl || !inRange(tgl, range)) continue;
     var weight = parseFloat(row[5]) || 0;
     if (rucika) {
-      // Drawing = kolom H (index 7) bila ada; fallback kolom B. Deskripsi = G, atau C+D (C dulu).
-      var katR = getKategoriRucika(row[7] || row[1], _namaItemLengkap(row[6], row[2], row[3]));
+      // Drawing = kolom H (lihat _drawingTransaksiRucika). Deskripsi = G, atau C+D (C dulu).
+      var katR = getKategoriRucika(_drawingTransaksiRucika(row), _namaItemLengkap(row[6], row[2], row[3]));
       out.total += weight;
       out[katR] += weight;
       var keyR = fmtD(tgl);
@@ -2589,7 +2597,7 @@ function getFastMovingByRange(ss, range) {
     var tgl = toDate(row[4]); // col E = Effective Date
     if (!tgl || !inRange(tgl, range)) continue;
     var kat = rucika
-      ? getKategoriRucika(row[7] || row[1], _namaItemLengkap(row[6], row[2], row[3]))
+      ? getKategoriRucika(_drawingTransaksiRucika(row), _namaItemLengkap(row[6], row[2], row[3]))
       : getKategoriTransaksiV2(row[1], row[2], row[3]);
     if (!kat) continue;
     var kode = String(row[0] || '').trim();
