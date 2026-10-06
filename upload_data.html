@@ -893,6 +893,15 @@ function parsePreview(tab){
 
 // Dipakai bersama oleh alur paste (Outbound/Inbound) DAN alur upload file
 // Excel (Stock) -- cellRows = array of array of string, 1 baris data per item.
+function looksLikeCodeText(t){
+  t = String(t||'').trim();
+  if (!t) return false;
+  return /^(\/\/|\/\*|\*\/|<!--|#!)/.test(t)            // komentar: // , /* , */ , <!--
+      || /={5,}|-{8,}/.test(t)                          // garis pemisah ==== / -----
+      || /^(function|var|let|const|return|import|export)\s+[\w$]/.test(t)  // deklarasi kode
+      || /[{};]\s*$/.test(t) && /\b(function|var|let|const|return)\b/.test(t);
+}
+
 function validateAndPreview(tab, cellRows){
   var cfg = TAB_CONFIG[tab];
   var statusEl = document.getElementById('status-'+tab);
@@ -922,6 +931,14 @@ function validateAndPreview(tab, cellRows){
     (cfg.dateCols||[]).forEach(function(ci){
       var v = cells[ci];
       if (!isValidDateStr(v)) reasons.push('Kolom "'+cfg.cols[ci]+'" harus tanggal valid (YYYY-MM-DD)');
+    });
+    // Cek kolom teks: tolak isi yang jelas-jelas potongan KODE/komentar program
+    // (mis. "// ====", "// 1. WEB APP ...", "function x(", "var a ="), biasanya karena
+    // teks kode tidak sengaja ter-paste ke sel Excel. Tanpa ini baris dianggap OK.
+    var skipCols = (cfg.numericCols||[]).concat(cfg.dateCols||[]);
+    cells.forEach(function(v, ci){
+      if (skipCols.indexOf(ci) !== -1 || v === undefined || v === null) return;
+      if (looksLikeCodeText(String(v))) reasons.push('Kolom "'+(cfg.cols[ci]||('#'+(ci+1)))+'" berisi teks seperti kode/komentar program: "'+String(v).slice(0,40)+'" - periksa file Excel-nya');
     });
     var valid = reasons.length === 0;
     if (valid) validCount++; else invalidCount++;
