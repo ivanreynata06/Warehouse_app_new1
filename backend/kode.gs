@@ -1592,6 +1592,19 @@ function getKategoriRucikaStockRow(row) {
   var desc = eDraw ? (row[5] || '') : (row[4] || row[5] || ''); // E kosong (Drawing kosong, layout A) -> pakai F
   return getKategoriRucika(drawing, desc);
 }
+// Gabungkan Description (C) + Description2 (D) tanpa duplikasi; G dipakai bila ada.
+function _namaItemLengkap(g, c, d) {
+  var G = String(g || '').trim();
+  if (G) return G;
+  var C = String(c || '').trim(), D = String(d || '').trim();
+  if (C && D) {
+    var cu = C.toUpperCase(), du = D.toUpperCase();
+    if (cu.indexOf(du) !== -1) return C;   // D sudah termuat di C
+    if (du.indexOf(cu) !== -1) return D;   // C sudah termuat di D
+    return C + ' ' + D;
+  }
+  return C || D;
+}
 function isRucikaFitting() { return ACTIVE_WORKSPACE === 'cibitung_fitting_rucika'; }
 var KATEGORI_RUCIKA = ['lem', 'fitting', 'rutape', 'container']; // rutape/container tetap ada di respons (selalu 0) supaya frontend lama tidak error
 function _adaKataLem(t) { return /(^|[^A-Z])LEM([^A-Z]|$)/.test(t); }
@@ -2579,11 +2592,10 @@ function getFastMovingByRange(ss, range) {
       : getKategoriTransaksiV2(row[1], row[2], row[3]);
     if (!kat) continue;
     var kode = String(row[0] || '').trim();
-    // col G = Description lengkap (index 6), fallback ke col D, C, atau kode
-    var nama = String(row[6] || '').trim()
-             || String(row[3] || '').trim()
-             || String(row[2] || '').trim()
-             || kode;
+    // Nama lengkap: col G (Description lengkap) kalau terisi; kalau kosong, GABUNGKAN
+    // col C (Description) + col D (Description2). Sebelumnya hanya salah satu kolom
+    // yang diambil sehingga deskripsi tampak terpotong (mis. "DIA 63mm" tanpa jenisnya).
+    var nama = _namaItemLengkap(row[6], row[2], row[3]) || kode;
     var ton  = Math.abs(parseFloat(row[5]) || 0); // col F = Total Weight
     if (!kode || ton === 0) continue;
     if (!itemMap[kode]) {
@@ -2597,6 +2609,8 @@ function getFastMovingByRange(ss, range) {
       };
     }
     itemMap[kode].tonase += ton;
+    // Item sama bisa muncul di banyak baris; simpan nama yang paling lengkap (terpanjang).
+    if (nama && nama.length > String(itemMap[kode].nama || '').length) itemMap[kode].nama = nama;
   }
   var all = Object.values(itemMap).sort(function(a, b) { return b.tonase - a.tonase; });
   if (rucika) { // Top 5 per kategori Rucika
