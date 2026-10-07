@@ -661,7 +661,7 @@ function loadAll(){
       renderAll();
       showLoading(false);
       try { if (window.WH_SESSION && window.WH_SESSION.workspace === 'cibitung_fitting_rucika') { var ks=document.getElementById('kpi-kirim-sub'); if(ks) ks.textContent='Kg, rata-rata bulan ini (LEM+Fitting)'; } } catch(e){}
-      prefetchSPL();   // siapkan data SPL di latar belakang supaya klik Print langsung membuka dialog
+      prefetchSPL();   // siapkan PDF SPL (identik Google Dokumen) di latar belakang supaya klik Print langsung membuka dialog
     })
     .withFailureHandler(function(err){ showToast('Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'),'error'); showLoading(false); })
     .getAbsensiFTEData(curBulan, curTahun);
@@ -1255,104 +1255,72 @@ function renderKategoriChart(months, results){
 }
 
 // ================================================================
-//  PRINT SPL CEPAT
-//  Data SPL (karyawan OS + lembur bulan ini + tanda tangan TL) diambil
-//  di latar belakang begitu halaman selesai dimuat (prefetchSPL), lalu
-//  klik Print langsung membuat halaman cetak di iframe tersembunyi dan
-//  memanggil dialog print browser. Tidak ada proses Google Doc / PDF,
-//  tidak membuka tab baru (jadi tidak diblokir popup blocker).
-//  Formulir SPL asli (Word) tetap ada lewat tombol "SPL".
+//  PRINT SPL CEPAT -- hasil IDENTIK dengan Google Dokumen
+//  PDF asli dari template Google Dokumen (logo SIM, tabel, tanda tangan TL) disiapkan di
+//  latar belakang untuk semua karyawan OS begitu halaman terbuka. Server menyimpan PDF yang
+//  sudah jadi (Drive, folder SPL_CACHE) sehingga buka halaman berikutnya hanya ~1 detik per
+//  orang. Klik Print langsung memunculkan dialog print dari PDF itu, tanpa tab baru.
+//  Tombol "SPL" tetap mengunduh Word.
 // ================================================================
-var splCache = {};      // key 'bulan-tahun' -> respons getSPLDataBulk
-var splLoading = {};    // key -> true selagi diambil
-function _splKey(){ return curBulan+'-'+curTahun; }
-function prefetchSPL(cb){
-  var key = _splKey();
-  if (splCache[key]) { if (cb) cb(splCache[key]); return; }
-  if (splLoading[key]) { if (cb) (splLoading[key].cbs = splLoading[key].cbs || []).push(cb); return; }
-  splLoading[key] = { cbs: cb ? [cb] : [] };
-  google.script.run
-    .withSuccessHandler(function(res){
-      var l = splLoading[key]; delete splLoading[key];
-      if (res && res.success) splCache[key] = res;
-      ((l && l.cbs) || []).forEach(function(f){ f(res && res.success ? res : null); });
-    })
-    .withFailureHandler(function(){
-      var l = splLoading[key]; delete splLoading[key];
-      ((l && l.cbs) || []).forEach(function(f){ f(null); });
-    })
-    .getSPLDataBulk(curBulan, curTahun);
+var splPdf = {};            // key 'kode|bulan|tahun' -> { state:'loading'|'ready'|'error', url, p:Promise }
+function _splKey(kode){ return kode+'|'+curBulan+'|'+curTahun; }
+function _b64ToBlobUrl(b64){
+  var bin = atob(b64), n = bin.length, u8 = new Uint8Array(n);
+  for (var i=0;i<n;i++) u8[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([u8], {type:'application/pdf'}));
 }
-function _escH(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-function _splHtml(res, p){
-  var MIN = 8, rows = p.rows.slice(), body = '';
-  while (rows.length < MIN) rows.push(null);
-  rows.forEach(function(r, i){
-    body += '<tr><td class="c">'+(i+1)+'</td><td class="c">'+(r?_escH(r.tgl):'')+'</td><td>'+(r?_escH(p.nama):'')+'</td><td class="c">'+(r?_escH(p.kode):'')+'</td>'+
-      '<td class="c">'+(r?_escH(r.awal):'')+'</td><td class="c">'+(r?_escH(r.akhir):'')+'</td><td class="c">'+(r?_escH(r.total):'')+'</td><td>'+(r?_escH(r.ket):'')+'</td></tr>';
+function ensureSPLPdf(kode){
+  var key = _splKey(kode), cur = splPdf[key];
+  if (cur && (cur.state==='ready' || cur.state==='loading')) return cur.p;
+  var e = splPdf[key] = { state:'loading', url:'' };
+  e.p = new Promise(function(resolve, reject){
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (res && res.success && res.base64){ e.url = _b64ToBlobUrl(res.base64); e.state = 'ready'; resolve(e.url); }
+        else { e.state = 'error'; reject(new Error((res && res.error) || 'tidak diketahui')); }
+      })
+      .withFailureHandler(function(err){ e.state = 'error'; reject(new Error((err && err.message) || 'cek koneksi')); })
+      .getSPLPdfCepat(kode, curBulan, curTahun);
   });
-  var ttd = p.ttd ? '<img src="'+p.ttd+'" style="max-width:110px;max-height:52px;">' : '';
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>SPL '+_escH(p.nama)+' '+_escH(res.periode)+'</title><style>'+
-    '@page{size:A4 landscape;margin:12mm;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;margin:0;}'+
-    'h1{font-size:16px;text-align:center;margin:0 0 2px;letter-spacing:.5px;}h2{font-size:11px;text-align:center;margin:0 0 12px;font-weight:normal;}'+
-    '.meta{margin-bottom:10px;}.meta td{padding:2px 6px 2px 0;border:0;font-size:11px;}'+
-    'table.t{width:100%;border-collapse:collapse;}table.t th,table.t td{border:1px solid #000;padding:6px 6px;height:26px;}table.t th{background:#eee;font-size:10.5px;}'+
-    '.c{text-align:center;}.tot td{font-weight:bold;height:22px;}'+
-    '.sign{width:100%;margin-top:18px;border-collapse:collapse;}.sign td{border:1px solid #000;width:25%;height:96px;vertical-align:top;text-align:center;padding:6px;font-size:10.5px;}'+
-    '.sign .nm{margin-top:4px;font-size:10px;}'+
-    '</style></head><body>'+
-    '<h1>SURAT PERINTAH LEMBUR (SPL)</h1><h2>Periode '+_escH(res.periode)+'</h2>'+
-    '<table class="meta"><tr><td>Job</td><td>: '+_escH(p.job)+'</td><td style="padding-left:40px;">Bagian</td><td>: '+_escH(p.bagian)+'</td></tr></table>'+
-    '<table class="t"><thead><tr><th style="width:30px;">No</th><th style="width:78px;">Tanggal</th><th>Nama</th><th style="width:96px;">SIMID</th><th style="width:56px;">Awal</th><th style="width:56px;">Akhir</th><th style="width:56px;">Total (jam)</th><th>Keterangan</th></tr></thead><tbody>'+body+
-    '<tr class="tot"><td colspan="6" style="text-align:right;">Total jam lembur</td><td class="c">'+_escH(p.total)+'</td><td></td></tr></tbody></table>'+
-    '<table class="sign"><tr><td>Dibuat oleh<div class="nm">&nbsp;</div></td><td>Diperiksa oleh<div class="nm">&nbsp;</div></td><td>Disetujui oleh (TL)<div style="height:56px;display:flex;align-items:center;justify-content:center;">'+ttd+'</div></td><td>Diketahui oleh<div class="nm">&nbsp;</div></td></tr></table>'+
-    '</body></html>';
+  e.p.catch(function(){});   // supaya tidak jadi "unhandled" saat prefetch gagal
+  return e.p;
 }
-function _printHtmlLangsung(html){
+// Siapkan PDF semua karyawan OS di latar belakang (2 permintaan paralel)
+function prefetchSPL(){
+  var list = (fteData && fteData.os && fteData.os.perOrang) || [];
+  var queue = list.map(function(p){ return p.kode; }).filter(function(k){ var c = splPdf[_splKey(k)]; return !c || c.state==='error'; });
+  function next(){
+    var k = queue.shift(); if (!k) return;
+    ensureSPLPdf(k).then(next, next);
+  }
+  next(); next();
+}
+// Dialog print langsung dari PDF (iframe kecil di luar layar, bukan tab baru)
+function _printPdfLangsung(url){
   var old = document.getElementById('spl-print-frame'); if (old) old.remove();
   var fr = document.createElement('iframe');
   fr.id = 'spl-print-frame';
-  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;opacity:0;pointer-events:none;';
+  var fired = false;
+  function go(){
+    if (fired) return; fired = true;
+    try { fr.contentWindow.focus(); fr.contentWindow.print(); }
+    catch(e){ window.open(url, '_blank'); showToast('Print otomatis tidak didukung browser ini, PDF dibuka di tab baru.','info'); }
+  }
+  fr.onload = function(){ setTimeout(go, 250); };
+  fr.src = url;
   document.body.appendChild(fr);
-  var doc = fr.contentWindow.document;
-  doc.open(); doc.write(html); doc.close();
-  var done = false;
-  function go(){ if (done) return; done = true; try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch(e){ showToast('Gagal membuka dialog print: '+e.message,'error'); } }
-  var imgs = doc.images, pending = 0;
-  for (var i=0;i<imgs.length;i++){ if(!imgs[i].complete){ pending++; imgs[i].onload = imgs[i].onerror = function(){ if(--pending<=0) go(); }; } }
-  if (!pending) go(); else setTimeout(go, 1200);
+  setTimeout(function(){ if (!fired) go(); }, 4000);   // jaga-jaga onload tidak terpanggil
 }
 function previewSPL(kode, nama){
-  var key = _splKey();
-  function tampil(res){
-    var p = res && res.people && res.people[kode];
-    if (!p) { showToast('Data SPL '+nama+' tidak ditemukan, memakai cara lama...','info'); return previewSPLLama(kode, nama); }
-    _printHtmlLangsung(_splHtml(res, p));
-  }
-  if (splCache[key]) { tampil(splCache[key]); return; }          // normal: sudah disiapkan, langsung print
-  showToast('Mengambil data SPL...','info');                     // hanya jika klik sebelum data latar belakang selesai
-  prefetchSPL(function(res){ if (res) tampil(res); else previewSPLLama(kode, nama); });
-}
-
-// Cara lama (Google Doc -> PDF di tab baru). Dipakai hanya sebagai cadangan.
-function previewSPLLama(kode, nama){
-  showToast('Menyiapkan preview SPL untuk '+nama+'...','info');
-  google.script.run
-    .withSuccessHandler(function(res){
-      if(!res || !res.success){ showToast('Gagal preview SPL: '+(res&&res.error?res.error:'tidak diketahui'),'error'); return; }
-      try {
-        var byteChars = atob(res.base64);
-        var byteNumbers = new Array(byteChars.length);
-        for (var i=0;i<byteChars.length;i++) byteNumbers[i] = byteChars.charCodeAt(i);
-        var blob = new Blob([new Uint8Array(byteNumbers)], {type:'application/pdf'});
-        var url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-        setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
-        showToast('Preview SPL '+nama+' siap','success');
-      } catch(e) { showToast('Gagal memproses preview: '+e.message,'error'); }
-    })
-    .withFailureHandler(function(err){ showToast('Gagal preview SPL: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
-    .previewSPL(kode, curBulan, curTahun);
+  var e = splPdf[_splKey(kode)];
+  if (e && e.state==='ready'){ _printPdfLangsung(e.url); return; }          // normal: sudah siap, langsung print
+  var btns = document.querySelectorAll('.btn-preview[onclick*="'+kode+'"]');
+  btns.forEach(function(b){ b.disabled = true; b.dataset.old = b.innerHTML; b.textContent = 'Menyiapkan...'; });
+  showToast('Menyiapkan PDF SPL '+nama+'... (hanya sekali, berikutnya langsung)','info');
+  ensureSPLPdf(kode).then(function(url){ _printPdfLangsung(url); })
+    .catch(function(err){ showToast('Gagal menyiapkan SPL: '+err.message,'error'); })
+    .then(function(){ btns.forEach(function(b){ b.disabled = false; if (b.dataset.old) b.innerHTML = b.dataset.old; if (typeof lucide!=='undefined') lucide.createIcons(); }); });
 }
 
 function exportSPL(kode, nama){

@@ -121,7 +121,7 @@ var API_FUNCTIONS = {
   hapusDataPengirimanByTanggal: hapusDataPengirimanByTanggal,
   resyncBersihJadwalTanggal: resyncBersihJadwalTanggal,
   // Akurasi Scan Barcode (data dibagi antar PC)
-  getSPLDataBulk          : getSPLDataBulk,
+  getSPLPdfCepat          : getSPLPdfCepat,
   simpanAkurasiAlasan     : simpanAkurasiAlasan,
   getAkurasiData          : getAkurasiData,
   saveAkurasiData         : saveAkurasiData,
@@ -7467,6 +7467,23 @@ var SPL_JOB_BAGIAN_MAP = {
   'PEG25112073': { job: 'Warehouse Technician I', bagian: 'Warehouse Fitting Import' }, // Iman Abdul Rahman
   'PEG22111246': { job: 'Admin WH Fitting',       bagian: 'Warehouse Fitting Import' }  // Ivan Reynata
 };
+// Template SPL khusus untuk karyawan OS dari perusahaan lain (formulir beda).
+// Dicocokkan lewat NAMA (tidak peduli huruf besar/kecil) atau kode PEG. Kalau mau mengganti
+// template / job / bagian, ubah di sini. Template Google Dokumen harus bisa dibuka oleh akun
+// yang menjalankan Apps Script, dan memakai penanda yang sama ({{JOB}}, {{BAGIAN}},
+// {{PERIODE}}, {{TGL1}}..{{KET8}}, {{TTD_TL}}).
+var SPL_TEMPLATE_KHUSUS = [
+  { nama: /anjar\s+maulan/i, kode: '',
+    docId: '1MNXzYfW_CJ9yZ_gfbciwFiiXuVMv_aOQ_W7v6IVwA_c',   // "SPL SMS" - OS PT Sarana Mitra Sempurna
+    job: 'Warehouse Technician I', bagian: 'Warehouse Fitting Rucika' }
+];
+function _splTemplateKhusus(k) {
+  for (var i = 0; i < SPL_TEMPLATE_KHUSUS.length; i++) {
+    var t = SPL_TEMPLATE_KHUSUS[i];
+    if ((t.kode && t.kode === k.kode) || (t.nama && t.nama.test(k.nama || ''))) return t;
+  }
+  return null;
+}
 var SPL_JOB_BAGIAN_DEFAULT = { job: 'Staff Warehouse (OS)', bagian: 'Outsourcing - PT Swakarya Insan Mandiri' };
 
 // ================================================================
@@ -7479,12 +7496,14 @@ var SPL_JOB_BAGIAN_DEFAULT = { job: 'Staff Warehouse (OS)', bagian: 'Outsourcing
 function _buildSPLDocument(kode, bulan, tahun) {
   var props = PropertiesService.getScriptProperties();
   var templateDocId = props.getProperty('SPL_TEMPLATE_DOC_ID');
-  if (!templateDocId) throw new Error('SPL_TEMPLATE_DOC_ID belum di-set di Script Properties.');
 
   var karyawanRes = getKaryawanList();
   if (!karyawanRes.success) throw new Error(karyawanRes.error);
   var k = karyawanRes.data.find(function (x) { return x.kode === kode; });
   if (!k) throw new Error('Karyawan dengan kode ' + kode + ' tidak ditemukan');
+  var khusus = _splTemplateKhusus(k);
+  if (khusus) templateDocId = khusus.docId;
+  if (!templateDocId) throw new Error('SPL_TEMPLATE_DOC_ID belum di-set di Script Properties.');
 
   bulan = Number(bulan); tahun = Number(tahun);
   var bulanNamaArr = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
@@ -7495,7 +7514,7 @@ function _buildSPLDocument(kode, bulan, tahun) {
   lemburList.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
   var totalJamLembur = Math.round(lemburList.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
 
-  var jb = SPL_JOB_BAGIAN_MAP[k.kode] || SPL_JOB_BAGIAN_DEFAULT;
+  var jb = SPL_JOB_BAGIAN_MAP[k.kode] || (khusus ? { job: khusus.job, bagian: khusus.bagian } : SPL_JOB_BAGIAN_DEFAULT);
 
   // Salin template (bukan edit file aslinya), lalu isi datanya di salinan itu
   var copyFile = DriveApp.getFileById(templateDocId).makeCopy('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
@@ -7647,6 +7666,64 @@ function previewSPL(kode, bulan, tahun) {
 
 
 // ================================================================
+//  SPL PDF CEPAT (hasil IDENTIK dengan Google Dokumen)
+//  Hasil print memakai PDF asli dari template Google Dokumen (logo SIM, tabel, tanda tangan),
+//  bukan cetakan buatan ulang. Supaya klik Print langsung muncul, PDF yang sudah jadi disimpan
+//  di folder Drive "SPL_CACHE" dengan nama berisi sidik jari data (lembur, job, template, TTD).
+//  Selama data tidak berubah, permintaan berikutnya hanya membaca file (~1 detik). Begitu data
+//  lembur berubah, sidik jari berubah sehingga PDF dibuat ulang, dan file lama dibuang.
+//  Halaman Monitoring FTE meminta PDF semua karyawan OS di latar belakang saat dibuka.
+// ================================================================
+function _splCacheFolder() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('SPL_CACHE_FOLDER_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
+  var it = DriveApp.getFoldersByName('SPL_CACHE');
+  var f = it.hasNext() ? it.next() : DriveApp.createFolder('SPL_CACHE');
+  props.setProperty('SPL_CACHE_FOLDER_ID', f.getId());
+  return f;
+}
+function _splSig(kode, bulan, tahun) {
+  var kr = getKaryawanList();
+  var k = kr.success ? kr.data.find(function (x) { return x.kode === kode; }) : null;
+  if (!k) throw new Error('Karyawan dengan kode ' + kode + ' tidak ditemukan');
+  var kh = _splTemplateKhusus(k);
+  var tpl = kh ? kh.docId : (PropertiesService.getScriptProperties().getProperty('SPL_TEMPLATE_DOC_ID') || '');
+  var jb = SPL_JOB_BAGIAN_MAP[k.kode] || (kh ? { job: kh.job, bagian: kh.bagian } : SPL_JOB_BAGIAN_DEFAULT);
+  var lr = getLemburList({ kode: kode, bulan: Number(bulan), tahun: Number(tahun) });
+  var rows = (lr.success ? lr.data : []).map(function (l) {
+    return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || ''].join('~');
+  }).sort().join('|');
+  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, 'v2'].join('##');
+  var d = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8);
+  return { sig: d.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 12), k: k };
+}
+function getSPLPdfCepat(kode, bulan, tahun) {
+  try {
+    bulan = Number(bulan); tahun = Number(tahun);
+    var info = _splSig(kode, bulan, tahun);
+    var prefix = 'SPL_' + kode + '_' + tahun + ('0' + bulan).slice(-2) + '_';
+    var name = prefix + info.sig + '.pdf';
+    var folder = _splCacheFolder();
+    var hit = folder.getFilesByName(name);
+    if (hit.hasNext()) {
+      var f = hit.next();
+      return { success: true, cached: true, filename: name, base64: Utilities.base64Encode(f.getBlob().getBytes()) };
+    }
+    var r = previewSPL(kode, bulan, tahun);
+    if (!r.success) return r;
+    // buang PDF lama untuk karyawan & periode yang sama (data sudah berubah), lalu simpan yang baru
+    var old = folder.searchFiles("title contains '" + prefix + "'");
+    while (old.hasNext()) { try { old.next().setTrashed(true); } catch (e) {} }
+    folder.createFile(Utilities.newBlob(Utilities.base64Decode(r.base64), 'application/pdf', name));
+    r.cached = false; r.filename = name;
+    return r;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ================================================================
 //  AKURASI SCAN BARCODE -- penyimpanan bersama
 //  Sheet AKURASI_DATA: A=kind (voucher|std|bfl|ter), B=part, C=potongan JSON
 //  Satu sel maksimal 50.000 karakter, jadi JSON dipotong 40.000 karakter.
@@ -7755,62 +7832,6 @@ function _akurasiHapusKind(sh, kind) {
   for (var i = col.length - 1; i >= 0; i--) {   // dari bawah supaya index tidak bergeser
     if (String(col[i][0]) === kind) sh.deleteRow(i + 2);
   }
-}
-
-
-// ================================================================
-//  SPL CEPAT -- data mentah untuk dicetak langsung di browser.
-//  Cara lama (previewSPL) menyalin template Google Doc, mengisi ~60
-//  placeholder, export PDF, lalu mengirim PDF base64 ke browser: bisa
-//  10 detik lebih dan tab PDF-nya kena blokir popup. Fungsi ini hanya
-//  membaca data (karyawan, lembur satu bulan, tanda tangan TL), dan
-//  halaman Monitoring FTE langsung membuka dialog print dari HTML.
-//  kodeList (opsional): batasi ke kode karyawan tertentu.
-// ================================================================
-function getSPLDataBulk(bulan, tahun, kodeList) {
-  try {
-    bulan = Number(bulan); tahun = Number(tahun);
-    var kr = getKaryawanList();
-    if (!kr.success) return kr;
-    var lr = getLemburList({ bulan: bulan, tahun: tahun });
-    var semua = lr.success ? lr.data : [];
-    var perKode = {};
-    semua.forEach(function (l) { (perKode[l.kode] = perKode[l.kode] || []).push(l); });
-    var want = null;
-    if (kodeList && kodeList.length) { want = {}; kodeList.forEach(function (c) { want[String(c)] = 1; }); }
-    var bulanNamaArr = ['', 'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
-    var sigCache = {};
-    var people = {};
-    kr.data.forEach(function (k) {
-      if (want && !want[k.kode]) return;
-      if (!want && k.kategori !== 'OS') return;   // default: hanya karyawan OS (yang memakai SPL)
-      var list = (perKode[k.kode] || []).slice().sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
-      var jb = SPL_JOB_BAGIAN_MAP[k.kode] || SPL_JOB_BAGIAN_DEFAULT;
-      var rows = list.map(function (l) {
-        var rawMin = _timeStrToMinutes(l.jamSelesai) - _timeStrToMinutes(l.jamMulai);
-        if (rawMin < 0) rawMin += 24 * 60;
-        var p = l.tanggal.split('-');
-        return { tgl: p[2] + '/' + p[1] + '/' + p[0], awal: l.jamMulai, akhir: l.jamSelesai,
-                 total: Math.round((rawMin / 60) * 100) / 100, ket: l.keterangan || '' };
-      });
-      var ap = list.filter(function (l) { return l.approvalStatus === 'Disetujui' && l.approvedBy; })[0];
-      var sig = '';
-      if (ap) {
-        if (!(ap.approvedBy in sigCache)) {
-          var data = '';
-          try {
-            var blob = _getTlSignatureBlob(ap.approvedBy);
-            if (blob) data = 'data:' + (blob.getContentType() || 'image/png') + ';base64,' + Utilities.base64Encode(blob.getBytes());
-          } catch (e) { data = ''; }
-          sigCache[ap.approvedBy] = data;
-        }
-        sig = sigCache[ap.approvedBy];
-      }
-      people[k.kode] = { kode: k.kode, nama: k.nama, job: jb.job, bagian: jb.bagian, rows: rows,
-                         total: Math.round(rows.reduce(function (a, r) { return a + r.total; }, 0) * 100) / 100, ttd: sig };
-    });
-    return { success: true, bulan: bulan, tahun: tahun, periode: tahun + '/' + bulanNamaArr[bulan], people: people };
-  } catch (err) { return { success: false, error: err.message }; }
 }
 
 

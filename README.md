@@ -263,3 +263,6 @@ Item yang belum ter-scan bisa diberi alasan lewat dropdown di kartu (disimpan di
 Grafik donut alasan tampil di dashboard Akurasi Scan dan rekapnya di **Control Tower** (`assets/js/akurasi-ct.js`, bagian "Akurasi Scan Barcode").
 
 **Close Backflush**: hanya ditampilkan bila voucher baru beres (TRM/kosong menjadi BFL/MANUAL) lebih dari H+1 setelah tanggal voucher (H+2 ke atas). Yang beres dalam H+1 dianggap menunggu normal dan tidak ditampilkan.
+
+### Print SPL OS (Monitoring FTE)
+Tombol Print memakai **PDF asli dari template Google Dokumen** (logo SIM, tabel, tanda tangan TL), bukan cetakan buatan ulang. PDF disiapkan di latar belakang untuk semua karyawan OS saat halaman dibuka dan disimpan di folder Drive `SPL_CACHE` (`getSPLPdfCepat` di `backend/kode.gs`); selama data lembur tidak berubah, PDF dipakai ulang. Template khusus per karyawan diatur di `SPL_TEMPLATE_KHUSUS` (saat ini Anjar Maulan memakai template "SPL SMS").
