@@ -261,3 +261,5 @@ Item yang belum ter-scan bisa diberi alasan lewat dropdown di kartu (disimpan di
 - **Scan Out** per SPM yang seluruh itemnya PICK: satu alasan per SPM (Jaringan error, Lupa scan, Tidak paham, Lainnya).
 
 Grafik donut alasan tampil di dashboard Akurasi Scan dan rekapnya di **Control Tower** (`assets/js/akurasi-ct.js`, bagian "Akurasi Scan Barcode").
+
+**Close Backflush**: hanya ditampilkan bila voucher baru beres (TRM/kosong menjadi BFL/MANUAL) lebih dari H+1 setelah tanggal voucher (H+2 ke atas). Yang beres dalam H+1 dianggap menunggu normal dan tidak ditampilkan.

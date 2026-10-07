@@ -427,9 +427,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261004c"></script>
-<script src="./assets/js/akurasi-store.js?v=20261004c"></script>
-<script src="./assets/js/akurasi-reasons.js?v=20261004c"></script>
+<script src="./assets/js/akurasi-core.js?v=20261005a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261005a"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261005a"></script>
 <script>
 (function(){
 'use strict';
@@ -782,17 +782,17 @@ function renderClose(items){
   var qty = list.reduce(function(a, i){ return a + (i.v.qty != null ? i.v.qty : i.v.qspm || 0); }, 0);
   var key = S.lane + ':close', n = S.shown[key] || 12;
   list.sort(function(a, b){ return (b.close.iso || '') < (a.close.iso || '') ? -1 : (b.close.iso || '') > (a.close.iso || '') ? 1 : (a.v.item < b.v.item ? -1 : 1); });
-  var what = S.lane === 'out' ? 'sebelumnya PICK, kini sudah ter-scan' : (S.lane === 'bfl' ? 'sebelumnya TRM, kini BFL atau MANUAL' : 'sebelumnya Box ID kosong atau tidak sesuai, kini sesuai');
+  var what = S.lane === 'out' ? 'sebelumnya PICK, kini sudah ter-scan' : (S.lane === 'bfl' ? 'sebelumnya TRM atau belum ada status, kini BFL atau MANUAL, dan baru beres lebih dari H+1 setelah tanggal voucher' : 'sebelumnya Box ID kosong atau tidak sesuai, kini sesuai');
   var cards = list.slice(0, n).map(function(i){
     var v = i.v, c = i.close;
-    var line = '<span>' + esc(c.from) + ' <span class="arrow">→</span> ' + esc(c.to) + ' · ' + esc(c.at || '') + '</span>';
+    var line = '<span>' + esc(c.from) + ' <span class="arrow">→</span> ' + esc(c.to) + (c.gap != null ? ' · <b>H+' + c.gap + '</b>' : '') + ' · ' + esc(c.at || '') + '</span>';
     var qv = v.qty != null ? v.qty : v.qspm;
     return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + esc(v.voucher || v.spm) + '</span></div>' +
       '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft">' + line + '<span class="chip close">Qty ' + fmt(qv) + '</span></div></div>';
   }).join('');
   var more = list.length > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(12, list.length - n) + ' lagi</button>' : '';
   el.hidden = false;
-  el.innerHTML = '<div class="closep-h"><div><b>Item sudah Close</b><span class="hint">' + what + '. Tanda ini muncul saat upload data baru memperbaiki data lama.</span></div><div class="closep-n">' + fmt(list.length) + '<span style="font-size:11px;color:var(--txt3);font-weight:400;"> item · ' + fmt(qty) + ' pcs</span></div></div>' +
+  el.innerHTML = '<div class="closep-h"><div><b>Item sudah Close</b><span class="hint">' + what + '. ' + (S.lane === 'bfl' ? 'Voucher yang beres dalam H+1 dianggap menunggu normal dan tidak ditampilkan.' : 'Tanda ini muncul saat upload data baru memperbaiki data lama.') + '</span></div><div class="closep-n">' + fmt(list.length) + '<span style="font-size:11px;color:var(--txt3);font-weight:400;"> item · ' + fmt(qty) + ' pcs</span></div></div>' +
     (list.length ? '<div class="closep-g">' + cards + '</div>' + more : '<div class="closep-empty">Belum ada item yang Close pada pilihan ini.</div>');
 }
 // Bar bertumpuk: hijau = BFL (scan), kuning = manual, merah = TRM
@@ -936,7 +936,8 @@ function renderRules(){
     'Hanya digit pertama group (shift) yang dibaca; huruf group tidak berpengaruh. Tanggal acuan = tanggal voucher terbaru di data' + (S.resRaw && S.resRaw.bfl && S.resRaw.bfl.ref ? ' (<b>' + S.resRaw.bfl.ref + '</b>)' : '') + ', jadi hasil ikut berubah saat master baru diupload.',
     'Akurasi scan = item BFL dibagi seluruh item pada tanggal tersebut. Pilih hitung per Item (jumlah voucher) atau per Qty (pcs) lewat tombol di atas.',
     'Kalau Master Backflush diupload, statusnya dipakai menggantikan status di Master Voucher untuk nomor voucher yang sama.',
-    'Tanda Close: voucher yang tadinya TRM lalu pada upload berikutnya berubah menjadi BFL atau MANUAL. Voucher yang tidak berubah tidak diperbarui.'
+    'Tanda Close: voucher yang tadinya TRM (atau belum ada status) lalu pada upload berikutnya menjadi BFL atau MANUAL. Yang ditampilkan hanya yang baru beres lebih dari H+1 setelah tanggal voucher (H+2 ke atas); yang beres dalam H+1 dianggap menunggu normal dan tidak ditampilkan. H+N di kartu = selisih hari antara tanggal voucher dan tanggal upload yang menutupnya.',
+    'Voucher yang tidak berubah dari data lama tidak diperbarui.'
   ];
   else r = [
     'Data diambil dari Master Scan Out: Item Number, Qty SPM, Qty Check, dan Status. Tanggal adalah tanggal kirim yang dipilih saat upload.',

@@ -205,7 +205,7 @@
           }
           var st = m1.stats;
           st.closed = all.filter(function (r) {
-            return (r.closeBfl && r.closeBfl.at === now.text) || (r.closeBox && r.closeBox.at === now.text);
+            return (r.closeBfl && r.closeBfl.at === now.text && C.lateClose(r.closeBfl, r.date, 2)) || (r.closeBox && r.closeBox.at === now.text);
           }).length;
           return { rec: { rows: all, count: all.length, meta: { name: files[0].name, at: now.text, by: now.by } }, stats: st,
                    msg: 'Berhasil: ' + msgStats(st, extra) };
@@ -215,6 +215,7 @@
         var mb = C.mergeRecords(old && old.rows, parsed.rows, { key: function (r) { return r.voucher; }, closeField: 'closeBfl', state: OK_BFL,
           lookupOld: function (r) { return vBy[r.voucher] || null; },
           fields: ['item', 'qty', 'status', 'date', 'desc', 'group'] }, now);
+        mb.stats.closed = mb.stats.closedItems.filter(function (r) { return C.lateClose(r.closeBfl, r.date, 2); }).length;
         return { rec: { rows: mb.rows, count: mb.rows.length, meta: { name: files[0].name, at: now.text, by: now.by } }, stats: mb.stats,
                  msg: 'Berhasil: ' + msgStats(mb.stats) };
       });

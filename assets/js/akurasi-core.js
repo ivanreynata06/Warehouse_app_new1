@@ -363,12 +363,12 @@
       var b = byNo[v.voucher]; seen[v.voucher] = 1;
       recs.push({ voucher: v.voucher, item: v.item, desc: v.desc, group: v.group, qty: v.qty,
         status: b && b.status ? b.status : v.status, date: v.date, src: b ? 'bfl' : 'voucher',
-        close: (b && b.closeBfl) || v.closeBfl || null });
+        close: lateClose((b && b.closeBfl) || v.closeBfl || null, v.date, 2) });
     });
     (bflRows || []).forEach(function (b) {
       if (seen[b.voucher]) return;
       recs.push({ voucher: b.voucher, item: b.item, desc: b.desc, group: b.group, qty: b.qty,
-        status: b.status, date: b.date, src: 'bfl', close: b.closeBfl || null });
+        status: b.status, date: b.date, src: 'bfl', close: lateClose(b.closeBfl || null, b.date, 2) });
     });
     var days = {}, items = [], tot = newBucket();
     var refN = null;   // tanggal acuan = tanggal terbaru yang ada di data voucher/backflush
@@ -425,6 +425,24 @@
     return finish(days, items, tot);
   }
 
+  // ---------- Close backflush: hanya yang terlambat (lebih dari H+1) ----------
+  // Voucher yang statusnya baru berubah dari TRM/kosong menjadi BFL/MANUAL pada hari yang sama
+  // atau H+1 setelah tanggal voucher dianggap proses normal (menunggu), jadi TIDAK ditampilkan
+  // sebagai Close. Hanya yang beres di H+2 atau lebih yang ditampilkan, lengkap dengan selisih
+  // harinya (gap). Tanggal Close = tanggal upload yang membuat status berubah.
+  function dayDiff(a, b) {
+    var pa = String(a).split('-'), pb = String(b).split('-');
+    return Math.round((Date.UTC(+pa[0], pa[1] - 1, +pa[2]) - Date.UTC(+pb[0], pb[1] - 1, +pb[2])) / 86400000);
+  }
+  function lateClose(close, date, minGap) {
+    if (!close) return null;
+    if (!close.iso || !date) return close;              // tanggal tidak lengkap: tampilkan saja
+    var g = dayDiff(close.iso, date);
+    if (g < (minGap == null ? 2 : minGap)) return null;
+    var o = {}; for (var k in close) o[k] = close[k];
+    o.gap = g; return o;
+  }
+
   // ---------- gabung hasil upload baru dengan data lama ----------
   // Aturan: baris yang SEMUA nilainya sama dengan data lama dibiarkan (tidak diperbarui).
   // Kalau ada perbedaan, baris diganti. Kalau perbedaannya membuat item yang tadinya
@@ -479,7 +497,7 @@
   }
 
   var api = {
-    sumDays: sumDays, shiftOf: shiftOf, plusDay: plusDay,
+    sumDays: sumDays, lateClose: lateClose, dayDiff: dayDiff, shiftOf: shiftOf, plusDay: plusDay,
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,
     parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER, parseScanOut: parseScanOut,
