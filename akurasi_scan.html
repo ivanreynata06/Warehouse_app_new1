@@ -427,9 +427,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261005a"></script>
-<script src="./assets/js/akurasi-store.js?v=20261005a"></script>
-<script src="./assets/js/akurasi-reasons.js?v=20261005a"></script>
+<script src="./assets/js/akurasi-core.js?v=20261005b"></script>
+<script src="./assets/js/akurasi-store.js?v=20261005b"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261005b"></script>
 <script>
 (function(){
 'use strict';
@@ -450,7 +450,14 @@ var S = {
 /* ───────── util tampilan ───────── */
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmt(n){ return (n == null || isNaN(n)) ? '-' : (Math.round(n) || 0).toLocaleString('id-ID'); }
-function fmtP(p){ return p == null ? '-' : p.toLocaleString('id-ID', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%'; }
+function fmtP(p){
+  // Jangan pernah menampilkan 100% kalau sebenarnya masih ada selisih (mis. 99,997% dibulatkan jadi 100,0%).
+  if (p == null) return '-';
+  var r = Math.round(p * 10) / 10;
+  if (p < 100 && r >= 100) r = 99.9;
+  if (p > 0 && r === 0) return '<0,1%';
+  return r.toLocaleString('id-ID', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%';
+}
 function sgn(n){ n = Math.round(n || 0) || 0; return n > 0 ? '+' + n.toLocaleString('id-ID') : n.toLocaleString('id-ID'); }
 function cls(p){ return p == null ? 'na' : (p >= 99 ? 'ok' : (p >= 95 ? 'warn' : 'bad')); }
 function ymd(s){ var a = s.split('-'); return { y: +a[0], m: +a[1], d: +a[2] }; }
@@ -465,7 +472,7 @@ function ring(p, size){
   return '<svg class="ring" viewBox="0 0 84 84" role="img" aria-label="Akurasi ' + fmtP(p) + '">' +
     '<circle cx="42" cy="42" r="' + r + '" fill="none" stroke="var(--line2)" stroke-width="8"/>' +
     '<circle cx="42" cy="42" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + (c * v) + ' ' + c + '" transform="rotate(-90 42 42)"/>' +
-    '<text x="42" y="47" text-anchor="middle" class="ringtxt" font-size="' + (p != null && p >= 99.95 ? 17 : 16) + '" fill="var(--txt)">' + (p == null ? '-' : (p >= 99.95 ? '100%' : p.toLocaleString('id-ID', {maximumFractionDigits: 1}) + '%')) + '</text></svg>';
+    '<text x="42" y="47" text-anchor="middle" class="ringtxt" font-size="' + (p != null && p >= 99.95 ? 15 : 16) + '" fill="var(--txt)">' + (p == null ? '-' : (p >= 100 ? '100%' : (p >= 99.95 ? '99,9%' : p.toLocaleString('id-ID', {maximumFractionDigits: 1}) + '%'))) + '</text></svg>';
 }
 
 /* ───────── hitung ───────── */

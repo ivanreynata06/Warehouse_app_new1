@@ -24,7 +24,14 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function fmt(n) { return (Math.round(n) || 0).toLocaleString('id-ID'); }
-  function fmtP(p) { return p == null ? '-' : p.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'; }
+  function fmtP(p) {
+    // Jangan pernah menampilkan 100% kalau masih ada selisih (99,997% dibulatkan jadi 100,0%)
+    if (p == null) return '-';
+    var r = Math.round(p * 10) / 10;
+    if (p < 100 && r >= 100) r = 99.9;
+    if (p > 0 && r === 0) return '<0,1%';
+    return r.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+  }
 
   /* ---------- kunci & status ---------- */
   function keyOf(lane, rec) {

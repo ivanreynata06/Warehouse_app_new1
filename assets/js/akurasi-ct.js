@@ -28,7 +28,14 @@
 
   function esc(s) { return RZ.esc(s); }
   function fmt(n) { return (Math.round(n) || 0).toLocaleString('id-ID'); }
-  function fmtP(p) { return p == null ? '-' : p.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'; }
+  function fmtP(p) {
+    // Jangan pernah menampilkan 100% kalau masih ada selisih (99,997% dibulatkan jadi 100,0%)
+    if (p == null) return '-';
+    var r = Math.round(p * 10) / 10;
+    if (p < 100 && r >= 100) r = 99.9;
+    if (p > 0 && r === 0) return '<0,1%';
+    return r.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+  }
   function tone(p) { return p == null ? 'na' : (p >= 99 ? 'ok' : (p >= 95 ? 'warn' : 'bad')); }
 
   function ring(p) {
@@ -37,7 +44,7 @@
     return '<svg class="ak-ring" viewBox="0 0 84 84" role="img" aria-label="Akurasi ' + fmtP(p) + '">' +
       '<circle cx="42" cy="42" r="' + r + '" fill="none" stroke="var(--border2)" stroke-width="8"></circle>' +
       '<circle cx="42" cy="42" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + (c * v) + ' ' + c + '" transform="rotate(-90 42 42)"></circle>' +
-      '<text x="42" y="47" text-anchor="middle" class="ak-rt">' + (p == null ? '-' : (p >= 99.95 ? '100%' : p.toLocaleString('id-ID', { maximumFractionDigits: 1 }) + '%')) + '</text></svg>';
+      '<text x="42" y="47" text-anchor="middle" class="ak-rt">' + (p == null ? '-' : (p >= 100 ? '100%' : (p >= 99.95 ? '99,9%' : p.toLocaleString('id-ID', { maximumFractionDigits: 1 }) + '%'))) + '</text></svg>';
   }
 
   function compute() {
