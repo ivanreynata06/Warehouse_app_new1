@@ -55,6 +55,7 @@
       bfl: (vr.length || D.bfl) ? C.summarizeBfl(vr, D.bfl ? D.bfl.rows : []) : null,
       out: D.ter ? C.summarizeOut(D.ter.rows) : null
     };
+    D._bflRef = raw.bfl ? raw.bfl.ref : '';
     var months = {};
     ['in', 'bfl', 'out'].forEach(function (k) { if (raw[k]) raw[k].days.forEach(function (d) { months[d.date.slice(0, 7)] = 1; }); });
     D._months = Object.keys(months).sort();
@@ -89,7 +90,12 @@
               '<span class="' + (t.skuSelisih ? 'bad' : '') + '"><b>' + fmt(t.skuSelisih) + '</b> voucher selisih (' + fmt(Math.abs(t.selisih)) + ' pcs)</span>';
     } else if (k === 'bfl') {
       lines = '<span>Di-scan (BFL) <b>' + fmt(t.nBfl) + '</b> dari ' + fmt(t.lines) + ' item</span>' +
-              '<span>Manual <b class="' + (t.nManual ? 'warn' : '') + '">' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'bad' : '') + '">' + fmt(t.nTrm) + '</b>' + (t.nWait ? ' · Menunggu <b>' + fmt(t.nWait) + '</b>' : '') + '</span>';
+              '<span>Manual <b class="' + (t.nManual ? 'warn' : '') + '">' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'bad' : '') + '">' + fmt(t.nTrm) + '</b>' + (t.nWait ? ' · Menunggu <b>' + fmt(t.nWait) + '</b>' : '') + '</span>'
+      var tp = C.trmByPic(r.items, D._bflRef || '');
+      if (tp.total) {
+        var parts = ['A', 'B', 'C', 'D'].filter(function (g) { return tp.by[g]; }).map(function (g) { return esc(tp.by[g].pic) + ' ' + tp.by[g].n; });
+        lines += '<span class="bad">TRM lewat H+1 <b class="bad">' + fmt(tp.total) + '</b> · PIC ' + parts.join(', ') + '</span>';
+      }
     } else {
       lines = '<span><b>' + fmt(t.sesuai) + '</b> dari ' + fmt(t.lines) + ' item sudah ter-scan</span>' +
               '<span class="' + (t.skuSelisih ? 'bad' : '') + '"><b>' + fmt(t.skuSelisih) + '</b> item belum selesai (' + fmt(Math.abs(t.selisih)) + ' pcs)</span>';

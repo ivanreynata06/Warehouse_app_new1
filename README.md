@@ -266,3 +266,6 @@ Grafik donut alasan tampil di dashboard Akurasi Scan dan rekapnya di **Control T
 
 ### Print SPL OS (Monitoring FTE)
 Tombol Print memakai **PDF asli dari template Google Dokumen** (logo SIM, tabel, tanda tangan TL), bukan cetakan buatan ulang. PDF disiapkan di latar belakang untuk semua karyawan OS saat halaman dibuka dan disimpan di folder Drive `SPL_CACHE` (`getSPLPdfCepat` di `backend/kode.gs`); selama data lembur tidak berubah, PDF dipakai ulang. Template khusus per karyawan diatur di `SPL_TEMPLATE_KHUSUS` (saat ini Anjar Maulan memakai template "SPL SMS").
+
+### Kalender shift & PIC Serah Terima (Backflush)
+`akurasi-core.js` memuat pola Kalender Kerja Shift 2026 (3 shift, 4 group): siklus 12 hari per group `3,3,3,libur,2,2,2,libur,1,1,1,libur`, tiap group digeser 3 hari (A=0, B=3, C=6, D=9). PIC per group: A Lindu, B Ibnu, C Slamet, D Ngabidin (`PIC_GRUP`). **PIC Serah Terima** = group yang bertugas di shift penerima/penginput pada hari itu (Shift 1 diinput Shift 2, Shift 2 diinput Shift 3, Shift 3 diinput Shift 1 hari berikutnya). Panel "TRM lewat H+1 · PIC Serah Terima" ada di jalur Voucher vs Backflush dan ringkasannya di Control Tower.

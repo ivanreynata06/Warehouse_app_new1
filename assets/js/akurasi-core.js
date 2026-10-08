@@ -355,6 +355,57 @@
   function shiftOf(g) { var m = /^\s*([123])/.exec(String(g || '')); return m ? +m[1] : null; }
   function dayN(d) { var a = String(d || '').split('-'); return a.length === 3 && +a[0] ? Date.UTC(+a[0], +a[1] - 1, +a[2]) / 86400000 : null; }
   function plusDay(d, n) { var x = dayN(d); return x == null ? '' : new Date((x + n) * 86400000).toISOString().slice(0, 10); }
+  // ---- Kalender shift 2026: 3 shift, 4 group (halaman 1 "Kalender Kerja Shift 2026") ----
+  // Pola berulang 12 hari per group: 3,3,3,libur,2,2,2,libur,1,1,1,libur. Tiap group digeser
+  // 3 hari dari group sebelumnya (A=0, B=3, C=6, D=9). Sudah dicek cocok dengan seluruh
+  // voucher bulan September 2026 (754 dari 754) dan sampel Januari sampai Desember di kalender.
+  // Shift 1 = 08.00-16.00, Shift 2 = 16.00-00.01, Shift 3 = 23.59-08.00 (0 = libur).
+  var PIC_GRUP = { A: 'Lindu', B: 'Ibnu', C: 'Slamet', D: 'Ngabidin' };
+  var SHIFT_JAM = { 1: '08.00-16.00', 2: '16.00-00.01', 3: '23.59-08.00' };
+  var KAL_CYC = [3, 3, 3, 0, 2, 2, 2, 0, 1, 1, 1, 0], KAL_OFF = { A: 0, B: 3, C: 6, D: 9 };
+  function calShift(g, iso) {
+    var a = dayN(iso), b = dayN('2025-12-31');
+    if (a == null || KAL_OFF[g] == null) return null;
+    return KAL_CYC[(((a - b) + KAL_OFF[g]) % 12 + 12) % 12];
+  }
+  function calGroupOn(shift, iso) {
+    var gs = ['A', 'B', 'C', 'D'];
+    for (var i = 0; i < gs.length; i++) if (calShift(gs[i], iso) === shift) return gs[i];
+    return '';
+  }
+  // PIC Serah Terima = group yang bertugas di shift PENERIMA/PENGINPUT pada hari itu (menurut
+  // kalender): voucher Shift 1 diinput Shift 2 (hari sama), Shift 2 diinput Shift 3 (hari sama),
+  // Shift 3 diinput Shift 1 hari berikutnya. Group pembuat voucher ikut dicatat.
+  var NEXT_SHIFT = { 1: 2, 2: 3, 3: 1 };
+  function picSerahTerima(group, date) {
+    var m = /^\s*([123])?\s*([A-Da-d])?\s*$/.exec(String(group || ''));
+    var sh = m && m[1] ? +m[1] : 0, g = m && m[2] ? m[2].toUpperCase() : '';
+    var o = { prodGroup: g, prodPic: '', shift: sh, jam: '', recvShift: 0, recvDate: '', recvGroup: '', recvPic: '', recvJam: '' };
+    if (date) {
+      if (!g && sh) g = calGroupOn(sh, date);
+      if (!sh && g) sh = calShift(g, date) || 0;
+    }
+    o.prodGroup = g; o.prodPic = PIC_GRUP[g] || ''; o.shift = sh; o.jam = SHIFT_JAM[sh] || '';
+    if (!sh || !date) return o;
+    o.recvShift = NEXT_SHIFT[sh]; o.recvDate = sh === 3 ? plusDay(date, 1) : date;
+    o.recvGroup = calGroupOn(o.recvShift, o.recvDate); o.recvPic = PIC_GRUP[o.recvGroup] || ''; o.recvJam = SHIFT_JAM[o.recvShift] || '';
+    return o;
+  }
+  // Rekap TRM lewat H+1 per PIC Serah Terima. items: hasil summarizeBfl().items, ref: res.ref
+  function trmByPic(items, ref) {
+    var by = {}, list = [];
+    items.forEach(function (i) {
+      if (i.e.status !== 'selisih') return;
+      var p = i.v.pic || {}, k = p.recvGroup || '?';
+      var age = (ref && i.v.date) ? dayN(ref) - dayN(i.v.date) : null;
+      var o = by[k] || (by[k] = { group: k, pic: p.recvPic || 'Belum diketahui', jam: p.recvJam || '', n: 0, qty: 0, oldest: 0 });
+      o.n++; o.qty += i.v.qty || 0; if (age != null && age > o.oldest) o.oldest = age;
+      list.push({ it: i, age: age });
+    });
+    list.sort(function (a, b) { return (b.age || 0) - (a.age || 0) || (a.it.v.item < b.it.v.item ? -1 : 1); });
+    return { by: by, list: list, total: list.length };
+  }
+
   function summarizeBfl(vouchers, bflRows, opt) {
     var grace = (opt && opt.grace != null) ? opt.grace : 1;
     var byNo = {}, seen = {}, recs = [];
@@ -380,6 +431,7 @@
     recs.forEach(function (r) {
       var kind = r.status === 'BFL' ? 'bfl' : (r.status === 'MANUAL' ? 'manual' : 'trm');
       r.shift = shiftOf(r.group); r.penginput = PENGINPUT[r.shift] || ''; r.batas = plusDay(r.date, grace);
+      r.pic = picSerahTerima(r.group, r.date);
       if (kind === 'trm') { var dn = dayN(r.date); if (refN != null && dn != null && refN - dn <= grace) kind = 'wait'; }
       var ok = kind === 'bfl' || kind === 'manual';
       var it = { v: r, e: { status: kind === 'trm' ? 'selisih' : kind,
@@ -497,7 +549,8 @@
   }
 
   var api = {
-    sumDays: sumDays, lateClose: lateClose, dayDiff: dayDiff, shiftOf: shiftOf, plusDay: plusDay,
+    sumDays: sumDays, lateClose: lateClose, dayDiff: dayDiff,
+    PIC_GRUP: PIC_GRUP, SHIFT_JAM: SHIFT_JAM, calShift: calShift, calGroupOn: calGroupOn, picSerahTerima: picSerahTerima, trmByPic: trmByPic, shiftOf: shiftOf, plusDay: plusDay,
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,
     parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER, parseScanOut: parseScanOut,
