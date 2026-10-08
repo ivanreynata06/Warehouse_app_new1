@@ -133,7 +133,10 @@ input.inp::placeholder{color:var(--txt3);}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:5px;}
 .card .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline;}
 .card .it{font-family:var(--mono);font-size:11px;font-weight:600;}
-.card .gr{font-size:10px;color:var(--txt3);white-space:nowrap;}
+.card .gr{font-size:10px;color:var(--txt3);text-align:right;}
+.gpn{color:#7dd3fc;font-weight:600;}
+.trmp-r{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+.pic-line{font-size:11px;color:var(--txt2);padding-top:6px;border-top:1px dashed var(--line2);} .pic-line b{color:var(--txt);}
 .card .ds{font-size:11px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .card .ft{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:10.5px;color:var(--txt2);font-variant-numeric:tabular-nums;}
 .chip{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap;font-variant-numeric:tabular-nums;}
@@ -414,6 +417,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
         </div>
         <div class="filters">
           <div class="seg" id="basis-seg" hidden></div>
+          <div id="detail-seg-top" hidden></div>
           <label class="tolbtn" title="Box ID lebih dari 1 dan box terakhir tidak penuh dianggap sesuai"><input type="checkbox" id="tol" onchange="setTol(this.checked)"> Toleransi box sisa</label>
           <input class="inp" id="q" type="search" placeholder="Cari item, deskripsi, voucher / SPM" oninput="onSearch(this.value)">
         </div>
@@ -447,9 +451,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261007a"></script>
-<script src="./assets/js/akurasi-store.js?v=20261007a"></script>
-<script src="./assets/js/akurasi-reasons.js?v=20261007a"></script>
+<script src="./assets/js/akurasi-core.js?v=20261008a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261008a"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261008a"></script>
 <script>
 (function(){
 'use strict';
@@ -462,6 +466,7 @@ var PAGE = 40;
 var S = {
   data: { voucher: null, std: null, bfl: null, ter: null },   // {rows|map, meta}, dari server
   opts: { tol: false },
+  detail: 'show',                    // Backflush: tampilkan / sembunyikan detail PIC Serah Terima
   basis: 'item',                      // Backflush: hitung persen per 'item' (voucher) atau per 'qty'                // tampilan saja, disimpan di perangkat ini
   source: '', warn: '', needStd: false, alasanMap: {}, _items: [],
   lane: 'in', month: '', day: 'all', q: '', shown: {}, res: null, resRaw: null
@@ -573,7 +578,7 @@ var LANES = {
         : e.status === 'nostd' ? 'Voucher ' + fmt(v.qty) + ' dalam ' + fmt(v.box) + ' box'
         : 'Voucher ' + fmt(v.qty) + ' · ' + fmt(v.box) + ' box x ' + fmt(e.std);
       var chip = e.status === 'sesuai' ? '<span class="chip ok">sesuai</span>' : e.status === 'nostd' ? '<span class="chip warn">tanpa standar</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
-      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, line, chip, v.voucher, i.close, (e.status === 'kosong' || e.status === 'beda') ? rzSel(RZ.keyOf('in', v), 'in') : '');
+      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, line, chip, v.voucher, i.close, (e.status === 'kosong' || e.status === 'beda') ? rzSel(RZ.keyOf('in', v), 'in') : '', picNameOf(v));
     }
   },
   bfl: {
@@ -599,7 +604,7 @@ var LANES = {
     row: function(d){ return []; }, foot: function(t){ return []; },
     card: function(i){ var v = i.v, e = i.e;
       var chip = e.status === 'wait' ? '<span class="chip info">menunggu</span>' : e.status === 'selisih' ? '<span class="chip bad">TRM</span>' : e.status === 'manual' ? '<span class="chip warn">manual</span>' : '<span class="chip ok">BFL</span>';
-      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status') + (e.status === 'wait' ? ' · input oleh ' + esc(v.penginput || 'shift berikutnya') + (v.pic && v.pic.recvPic ? ' (' + esc(v.pic.recvPic) + ')' : '') + ', batas ' + esc(v.batas) : e.status === 'selisih' ? ' · lewat batas input ' + esc(v.batas) : ''), chip, v.voucher, i.close, e.status === 'manual' ? rzSel(RZ.keyOf('bfl', v), 'bfl') : (e.status === 'selisih' ? picBlock(v) : ''));
+      return cardHtml(v.item, v.group, descOf(v.item) || v.desc, 'Qty ' + fmt(v.qty) + (v.status ? ' · status ' + esc(v.status) : ' · belum ada status') + (e.status === 'wait' ? ' · input oleh ' + esc(v.penginput || 'shift berikutnya') + (v.pic && v.pic.recvPic ? ' (' + esc(v.pic.recvPic) + ')' : '') + ', batas ' + esc(v.batas) : e.status === 'selisih' ? ' · lewat batas input ' + esc(v.batas) : ''), chip, v.voucher, i.close, e.status === 'manual' ? rzSel(RZ.keyOf('bfl', v), 'bfl') : (e.status === 'selisih' ? picBlock(v) : ''), picNameOf(v));
     }
   },
   out: {
@@ -657,9 +662,12 @@ window.setAlasan = function(el){
     window.AkurasiStore.cacheAlasan({ map: S.alasanMap });
   });
 };
-function cardHtml(item, group, desc, line, chip, ref, close, rz){
+// Nama petugas shift serah terima (group yang bertugas di shift penerima) untuk voucher ini
+function picOf(v){ return v.pic || C.picSerahTerima(v.group, v.date); }
+function picNameOf(v){ return (v.group && v.date ? picOf(v).recvPic : '') || ''; }
+function cardHtml(item, group, desc, line, chip, ref, close, rz, pn){
   var tag = close ? '<span class="chip close" title="Close ' + esc(close.at || '') + '">Close</span>' : '';
-  return '<div class="card"><div class="t"><span class="it">' + esc(item) + '</span><span class="gr">' + esc(group) + (ref ? ' · ' + esc(ref) : '') + '</span></div>' +
+  return '<div class="card"><div class="t"><span class="it">' + esc(item) + '</span><span class="gr">' + esc(group) + (pn ? ' · <b class="gpn" title="Petugas shift serah terima">' + esc(pn) + '</b>' : '') + (ref ? ' · ' + esc(ref) : '') + '</span></div>' +
     '<div class="ds" title="' + esc(desc) + '">' + esc(desc) + '</div><div class="ft"><span>' + line + '</span><span style="display:flex;gap:5px;align-items:center;">' + tag + chip + '</span></div>' + (rz || '') + '</div>';
 }
 
@@ -765,6 +773,7 @@ function renderLane(){
   });
   S._items = items; S._allItems = v.items;
   renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm();
+  var dst = document.getElementById('detail-seg-top'); dst.hidden = S.lane !== 'bfl'; dst.innerHTML = S.lane === 'bfl' ? detailSegHtml() : '';
   bd.className = 'board n' + L.cols.length;
   bd.innerHTML = L.cols.map(function(col){
     if (S.lane === 'in' && col.key === 'nostd' && !items.some(function(i){ return i.e.status === 'nostd'; })) return '';
@@ -814,8 +823,8 @@ function renderClose(items){
     var v = i.v, c = i.close;
     var line = '<span>' + esc(c.from) + ' <span class="arrow">→</span> ' + esc(c.to) + (c.gap != null ? ' · <b>H+' + c.gap + '</b>' : '') + ' · ' + esc(c.at || '') + '</span>';
     var qv = v.qty != null ? v.qty : v.qspm;
-    return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + esc(v.voucher || v.spm) + '</span></div>' +
-      '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft">' + line + '<span class="chip close">Qty ' + fmt(qv) + '</span></div>' + (S.lane === 'bfl' && v.pic && v.pic.recvPic ? '<div class="pic"><span>PIC Serah Terima</span><b>' + esc(v.pic.recvPic) + '</b><small>Grup ' + esc(v.pic.recvGroup) + ' · Shift ' + v.pic.recvShift + ' (' + esc(v.pic.recvJam) + ')</small></div>' : '') + '</div>';
+    return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + (v.group && picNameOf(v) ? esc(v.group) + ' · <b class="gpn">' + esc(picNameOf(v)) + '</b> · ' : '') + esc(v.voucher || v.spm) + '</span></div>' +
+      '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft">' + line + '<span class="chip close">Qty ' + fmt(qv) + '</span></div>' + (S.lane === 'bfl' && v.pic && v.pic.recvPic ? (S.detail === 'hide' ? '' : '<div class="pic"><span>PIC Serah Terima</span><b>' + esc(v.pic.recvPic) + '</b><small>Grup ' + esc(v.pic.recvGroup) + ' · Shift ' + v.pic.recvShift + ' (' + esc(v.pic.recvJam) + ')</small></div>') : '') + '</div>';
   }).join('');
   var more = list.length > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(12, list.length - n) + ' lagi</button>' : '';
   el.hidden = false;
@@ -925,11 +934,16 @@ function renderComp(scope){
 window.setBasis = function(b){ S.basis = b; try { localStorage.setItem('akurasi_basis', b); } catch (e) {} renderLanes(); renderLane(); };
 // Blok PIC Serah Terima (group yang bertugas di shift penerima/penginput menurut kalender shift)
 function picBlock(v){
+  if (S.detail === 'hide') return '';
   var p = v.pic;
-  if (!p || !p.recvPic) return '<div class="pic none"><span>PIC Serah Terima</span><b>Belum diketahui</b><small>Kode group / tanggal voucher tidak lengkap</small></div>';
+  if (!p || !p.recvPic) return '<div class="pic none"><span>PIC Serah Terima</span><b>Belum diketahui</b><small>Kode shift / tanggal voucher tidak lengkap</small></div>';
   return '<div class="pic"><span>PIC Serah Terima</span><b>' + esc(p.recvPic) + '</b><small>Grup ' + esc(p.recvGroup) + ' · Shift ' + p.recvShift + ' (' + esc(p.recvJam) + ') · ' + esc(dayInfo(p.recvDate).full) + '</small>' +
-    '<small class="mut">Dibuat: Grup ' + esc(p.prodGroup) + (p.prodPic ? ' (' + esc(p.prodPic) + ')' : '') + ' · Shift ' + p.shift + '</small></div>';
+    '<small class="mut">Voucher Shift ' + p.shift + (p.regu ? ' · Regu produksi ' + esc(p.regu) : '') + '</small></div>';
 }
+function detailSegHtml(){
+  return '<div class="seg dseg"><span>Detail PIC</span><button class="' + (S.detail === 'show' ? 'on' : '') + '" onclick="setDetail(\'show\')">Tampilkan</button><button class="' + (S.detail === 'hide' ? 'on' : '') + '" onclick="setDetail(\'hide\')">Sembunyikan</button></div>';
+}
+window.setDetail = function(m){ S.detail = m === 'hide' ? 'hide' : 'show'; try { localStorage.setItem('akurasi_detail', S.detail); } catch (e) {} renderLane(); };
 // Panel khusus Backflush: TRM yang sudah lewat H+1 dan siapa PIC Serah Terimanya
 function renderTrm(){
   var el = document.getElementById('trmp');
@@ -946,14 +960,14 @@ function renderTrm(){
   var key = 'bfl:trm', n = S.shown[key] || 8;
   var cards = t.list.slice(0, n).map(function(x){
     var v = x.it.v;
-    return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + esc(v.voucher) + '</span></div>' +
-      '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft"><span>Qty ' + fmt(v.qty) + ' · ' + esc(dayInfo(v.date).full) + '</span><span class="chip bad">TRM' + (x.age != null ? ' · H+' + x.age : '') + '</span></div>' + picBlock(v) + '</div>';
+    return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + esc(v.group) + (picNameOf(v) ? ' · <b class="gpn">' + esc(picNameOf(v)) + '</b>' : '') + ' · ' + esc(v.voucher) + '</span></div>' +
+      '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft"><span>Qty ' + fmt(v.qty) + ' · ' + esc(dayInfo(v.date).full) + '</span><span class="chip bad">TRM' + (x.age != null ? ' · H+' + x.age : '') + '</span></div>' + (S.detail === 'hide' ? '<div class="pic-line">PIC Serah Terima: <b>' + esc(picNameOf(v) ? (v.pic || {}).recvPic : '-') + '</b></div>' : picBlock(v)) + '</div>';
   }).join('');
   var more = t.list.length > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(8, t.list.length - n) + ' lagi</button>' : '';
   el.hidden = false;
   el.className = 'trmp' + (t.total ? '' : ' clear');
-  el.innerHTML = '<div class="trmp-h"><div><b>TRM lewat H+1 · PIC Serah Terima</b><span>Voucher TRM atau tanpa status yang belum masuk stok lebih dari H+1 (acuan ' + esc(r.ref ? dayInfo(r.ref).full : '-') + '), semua periode. PIC adalah group yang bertugas di shift penerima pada hari itu menurut kalender shift 2026: Grup A Lindu, B Ibnu, C Slamet, D Ngabidin.</span></div>' +
-    '<div class="trmp-n ' + (t.total ? 'bad' : 'ok') + '">' + fmt(t.total) + '<small> voucher</small></div></div>' +
+  el.innerHTML = '<div class="trmp-h"><div><b>TRM lewat H+1 · PIC Serah Terima</b><span>Voucher TRM atau tanpa status yang belum masuk stok lebih dari H+1 (acuan ' + esc(r.ref ? dayInfo(r.ref).full : '-') + '), semua periode. PIC dihitung dari angka shift voucher: group petugas yang bertugas di shift penerima pada hari itu menurut kalender shift 2026 (Grup A Lindu, B Ibnu, C Slamet, D Ngabidin). Huruf di belakang shift (mis. 1C) adalah regu produksi dan tidak dipakai.</span></div>' +
+    '<div class="trmp-r"><div class="trmp-n ' + (t.total ? 'bad' : 'ok') + '">' + fmt(t.total) + '<small> voucher</small></div>' + detailSegHtml() + '</div></div>' +
     '<div class="trm-tiles">' + tiles + '</div>' +
     (t.total ? '<div class="closep-g">' + cards + '</div>' + more : '<div class="closep-empty">Tidak ada TRM yang lewat H+1.</div>');
 }
@@ -1087,6 +1101,7 @@ window.setTol = function(v){
 function banner(){
   var el = document.getElementById('src-note'), parts = [];
   var any = S.data.voucher || S.data.bfl || S.data.ter;
+  if (S.dept) parts.push('Data departemen <b>' + esc(S.dept) + '</b>.' + (S.hiddenTotal ? ' ' + fmt(S.hiddenTotal) + ' baris milik departemen lain disaring dan tidak ditampilkan (dipisah berdasarkan item number).' : ''));
   if (S.warn) parts.push('<b>Data dari cache perangkat ini.</b> ' + esc(S.warn) + ' Data di PC lain bisa berbeda sampai backend aktif.');
   if (any) {
     var info = ['voucher', 'std', 'bfl', 'ter'].filter(function(k){ return S.data[k]; }).map(function(k){
@@ -1103,7 +1118,7 @@ window.reloadData = function(){
   Loader.start(true);
   window.AkurasiStore.load(Loader.set).then(function(r){
     Loader.set(86, 'Menghitung akurasi');
-    S.data = r.data; S.source = r.source; S.warn = r.warn; S.day = 'all'; S.shown = {}; S._monthTouched = false; S.month = '';
+    S.data = r.data; S.source = r.source; S.warn = r.warn; S.dept = r.dept || ''; S.hiddenTotal = r.hiddenTotal || 0; S.day = 'all'; S.shown = {}; S._monthTouched = false; S.month = '';
     S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
     render();
     Loader.done(r.source === 'server' ? 'ok' : 'warn');
@@ -1127,8 +1142,8 @@ window.exportXlsx = function(){
       v.days.forEach(function(d){ rows.push([d.date, d.lines, d.nBfl, d.nManual, d.nWait, d.nTrm, d.qty, d.qBfl, d.qManual, d.qWait, d.qTrm, d.pctLines == null ? '' : Math.round(d.pctLines * 10) / 10, d.qty ? Math.round(d.qBfl / d.qty * 1000) / 10 : '']); });
       var T = v.total; rows.push(['Total', T.lines, T.nBfl, T.nManual, T.nWait, T.nTrm, T.qty, T.qBfl, T.qManual, T.qWait, T.qTrm, T.pctLines == null ? '' : Math.round(T.pctLines * 10) / 10, T.qty ? Math.round(T.qBfl / T.qty * 1000) / 10 : '']);
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'SUM Backflush'); n++;
-      var det0 = [['Tanggal', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty', 'Alasan', 'PIC Serah Terima', 'Grup PIC', 'Shift PIC', 'Pembuat voucher']];
-      v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, i.e.status === 'wait' ? 'MENUNGGU INPUT (batas ' + x.batas + ')' : (x.status || 'TRM'), x.qty, reasonText('bfl', i), (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvPic : '', (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvGroup : '', (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvShift : '', x.pic && x.pic.prodPic ? x.pic.prodPic + ' (Grup ' + x.pic.prodGroup + ')' : '']); });
+      var det0 = [['Tanggal', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty', 'Alasan', 'PIC Serah Terima', 'Grup PIC', 'Shift PIC', 'Shift voucher / regu produksi']];
+      v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, i.e.status === 'wait' ? 'MENUNGGU INPUT (batas ' + x.batas + ')' : (x.status || 'TRM'), x.qty, reasonText('bfl', i), (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvPic : '', (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvGroup : '', (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvShift : '', x.pic && x.pic.shift ? 'Shift ' + x.pic.shift + (x.pic.regu ? ', Regu produksi ' + x.pic.regu : '') : '']); });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det0), 'Detail Manual & TRM');
       return;
     }
@@ -1149,12 +1164,13 @@ window.exportXlsx = function(){
 
 /* ───────── init ───────── */
 (function init(){
-  try { S.opts.tol = localStorage.getItem('akurasi_tol') === '1'; S.basis = localStorage.getItem('akurasi_basis') === 'qty' ? 'qty' : 'item'; } catch (e) {}
+  try { S.opts.tol = localStorage.getItem('akurasi_tol') === '1'; S.basis = localStorage.getItem('akurasi_basis') === 'qty' ? 'qty' : 'item'; S.detail = localStorage.getItem('akurasi_detail') === 'hide' ? 'hide' : 'show'; } catch (e) {}
+  try { var _w = window.getWorkspace && window.getWorkspace(); var _l = { cibitung_fitting_import: 'Fitting Import', cibitung_fitting_rucika: 'Fitting Rucika' }[_w]; if (_l) document.getElementById('tb-sub').textContent += ' · ' + _l; } catch (e) {}
   document.getElementById('app').hidden = true;
   document.getElementById('empty').hidden = true;     // jangan tampilkan "belum ada data" sebelum server menjawab
   Loader.start(false);
   window.AkurasiStore.load(Loader.set).then(function(r){
-    S.data = r.data; S.source = r.source; S.warn = r.warn;
+    S.data = r.data; S.source = r.source; S.warn = r.warn; S.dept = r.dept || ''; S.hiddenTotal = r.hiddenTotal || 0;
     S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
     Loader.set(86, 'Menghitung akurasi');
     setTimeout(function(){ render(); Loader.done(r.source === 'server' ? 'ok' : 'warn'); }, 60);

@@ -355,6 +355,28 @@
   function shiftOf(g) { var m = /^\s*([123])/.exec(String(g || '')); return m ? +m[1] : null; }
   function dayN(d) { var a = String(d || '').split('-'); return a.length === 3 && +a[0] ? Date.UTC(+a[0], +a[1] - 1, +a[2]) / 86400000 : null; }
   function plusDay(d, n) { var x = dayN(d); return x == null ? '' : new Date((x + n) * 86400000).toISOString().slice(0, 10); }
+  // ---------- Pemisahan data per departemen (Fitting Import vs Fitting Rucika) ----------
+  // Export Master Voucher / Backflush / Scan Out ditarik per PIC serah terima, yang memegang
+  // KEDUA departemen, jadi satu file memuat item dua departemen sekaligus. Departemen item
+  // ditentukan dari item numbernya: awalan 2030 / 2727 / 2220 / 2330 atau deskripsi memuat
+  // KLN / KELEN = Fitting Import; selain itu = Fitting Rucika (awalan 2001, 2501, dst).
+  // Dicek terhadap master stok Rucika: 0 dari 781 item memakai awalan Import atau kata KLN/KELEN.
+  var DEPT_IMPORT = 'cibitung_fitting_import', DEPT_RUCIKA = 'cibitung_fitting_rucika';
+  var DEPT_LABEL = { cibitung_fitting_import: 'Fitting Import', cibitung_fitting_rucika: 'Fitting Rucika' };
+  var IMPORT_PREFIX = ['2030', '2727', '2220', '2330'];
+  function itemDept(item, desc) {
+    if (IMPORT_PREFIX.indexOf(String(item || '').slice(0, 4)) !== -1) return DEPT_IMPORT;
+    if (/\b(KLN|KELEN)\b/i.test(String(desc || ''))) return DEPT_IMPORT;
+    return DEPT_RUCIKA;
+  }
+  // Departemen lain (Pipa Rucika, Sparepart, dst) tidak difilter.
+  function deptRows(rows, ws) {
+    if (ws !== DEPT_IMPORT && ws !== DEPT_RUCIKA) return { rows: rows, hidden: 0 };
+    var keep = [], hidden = 0;
+    (rows || []).forEach(function (r) { if (itemDept(r.item, r.desc) === ws) keep.push(r); else hidden++; });
+    return { rows: keep, hidden: hidden };
+  }
+
   // ---- Kalender shift 2026: 3 shift, 4 group (halaman 1 "Kalender Kerja Shift 2026") ----
   // Pola berulang 12 hari per group: 3,3,3,libur,2,2,2,libur,1,1,1,libur. Tiap group digeser
   // 3 hari dari group sebelumnya (A=0, B=3, C=6, D=9). Sudah dicek cocok dengan seluruh
@@ -373,19 +395,17 @@
     for (var i = 0; i < gs.length; i++) if (calShift(gs[i], iso) === shift) return gs[i];
     return '';
   }
-  // PIC Serah Terima = group yang bertugas di shift PENERIMA/PENGINPUT pada hari itu (menurut
-  // kalender): voucher Shift 1 diinput Shift 2 (hari sama), Shift 2 diinput Shift 3 (hari sama),
-  // Shift 3 diinput Shift 1 hari berikutnya. Group pembuat voucher ikut dicatat.
+  // PIC Serah Terima = group petugas yang bertugas di shift PENERIMA/PENGINPUT pada hari itu
+  // (menurut kalender shift): voucher Shift 1 diinput Shift 2 (hari sama), Shift 2 diinput
+  // Shift 3 (hari sama), Shift 3 diinput Shift 1 hari berikutnya.
+  // Yang dipakai HANYA angka shift pada kode voucher. Huruf di belakangnya (1C, 2B, 3A) adalah
+  // REGU PRODUKSI, bukan group petugas serah terima, jadi hanya dicatat sebagai informasi.
   var NEXT_SHIFT = { 1: 2, 2: 3, 3: 1 };
   function picSerahTerima(group, date) {
-    var m = /^\s*([123])?\s*([A-Da-d])?\s*$/.exec(String(group || ''));
-    var sh = m && m[1] ? +m[1] : 0, g = m && m[2] ? m[2].toUpperCase() : '';
-    var o = { prodGroup: g, prodPic: '', shift: sh, jam: '', recvShift: 0, recvDate: '', recvGroup: '', recvPic: '', recvJam: '' };
-    if (date) {
-      if (!g && sh) g = calGroupOn(sh, date);
-      if (!sh && g) sh = calShift(g, date) || 0;
-    }
-    o.prodGroup = g; o.prodPic = PIC_GRUP[g] || ''; o.shift = sh; o.jam = SHIFT_JAM[sh] || '';
+    var m = /^\s*([123])\s*([A-Za-z])?/.exec(String(group || ''));
+    var sh = m ? +m[1] : 0;
+    var o = { shift: sh, jam: SHIFT_JAM[sh] || '', regu: m && m[2] ? m[2].toUpperCase() : '',
+              recvShift: 0, recvDate: '', recvGroup: '', recvPic: '', recvJam: '' };
     if (!sh || !date) return o;
     o.recvShift = NEXT_SHIFT[sh]; o.recvDate = sh === 3 ? plusDay(date, 1) : date;
     o.recvGroup = calGroupOn(o.recvShift, o.recvDate); o.recvPic = PIC_GRUP[o.recvGroup] || ''; o.recvJam = SHIFT_JAM[o.recvShift] || '';
@@ -550,6 +570,7 @@
 
   var api = {
     sumDays: sumDays, lateClose: lateClose, dayDiff: dayDiff,
+    DEPT_LABEL: DEPT_LABEL, itemDept: itemDept, deptRows: deptRows,
     PIC_GRUP: PIC_GRUP, SHIFT_JAM: SHIFT_JAM, calShift: calShift, calGroupOn: calGroupOn, picSerahTerima: picSerahTerima, trmByPic: trmByPic, shiftOf: shiftOf, plusDay: plusDay,
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,

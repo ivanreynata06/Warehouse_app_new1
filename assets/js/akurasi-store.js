@@ -88,15 +88,30 @@
       prog(70, 'Menyimpan salinan di perangkat');
       var d = (r && r.data) || {};
       return Promise.all(KINDS.map(function (k) { return lset(k, d[k] || null); })).then(function () {
-        return { data: pick(d), source: 'server', warn: '' };
+        return scope({ data: pick(d), source: 'server', warn: '' });
       });
     }).catch(function (err) {
       prog(70, 'Server tidak terjangkau, memakai salinan perangkat');
       return Promise.all(KINDS.map(lget)).then(function (a) {
         var d = {}; KINDS.forEach(function (k, i) { d[k] = a[i] || null; });
-        return { data: pick(d), source: 'local', warn: friendly(err) };
+        return scope({ data: pick(d), source: 'local', warn: friendly(err) });
       });
     });
+  }
+  // Hanya tampilkan / simpan baris milik departemen yang sedang aktif. Data lama yang sudah
+  // tercampur di server ikut tersaring di sini, dan akan terbuang dari penyimpanan pada
+  // upload berikutnya (karena upload selalu menggabungkan dengan data yang sudah disaring).
+  function scope(res) {
+    var w = ws(), hidden = {}, total = 0;
+    ['voucher', 'bfl', 'ter'].forEach(function (k) {
+      var rec = res.data[k];
+      if (!rec || !rec.rows) return;
+      var f = C.deptRows(rec.rows, w);
+      hidden[k] = f.hidden; total += f.hidden;
+      if (f.hidden) { var o = {}; for (var x in rec) o[x] = rec[x]; o.rows = f.rows; o.count = f.rows.length; res.data[k] = o; }
+    });
+    res.hidden = hidden; res.hiddenTotal = total; res.dept = C.DEPT_LABEL[w] || '';
+    return res;
   }
   function pick(d) { var o = {}; KINDS.forEach(function (k) { o[k] = d[k] || null; }); return o; }
 
@@ -180,11 +195,14 @@
                    force: !!opts.force, msg: 'Standar isi box tersimpan permanen: ' + p.count.toLocaleString('id-ID') + ' item (' + p.info + ')' };
         }
         var parsed = bestSheet(sheets, kind === 'voucher' ? C.parseVoucherSheet : C.parseBflSheet);
-        var rows = parsed.rows, extra = '';
+        var dfl = C.deptRows(parsed.rows, ws()); parsed.rows = dfl.rows;
+        var skipDept = dfl.hidden ? ' ' + dfl.hidden.toLocaleString('id-ID') + ' baris milik departemen lain dilewati (halaman ini hanya ' + (C.DEPT_LABEL[ws()] || 'departemen aktif') + ').' : '';
+        if (!parsed.rows.length) throw new Error('Tidak ada baris milik ' + (C.DEPT_LABEL[ws()] || 'departemen ini') + ' di file ini.' + skipDept);
+        var rows = parsed.rows, extra = skipDept;
         if (kind === 'voucher') {
           var pr = C.prepareVoucherRows(rows, opts.dateMode || 'auto');
           rows = pr.rows;
-          extra = pr.swapped ? ' Tanggal bulan/hari yang tertukar sudah dibetulkan otomatis.' : '';
+          extra = (pr.swapped ? ' Tanggal bulan/hari yang tertukar sudah dibetulkan otomatis.' : '') + skipDept;
           var selMode = C.selMode();   // Fitting Rucika: cek Box ID lewat kolom Selisih, tanpa standar isi
           var stdMap = cur.data.std ? cur.data.std.map : {}, hasStd = selMode || Object.keys(stdMap).length > 0;
           var boxState = function (r) { var e = C.evalIn(r, stdMap, { selisih: selMode }); return { ok: e.status === 'sesuai', label: e.status === 'kosong' ? 'Box ID kosong' : 'Tidak sesuai' }; };
@@ -217,7 +235,7 @@
           fields: ['item', 'qty', 'status', 'date', 'desc', 'group'] }, now);
         mb.stats.closed = mb.stats.closedItems.filter(function (r) { return C.lateClose(r.closeBfl, r.date, 2); }).length;
         return { rec: { rows: mb.rows, count: mb.rows.length, meta: { name: files[0].name, at: now.text, by: now.by } }, stats: mb.stats,
-                 msg: 'Berhasil: ' + msgStats(mb.stats) };
+                 msg: 'Berhasil: ' + msgStats(mb.stats, skipDept) };
       });
     }).then(function (o) {
       prog(70, 'Menyimpan ke server...');
@@ -241,12 +259,15 @@
       var bad = rs.filter(function (x) { return x.p.error; });
       if (bad.length === rs.length) throw new Error(bad[0].p.error);
       var rows = []; rs.forEach(function (x) { if (!x.p.error) rows = rows.concat(x.p.rows); });
+      var dfo = C.deptRows(rows, ws()); rows = dfo.rows;
+      var skipO = dfo.hidden ? ' ' + dfo.hidden.toLocaleString('id-ID') + ' baris milik departemen lain dilewati.' : '';
+      if (!rows.length) throw new Error('Tidak ada baris milik ' + (C.DEPT_LABEL[ws()] || 'departemen ini') + ' di file ini.' + skipO);
       var outState = function (r) { return { ok: C.outState(r) === 'full', label: r.status || (C.outState(r) === 'part' ? 'Sebagian' : 'Belum scan') }; };
       var m = C.mergeRecords(old && old.rows, rows, { key: function (r) { return r.key || (r.spm + '|' + r.item + '|' + r.group); }, closeField: 'close', state: outState,
         fields: ['qspm', 'qchk', 'status', 'date', 'tuj', 'qpick'] }, now);
       var names = rs.map(function (x) { return x.f.name; }).join(', ');
       return { rec: { rows: m.rows, count: m.rows.length, meta: { name: names.length > 60 ? rs.length + ' file' : names, at: now.text, by: now.by } },
-               stats: m.stats, msg: 'Berhasil: ' + msgStats(m.stats, bad.length ? ' (' + bad.length + ' file dilewati)' : '') };
+               stats: m.stats, msg: 'Berhasil: ' + msgStats(m.stats, (bad.length ? ' (' + bad.length + ' file dilewati)' : '') + skipO) };
     });
   }
   function bestSheet2(sheets, parse) { try { return { rows: bestSheet(sheets, parse).rows || [], error: null }; } catch (e) { return { rows: [], error: e.message }; } }
