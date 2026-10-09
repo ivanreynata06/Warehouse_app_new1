@@ -949,7 +949,10 @@ function renderTrm(){
   var el = document.getElementById('trmp');
   var r = S.resRaw && S.resRaw.bfl;
   if (S.lane !== 'bfl' || !r) { el.hidden = true; return; }
-  var t = C.trmByPic(r.items, r.ref);
+  // Ikut filter periode: kalau bulan dipilih, hanya TRM voucher bulan itu (bulan sebelumnya tidak ikut)
+  var its = r.items.filter(function(i){ return !S.month || (i.date || '').indexOf(S.month) === 0; });
+  var t = C.trmByPic(its, r.ref);
+  var periode = S.month ? 'periode ' + MONTH_FULL[+S.month.slice(5) - 1] + ' ' + S.month.slice(0, 4) : 'semua periode';
   var order = ['A', 'B', 'C', 'D'];
   var tiles = order.map(function(g){
     var o = t.by[g] || { n: 0, qty: 0, oldest: 0 };
@@ -966,7 +969,7 @@ function renderTrm(){
   var more = t.list.length > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(8, t.list.length - n) + ' lagi</button>' : '';
   el.hidden = false;
   el.className = 'trmp' + (t.total ? '' : ' clear');
-  el.innerHTML = '<div class="trmp-h"><div><b>TRM lewat H+1 · PIC Serah Terima</b><span>Voucher TRM atau tanpa status yang belum masuk stok lebih dari H+1 (acuan ' + esc(r.ref ? dayInfo(r.ref).full : '-') + '), semua periode. PIC dihitung dari angka shift voucher: group petugas yang bertugas di shift penerima pada hari itu menurut kalender shift 2026 (Grup A Lindu, B Ibnu, C Slamet, D Ngabidin). Huruf di belakang shift (mis. 1C) adalah regu produksi dan tidak dipakai.</span></div>' +
+  el.innerHTML = '<div class="trmp-h"><div><b>TRM lewat H+1 · PIC Serah Terima</b><span>Voucher TRM atau tanpa status yang belum masuk stok lebih dari H+1 (acuan ' + esc(r.ref ? dayInfo(r.ref).full : '-') + '), ' + periode + '. PIC dihitung dari angka shift voucher: group petugas yang bertugas di shift penerima pada hari itu menurut kalender shift 2026 (Grup A Lindu, B Ibnu, C Slamet, D Ngabidin). Huruf di belakang shift (mis. 1C) adalah regu produksi dan tidak dipakai.</span></div>' +
     '<div class="trmp-r"><div class="trmp-n ' + (t.total ? 'bad' : 'ok') + '">' + fmt(t.total) + '<small> voucher</small></div>' + detailSegHtml() + '</div></div>' +
     '<div class="trm-tiles">' + tiles + '</div>' +
     (t.total ? '<div class="closep-g">' + cards + '</div>' + more : '<div class="closep-empty">Tidak ada TRM yang lewat H+1.</div>');
