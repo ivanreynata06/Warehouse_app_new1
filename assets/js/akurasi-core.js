@@ -430,10 +430,17 @@
     var grace = (opt && opt.grace != null) ? opt.grace : 1;
     var byNo = {}, seen = {}, recs = [];
     (bflRows || []).forEach(function (b) { byNo[b.voucher] = b; });
+    // Status efektif voucher = yang PALING BERES di antara Master Voucher dan Master Backflush
+    // (BFL > MANUAL > TRM/kosong). Dulu baris Master Backflush selalu menimpa status Master
+    // Voucher; kalau file Backflush lama masih TRM sementara Master Voucher terbaru sudah BFL,
+    // voucher yang sudah di-close tetap tampil TRM. Status hanya bisa naik (TRM menjadi BFL/MANUAL),
+    // jadi sumber yang lebih beres selalu yang benar.
+    function rank(st) { return st === 'BFL' ? 2 : (st === 'MANUAL' ? 1 : 0); }
+    function best(a, b) { return rank(b) > rank(a) ? b : (a || b || ''); }
     vouchers.forEach(function (v) {
       var b = byNo[v.voucher]; seen[v.voucher] = 1;
       recs.push({ voucher: v.voucher, item: v.item, desc: v.desc, group: v.group, qty: v.qty,
-        status: b && b.status ? b.status : v.status, date: v.date, src: b ? 'bfl' : 'voucher',
+        status: best(v.status, b ? b.status : ''), date: v.date, src: b ? 'bfl' : 'voucher',
         close: lateClose((b && b.closeBfl) || v.closeBfl || null, v.date, 2) });
     });
     (bflRows || []).forEach(function (b) {
