@@ -13,10 +13,13 @@
   'use strict';
 
   var OTHER = 'LAINNYA';
+  // Alasan khusus: voucher lama diganti voucher baru -> voucher itu otomatis dihapus dari semua perhitungan
+  var VOID = 'DIBUATKAN VOUCHER BARU';
+  function isVoid(map, voucher) { var e = map && map['in:' + voucher]; return !!(e && e.r === VOID); }
   var LIST = {
     out_item: ['BARCODE RUSAK', 'ITEM TIDAK DAPAT DIBUATKAN STICKER BARCODE', 'BARANG LAMA'],
     out_spm:  ['JARINGAN ERROR', 'LUPA SCAN', 'TIDAK PAHAM'],
-    'in':     ['BELUM BISA DIBUATKAN BARCODE', 'LUPA SCAN'],
+    'in':     ['BELUM BISA DIBUATKAN BARCODE', 'LUPA SCAN', 'DIBUATKAN VOUCHER BARU'],
     bfl:      ['BARCODE RUSAK', 'TERLEWAT', 'TIDAK BISA DIBUAT STICKER BARCODE']
   };
   var PALETTE = ['#3b9dff', '#a78bfa', '#22d3a5', '#ffb020', '#f472b6'];
@@ -161,7 +164,7 @@
   }
 
   root.AkurasiReasons = {
-    OTHER: OTHER, LIST: LIST, keyOf: keyOf, spmKey: spmKey, needs: needs, outGroups: outGroups,
+    VOID: VOID, isVoid: isVoid, OTHER: OTHER, LIST: LIST, keyOf: keyOf, spmKey: spmKey, needs: needs, outGroups: outGroups,
     label: label, aggregate: aggregate, setHtml: setHtml, donut: donut, esc: esc
   };
 })(typeof window !== 'undefined' ? window : this);

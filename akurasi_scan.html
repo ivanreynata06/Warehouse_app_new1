@@ -263,6 +263,13 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 .rzp-n small{font-size:11px;color:var(--txt3);font-weight:400;} .rzp-n.warn{color:var(--amber);} .rzp-n.ok{color:var(--green);}
 .rzp-g{display:grid;gap:22px;} .rzp-g.c2{grid-template-columns:repeat(2,minmax(0,1fr));}
 @media(max-width:900px){.rzp-g.c2{grid-template-columns:1fr;}}
+.voidp{background:var(--card);border:1px dashed var(--line2);border-radius:13px;padding:12px 14px 14px;}
+.voidp-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.voidp-h b{font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;} .voidp-h span{font-size:10.5px;color:var(--txt3);}
+.voidp-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;}
+.void-i{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:5px;opacity:.9;}
+.void-i > div:first-child{display:flex;justify-content:space-between;gap:8px;} .void-i .it{font-family:var(--mono);font-size:11px;font-weight:600;} .void-i .gr{font-size:10px;color:var(--txt3);}
+.void-i .ds{font-size:11px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .void-i .ft{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:10.5px;color:var(--txt2);}
 .src-note{font-size:10.5px;color:var(--txt3);line-height:1.6;margin:0 0 12px;}
 .src-note.warn{background:var(--amber-bg);color:#f3c46b;border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:9px 12px;}
 .src-note.warn b{color:var(--amber);}
@@ -433,6 +440,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
       <div class="trmp" id="trmp" hidden></div>
       <div class="closep" id="closep" hidden></div>
       <div class="rzp" id="rzp" hidden></div>
+      <div class="voidp" id="voidp" hidden></div>
       <div class="board" id="board"></div>
 
       <div>
@@ -451,9 +459,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261008c"></script>
-<script src="./assets/js/akurasi-store.js?v=20261008c"></script>
-<script src="./assets/js/akurasi-reasons.js?v=20261008c"></script>
+<script src="./assets/js/akurasi-core.js?v=20261009a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261009a"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261009a"></script>
 <script>
 (function(){
 'use strict';
@@ -502,7 +510,9 @@ function ring(p, size){
 
 /* ───────── hitung ───────── */
 function compute(){
-  var vr = S.data.voucher ? S.data.voucher.rows : [];
+  // Voucher yang alasannya "Dibuatkan voucher baru" otomatis dihapus dari semua perhitungan
+  var vr = (S.data.voucher ? S.data.voucher.rows : []).filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher); });
+  var bflRows = (S.data.bfl ? S.data.bfl.rows : []).filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher); });
   var stdMap = S.data.std ? S.data.std.map : {};
   var selMode = C.selMode();   // Fitting Rucika: tanpa Standar Isi Box, parameter = kolom Selisih
   var hasStd = selMode || Object.keys(stdMap).length > 0;
@@ -517,7 +527,7 @@ function compute(){
   S.descMap = dm;
   S.resRaw = {
     in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol, selisih: selMode }) : null,
-    bfl: (vr.length || S.data.bfl) ? C.summarizeBfl(vr, S.data.bfl ? S.data.bfl.rows : [], {}) : null,
+    bfl: (vr.length || bflRows.length) ? C.summarizeBfl(vr, bflRows, {}) : null,
     out: S.data.ter ? C.summarizeOut(S.data.ter.rows) : null
   };
 }
@@ -554,18 +564,19 @@ function view(k){
 var LANES = {
   in: {
     name: 'Voucher vs Box ID', tag: 'Barcode In', color: 'var(--green)',
-    desc: 'Isi Box ID dikalikan standar isi box per item, lalu dibandingkan dengan qty voucher. Box ID kosong atau "?" dihitung selisih.',
+    desc: 'Isi Box ID dikalikan standar isi box per item, lalu dibandingkan dengan qty voucher. Box ID kosong atau "?" dihitung selisih. Voucher berstatus MANUAL tanpa Box ID masuk kategori Manual (sudah diserahterimakan, tidak pakai scan) dan tidak dihitung sebagai Box ID kosong.',
     kpi: function(t){ return [
       ['Voucher dicek', fmt(t.lines), t.nostd ? fmt(t.nostd) + ' belum punya standar' : 'semua punya standar'],
       ['Qty voucher', fmt(t.qty), 'pcs'],
       ['Qty Box ID', fmt(t.aktual), 'hasil box x standar'],
-      ['Selisih SKU', fmt(t.skuSelisih), 'voucher tidak sesuai'],
+      ['Selisih SKU', fmt(t.skuSelisih), 'voucher tidak sesuai' + (t.nManual ? ' · ' + fmt(t.nManual) + ' manual dipisah' : '')],
       ['Total selisih', sgn(t.selisih), 'pcs, minus = kurang'],
       ['Akurasi scan', fmtP(t.pct), fmt(t.sesuai) + ' dari ' + fmt(t.lines) + ' voucher sesuai']
     ]; },
     cols: [
       { key: 'sesuai', label: 'Sesuai', cls: 'ok', hint: 'Box x standar = voucher' },
       { key: 'beda', label: 'Tidak sesuai', cls: 'bad', hint: 'Kemungkinan ada barang tidak ter-scan' },
+      { key: 'manual', label: 'Manual', cls: 'warn', hint: 'Status MANUAL: sudah diserahterimakan, tidak pakai scan' },
       { key: 'kosong', label: 'Box ID kosong', cls: 'bad', hint: 'Belum ada scan sama sekali' },
       { key: 'nostd', label: 'Standar belum ada', cls: 'warn', hint: 'Lengkapi di Standar Isi Box' }
     ],
@@ -573,11 +584,12 @@ var LANES = {
     row: function(d){ return [fmt(d.qty), fmt(d.aktual), fmt(d.skuSelisih), sgn(d.selisih)]; },
     foot: function(t){ return [fmt(t.qty), fmt(t.aktual), fmt(t.skuSelisih), sgn(t.selisih)]; },
     card: function(i){ var v = i.v, e = i.e;
-      var line = e.status === 'kosong' ? 'Voucher ' + fmt(v.qty) + ', Box ID belum terscan'
+      var line = e.status === 'manual' ? 'Voucher ' + fmt(v.qty) + ' · diserahterimakan manual, tanpa scan'
+        : e.status === 'kosong' ? 'Voucher ' + fmt(v.qty) + ', Box ID belum terscan'
         : C.selMode() ? 'Voucher ' + fmt(v.qty) + ' · Box ID ' + fmt(v.box) + ' · Selisih ' + sgn(e.selisih)
         : e.status === 'nostd' ? 'Voucher ' + fmt(v.qty) + ' dalam ' + fmt(v.box) + ' box'
         : 'Voucher ' + fmt(v.qty) + ' · ' + fmt(v.box) + ' box x ' + fmt(e.std);
-      var chip = e.status === 'sesuai' ? '<span class="chip ok">sesuai</span>' : e.status === 'nostd' ? '<span class="chip warn">tanpa standar</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
+      var chip = e.status === 'sesuai' ? '<span class="chip ok">sesuai</span>' : e.status === 'manual' ? '<span class="chip warn">manual</span>' : e.status === 'nostd' ? '<span class="chip warn">tanpa standar</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
       return cardHtml(v.item, v.group, descOf(v.item) || v.desc, line, chip, v.voucher, i.close, (e.status === 'kosong' || e.status === 'beda') ? rzSel(RZ.keyOf('in', v), 'in') : '', picNameOf(v));
     }
   },
@@ -653,6 +665,17 @@ window.setAlasan = function(el){
   if (r === 'LAINNYA' && !t) { inp.focus(); return; }       // tunggu sampai teksnya diketik
   if (r !== 'LAINNYA') t = '';
   if (r) S.alasanMap[key] = { r: r, t: t, by: who(), at: 'baru saja' }; else delete S.alasanMap[key];
+  var wasVoid = S._prevVoid && S._prevVoid[key];
+  if (r === RZ.VOID || wasVoid) {
+    // voucher dihapus / dikembalikan: hitung ulang seluruh jalur
+    window.AkurasiStore.saveAlasan([{ key: key, r: r, t: t }]).then(function(res){
+      window.AkurasiStore.cacheAlasan({ map: S.alasanMap });
+      if (!res.remote) toast(res.warn || 'Gagal menyimpan alasan', true);
+    });
+    toast(r === RZ.VOID ? 'Voucher dihapus dari perhitungan (dibuatkan voucher baru)' : 'Voucher dikembalikan ke perhitungan');
+    compute(); renderLanes(); renderLane();
+    return;
+  }
   renderReasons();
   st.className = 'rz-st'; st.textContent = 'menyimpan...';
   window.AkurasiStore.saveAlasan([{ key: key, r: r, t: t }]).then(function(res){
@@ -727,6 +750,7 @@ function renderLanes(){
         '<span>Manual <b>' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'c-bad' : '') + '">' + fmt(t.nTrm) + '</b>' + (t.nWait ? ' · Menunggu <b>' + fmt(t.nWait) + '</b>' : '') + '</span></div></div></button>';
       return;
     }
+    if (k === 'in' && t.nManual) miss = miss.replace('</span>', ' · ' + fmt(t.nManual) + ' manual</span>');
     var n1 = k === 'out' ? ['Qty check', fmt(t.aktual) + ' dari ' + fmt(t.qty)] : (k === 'bfl' ? ['Backflush', fmt(t.aktual) + ' dari ' + fmt(t.qty)] : ['Box ID', fmt(t.aktual) + ' dari ' + fmt(t.qty)]);
     html += '<button class="lane' + active + '" style="--c:' + L.color + '" onclick="pickLane(\'' + k + '\')">' + ring(t.pct) +
       '<div><h3>' + L.name + '</h3><div class="sub">' + L.tag + ' · ' + fmt(v.days.length) + ' hari</div><div class="nums"><span>' + n1[0] + ' <b>' + n1[1] + '</b></span>' + miss + '</div></div></button>';
@@ -772,11 +796,11 @@ function renderLane(){
     var x = i.v; return (x.item + ' ' + (x.desc || '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
   });
   S._items = items; S._allItems = v.items;
-  renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm();
+  renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm(); renderVoid();
   var dst = document.getElementById('detail-seg-top'); dst.hidden = S.lane !== 'bfl'; dst.innerHTML = S.lane === 'bfl' ? detailSegHtml() : '';
   bd.className = 'board n' + L.cols.length;
   bd.innerHTML = L.cols.map(function(col){
-    if (S.lane === 'in' && col.key === 'nostd' && !items.some(function(i){ return i.e.status === 'nostd'; })) return '';
+    if (S.lane === 'in' && (col.key === 'nostd' || col.key === 'manual') && !items.some(function(i){ return i.e.status === col.key; })) return '';
     var list = items.filter(function(i){ return i.e.status === col.key; });
     list.sort(function(a, b){ return Math.abs(b.e.selisih) - Math.abs(a.e.selisih) || (a.v.item < b.v.item ? -1 : 1); });
     var key = S.lane + ':' + col.key, n = S.shown[key] || PAGE;
@@ -974,6 +998,26 @@ function renderTrm(){
     '<div class="trm-tiles">' + tiles + '</div>' +
     (t.total ? '<div class="closep-g">' + cards + '</div>' + more : '<div class="closep-empty">Tidak ada TRM yang lewat H+1.</div>');
 }
+// Panel voucher yang dihapus karena dibuatkan voucher baru (bisa dikembalikan)
+function renderVoid(){
+  var el = document.getElementById('voidp');
+  var rows = (S.data.voucher ? S.data.voucher.rows : []).filter(function(r){ return RZ.isVoid(S.alasanMap, r.voucher); });
+  S._prevVoid = {}; rows.forEach(function(r){ S._prevVoid['in:' + r.voucher] = 1; });
+  if ((S.lane !== 'in' && S.lane !== 'bfl') || !rows.length) { el.hidden = true; return; }
+  el.hidden = false;
+  var by = S.alasanMap;
+  el.innerHTML = '<div class="voidp-h"><b>Voucher dihapus karena dibuatkan voucher baru</b><span>' + fmt(rows.length) + ' voucher · tidak dihitung di Voucher vs Box ID maupun Backflush</span></div>' +
+    '<div class="voidp-g">' + rows.map(function(r){ var e = by['in:' + r.voucher] || {};
+      return '<div class="void-i"><div><span class="it">' + esc(r.item) + '</span><span class="gr">' + esc(r.group) + ' · ' + esc(r.voucher) + '</span></div><div class="ds">' + esc(descOf(r.item) || r.desc) + '</div>' +
+        '<div class="ft"><span>Qty ' + fmt(r.qty) + ' · ' + esc(r.date) + (e.by ? ' · oleh ' + esc(e.by) : '') + '</span><button class="btn sm" onclick="restoreVoid(\'' + esc(r.voucher) + '\')">Kembalikan</button></div></div>'; }).join('') + '</div>';
+}
+window.restoreVoid = function(voucher){
+  var key = 'in:' + voucher;
+  delete S.alasanMap[key];
+  window.AkurasiStore.saveAlasan([{ key: key, r: '', t: '' }]).then(function(res){ window.AkurasiStore.cacheAlasan({ map: S.alasanMap }); if (!res.remote) toast(res.warn || 'Gagal menyimpan', true); });
+  toast('Voucher dikembalikan ke perhitungan');
+  compute(); renderLanes(); renderLane();
+};
 function spmCardHtml(g){
   var rows = g.items.map(function(i){ return '<li><span class="it">' + esc(i.v.item) + '</span><span>' + esc(descOf(i.v.item) || '') + '</span><b>' + fmt(i.v.qspm) + '</b></li>'; }).join('');
   return '<div class="card spm"><div class="t"><span class="it">SPM ' + esc(g.spm) + '</span><span class="gr">' + fmt(g.items.length) + ' item · ' + fmt(g.qty) + ' pcs</span></div>' +
@@ -1002,6 +1046,8 @@ function renderRules(){
     'Nilai sama dengan qty voucher berarti <b>sesuai</b>, selain itu <b>tidak sesuai</b> (kemungkinan ada barang yang tidak ter-scan).',
     'Box ID bernilai 1: sesuai kalau qty voucher sama dengan atau di bawah standar isi box (satu box saja sudah cukup). Kalau voucher lebih besar dari standar tetapi Box ID hanya 1, hasilnya tidak sesuai karena kemungkinan ada box yang tidak ter-scan.',
     'Box ID kosong atau "?" selalu dihitung selisih sebesar qty voucher.',
+    'Voucher berstatus MANUAL yang Box ID-nya kosong masuk kategori <b>Manual</b> (sudah diserahterimakan tetapi tidak pakai scan). Kategori ini dipisah dari Box ID kosong dan tidak ikut dihitung sebagai selisih maupun akurasi.',
+    'Alasan <b>Dibuatkan voucher baru</b>: voucher itu otomatis dihapus dari semua perhitungan (Box ID dan Backflush). Voucher yang dihapus tercantum di panel bawah dan bisa dikembalikan.',
     'Tanda Close: voucher yang tadinya Box ID kosong atau tidak sesuai lalu pada upload berikutnya menjadi sesuai. Voucher yang nilainya sama dengan data lama tidak diperbarui.',
     'Selisih SKU = jumlah voucher tidak sesuai. Total selisih = Qty Box ID dikurangi Qty voucher.',
     'Akurasi dihitung proporsional: voucher 10 dengan Box ID 9 = 90%. Tiap voucher bernilai (qty voucher dikurangi selisihnya), lalu dijumlahkan dan dibagi total qty voucher.',

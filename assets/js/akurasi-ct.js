@@ -48,11 +48,14 @@
   }
 
   function compute() {
-    var vr = D.voucher ? D.voucher.rows : [], std = D.std ? D.std.map : {}, hasStd = Object.keys(std).length > 0;
     var map = (D.alasan && D.alasan.map) || {};
+    // voucher yang dibuatkan voucher baru dihapus dari perhitungan; Rucika memakai kolom Selisih (tanpa Standar Isi)
+    var vr = (D.voucher ? D.voucher.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher); });
+    var bflRows = (D.bfl ? D.bfl.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher); });
+    var std = D.std ? D.std.map : {}, selMode = C.selMode(), hasStd = selMode || Object.keys(std).length > 0;
     var raw = {
-      'in': (vr.length && hasStd) ? C.summarizeIn(vr, std, {}) : null,
-      bfl: (vr.length || D.bfl) ? C.summarizeBfl(vr, D.bfl ? D.bfl.rows : []) : null,
+      'in': (vr.length && hasStd) ? C.summarizeIn(vr, std, { selisih: selMode }) : null,
+      bfl: (vr.length || bflRows.length) ? C.summarizeBfl(vr, bflRows) : null,
       out: D.ter ? C.summarizeOut(D.ter.rows) : null
     };
     D._bflRef = raw.bfl ? raw.bfl.ref : '';
@@ -87,7 +90,7 @@
     var t = r.t, lines;
     if (k === 'in') {
       lines = '<span><b>' + fmt(t.sesuai) + '</b> dari ' + fmt(t.lines) + ' voucher sesuai</span>' +
-              '<span class="' + (t.skuSelisih ? 'bad' : '') + '"><b>' + fmt(t.skuSelisih) + '</b> voucher selisih (' + fmt(Math.abs(t.selisih)) + ' pcs)</span>';
+              '<span class="' + (t.skuSelisih ? 'bad' : '') + '"><b>' + fmt(t.skuSelisih) + '</b> voucher selisih (' + fmt(Math.abs(t.selisih)) + ' pcs)' + (t.nManual ? ' · manual ' + fmt(t.nManual) : '') + '</span>';
     } else if (k === 'bfl') {
       lines = '<span>Di-scan (BFL) <b>' + fmt(t.nBfl) + '</b> dari ' + fmt(t.lines) + ' item</span>' +
               '<span>Manual <b class="' + (t.nManual ? 'warn' : '') + '">' + fmt(t.nManual) + '</b> · TRM <b class="' + (t.nTrm ? 'bad' : '') + '">' + fmt(t.nTrm) + '</b>' + (t.nWait ? ' · Menunggu <b>' + fmt(t.nWait) + '</b>' : '') + '</span>'

@@ -272,3 +272,7 @@ Tombol Print memakai **PDF asli dari template Google Dokumen** (logo SIM, tabel,
 
 ### Data per departemen (Fitting Import vs Fitting Rucika)
 Export Master Voucher / Backflush / Scan Out ditarik per PIC serah terima yang memegang kedua departemen, jadi satu file memuat item dua departemen. `AkurasiCore.itemDept` memisahkannya dari item number: awalan `2030`, `2727`, `2220`, `2330` atau deskripsi memuat KLN/KELEN = **Fitting Import**; selain itu = **Fitting Rucika**. Dashboard dan Control Tower hanya menampilkan item departemen akun yang login. Saat upload, baris departemen lain dilewati (dilaporkan di pesan), dan data lama yang sudah tercampur ikut tersaring lalu terbuang dari penyimpanan pada upload berikutnya. Untuk menambah awalan item Import, ubah `IMPORT_PREFIX` di `akurasi-core.js`. Departemen lain tidak difilter.
+
+### Voucher vs Box ID: kategori Manual dan voucher diganti
+- Voucher berstatus **MANUAL** tanpa Box ID masuk kategori **Manual** (sudah diserahterimakan, tidak pakai scan), bukan Box ID kosong. Tidak ikut dihitung sebagai selisih / akurasi dan dihitung terpisah (`nManual`, `qManual`).
+- Alasan **Dibuatkan voucher baru** (dropdown Box ID kosong / tidak sesuai) menghapus voucher itu otomatis dari seluruh perhitungan Box ID dan Backflush. Voucher yang dihapus tampil di panel bawah dan bisa dikembalikan.

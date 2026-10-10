@@ -290,7 +290,15 @@
     return o;
   }
 
+  // Voucher berstatus MANUAL tanpa Box ID = sudah diserahterimakan, hanya TIDAK memakai scan.
+  // Jangan dicampur ke "Box ID kosong" (yang berarti belum ada scan dan belum jelas statusnya),
+  // jadi dibuat kategori sendiri: manual. Tidak ikut dihitung sebagai selisih / akurasi.
   function evalIn(v, std, opt) {
+    var r = evalInBase(v, std, opt);
+    if (r.status === 'kosong' && String(v.status || '').toUpperCase() === 'MANUAL') return { status: 'manual', aktual: 0, selisih: 0, std: r.std || null };
+    return r;
+  }
+  function evalInBase(v, std, opt) {
     if (opt && opt.selisih) return evalSelisih(v);
     var s = std[v.item] || null, tol = !!(opt && opt.tol);
     var o = { status: '', aktual: 0, selisih: 0, std: s };
@@ -330,6 +338,7 @@
       items.push(it);
       var d = days[v.date] || (days[v.date] = newBucket());
       if (e.status === 'nostd') { d.nostd++; tot.nostd++; return; }
+      if (e.status === 'manual') { d.nManual++; d.qManual += v.qty; tot.nManual++; tot.qManual += v.qty; return; }
       [d, tot].forEach(function (b) {
         if (it.close && e.status === 'sesuai') b.closed = (b.closed || 0) + 1;
         b.lines++; b.qty += v.qty; b.aktual += e.aktual; b.selisih += e.selisih;
