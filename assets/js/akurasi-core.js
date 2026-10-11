@@ -299,7 +299,9 @@
     return r;
   }
   function evalInBase(v, std, opt) {
-    if (opt && opt.selisih) return evalSelisih(v);
+    // Rucika memakai kolom Selisih dari file (tanpa Standar Isi Box). Mode dipilih PER BARIS dari
+    // departemennya, karena tampilan menyatukan data Import dan Rucika.
+    if ((opt && opt.selisih) || v.dept === 'cibitung_fitting_rucika') return evalSelisih(v);
     var s = std[v.item] || null, tol = !!(opt && opt.tol);
     var o = { status: '', aktual: 0, selisih: 0, std: s };
     if (v.box == null) {                       // Box ID kosong / "?"
@@ -420,6 +422,34 @@
     o.recvGroup = calGroupOn(o.recvShift, o.recvDate); o.recvPic = PIC_GRUP[o.recvGroup] || ''; o.recvJam = SHIFT_JAM[o.recvShift] || '';
     return o;
   }
+  // ---- Petugas serah terima: tampilan dibatasi ke shift terkait ----
+  // Akun petugas (nama cocok) hanya melihat masalah pada shift mereka: voucher yang menjadi
+  // tanggung jawab PIC Serah Terima-nya (group petugas di shift penerima), dan Scan Out pada
+  // tanggal mereka bertugas. Role mengandung "ADMIN" melihat semua data.
+  var PIC_NAMA = [
+    { re: /\bLINDU\b/i, g: 'A' }, { re: /IBNU\s+ABDILLAH/i, g: 'B' },
+    { re: /SLAMET\s+RIYADI/i, g: 'C' }, { re: /NGABIDIN/i, g: 'D' }
+  ];
+  function picGroupOfName(nama) {
+    for (var i = 0; i < PIC_NAMA.length; i++) if (PIC_NAMA[i].re.test(String(nama || ''))) return PIC_NAMA[i].g;
+    return '';
+  }
+  function officerScope() {
+    var s = (root.WH_SESSION) || {};
+    if (String(s.role || '').toUpperCase().indexOf('ADMIN') !== -1) return null;   // admin: semua data
+    var g = picGroupOfName(s.nama);
+    return g ? { group: g, pic: PIC_GRUP[g], nama: s.nama || '' } : null;
+  }
+  function officerFilter(vr, bflRows, terRows, scope) {
+    if (!scope) return { vr: vr, bfl: bflRows, ter: terRows };
+    var mine = function (r) { return picSerahTerima(r.group, r.date).recvGroup === scope.group; };
+    return {
+      vr: vr.filter(mine),
+      bfl: bflRows.filter(mine),
+      ter: terRows.filter(function (r) { return r.date && calShift(scope.group, r.date) > 0; })
+    };
+  }
+
   // Rekap TRM lewat H+1 per PIC Serah Terima. items: hasil summarizeBfl().items, ref: res.ref
   function trmByPic(items, ref) {
     var by = {}, list = [];
@@ -587,6 +617,7 @@
   var api = {
     sumDays: sumDays, lateClose: lateClose, dayDiff: dayDiff,
     DEPT_LABEL: DEPT_LABEL, itemDept: itemDept, deptRows: deptRows,
+    picGroupOfName: picGroupOfName, officerScope: officerScope, officerFilter: officerFilter,
     PIC_GRUP: PIC_GRUP, SHIFT_JAM: SHIFT_JAM, calShift: calShift, calGroupOn: calGroupOn, picSerahTerima: picSerahTerima, trmByPic: trmByPic, shiftOf: shiftOf, plusDay: plusDay,
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,

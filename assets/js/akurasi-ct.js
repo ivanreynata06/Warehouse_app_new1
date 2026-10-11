@@ -19,7 +19,7 @@
   // Akun yang tidak diberi menu Akurasi Scan tidak perlu melihat rekapnya
   try {
     var raw = sessionStorage.getItem('wh_menu_keys');
-    var keys = raw ? JSON.parse(raw) : null;
+    var keys = (window.WH_SESSION && window.WH_SESSION.menuKeys) || (raw ? JSON.parse(raw) : null);
     if (keys && keys.length && keys.indexOf('akurasi_scan') === -1) return;
   } catch (e) {}
 
@@ -49,14 +49,18 @@
 
   function compute() {
     var map = (D.alasan && D.alasan.map) || {};
-    // voucher yang dibuatkan voucher baru dihapus dari perhitungan; Rucika memakai kolom Selisih (tanpa Standar Isi)
+    // Data GABUNGAN Fitting Import + Rucika. Voucher yang dibuatkan voucher baru dihapus dari
+    // perhitungan. Petugas serah terima hanya melihat shift terkait; admin / lainnya melihat semua.
     var vr = (D.voucher ? D.voucher.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher); });
     var bflRows = (D.bfl ? D.bfl.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher); });
-    var std = D.std ? D.std.map : {}, selMode = C.selMode(), hasStd = selMode || Object.keys(std).length > 0;
+    var f = C.officerFilter(vr, bflRows, D.ter ? D.ter.rows : [], C.officerScope());
+    vr = f.vr; bflRows = f.bfl;
+    var std = D.std ? D.std.map : {};
+    var hasStd = vr.some(function (r) { return r.dept === 'cibitung_fitting_rucika'; }) || Object.keys(std).length > 0;
     var raw = {
-      'in': (vr.length && hasStd) ? C.summarizeIn(vr, std, { selisih: selMode }) : null,
+      'in': (vr.length && hasStd) ? C.summarizeIn(vr, std, {}) : null,
       bfl: (vr.length || bflRows.length) ? C.summarizeBfl(vr, bflRows) : null,
-      out: D.ter ? C.summarizeOut(D.ter.rows) : null
+      out: f.ter.length ? C.summarizeOut(f.ter) : null
     };
     D._bflRef = raw.bfl ? raw.bfl.ref : '';
     var months = {};
@@ -147,7 +151,7 @@
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
   document.getElementById('ak-body').innerHTML = '<div style="font-size:11px;color:var(--txt3);padding:6px 2px;">Memuat rekap akurasi scan...</div>';
-  ST.load().then(function (r) {
+  ST.loadAll().then(function (r) {
     D = r.data; compute(); render();
   }).catch(function () { sec.hidden = true; });
 })();

@@ -123,6 +123,7 @@ input.inp::placeholder{color:var(--txt3);}
 .board{display:grid;gap:12px;align-items:start;}
 .board.n4{grid-template-columns:repeat(4,minmax(0,1fr));}
 .board.n3{grid-template-columns:repeat(3,minmax(0,1fr));}
+.board.n2{grid-template-columns:repeat(2,minmax(0,1fr));}
 .col{background:var(--bg2);border:1px solid var(--line);border-radius:13px;display:flex;flex-direction:column;min-width:0;max-height:560px;}
 .col-h{padding:11px 13px 10px;border-bottom:1px solid var(--line);border-top:3px solid var(--c);border-radius:13px 13px 0 0;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .col-h b{font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:600;}
@@ -281,7 +282,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 @media(max-width:1180px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr));}.board.n4{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:980px){.lanes{grid-template-columns:1fr;}}
-@media(max-width:760px){.board.n3,.board.n4{grid-template-columns:1fr;}.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}.content{padding:12px 12px 40px 18px;}}
+@media(max-width:760px){.board.n2,.board.n3,.board.n4{grid-template-columns:1fr;}.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}.content{padding:12px 12px 40px 18px;}}
 @media(prefers-reduced-motion:reduce){*{transition:none !important;}}
 
 /* ───────── tren bulanan (Voucher vs Backflush) ───────── */
@@ -380,6 +381,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
       <div class="tb-sub" id="tb-sub">Voucher vs Box ID, Backflush, dan Barcode Out (Scan Out)</div>
     </div>
     <div class="topbar-right">
+      <select class="sel" id="sel-dept" title="Departemen" onchange="onDept(this.value)"><option value="">Semua departemen</option><option value="cibitung_fitting_import">Fitting Import</option><option value="cibitung_fitting_rucika">Fitting Rucika</option></select>
       <select class="sel" id="sel-month" title="Periode" onchange="onMonth(this.value)"></select>
       <button class="btn" onclick="exportXlsx()" id="btn-export">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -459,9 +461,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261009a"></script>
-<script src="./assets/js/akurasi-store.js?v=20261009a"></script>
-<script src="./assets/js/akurasi-reasons.js?v=20261009a"></script>
+<script src="./assets/js/akurasi-core.js?v=20261010a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261010a"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261010a"></script>
 <script>
 (function(){
 'use strict';
@@ -476,7 +478,7 @@ var S = {
   opts: { tol: false },
   detail: 'show',                    // Backflush: tampilkan / sembunyikan detail PIC Serah Terima
   basis: 'item',                      // Backflush: hitung persen per 'item' (voucher) atau per 'qty'                // tampilan saja, disimpan di perangkat ini
-  source: '', warn: '', needStd: false, alasanMap: {}, _items: [],
+  source: '', warn: '', needStd: false, alasanMap: {}, _items: [], deptSel: '', me: null, deptKey: {},
   lane: 'in', month: '', day: 'all', q: '', shown: {}, res: null, resRaw: null
 };
 
@@ -510,27 +512,41 @@ function ring(p, size){
 
 /* ───────── hitung ───────── */
 function compute(){
+  var RUC = 'cibitung_fitting_rucika';
+  // Tampilan MENYATUKAN Fitting Import + Fitting Rucika (upload tetap per departemen).
+  // Filter departemen (opsional) dan, untuk petugas serah terima, filter shift terkait.
+  var keepDept = function(r){ return !S.deptSel || r.dept === S.deptSel; };
+  var allV = S.data.voucher ? S.data.voucher.rows : [], allB = S.data.bfl ? S.data.bfl.rows : [], allT = S.data.ter ? S.data.ter.rows : [];
   // Voucher yang alasannya "Dibuatkan voucher baru" otomatis dihapus dari semua perhitungan
-  var vr = (S.data.voucher ? S.data.voucher.rows : []).filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher); });
-  var bflRows = (S.data.bfl ? S.data.bfl.rows : []).filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher); });
+  var vr = allV.filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r); });
+  var bflRows = allB.filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r); });
+  var terRows = allT.filter(keepDept);
+  var f = C.officerFilter(vr, bflRows, terRows, S.me);
+  vr = f.vr; bflRows = f.bfl; terRows = f.ter;
   var stdMap = S.data.std ? S.data.std.map : {};
-  var selMode = C.selMode();   // Fitting Rucika: tanpa Standar Isi Box, parameter = kolom Selisih
-  var hasStd = selMode || Object.keys(stdMap).length > 0;
-  // Tanpa Standar Isi Box, voucher yang Box ID-nya terisi tidak bisa dicek. Daripada
+  // Rucika memakai kolom Selisih (tanpa Standar Isi Box); Import memakai Standar Isi. Dipilih per baris.
+  var hasStd = vr.some(function(r){ return r.dept === RUC; }) || Object.keys(stdMap).length > 0;
+  // Tanpa Standar Isi Box, voucher Import yang Box ID-nya terisi tidak bisa dicek. Daripada
   // menampilkan 0% yang menyesatkan, jalur ini ditandai "butuh standar".
   S.needStd = vr.length > 0 && !hasStd;
   var dm = {};
   // Prioritas: Standar Isi Box (deskripsi lengkap) -> Master Backflush -> Master Voucher (sering terpotong)
-  vr.forEach(function(r){ if (r.desc) dm[r.item] = r.desc; });
-  (S.data.bfl ? S.data.bfl.rows : []).forEach(function(r){ if (r.desc && (!dm[r.item] || r.desc.length > dm[r.item].length)) dm[r.item] = r.desc; });
+  allV.forEach(function(r){ if (r.desc) dm[r.item] = r.desc; });
+  allB.forEach(function(r){ if (r.desc && (!dm[r.item] || r.desc.length > dm[r.item].length)) dm[r.item] = r.desc; });
   if (S.data.std && S.data.std.desc) for (var dk in S.data.std.desc) if (S.data.std.desc[dk]) dm[dk] = S.data.std.desc[dk];
   S.descMap = dm;
+  // Peta kunci alasan -> departemen pemilik data (alasan ditulis ke spreadsheet departemennya)
+  var dk2 = {};
+  allV.concat(allB).forEach(function(r){ dk2['in:' + r.voucher] = r.dept; dk2['bfl:' + r.voucher] = r.dept; });
+  allT.forEach(function(r){ dk2['out:' + (r.key || (r.spm + '|' + r.item + '|' + r.group))] = r.dept; dk2['outspm:' + r.spm] = r.dept; });
+  S.deptKey = dk2;
   S.resRaw = {
-    in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol, selisih: selMode }) : null,
+    in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol }) : null,
     bfl: (vr.length || bflRows.length) ? C.summarizeBfl(vr, bflRows, {}) : null,
-    out: S.data.ter ? C.summarizeOut(S.data.ter.rows) : null
+    out: terRows.length ? C.summarizeOut(terRows) : null
   };
 }
+window.onDept = function(v){ S.deptSel = v; S.day = 'all'; S.shown = {}; compute(); fillMonths(); banner(); renderLanes(); renderLane(); };
 function months(){
   var set = {};
   ['in', 'bfl', 'out'].forEach(function(k){ var r = S.resRaw[k]; if (r) r.days.forEach(function(d){ set[d.date.slice(0, 7)] = 1; }); });
@@ -553,7 +569,7 @@ function sumDays(days, k){
 // Backflush: persen per item (jumlah voucher) atau per qty, sesuai pilihan
 function share(n, q, t){ return S.basis === 'item' ? (t.lines ? n / t.lines * 100 : null) : (t.qty ? q / t.qty * 100 : null); }
 function view(k){
-  var r = S.resRaw[k]; if (!r) return null;
+  var r = S.resRaw && S.resRaw[k]; if (!r) return null;
   var days = r.days.filter(function(d){ return !S.month || d.date.indexOf(S.month) === 0; });
   var items = r.items.filter(function(i){ return !S.month || (i.date || '').indexOf(S.month) === 0; });
   if (k === 'bfl') days = days.map(function(d){ var o = {}; for (var f in d) o[f] = d[f]; o.pct = S.basis === 'item' ? d.pctLines : d.pct; return o; });
@@ -586,7 +602,7 @@ var LANES = {
     card: function(i){ var v = i.v, e = i.e;
       var line = e.status === 'manual' ? 'Voucher ' + fmt(v.qty) + ' · diserahterimakan manual, tanpa scan'
         : e.status === 'kosong' ? 'Voucher ' + fmt(v.qty) + ', Box ID belum terscan'
-        : C.selMode() ? 'Voucher ' + fmt(v.qty) + ' · Box ID ' + fmt(v.box) + ' · Selisih ' + sgn(e.selisih)
+        : (v.dept === 'cibitung_fitting_rucika' || C.selMode()) ? 'Voucher ' + fmt(v.qty) + ' · Box ID ' + fmt(v.box) + ' · Selisih ' + sgn(e.selisih)
         : e.status === 'nostd' ? 'Voucher ' + fmt(v.qty) + ' dalam ' + fmt(v.box) + ' box'
         : 'Voucher ' + fmt(v.qty) + ' · ' + fmt(v.box) + ' box x ' + fmt(e.std);
       var chip = e.status === 'sesuai' ? '<span class="chip ok">sesuai</span>' : e.status === 'manual' ? '<span class="chip warn">manual</span>' : e.status === 'nostd' ? '<span class="chip warn">tanpa standar</span>' : '<span class="chip bad">' + sgn(e.selisih) + '</span>';
@@ -668,7 +684,7 @@ window.setAlasan = function(el){
   var wasVoid = S._prevVoid && S._prevVoid[key];
   if (r === RZ.VOID || wasVoid) {
     // voucher dihapus / dikembalikan: hitung ulang seluruh jalur
-    window.AkurasiStore.saveAlasan([{ key: key, r: r, t: t }]).then(function(res){
+    window.AkurasiStore.saveAlasan([{ key: key, r: r, t: t, dept: S.deptKey[key] }]).then(function(res){
       window.AkurasiStore.cacheAlasan({ map: S.alasanMap });
       if (!res.remote) toast(res.warn || 'Gagal menyimpan alasan', true);
     });
@@ -678,7 +694,7 @@ window.setAlasan = function(el){
   }
   renderReasons();
   st.className = 'rz-st'; st.textContent = 'menyimpan...';
-  window.AkurasiStore.saveAlasan([{ key: key, r: r, t: t }]).then(function(res){
+  window.AkurasiStore.saveAlasan([{ key: key, r: r, t: t, dept: S.deptKey[key] }]).then(function(res){
     st.className = 'rz-st ' + (res.remote ? 'okk' : 'bad');
     st.textContent = res.remote ? 'tersimpan' : 'belum tersimpan di server';
     if (!res.remote) toast(res.warn || 'Gagal menyimpan alasan', true);
@@ -796,10 +812,13 @@ function renderLane(){
     var x = i.v; return (x.item + ' ' + (x.desc || '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
   });
   S._items = items; S._allItems = v.items;
+  var okKey = { 'in': 'sesuai', bfl: 'bfl', out: 'full' }[S.lane];
   renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm(); renderVoid();
+  if (S.me) { document.getElementById('closep').hidden = true; document.getElementById('trend-wrap').hidden = true; }
   var dst = document.getElementById('detail-seg-top'); dst.hidden = S.lane !== 'bfl'; dst.innerHTML = S.lane === 'bfl' ? detailSegHtml() : '';
   bd.className = 'board n' + L.cols.length;
   bd.innerHTML = L.cols.map(function(col){
+    if (S.me && col.key === okKey) return '';   // petugas serah terima: hanya data yang bermasalah / perlu tindakan
     if (S.lane === 'in' && (col.key === 'nostd' || col.key === 'manual') && !items.some(function(i){ return i.e.status === col.key; })) return '';
     var list = items.filter(function(i){ return i.e.status === col.key; });
     list.sort(function(a, b){ return Math.abs(b.e.selisih) - Math.abs(a.e.selisih) || (a.v.item < b.v.item ? -1 : 1); });
@@ -818,7 +837,7 @@ function renderLane(){
     return '<div class="col ' + col.cls + '"><div class="col-h"><div><b>' + col.label + '</b><span class="hint">' + col.hint + '</span></div><span class="cnt">' + fmt(list.length) + '</span></div><div class="col-body">' + cards + more + '</div></div>';
   }).join('');
   // kalau kolom "nostd" disembunyikan, rapikan jumlah kolom
-  var nc = bd.querySelectorAll('.col').length; bd.className = 'board n' + (nc >= 4 ? 4 : 3);
+  var nc = bd.querySelectorAll('.col').length; bd.className = 'board n' + (nc >= 4 ? 4 : (nc === 3 ? 3 : 2));
 
   // tabel rekap
   var th = L.th.map(function(h){ return '<th>' + h + '</th>'; }).join('');
@@ -977,7 +996,7 @@ function renderTrm(){
   var its = r.items.filter(function(i){ return !S.month || (i.date || '').indexOf(S.month) === 0; });
   var t = C.trmByPic(its, r.ref);
   var periode = S.month ? 'periode ' + MONTH_FULL[+S.month.slice(5) - 1] + ' ' + S.month.slice(0, 4) : 'semua periode';
-  var order = ['A', 'B', 'C', 'D'];
+  var order = S.me ? [S.me.group] : ['A', 'B', 'C', 'D'];
   var tiles = order.map(function(g){
     var o = t.by[g] || { n: 0, qty: 0, oldest: 0 };
     return '<div class="trm-tile' + (o.n ? ' hot' : '') + '"><div class="nm">' + esc(C.PIC_GRUP[g]) + '</div><div class="gp">Grup ' + g + '</div>' +
@@ -1001,7 +1020,8 @@ function renderTrm(){
 // Panel voucher yang dihapus karena dibuatkan voucher baru (bisa dikembalikan)
 function renderVoid(){
   var el = document.getElementById('voidp');
-  var rows = (S.data.voucher ? S.data.voucher.rows : []).filter(function(r){ return RZ.isVoid(S.alasanMap, r.voucher); });
+  var rows = (S.data.voucher ? S.data.voucher.rows : []).filter(function(r){ return RZ.isVoid(S.alasanMap, r.voucher) && (!S.deptSel || r.dept === S.deptSel); });
+  if (S.me) rows = C.officerFilter(rows, [], [], S.me).vr;
   S._prevVoid = {}; rows.forEach(function(r){ S._prevVoid['in:' + r.voucher] = 1; });
   if ((S.lane !== 'in' && S.lane !== 'bfl') || !rows.length) { el.hidden = true; return; }
   el.hidden = false;
@@ -1014,7 +1034,7 @@ function renderVoid(){
 window.restoreVoid = function(voucher){
   var key = 'in:' + voucher;
   delete S.alasanMap[key];
-  window.AkurasiStore.saveAlasan([{ key: key, r: '', t: '' }]).then(function(res){ window.AkurasiStore.cacheAlasan({ map: S.alasanMap }); if (!res.remote) toast(res.warn || 'Gagal menyimpan', true); });
+  window.AkurasiStore.saveAlasan([{ key: key, r: '', t: '', dept: S.deptKey[key] }]).then(function(res){ window.AkurasiStore.cacheAlasan({ map: S.alasanMap }); if (!res.remote) toast(res.warn || 'Gagal menyimpan', true); });
   toast('Voucher dikembalikan ke perhitungan');
   compute(); renderLanes(); renderLane();
 };
@@ -1150,11 +1170,14 @@ window.setTol = function(v){
 function banner(){
   var el = document.getElementById('src-note'), parts = [];
   var any = S.data.voucher || S.data.bfl || S.data.ter;
-  if (S.dept) parts.push('Data departemen <b>' + esc(S.dept) + '</b>.' + (S.hiddenTotal ? ' ' + fmt(S.hiddenTotal) + ' baris milik departemen lain disaring dan tidak ditampilkan (dipisah berdasarkan item number).' : ''));
+  var LBL = { cibitung_fitting_import: 'Import', cibitung_fitting_rucika: 'Rucika' };
+  if (S.me) parts.push('<b>Tampilan petugas serah terima: ' + esc(S.me.pic) + ' (Grup ' + S.me.group + ')</b>. Role: ' + esc((window.WH_SESSION && (window.WH_SESSION.roleLabel || window.WH_SESSION.role)) || '-') + '. Hanya masalah pada shift terkait Anda yang ditampilkan.');
+  else parts.push('Data gabungan <b>Fitting Import + Fitting Rucika</b>' + (S.deptSel ? ', difilter: ' + esc(LBL[S.deptSel]) : '') + '. Upload tetap terpisah per departemen.');
   if (S.warn) parts.push('<b>Data dari cache perangkat ini.</b> ' + esc(S.warn) + ' Data di PC lain bisa berbeda sampai backend aktif.');
   if (any) {
     var info = ['voucher', 'std', 'bfl', 'ter'].filter(function(k){ return S.data[k]; }).map(function(k){
-      var m = S.data[k].meta || {}; return window.AkurasiStore.TITLES[k] + ': ' + esc(m.at || '-') + (m.by ? ' oleh ' + esc(m.by) : '');
+      var ms = S.data[k].metas || [S.data[k].meta || {}];
+      return window.AkurasiStore.TITLES[k] + ': ' + ms.map(function(m){ return (m.dept ? LBL[m.dept] + ' ' : '') + esc(m.at || '-') + (m.by ? ' oleh ' + esc(m.by) : ''); }).join(' / ');
     });
     parts.push('Update terakhir. ' + info.join(' · '));
   }
@@ -1165,9 +1188,9 @@ function banner(){
 window.reloadData = function(){
   var btn = document.getElementById('btn-reload'); btn.disabled = true;
   Loader.start(true);
-  window.AkurasiStore.load(Loader.set).then(function(r){
+  window.AkurasiStore.loadAll(Loader.set).then(function(r){
     Loader.set(86, 'Menghitung akurasi');
-    S.data = r.data; S.source = r.source; S.warn = r.warn; S.dept = r.dept || ''; S.hiddenTotal = r.hiddenTotal || 0; S.day = 'all'; S.shown = {}; S._monthTouched = false; S.month = '';
+    S.data = r.data; S.source = r.source; S.warn = r.warn; S.gabungan = !!r.gabungan; S.day = 'all'; S.shown = {}; S._monthTouched = false; S.month = '';
     S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
     render();
     Loader.done(r.source === 'server' ? 'ok' : 'warn');
@@ -1214,12 +1237,14 @@ window.exportXlsx = function(){
 /* ───────── init ───────── */
 (function init(){
   try { S.opts.tol = localStorage.getItem('akurasi_tol') === '1'; S.basis = localStorage.getItem('akurasi_basis') === 'qty' ? 'qty' : 'item'; S.detail = localStorage.getItem('akurasi_detail') === 'hide' ? 'hide' : 'show'; } catch (e) {}
-  try { var _w = window.getWorkspace && window.getWorkspace(); var _l = { cibitung_fitting_import: 'Fitting Import', cibitung_fitting_rucika: 'Fitting Rucika' }[_w]; if (_l) document.getElementById('tb-sub').textContent += ' · ' + _l; } catch (e) {}
+  document.getElementById('tb-sub').textContent += ' · Fitting Import + Fitting Rucika (gabungan)';
+  S.me = C.officerScope();   // petugas serah terima: tampilan dibatasi ke shift terkait; admin / lainnya: semua
+  if (S.me) document.getElementById('sel-dept').style.display = 'none';
   document.getElementById('app').hidden = true;
   document.getElementById('empty').hidden = true;     // jangan tampilkan "belum ada data" sebelum server menjawab
   Loader.start(false);
-  window.AkurasiStore.load(Loader.set).then(function(r){
-    S.data = r.data; S.source = r.source; S.warn = r.warn; S.dept = r.dept || ''; S.hiddenTotal = r.hiddenTotal || 0;
+  window.AkurasiStore.loadAll(Loader.set).then(function(r){
+    S.data = r.data; S.source = r.source; S.warn = r.warn; S.gabungan = !!r.gabungan;
     S.lane = S.data.voucher ? 'in' : (S.data.bfl ? 'bfl' : 'out');
     Loader.set(86, 'Menghitung akurasi');
     setTimeout(function(){ render(); Loader.done(r.source === 'server' ? 'ok' : 'warn'); }, 60);

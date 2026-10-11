@@ -113,6 +113,53 @@
     res.hidden = hidden; res.hiddenTotal = total; res.dept = C.DEPT_LABEL[w] || '';
     return res;
   }
+  /* ---------- data GABUNGAN: Fitting Import + Fitting Rucika (khusus tampilan) ---------- */
+  // Upload tetap per departemen (spreadsheet masing-masing); tampilan menyatukan keduanya.
+  var DEPTS = ['cibitung_fitting_import', 'cibitung_fitting_rucika'];
+  function mergeDepts(by) {
+    var out = { voucher: null, std: null, bfl: null, ter: null, alasan: null };
+    ['voucher', 'bfl', 'ter'].forEach(function (k) {
+      var rows = [], metas = [];
+      DEPTS.forEach(function (w) {
+        var rec = (by[w] || {})[k];
+        if (!rec || !rec.rows) return;
+        rec.rows.forEach(function (r) { r.dept = w; rows.push(r); });
+        var m = {}; for (var x in (rec.meta || {})) m[x] = rec.meta[x];
+        m.dept = w; m.count = rec.rows.length; metas.push(m);
+      });
+      if (rows.length) out[k] = { rows: rows, count: rows.length, meta: metas[0], metas: metas };
+    });
+    var std = { map: {}, desc: {}, count: 0, meta: {}, metas: [] }, hasStd = false;
+    var al = { map: {} };
+    DEPTS.forEach(function (w) {
+      var sd = (by[w] || {}).std;
+      if (sd && sd.map) { hasStd = true; for (var a in sd.map) std.map[a] = sd.map[a]; for (var b in (sd.desc || {})) std.desc[b] = sd.desc[b]; std.count += sd.count || 0; if (!std.metas.length) std.meta = sd.meta || {}; std.metas.push({ dept: w, at: (sd.meta || {}).at, by: (sd.meta || {}).by }); }
+      var a2 = (by[w] || {}).alasan;
+      if (a2 && a2.map) for (var k2 in a2.map) al.map[k2] = a2.map[k2];
+    });
+    if (hasStd) out.std = std;
+    if (Object.keys(al.map).length) out.alasan = al;
+    return out;
+  }
+  // onProg(persen, tahap) opsional. Mengembalikan { data, source, warn, gabungan:true }
+  function loadAll(onProg) {
+    var prog = function (v, t) { try { if (onProg) onProg(v, t); } catch (e) {} };
+    prog(8, 'Menghubungi server');
+    return api('getAkurasiDataGabungan', []).then(function (r) {
+      prog(70, 'Menggabungkan data departemen');
+      return { data: mergeDepts((r && r.data) || {}), source: 'server', warn: '', gabungan: true };
+    }).catch(function (err) {
+      // Server / fungsi gabungan belum aktif: pakai data departemen sendiri dari cache
+      prog(70, 'Server tidak terjangkau, memakai salinan perangkat');
+      return load().then(function (res) {
+        var w = ws();
+        ['voucher', 'bfl', 'ter'].forEach(function (k) { var rec = res.data[k]; if (rec && rec.rows) rec.rows.forEach(function (r) { r.dept = r.dept || w; }); });
+        res.warn = friendly(err); res.source = 'local'; res.gabungan = false;
+        return res;
+      });
+    });
+  }
+
   function pick(d) { var o = {}; KINDS.forEach(function (k) { o[k] = d[k] || null; }); return o; }
 
   function save(kind, rec, force) {
@@ -281,5 +328,5 @@
   }
   function cacheAlasan(obj) { return lset('alasan', obj); }
 
-  root.AkurasiStore = { KINDS: KINDS, TITLES: TITLES, load: load, save: save, clear: clear, ingest: ingest, saveAlasan: saveAlasan, cacheAlasan: cacheAlasan };
+  root.AkurasiStore = { KINDS: KINDS, TITLES: TITLES, load: load, loadAll: loadAll, save: save, clear: clear, ingest: ingest, saveAlasan: saveAlasan, cacheAlasan: cacheAlasan };
 })(typeof window !== 'undefined' ? window : this);

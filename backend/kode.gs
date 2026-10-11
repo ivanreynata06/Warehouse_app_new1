@@ -123,6 +123,7 @@ var API_FUNCTIONS = {
   // Akurasi Scan Barcode (data dibagi antar PC)
   getSPLPdfCepat          : getSPLPdfCepat,
   simpanAkurasiAlasan     : simpanAkurasiAlasan,
+  getAkurasiDataGabungan  : getAkurasiDataGabungan,
   getAkurasiData          : getAkurasiData,
   saveAkurasiData         : saveAkurasiData,
   hapusAkurasiData        : hapusAkurasiData
@@ -6138,6 +6139,53 @@ function auditKategoriLemburKosong(tahun) {
   bermasalah.forEach(function (line) { Logger.log(line); });
 }
 
+// ================================================================
+//  LEMBUR TANPA POTONGAN ISTIRAHAT
+//  Aturan umum: lembur lebih dari 4 jam otomatis dipotong 1 jam istirahat. Petugas serah terima
+//  berikut dikecualikan (tanpa istirahat): lembur 16.00 sampai 00.00 tercatat 8 jam.
+//  Dicocokkan lewat NAMA (tidak peduli huruf besar/kecil). Ubah daftar ini kalau ada tambahan.
+// ================================================================
+var LEMBUR_TANPA_ISTIRAHAT = [/NGABIDIN/, /SLAMET\s+RIYADI/, /IBNU\s+ABDILLAH/, /\bLINDU\b/];
+function _tanpaIstirahat(nama) {
+  var n = String(nama || '').toUpperCase();
+  return LEMBUR_TANPA_ISTIRAHAT.some(function (re) { return re.test(n); });
+}
+// Jam lembur tersimpan: durasi mentah, dipotong 1 jam kalau > 4 jam KECUALI nama dikecualikan
+function _jamLemburBersih(durMin, nama) {
+  var durJam = durMin / 60;
+  if (durJam > 4 && !_tanpaIstirahat(nama)) durJam -= 1;
+  return Math.round(durJam * 100) / 100;
+}
+function _namaDariKodeKaryawan(kode) {
+  try {
+    var kr = getKaryawanList();
+    var k = kr.success ? kr.data.find(function (x) { return x.kode === kode; }) : null;
+    return k ? k.nama : '';
+  } catch (e) { return ''; }
+}
+
+// Jalankan manual dari editor Apps Script untuk MEMPERBAIKI lembur lama milik petugas yang
+// dikecualikan (yang dulu terlanjur dipotong 1 jam). apply=false hanya melaporkan di Logger.
+function perbaikiLemburTanpaIstirahat(apply) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_LEMBUR_LOG);
+  var data = sh.getDataRange().getValues(), n = 0;
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    if (!_tanpaIstirahat(r[3])) continue;
+    var m1 = _timeStrToMinutes(_fmtTime(r[4])), m2 = _timeStrToMinutes(_fmtTime(r[5]));
+    if (m1 == null || m2 == null) continue;
+    var durMin = m2 - m1; if (durMin <= 0) durMin += 24 * 60;
+    var baru = _jamLemburBersih(durMin, r[3]), lama = Number(r[6]);
+    if (Math.abs(baru - lama) < 0.001) continue;
+    n++;
+    Logger.log('Baris ' + (i + 1) + ' | ' + r[3] + ' | ' + _fmtTime(r[4]) + '-' + _fmtTime(r[5]) + ' | ' + lama + ' -> ' + baru);
+    if (apply) sh.getRange(i + 1, 7).setValue(baru);
+  }
+  Logger.log((apply ? 'Diperbaiki: ' : 'Perlu diperbaiki (belum diubah): ') + n + ' baris');
+  return n;
+}
+
 function saveLembur(data) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -6149,11 +6197,9 @@ function saveLembur(data) {
     if (m1 == null || m2 == null) return { success: false, error: 'Format jam tidak valid (harus HH:MM)' };
     var durMin = m2 - m1;
     if (durMin <= 0) durMin += 24 * 60; // lembur lewat tengah malam
-    var durJam = durMin / 60;
     // Sesuai catatan di formulir SPL: lembur di atas 4 jam yang melewati
-    // waktu istirahat otomatis kepotong 1 jam.
-    if (durJam > 4) durJam -= 1;
-    durJam = Math.round(durJam * 100) / 100;
+    // waktu istirahat otomatis kepotong 1 jam (kecuali petugas serah terima: tanpa istirahat).
+    var durJam = _jamLemburBersih(durMin, data.nama || _namaDariKodeKaryawan(data.kode));
 
     sh.appendRow([
       new Date(), data.tanggal, data.kode, data.nama || '',
@@ -6745,9 +6791,8 @@ function editLemburByTL(rowIndex, tanggalBaru, jamMulaiBaru, jamSelesaiBaru, ket
     if (m1 == null || m2 == null) return { success: false, error: 'Format jam tidak valid (harus HH:MM).' };
     var durMin = m2 - m1;
     if (durMin <= 0) durMin += 24 * 60; // lembur lewat tengah malam
-    var durJam = durMin / 60;
-    if (durJam > 4) durJam -= 1; // potongan jam istirahat, konsisten dgn input awal (saveLembur/submitEditLembur)
-    durJam = Math.round(durJam * 100) / 100;
+    // potongan jam istirahat, konsisten dgn input awal (saveLembur/submitEditLembur); petugas serah terima tanpa potongan
+    var durJam = _jamLemburBersih(durMin, sh.getRange(rowIndex, 4).getValue());
 
     var tglDate = new Date(String(tanggalBaru) + 'T00:00:00');
     if (isNaN(tglDate.getTime())) return { success: false, error: 'Format tanggal tidak valid (harus YYYY-MM-DD).' };
@@ -6961,9 +7006,7 @@ function submitEditLembur(rowIndex, nikRequester, newData) {
     if (m1 == null || m2 == null) return { success: false, error: 'Format jam tidak valid (harus HH:MM)' };
     var durMin = m2 - m1;
     if (durMin <= 0) durMin += 24 * 60;
-    var durJam = durMin / 60;
-    if (durJam > 4) durJam -= 1;
-    durJam = Math.round(durJam * 100) / 100;
+    var durJam = _jamLemburBersih(durMin, sh.getRange(rowIndex, 4).getValue());
 
     // ------------------------------------------------------------
     //  Kalau JAM KERJA (jamMulai/jamSelesai) TIDAK berubah -- cuma
@@ -7746,6 +7789,41 @@ function _getOrCreateAkurasiSheet() {
   return sh;
 }
 
+// ---- Akurasi: data GABUNGAN lintas departemen (hanya baca) ----
+// Tampilan Akurasi Scan menyatukan Fitting Import dan Fitting Rucika, sedangkan UPLOAD tetap
+// dipisah: tiap departemen menyimpan di spreadsheet-nya sendiri (sheet AKURASI_DATA).
+var AKURASI_WS = ['cibitung_fitting_import', 'cibitung_fitting_rucika'];
+function _akurasiBacaDariSS(ss) {
+  var sh = ss.getSheetByName(SH_AKURASI), out = {};
+  if (!sh) return out;
+  var last = sh.getLastRow();
+  if (last < 2) return out;
+  var by = {};
+  sh.getRange(2, 1, last - 1, 3).getValues().forEach(function (r) {
+    var k = String(r[0] || '');
+    if (!AKURASI_KINDS[k]) return;
+    (by[k] = by[k] || []).push({ part: Number(r[1]) || 0, txt: String(r[2] || '') });
+  });
+  Object.keys(by).forEach(function (k) {
+    by[k].sort(function (a, b) { return a.part - b.part; });
+    try { out[k] = JSON.parse(by[k].map(function (x) { return x.txt; }).join('')); } catch (e) { out[k] = null; }
+  });
+  return out;
+}
+function getAkurasiDataGabungan() {
+  try {
+    var out = {};
+    AKURASI_WS.forEach(function (ws) {
+      var id = resolveWorkspaceSpreadsheetId(ws);
+      if (!id) return;
+      try { out[ws] = _akurasiBacaDariSS(SpreadsheetApp.openById(id)); } catch (e) { out[ws] = {}; }
+    });
+    return { success: true, data: out };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  }
+}
+
 function getAkurasiData() {
   try {
     var sh = _getOrCreateAkurasiSheet();
@@ -7849,39 +7927,61 @@ function simpanAkurasiAlasan(payloadStr) {
     var entries = p.entries || [];
     if (!entries.length) return { success: false, error: 'Tidak ada alasan yang dikirim' };
     lock.waitLock(25000);
-    var sh = _getOrCreateAkurasiSheet();
-    var obj = { map: {} };
-    var last = sh.getLastRow();
-    if (last >= 2) {
-      var parts = [];
-      sh.getRange(2, 1, last - 1, 3).getValues().forEach(function (r) {
-        if (String(r[0]) === 'alasan') parts.push({ part: Number(r[1]) || 0, txt: String(r[2] || '') });
-      });
-      if (parts.length) {
-        parts.sort(function (a, b) { return a.part - b.part; });
-        try { obj = JSON.parse(parts.map(function (x) { return x.txt; }).join('')) || { map: {} }; } catch (e) { obj = { map: {} }; }
-      }
-    }
-    obj.map = obj.map || {};
-    var now = new Date();
-    var at = Utilities.formatDate(now, 'Asia/Jakarta', 'd MMM yyyy, HH:mm');
-    var iso = Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM-dd');
+    // Tampilan menyatukan 2 departemen, jadi alasan ditulis ke spreadsheet departemen PEMILIK
+    // datanya (entry.dept). Tanpa dept = departemen akun yang sedang login.
+    var groups = {};
     entries.forEach(function (e) {
-      var k = String(e.key || '');
-      if (!k) return;
-      if (!e.r) { delete obj.map[k]; return; }
-      obj.map[k] = { r: String(e.r).slice(0, 80), t: String(e.t || '').slice(0, 200), by: String(p.by || '').slice(0, 60), at: at, iso: iso };
+      var ws = (e.dept && AKURASI_WS.indexOf(e.dept) !== -1) ? e.dept : ACTIVE_WORKSPACE;
+      (groups[ws] = groups[ws] || []).push(e);
     });
-    var json = JSON.stringify(obj);
-    _akurasiHapusKind(sh, 'alasan');
-    var rows = [];
-    for (var i = 0, n = 0; i < json.length; i += AKURASI_CHUNK, n++) rows.push(['alasan', n, json.substr(i, AKURASI_CHUNK)]);
-    var start = sh.getLastRow() + 1;
-    sh.getRange(start, 1, rows.length, 3).setNumberFormat('@').setValues(rows);
-    return { success: true, at: at, count: Object.keys(obj.map).length };
+    var at = '', count = 0;
+    Object.keys(groups).forEach(function (ws) {
+      var id = (ws === ACTIVE_WORKSPACE) ? SPREADSHEET_ID : resolveWorkspaceSpreadsheetId(ws);
+      if (!id) throw new Error('Spreadsheet departemen ' + ws + ' belum tersedia');
+      var r = _akurasiUpsertAlasan(SpreadsheetApp.openById(id), groups[ws], p.by);
+      at = r.at; count += r.count;
+    });
+    return { success: true, at: at, count: count };
   } catch (err) {
     return { success: false, error: String(err && err.message || err) };
   } finally {
     try { lock.releaseLock(); } catch (e) {}
   }
+}
+function _akurasiUpsertAlasan(ss, entries, by) {
+  var sh = ss.getSheetByName(SH_AKURASI);
+  if (!sh) {
+    sh = ss.insertSheet(SH_AKURASI);
+    sh.getRange('A1:C1').setValues([['kind', 'part', 'json']]);
+    sh.setFrozenRows(1);
+  }
+  var obj = { map: {} };
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var parts = [];
+    sh.getRange(2, 1, last - 1, 3).getValues().forEach(function (r) {
+      if (String(r[0]) === 'alasan') parts.push({ part: Number(r[1]) || 0, txt: String(r[2] || '') });
+    });
+    if (parts.length) {
+      parts.sort(function (a, b) { return a.part - b.part; });
+      try { obj = JSON.parse(parts.map(function (x) { return x.txt; }).join('')) || { map: {} }; } catch (e) { obj = { map: {} }; }
+    }
+  }
+  obj.map = obj.map || {};
+  var now = new Date();
+  var at = Utilities.formatDate(now, 'Asia/Jakarta', 'd MMM yyyy, HH:mm');
+  var iso = Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM-dd');
+  entries.forEach(function (e) {
+    var k = String(e.key || '');
+    if (!k) return;
+    if (!e.r) { delete obj.map[k]; return; }
+    obj.map[k] = { r: String(e.r).slice(0, 80), t: String(e.t || '').slice(0, 200), by: String(by || '').slice(0, 60), at: at, iso: iso };
+  });
+  var json = JSON.stringify(obj);
+  _akurasiHapusKind(sh, 'alasan');
+  var rows = [];
+  for (var i = 0, n = 0; i < json.length; i += AKURASI_CHUNK, n++) rows.push(['alasan', n, json.substr(i, AKURASI_CHUNK)]);
+  var start = sh.getLastRow() + 1;
+  sh.getRange(start, 1, rows.length, 3).setNumberFormat('@').setValues(rows);
+  return { at: at, count: Object.keys(obj.map).length };
 }

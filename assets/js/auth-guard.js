@@ -30,6 +30,13 @@
   var roleUpper = (sessionStorage.getItem('wh_role') || '').trim().toUpperCase();
   var fullAccess = (roleUpper === 'TL') || roleUpper.indexOf('ADMIN') !== -1;
   var isTL = (roleUpper === 'TL');
+  // Petugas SERAH TERIMA (Lindu grup A, Ibnu Abdillah grup B, Slamet Riyadi grup C, Ngabidin grup D).
+  // Role "Serah Terima" ditambahkan otomatis ke akun-akun ini (berdasarkan nama), atau bisa diberikan
+  // lewat Kelola User dengan menulis "Serah Terima" pada role. Mereka boleh membuka Akurasi Scan
+  // Barcode, tetapi datanya dibatasi ke shift terkait (lihat AkurasiCore.officerScope). Role yang
+  // mengandung "Admin" tetap melihat semua data.
+  var namaSesi = sessionStorage.getItem('wh_nama') || '';
+  var isSerahTerima = /\bLINDU\b|IBNU\s+ABDILLAH|SLAMET\s+RIYADI|NGABIDIN/i.test(namaSesi) || roleUpper.indexOf('SERAH TERIMA') !== -1;
 
   // ================================================================
   //  MENU PER DEPARTEMEN/PLANT -- diatur Super Admin lewat Panel Admin
@@ -94,6 +101,10 @@
   // canUploadData (selalu fullAccess-only, di semua departemen).
   var MENU_KEYS_RESTRICTED_ROLE = ['wh_control_tower', 'input_lembur', 'residance', 'fte_dashboard', 'rekap'];
   var HIDDEN_NAV_KEYS_RESTRICTED = ['kanban', 'index'];
+  if (isSerahTerima) {
+    MENU_KEYS_RESTRICTED_ROLE.push('akurasi_scan');
+    if (menuKeys.indexOf('akurasi_scan') === -1) menuKeys = menuKeys.concat(['akurasi_scan']);
+  }
 
   // Urutan prioritas landing page kalau user "ketendang" dari halaman yg
   // tidak diizinkan -- dipakai bareng menuKeys spy TIDAK PERNAH melempar
@@ -106,6 +117,7 @@
   }
   var GENERAL_LANDING_PRIORITY = ['index', 'wh_control_tower', 'input_lembur', 'fte_dashboard', 'upload', 'kanban', 'rekap', 'residance'];
   var RESTRICTED_LANDING_PRIORITY = ['wh_control_tower', 'input_lembur', 'fte_dashboard', 'residance', 'rekap'];
+  if (isSerahTerima) RESTRICTED_LANDING_PRIORITY.push('akurasi_scan');
 
   // "Upload Data Harian" -- SEBELUMNYA dibatasi ke 2 NIK spesifik
   // hardcode (Ivan, Saepulloh), jadi admin baru di plant/departemen lain
@@ -125,6 +137,9 @@
     role: sessionStorage.getItem('wh_role') || '',
     fullAccess: fullAccess,
     isTL: isTL,
+    isSerahTerima: isSerahTerima,
+    // Role tampilan: role asli + "Serah Terima" untuk akun petugas serah terima (role asli tidak diubah)
+    roleLabel: (sessionStorage.getItem('wh_role') || '') + ((isSerahTerima && roleUpper.indexOf('SERAH TERIMA') === -1) ? ' + Serah Terima' : ''),
     canUploadData: canUploadData,
     isFittingImport: isFittingImport,
     menuKeys: menuKeys, // menu yg aktif utk departemen ini -- dipakai halaman lain kalau perlu
