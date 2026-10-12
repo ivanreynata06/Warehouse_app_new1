@@ -986,7 +986,7 @@ function updateDurasiPreview(){
   var potongInfo = false;
   // Petugas serah terima (tanpa istirahat): tidak ada potongan 1 jam. Daftar ini sama dengan LEMBUR_TANPA_ISTIRAHAT di backend.
   var _nm = String((window.WH_SESSION && window.WH_SESSION.nama) || '').toUpperCase();
-  var tanpaIstirahat = /NGABIDIN|SLAMET\s+RIYADI|IBNU\s+ABDILLAH|\bLINDU\b/.test(_nm);
+  var tanpaIstirahat = /NGABIDIN|SLAMET\s+RIYADI|IBNU\s+ABDILLAH|\bLINDU\b/.test(_nm) || !!(window.WH_SESSION && window.WH_SESSION.isSerahTerima);
   if(jam>4 && !tanpaIstirahat){ jam-=1; potongInfo=true; }
   jam = Math.round(jam*100)/100;
 

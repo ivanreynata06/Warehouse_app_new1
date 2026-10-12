@@ -6146,14 +6146,27 @@ function auditKategoriLemburKosong(tahun) {
 //  Dicocokkan lewat NAMA (tidak peduli huruf besar/kecil). Ubah daftar ini kalau ada tambahan.
 // ================================================================
 var LEMBUR_TANPA_ISTIRAHAT = [/NGABIDIN/, /SLAMET\s+RIYADI/, /IBNU\s+ABDILLAH/, /\bLINDU\b/];
-function _tanpaIstirahat(nama) {
-  var n = String(nama || '').toUpperCase();
-  return LEMBUR_TANPA_ISTIRAHAT.some(function (re) { return re.test(n); });
+var _JABATAN_CACHE = null;
+function _jabatanMap() {
+  if (_JABATAN_CACHE) return _JABATAN_CACHE;
+  var m = {};
+  try {
+    var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_KARYAWAN_LEMBUR);
+    if (sh) sh.getDataRange().getValues().slice(1).forEach(function (r) { if (r[0]) m[String(r[0])] = String(r[3] || ''); });
+  } catch (e) {}
+  return (_JABATAN_CACHE = m);
 }
-// Jam lembur tersimpan: durasi mentah, dipotong 1 jam kalau > 4 jam KECUALI nama dikecualikan
-function _jamLemburBersih(durMin, nama) {
+// Dikecualikan dari potongan istirahat: nama di daftar, ATAU jabatan/role karyawan memuat "Serah Terima"
+function _tanpaIstirahat(nama, kode) {
+  var n = String(nama || '').toUpperCase();
+  if (LEMBUR_TANPA_ISTIRAHAT.some(function (re) { return re.test(n); })) return true;
+  if (kode) return String(_jabatanMap()[String(kode)] || '').toUpperCase().indexOf('SERAH TERIMA') !== -1;
+  return false;
+}
+// Jam lembur tersimpan: durasi mentah, dipotong 1 jam kalau > 4 jam KECUALI dikecualikan
+function _jamLemburBersih(durMin, nama, kode) {
   var durJam = durMin / 60;
-  if (durJam > 4 && !_tanpaIstirahat(nama)) durJam -= 1;
+  if (durJam > 4 && !_tanpaIstirahat(nama, kode)) durJam -= 1;
   return Math.round(durJam * 100) / 100;
 }
 function _namaDariKodeKaryawan(kode) {
@@ -6172,11 +6185,11 @@ function perbaikiLemburTanpaIstirahat(apply) {
   var data = sh.getDataRange().getValues(), n = 0;
   for (var i = 1; i < data.length; i++) {
     var r = data[i];
-    if (!_tanpaIstirahat(r[3])) continue;
+    if (!_tanpaIstirahat(r[3], r[2])) continue;
     var m1 = _timeStrToMinutes(_fmtTime(r[4])), m2 = _timeStrToMinutes(_fmtTime(r[5]));
     if (m1 == null || m2 == null) continue;
     var durMin = m2 - m1; if (durMin <= 0) durMin += 24 * 60;
-    var baru = _jamLemburBersih(durMin, r[3]), lama = Number(r[6]);
+    var baru = _jamLemburBersih(durMin, r[3], r[2]), lama = Number(r[6]);
     if (Math.abs(baru - lama) < 0.001) continue;
     n++;
     Logger.log('Baris ' + (i + 1) + ' | ' + r[3] + ' | ' + _fmtTime(r[4]) + '-' + _fmtTime(r[5]) + ' | ' + lama + ' -> ' + baru);
@@ -6199,7 +6212,7 @@ function saveLembur(data) {
     if (durMin <= 0) durMin += 24 * 60; // lembur lewat tengah malam
     // Sesuai catatan di formulir SPL: lembur di atas 4 jam yang melewati
     // waktu istirahat otomatis kepotong 1 jam (kecuali petugas serah terima: tanpa istirahat).
-    var durJam = _jamLemburBersih(durMin, data.nama || _namaDariKodeKaryawan(data.kode));
+    var durJam = _jamLemburBersih(durMin, data.nama || _namaDariKodeKaryawan(data.kode), data.kode);
 
     sh.appendRow([
       new Date(), data.tanggal, data.kode, data.nama || '',
@@ -6328,10 +6341,17 @@ function getLemburList(filter) {
       if (kodeFilter && String(r[2]) !== String(kodeFilter)) continue;
       var dk = _fmtYMD(tgl);
       var editReqStatus = String(r[13] || ''); // kolom N
+      // Petugas serah terima tanpa istirahat: total jam dihitung ulang dari jam mulai/selesai saat
+      // dibaca, jadi lembur lama yang dulu terpotong 1 jam langsung tampil benar (data tersimpan tidak diubah).
+      var totalJamBaca = Number(r[6]) || 0;
+      if (_tanpaIstirahat(r[3], r[2])) {
+        var mm1 = _timeStrToMinutes(_fmtTime(r[4])), mm2 = _timeStrToMinutes(_fmtTime(r[5]));
+        if (mm1 != null && mm2 != null) { var dd = mm2 - mm1; if (dd <= 0) dd += 24 * 60; totalJamBaca = _jamLemburBersih(dd, r[3], r[2]); }
+      }
       out.push({
         rowIndex: i + 1, timestamp: r[0] ? new Date(r[0]).toISOString() : '',
         tanggal: dk, kode: String(r[2]), nama: String(r[3]),
-        jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: Number(r[6]) || 0,
+        jamMulai: _fmtTime(r[4]), jamSelesai: _fmtTime(r[5]), totalJam: totalJamBaca,
         keterangan: String(r[7] || ''), inputOleh: String(r[8] || ''),
         approvalStatus: String(r[9] || 'Pending'), approvedBy: String(r[10] || ''),
         kategoriLembur: String(r[12] || ''), // kolom M
@@ -6792,7 +6812,7 @@ function editLemburByTL(rowIndex, tanggalBaru, jamMulaiBaru, jamSelesaiBaru, ket
     var durMin = m2 - m1;
     if (durMin <= 0) durMin += 24 * 60; // lembur lewat tengah malam
     // potongan jam istirahat, konsisten dgn input awal (saveLembur/submitEditLembur); petugas serah terima tanpa potongan
-    var durJam = _jamLemburBersih(durMin, sh.getRange(rowIndex, 4).getValue());
+    var durJam = _jamLemburBersih(durMin, sh.getRange(rowIndex, 4).getValue(), sh.getRange(rowIndex, 3).getValue());
 
     var tglDate = new Date(String(tanggalBaru) + 'T00:00:00');
     if (isNaN(tglDate.getTime())) return { success: false, error: 'Format tanggal tidak valid (harus YYYY-MM-DD).' };
@@ -7006,7 +7026,7 @@ function submitEditLembur(rowIndex, nikRequester, newData) {
     if (m1 == null || m2 == null) return { success: false, error: 'Format jam tidak valid (harus HH:MM)' };
     var durMin = m2 - m1;
     if (durMin <= 0) durMin += 24 * 60;
-    var durJam = _jamLemburBersih(durMin, sh.getRange(rowIndex, 4).getValue());
+    var durJam = _jamLemburBersih(durMin, sh.getRange(rowIndex, 4).getValue(), sh.getRange(rowIndex, 3).getValue());
 
     // ------------------------------------------------------------
     //  Kalau JAM KERJA (jamMulai/jamSelesai) TIDAK berubah -- cuma
