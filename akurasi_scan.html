@@ -147,6 +147,11 @@ input.inp::placeholder{color:var(--txt3);}
 .col-empty{font-size:11px;color:var(--txt3);text-align:center;padding:22px 10px;}
 
 /* panel Close */
+.anomp{border-top-color:var(--amber);}
+.anom-warn{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:9px 12px;font-size:11px;color:#f3c46b;line-height:1.55;margin-bottom:4px;} .anom-warn b{color:var(--amber);}
+.anom-b{font-size:11px;color:var(--amber);}
+.anom-st{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--txt2);padding-top:6px;border-top:1px dashed var(--line2);} .anom-st b.bad{color:var(--red);} .anom-st b.ok{color:var(--green);}
+.pic-line.mut{color:var(--txt3);border-top:1px dashed var(--line2);}
 .pic{margin-top:2px;padding:8px 10px;border-radius:8px;background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.25);display:flex;flex-direction:column;gap:2px;}
 .pic span{font-size:9.5px;letter-spacing:.3px;text-transform:uppercase;color:var(--txt3);}
 .pic b{font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:var(--txt);}
@@ -440,6 +445,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
       </div>
       <div class="kpis" id="kpis"></div>
       <div class="trmp" id="trmp" hidden></div>
+      <div class="trmp anomp" id="anomp" hidden></div>
       <div class="closep" id="closep" hidden></div>
       <div class="rzp" id="rzp" hidden></div>
       <div class="voidp" id="voidp" hidden></div>
@@ -461,9 +467,9 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
 
 <div class="toast" id="toast"></div>
 
-<script src="./assets/js/akurasi-core.js?v=20261010a"></script>
-<script src="./assets/js/akurasi-store.js?v=20261010a"></script>
-<script src="./assets/js/akurasi-reasons.js?v=20261010a"></script>
+<script src="./assets/js/akurasi-core.js?v=20261014a"></script>
+<script src="./assets/js/akurasi-store.js?v=20261014a"></script>
+<script src="./assets/js/akurasi-reasons.js?v=20261014a"></script>
 <script>
 (function(){
 'use strict';
@@ -518,8 +524,9 @@ function compute(){
   var keepDept = function(r){ return !S.deptSel || r.dept === S.deptSel; };
   var allV = S.data.voucher ? S.data.voucher.rows : [], allB = S.data.bfl ? S.data.bfl.rows : [], allT = S.data.ter ? S.data.ter.rows : [];
   // Voucher yang alasannya "Dibuatkan voucher baru" otomatis dihapus dari semua perhitungan
-  var vr = allV.filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r); });
-  var bflRows = allB.filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r); });
+  // Voucher dengan qty 0 tidak membawa barang (tidak ada yang di-scan / diterima), jadi tidak dihitung
+  var vr = allV.filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r) && r.qty > 0; });
+  var bflRows = allB.filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r) && r.qty > 0; });
   var terRows = allT.filter(keepDept);
   var f = C.officerFilter(vr, bflRows, terRows, S.me);
   vr = f.vr; bflRows = f.bfl; terRows = f.ter;
@@ -813,7 +820,7 @@ function renderLane(){
   });
   S._items = items; S._allItems = v.items;
   var okKey = { 'in': 'sesuai', bfl: 'bfl', out: 'full' }[S.lane];
-  renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm(); renderVoid();
+  renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm(); renderAnom(); renderVoid();
   if (S.me) { document.getElementById('closep').hidden = true; document.getElementById('trend-wrap').hidden = true; }
   var dst = document.getElementById('detail-seg-top'); dst.hidden = S.lane !== 'bfl'; dst.innerHTML = S.lane === 'bfl' ? detailSegHtml() : '';
   bd.className = 'board n' + L.cols.length;
@@ -987,6 +994,41 @@ function detailSegHtml(){
   return '<div class="seg dseg"><span>Detail PIC</span><button class="' + (S.detail === 'show' ? 'on' : '') + '" onclick="setDetail(\'show\')">Tampilkan</button><button class="' + (S.detail === 'hide' ? 'on' : '') + '" onclick="setDetail(\'hide\')">Sembunyikan</button></div>';
 }
 window.setDetail = function(m){ S.detail = m === 'hide' ? 'hide' : 'show'; try { localStorage.setItem('akurasi_detail', S.detail); } catch (e) {} renderLane(); };
+// Keterangan: apakah voucher TRM ini ada di Master Backflush, dan apa statusnya di sana
+function bflNote(v){
+  var r = S.resRaw && S.resRaw.bfl;
+  if (!r || !r.bflCount) return '';
+  return '<div class="pic-line mut">' + (v.inBfl ? 'Master Backflush: status <b>' + esc(v.bStatus || 'kosong') + '</b>' : 'Tidak ada di Master Backflush (belum ada bukti sudah BFL)') + '</div>';
+}
+// Panel anomali: status beda antara Backflush dan Voucher + Box ID untuk nomor voucher yang sama
+function renderAnom(){
+  var el = document.getElementById('anomp');
+  var r = S.resRaw && S.resRaw.bfl;
+  if (S.lane !== 'bfl' || !r) { el.hidden = true; return; }
+  var inMonth = function(d){ return !S.month || (d || '').indexOf(S.month) === 0; };
+  var list = (r.anom || []).filter(function(a){ return inMonth(a.r.date); });
+  var A = list.filter(function(a){ return a.type === 'A'; }), B = list.filter(function(a){ return a.type === 'B'; });
+  // voucher TRM yang tidak ada di Master Backflush + cakupan shift file Backflush
+  var bflShift = {}; (S.data.bfl ? S.data.bfl.rows : []).forEach(function(x){ var m = /^([123])/.exec(x.group || ''); if (m) bflShift[m[1]] = 1; });
+  var vShift = {}; (S.data.voucher ? S.data.voucher.rows : []).forEach(function(x){ var m = /^([123])/.exec(x.group || ''); if (m && inMonth(x.date)) vShift[m[1]] = (vShift[m[1]] || 0) + 1; });
+  var gap = Object.keys(vShift).filter(function(k){ return !bflShift[k]; });
+  var trmNo = r.items.filter(function(i){ return i.e.status === 'selisih' && !i.v.inBfl && inMonth(i.date); });
+  if (!A.length && !B.length && !(gap.length && S.data.bfl)) { el.hidden = true; return; }
+  el.hidden = false;
+  var byDay = {}; list.forEach(function(a){ var o = byDay[a.r.date] || (byDay[a.r.date] = { A: 0, B: 0, q: 0 }); o[a.type]++; o.q += a.r.qty; });
+  var days = Object.keys(byDay).sort();
+  var key = 'bfl:anom', n = S.shown[key] || 8;
+  var cards = A.concat(B).slice(0, n).map(function(a){ var v = a.r;
+    return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + esc(v.group) + (picNameOf(v) ? ' · <b class="gpn">' + esc(picNameOf(v)) + '</b>' : '') + ' · ' + esc(v.voucher) + '</span></div>' +
+      '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft"><span>Qty ' + fmt(v.qty) + ' · ' + esc(dayInfo(v.date).full) + '</span><span class="chip ' + (a.type === 'A' ? 'warn' : 'info') + '">' + (a.type === 'A' ? 'Beda status' : 'Beda status (kebalikan)') + '</span></div>' +
+      '<div class="anom-st"><span>Voucher + Box ID <b class="' + (a.type === 'A' ? 'bad' : 'ok') + '">' + esc(v.vStatus || 'kosong') + '</b></span><span class="arrow">≠</span><span>Backflush <b class="' + (a.type === 'A' ? 'ok' : 'bad') + '">' + esc(v.bStatus || 'kosong') + '</b></span></div></div>'; }).join('');
+  var more = (A.length + B.length) > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(8, A.length + B.length - n) + ' lagi</button>' : '';
+  var warn = (gap.length && S.data.bfl) ? '<div class="anom-warn"><b>Cakupan Master Backflush tidak lengkap.</b> File Backflush tidak memuat Shift ' + gap.join(', ') + ', padahal Master Voucher punya ' + gap.map(function(k){ return fmt(vShift[k]) + ' voucher Shift ' + k; }).join(', ') + '. Status voucher itu tidak bisa dicek dari Backflush' + (trmNo.length ? ' (' + fmt(trmNo.length) + ' voucher TRM di panel atas tidak ada di Master Backflush)' : '') + '. Ekspor ulang Backflush dengan Shift/Group mencakup semua shift.</div>' : '';
+  var tbl = days.length ? '<div class="tbl-wrap" style="margin-top:12px;"><table><thead><tr><th>Tanggal voucher</th><th>Backflush BFL, Voucher TRM</th><th>Voucher BFL, Backflush TRM</th><th>Qty</th></tr></thead><tbody>' + days.map(function(d){ var o = byDay[d]; return '<tr><td>' + esc(dayInfo(d).full) + '</td><td class="' + (o.A ? 'neg' : 'zero') + '">' + fmt(o.A) + '</td><td class="' + (o.B ? 'pos' : 'zero') + '">' + fmt(o.B) + '</td><td>' + fmt(o.q) + '</td></tr>'; }).join('') + '</tbody><tfoot><tr><td>Total</td><td>' + fmt(A.length) + '</td><td>' + fmt(B.length) + '</td><td>' + fmt(list.reduce(function(x, a){ return x + a.r.qty; }, 0)) + '</td></tr></tfoot></table></div>' : '';
+  el.innerHTML = '<div class="trmp-h"><div><b>Anomali status: Backflush vs Voucher + Box ID</b><span>Nomor voucher yang sama tetapi statusnya berbeda di dua master. Yang dihitung benar adalah status yang paling beres (BFL, lalu MANUAL, lalu TRM), jadi voucher ini tidak lagi tampil TRM. Rekap ini untuk menelusuri kenapa master Voucher + Box ID tidak ikut ter-update.</span></div>' +
+    '<div class="trmp-r"><div class="trmp-n ' + (A.length ? 'bad' : 'ok') + '">' + fmt(A.length) + '<small> BFL di Backflush, TRM di Voucher</small></div>' + (B.length ? '<div class="anom-b">' + fmt(B.length) + ' kebalikan</div>' : '') + '</div></div>' + warn +
+    (list.length ? tbl + '<div class="closep-g" style="margin-top:12px;">' + cards + '</div>' + more : '<div class="closep-empty">Tidak ada nomor voucher yang statusnya berbeda antara Backflush dan Voucher + Box ID.</div>');
+}
 // Panel khusus Backflush: TRM yang sudah lewat H+1 dan siapa PIC Serah Terimanya
 function renderTrm(){
   var el = document.getElementById('trmp');
@@ -1007,7 +1049,7 @@ function renderTrm(){
   var cards = t.list.slice(0, n).map(function(x){
     var v = x.it.v;
     return '<div class="card"><div class="t"><span class="it">' + esc(v.item) + '</span><span class="gr">' + esc(v.group) + (picNameOf(v) ? ' · <b class="gpn">' + esc(picNameOf(v)) + '</b>' : '') + ' · ' + esc(v.voucher) + '</span></div>' +
-      '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft"><span>Qty ' + fmt(v.qty) + ' · ' + esc(dayInfo(v.date).full) + '</span><span class="chip bad">TRM' + (x.age != null ? ' · H+' + x.age : '') + '</span></div>' + (S.detail === 'hide' ? '<div class="pic-line">PIC Serah Terima: <b>' + esc(picNameOf(v) ? (v.pic || {}).recvPic : '-') + '</b></div>' : picBlock(v)) + '</div>';
+      '<div class="ds">' + esc(descOf(v.item) || v.desc) + '</div><div class="ft"><span>Qty ' + fmt(v.qty) + ' · ' + esc(dayInfo(v.date).full) + '</span><span class="chip bad">TRM' + (x.age != null ? ' · H+' + x.age : '') + '</span></div>' + (S.detail === 'hide' ? '<div class="pic-line">PIC Serah Terima: <b>' + esc(picNameOf(v) ? (v.pic || {}).recvPic : '-') + '</b></div>' : picBlock(v)) + bflNote(v) + '</div>';
   }).join('');
   var more = t.list.length > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(8, t.list.length - n) + ' lagi</button>' : '';
   el.hidden = false;
@@ -1217,6 +1259,10 @@ window.exportXlsx = function(){
       var det0 = [['Tanggal', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Status', 'Qty', 'Alasan', 'PIC Serah Terima', 'Grup PIC', 'Shift PIC', 'Shift voucher / regu produksi']];
       v.items.filter(function(i){ return i.e.status !== 'bfl'; }).forEach(function(i){ var x = i.v; det0.push([i.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, i.e.status === 'wait' ? 'MENUNGGU INPUT (batas ' + x.batas + ')' : (x.status || 'TRM'), x.qty, reasonText('bfl', i), (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvPic : '', (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvGroup : '', (i.e.status === 'selisih' || i.e.status === 'wait') && x.pic ? x.pic.recvShift : '', x.pic && x.pic.shift ? 'Shift ' + x.pic.shift + (x.pic.regu ? ', Regu produksi ' + x.pic.regu : '') : '']); });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det0), 'Detail Manual & TRM');
+      var an = [['Jenis', 'Tanggal voucher', 'Voucher', 'Item Number', 'Deskripsi', 'Group', 'Qty', 'Status Voucher + Box ID', 'Status Backflush', 'PIC Serah Terima']];
+      ((S.resRaw.bfl && S.resRaw.bfl.anom) || []).filter(function(a){ return !S.month || (a.r.date || '').indexOf(S.month) === 0; }).forEach(function(a){ var x = a.r;
+        an.push([a.type === 'A' ? 'Backflush BFL, Voucher TRM' : 'Voucher BFL, Backflush TRM', x.date, x.voucher, x.item, descOf(x.item) || x.desc, x.group, x.qty, x.vStatus || 'kosong', x.bStatus || 'kosong', x.pic && x.pic.recvPic ? x.pic.recvPic : '']); });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(an), 'Anomali Status');
       return;
     }
     rows = [L.th.slice(0, 5).concat(['Akurasi (%)'])];

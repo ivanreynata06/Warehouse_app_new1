@@ -51,8 +51,8 @@
     var map = (D.alasan && D.alasan.map) || {};
     // Data GABUNGAN Fitting Import + Rucika. Voucher yang dibuatkan voucher baru dihapus dari
     // perhitungan. Petugas serah terima hanya melihat shift terkait; admin / lainnya melihat semua.
-    var vr = (D.voucher ? D.voucher.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher); });
-    var bflRows = (D.bfl ? D.bfl.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher); });
+    var vr = (D.voucher ? D.voucher.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher) && r.qty > 0; });
+    var bflRows = (D.bfl ? D.bfl.rows : []).filter(function (r) { return !RZ.isVoid(map, r.voucher) && r.qty > 0; });
     var f = C.officerFilter(vr, bflRows, D.ter ? D.ter.rows : [], C.officerScope());
     vr = f.vr; bflRows = f.bfl;
     var std = D.std ? D.std.map : {};

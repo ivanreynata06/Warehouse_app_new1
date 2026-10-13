@@ -479,12 +479,14 @@
     vouchers.forEach(function (v) {
       var b = byNo[v.voucher]; seen[v.voucher] = 1;
       recs.push({ voucher: v.voucher, item: v.item, desc: v.desc, group: v.group, qty: v.qty,
+        vStatus: v.status || '', bStatus: b ? (b.status || '') : null, inBfl: !!b, dept: v.dept,
         status: best(v.status, b ? b.status : ''), date: v.date, src: b ? 'bfl' : 'voucher',
         close: lateClose((b && b.closeBfl) || v.closeBfl || null, v.date, 2) });
     });
     (bflRows || []).forEach(function (b) {
       if (seen[b.voucher]) return;
       recs.push({ voucher: b.voucher, item: b.item, desc: b.desc, group: b.group, qty: b.qty,
+        vStatus: null, bStatus: b.status || '', inBfl: true, dept: b.dept,
         status: b.status, date: b.date, src: 'bfl', close: lateClose(b.closeBfl || null, b.date, 2) });
     });
     var days = {}, items = [], tot = newBucket();
@@ -514,6 +516,17 @@
     });
     var res = finish(days, items, tot);
     res.ref = refN == null ? '' : plusDay('1970-01-01', refN); res.grace = grace;
+    // ANOMALI status antara Master Voucher + Box ID dan Master Backflush untuk nomor voucher yang SAMA:
+    //  A = Backflush sudah BFL/MANUAL tetapi Voucher + Box ID masih TRM / kosong
+    //  B = kebalikannya (Voucher + Box ID sudah BFL/MANUAL tetapi Backflush masih TRM / kosong)
+    res.anom = [];
+    recs.forEach(function (r) {
+      if (!r.inBfl || r.vStatus == null) return;
+      var rv = rank(r.vStatus), rb = rank(r.bStatus);
+      if (rb > 0 && rv === 0) res.anom.push({ type: 'A', r: r });
+      else if (rv > 0 && rb === 0) res.anom.push({ type: 'B', r: r });
+    });
+    res.bflCount = (bflRows || []).length;
     return res;
   }
 
