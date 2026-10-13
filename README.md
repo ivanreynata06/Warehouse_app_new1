@@ -284,3 +284,6 @@ Export Master Voucher / Backflush / Scan Out ditarik per PIC serah terima yang m
 
 ### Anomali status Backflush vs Voucher + Box ID
 Panel di jalur Voucher vs Backflush merekap nomor voucher yang statusnya berbeda di dua master: **A** = Backflush sudah BFL/MANUAL tetapi Voucher + Box ID masih TRM/kosong, **B** = kebalikannya. Ada rekap per tanggal, daftar kartu, dan sheet "Anomali Status" di Unduh rekap. Panel juga memperingatkan kalau Master Backflush tidak memuat shift tertentu (mis. Shift 3) padahal Master Voucher memilikinya. Voucher dengan qty 0 tidak dihitung di semua jalur.
+
+### SPL multi-halaman
+Formulir SPL OS (Google Dokumen) sekarang menambah halaman otomatis kalau lembur lebih banyak dari jumlah baris template (jumlah baris dibaca dari penanda `{{TGLn}}` terbesar di template, default 8). Halaman tambahan adalah salinan formulir yang sama berisi baris berikutnya; berlaku untuk Print, unduh Word, dan template khusus. PDF cache SPL lama otomatis dibuat ulang.

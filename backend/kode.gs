@@ -7556,6 +7556,61 @@ var SPL_JOB_BAGIAN_DEFAULT = { job: 'Staff Warehouse (OS)', bagian: 'Outsourcing
 //  jumlahEntri }. HARUS di-cleanup (setTrashed) oleh pemanggil setelah
 //  selesai export/convert.
 // ================================================================
+// Jumlah baris data di template = penanda {{TGLn}} terbesar (minimal 8, sesuai template standar)
+function _splJumlahBaris(teks) {
+  var m = String(teks || '').match(/\{\{TGL(\d+)\}\}/g) || [], mx = 0;
+  m.forEach(function (x) { var n = Number(x.replace(/\D/g, '')); if (n > mx) mx = n; });
+  return mx || 8;
+}
+
+// Isi SATU halaman formulir. target = Body (halaman 1) atau elemen salinan template (halaman berikutnya).
+// pageIdx menentukan lembur mana yang masuk: baris pageIdx*maxRows ... (pageIdx+1)*maxRows-1.
+function _splIsiHalaman(target, ctx, pageIdx) {
+  target.replaceText('\\{\\{JOB\\}\\}', ctx.jb.job);
+  target.replaceText('\\{\\{BAGIAN\\}\\}', ctx.jb.bagian);
+  target.replaceText('\\{\\{PERIODE\\}\\}', ctx.tahun + '/' + ctx.bulanNama);
+  for (var i = 0; i < ctx.maxRows; i++) {
+    var n = i + 1, idx = pageIdx * ctx.maxRows + i;
+    var vTgl = '', vNama = '', vSimid = '', vAwal = '', vAkhir = '', vTotal = '', vKet = '';
+    if (idx < ctx.list.length) {
+      var l = ctx.list[idx];
+      var p = l.tanggal.split('-');
+      vTgl = p[2] + '/' + p[1] + '/' + p[0];
+      vNama = ctx.k.nama; vSimid = ctx.k.kode;
+      vAwal = l.jamMulai; vAkhir = l.jamSelesai;
+      // SPL menampilkan DURASI MENTAH (jam selesai - jam mulai), TANPA potongan 1 jam istirahat,
+      // beda dengan l.totalJam di rekap FTE. Jadi lembur 6 jam tetap tertulis "6" di form SPL.
+      var rawMin = _timeStrToMinutes(l.jamSelesai) - _timeStrToMinutes(l.jamMulai);
+      if (rawMin < 0) rawMin += 24 * 60; // lembur lewat tengah malam
+      vTotal = String(Math.round((rawMin / 60) * 100) / 100); vKet = l.keterangan || '';
+    }
+    target.replaceText('\\{\\{TGL' + n + '\\}\\}', vTgl);
+    target.replaceText('\\{\\{NAMA' + n + '\\}\\}', vNama);
+    target.replaceText('\\{\\{SIMID' + n + '\\}\\}', vSimid);
+    target.replaceText('\\{\\{AWAL' + n + '\\}\\}', vAwal);
+    target.replaceText('\\{\\{AKHIR' + n + '\\}\\}', vAkhir);
+    target.replaceText('\\{\\{TOTAL' + n + '\\}\\}', vTotal);
+    // replaceText() memperlakukan argumen kedua sebagai pola dengan backreference $1,$2: "$" di
+    // Keterangan harus di-escape jadi "$$" supaya dianggap literal.
+    target.replaceText('\\{\\{KET' + n + '\\}\\}', String(vKet).replace(/\$/g, '$$$$'));
+  }
+  // Tanda tangan digital TL di {{TTD_TL}} (kolom "Disetujui"); dipasang di setiap halaman
+  if (ctx.sigBlob) {
+    var foundTtd = target.findText('\\{\\{TTD_TL\\}\\}');
+    if (foundTtd) {
+      var elTtd = foundTtd.getElement();
+      elTtd.asText().setText('');
+      try {
+        elTtd.getParent().asParagraph().insertInlineImage(0, ctx.sigBlob).setWidth(90).setHeight(40);
+      } catch (imgErr) {
+        // placeholder tidak di dalam paragraf biasa -- lewati gambar, tidak fatal.
+      }
+    }
+  } else {
+    target.replaceText('\\{\\{TTD_TL\\}\\}', '');
+  }
+}
+
 function _buildSPLDocument(kode, bulan, tahun) {
   var props = PropertiesService.getScriptProperties();
   var templateDocId = props.getProperty('SPL_TEMPLATE_DOC_ID');
@@ -7601,65 +7656,40 @@ function _buildSPLDocument(kode, bulan, tahun) {
 
   var body = doc.getBody();
 
-  body.replaceText('\\{\\{JOB\\}\\}', jb.job);
-  body.replaceText('\\{\\{BAGIAN\\}\\}', jb.bagian);
-  body.replaceText('\\{\\{PERIODE\\}\\}', tahun + '/' + bulanNama);
+  // Jumlah baris data per halaman = jumlah penanda {{TGLn}} di template (default 8). Kalau lembur
+  // lebih banyak dari itu, halaman formulir DITAMBAH otomatis (salinan formulir yang sama, diisi
+  // baris berikutnya) sehingga tidak ada lembur yang terpotong.
+  var maxRows = _splJumlahBaris(body.getText());
+  var jumlahHalaman = Math.max(1, Math.ceil(lemburList.length / maxRows));
 
-  var MAX_ROWS = 8; // sesuai jumlah baris data di template
-  for (var i = 0; i < MAX_ROWS; i++) {
-    var n = i + 1;
-    var vTgl = '', vNama = '', vSimid = '', vAwal = '', vAkhir = '', vTotal = '', vKet = '';
-    if (i < lemburList.length) {
-      var l = lemburList[i];
-      var p = l.tanggal.split('-');
-      vTgl = p[2] + '/' + p[1] + '/' + p[0];
-      vNama = k.nama; vSimid = k.kode;
-      vAwal = l.jamMulai; vAkhir = l.jamSelesai;
-      // PENTING: SPL (Surat Perintah Lembur) menampilkan DURASI MENTAH
-      // (jam selesai - jam mulai), TANPA potongan 1 jam istirahat -- beda
-      // dengan l.totalJam yang dipakai di rekap FTE (sudah otomatis
-      // terpotong 1 jam kalau durasi > 4 jam). Jadi lembur 6 jam tetap
-      // tertulis "6" di form SPL, meski di rekap FTE tercatat "5".
-      var rawMin = _timeStrToMinutes(l.jamSelesai) - _timeStrToMinutes(l.jamMulai);
-      if (rawMin < 0) rawMin += 24 * 60; // jaga-jaga kalau lembur lewat tengah malam
-      var rawJam = Math.round((rawMin / 60) * 100) / 100;
-      vTotal = String(rawJam); vKet = l.keterangan || '';
-    }
-    body.replaceText('\\{\\{TGL' + n + '\\}\\}', vTgl);
-    body.replaceText('\\{\\{NAMA' + n + '\\}\\}', vNama);
-    body.replaceText('\\{\\{SIMID' + n + '\\}\\}', vSimid);
-    body.replaceText('\\{\\{AWAL' + n + '\\}\\}', vAwal);
-    body.replaceText('\\{\\{AKHIR' + n + '\\}\\}', vAkhir);
-    body.replaceText('\\{\\{TOTAL' + n + '\\}\\}', vTotal);
-    // PENTING: replaceText() Apps Script memperlakukan argumen kedua
-    // (replacement) sebagai pola dgn dukungan backreference $1,$2,dst --
-    // kalau Keterangan user kebetulan mengandung karakter "$" (mis. nominal
-    // uang), itu bisa salah diartikan / bikin teksnya hilang/berubah.
-    // "$" harus di-escape jadi "$$" dulu supaya dianggap literal.
-    body.replaceText('\\{\\{KET' + n + '\\}\\}', String(vKet).replace(/\$/g, '$$$$'));
-  }
-
-  // ---- Tanda tangan digital TL ----
-  // Kalau ada entri lembur bulan ini yang sudah Disetujui, ambil tanda
-  // tangan TL yang meng-approve (sudah di-upload sekali lewat
-  // uploadTlSignature) dan tempel ke placeholder {{TTD_TL}} di template
-  // (letakkan placeholder itu di sel kolom "Disetujui" pada template Doc).
+  // Tanda tangan TL (sekali ambil, dipakai di semua halaman)
   var approvedEntry = lemburList.find(function (l) { return l.approvalStatus === 'Disetujui' && l.approvedBy; });
   var sigBlob = approvedEntry ? _getTlSignatureBlob(approvedEntry.approvedBy) : null;
-  if (sigBlob) {
-    var foundTtd = body.findText('\\{\\{TTD_TL\\}\\}');
-    if (foundTtd) {
-      var elTtd = foundTtd.getElement();
-      elTtd.asText().setText('');
-      try {
-        elTtd.getParent().asParagraph().insertInlineImage(0, sigBlob).setWidth(90).setHeight(40);
-      } catch (imgErr) {
-        // posisi placeholder bukan paragraph biasa (mis. langsung di table
-        // cell tanpa paragraph pembungkus) -- lewati gambar, tidak fatal.
+  var ctx = { jb: jb, k: k, tahun: tahun, bulanNama: bulanNama, list: lemburList, maxRows: maxRows, sigBlob: sigBlob };
+
+  // Salinan isi template yang masih polos, bahan untuk halaman ke-2 dan seterusnya
+  var polos = [];
+  if (jumlahHalaman > 1) for (var ci = 0; ci < body.getNumChildren(); ci++) polos.push(body.getChild(ci).copy());
+
+  _splIsiHalaman(body, ctx, 0);
+
+  for (var pg = 1; pg < jumlahHalaman; pg++) {
+    // page break diletakkan DI DALAM paragraf penutup halaman sebelumnya (bukan paragraf baru),
+    // supaya tidak muncul halaman kosong di antara dua formulir
+    var lastChild = body.getChild(body.getNumChildren() - 1);
+    if (lastChild.getType() === DocumentApp.ElementType.PARAGRAPH) lastChild.asParagraph().appendPageBreak();
+    else body.appendPageBreak();
+    for (var pi = 0; pi < polos.length; pi++) {
+      var el = polos[pi], added = null, T = DocumentApp.ElementType;
+      switch (el.getType()) {
+        case T.PARAGRAPH: added = body.appendParagraph(el.asParagraph()); break;
+        case T.TABLE: added = body.appendTable(el.asTable()); break;
+        case T.LIST_ITEM: added = body.appendListItem(el.asListItem()); break;
+        case T.HORIZONTAL_RULE: added = body.appendHorizontalRule(); break;
+        default: break;
       }
+      if (added) _splIsiHalaman(added, ctx, pg);
     }
-  } else {
-    body.replaceText('\\{\\{TTD_TL\\}\\}', '');
   }
 
   doc.saveAndClose();
@@ -7757,7 +7787,7 @@ function _splSig(kode, bulan, tahun) {
   var rows = (lr.success ? lr.data : []).map(function (l) {
     return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || ''].join('~');
   }).sort().join('|');
-  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, 'v2'].join('##');
+  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, 'v3-multihalaman'].join('##');
   var d = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8);
   return { sig: d.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 12), k: k };
 }
