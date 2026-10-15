@@ -805,7 +805,7 @@ function getLoadingTimeAnalytics(bulan, tahun) {
     bulan = Number(bulan); tahun = Number(tahun);
 
     var scriptCacheLt = CacheService.getScriptCache();
-    var cacheKeyLt = 'loadingTimeAnalytics_' + ACTIVE_WORKSPACE + '_' + tahun + '_' + bulan;
+    var cacheKeyLt = 'loadingTimeAnalytics_v2_' + ACTIVE_WORKSPACE + '_' + tahun + '_' + bulan;
     var cachedLt = scriptCacheLt.get(cacheKeyLt);
     if (cachedLt) return JSON.parse(cachedLt);
 
@@ -822,8 +822,8 @@ function getLoadingTimeAnalytics(bulan, tahun) {
       if (!spm) continue;
       var tglRaw = row[0];
       if (!tglRaw) continue;
-      var tgl = new Date(tglRaw);
-      if ((tgl.getMonth() + 1) !== bulan || tgl.getFullYear() !== tahun) continue;
+      var tgl = _tglPengiriman(tglRaw);
+      if (!tgl || (tgl.getMonth() + 1) !== bulan || tgl.getFullYear() !== tahun) continue;
 
       var jenis = String(row[6] || '').trim() || '(Tidak diisi)';
       var mulaiStr = _fmtTime(row[7]);
@@ -945,10 +945,12 @@ function getPendingRows() {
       if (waktuMulai) continue;             // sudah mulai muat (atau sudah "Ikut Fitting"), lewati
       if (statusBatal) continue;            // sudah dibatalkan, lewati
 
-      var tglRaw = row[0];
-      var tgl    = tglRaw ? new Date(tglRaw) : null;
-      if (tgl) tgl.setHours(0,0,0,0);
-      if (tgl && tgl.getTime() !== today.getTime()) continue; // hanya hari ini
+      // Tanggal dibaca dengan _tglPengiriman (aman beda zona waktu script vs sheet, juga teks dd/mm/yyyy).
+      // Dulu memakai new Date()+setHours(): tanggal bisa bergeser 1 hari sehingga kiriman kemarin
+      // (mis. Mega Bangunan) tampil sebagai kiriman hari ini, dan kiriman hari ini (DC-Kutorejo) hilang
+      // dari daftar. Baris tanpa tanggal valid TIDAK dianggap hari ini.
+      var tgl = _tglPengiriman(row[0]);
+      if (!tgl || tgl.getTime() !== today.getTime()) continue; // hanya hari ini
 
       pending.push({
         rowIndex : i + 1,
@@ -5741,12 +5743,21 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       // Sudah ada (tanggal sama) -- cek apakah Agen(B)/Nopol(F) di sheet
       // masih kosong tapi sekarang sudah terisi di sumber -> susulkan
       // update-nya.
-      var currentRow = sheet.getRange(rowNum, 1, 1, 6).getValues()[0]; // A-F
+      var currentRow = sheet.getRange(rowNum, 1, 1, 10).getValues()[0]; // A-J
       var currentAgen = String(currentRow[1] || '').trim();
       var currentNopol = String(currentRow[5] || '').trim();
+      var belumAdaAktivitas = !currentRow[7] && !currentRow[8] && !String(currentRow[9] || '').trim(); // H/I/J kosong
       var perluUpdate = false;
       if (!currentAgen && x.nama) { sheet.getRange(rowNum, 2).setValue(x.nama); perluUpdate = true; }
       if (!currentNopol && x.nopol) { sheet.getRange(rowNum, 6).setValue(x.nopol); perluUpdate = true; }
+      // Sumber jadwal adalah acuan SELAMA belum ada aktivitas muat: kalau tujuan / nopol di sumber DIKOREKSI
+      // (mis. L 9197 UT semula Mega Bangunan, aktualnya DC-Kutorejo), baris ikut diperbarui. Dulu hanya
+      // mengisi yang kosong, jadi tujuan lama tetap tampil walau sumber sudah benar. Baris yang sudah mulai
+      // muat tidak diubah.
+      if (belumAdaAktivitas) {
+        if (currentAgen && x.nama && currentAgen !== x.nama) { sheet.getRange(rowNum, 2).setValue(x.nama); perluUpdate = true; }
+        if (currentNopol && x.nopol && currentNopol !== x.nopol) { sheet.getRange(rowNum, 6).setValue(x.nopol); perluUpdate = true; }
+      }
       if (x.keterangan) { sheet.getRange(rowNum, 11).setValue(x.keterangan); } // kolom K, selalu disamakan dgn sumber terbaru
       if (perluUpdate) diupdate++;
     });
@@ -8034,4 +8045,32 @@ function _akurasiUpsertAlasan(ss, entries, by) {
   var start = sh.getLastRow() + 1;
   sh.getRange(start, 1, rows.length, 3).setNumberFormat('@').setValues(rows);
   return { at: at, count: Object.keys(obj.map).length };
+}
+
+
+// Diagnosa: jalankan dari editor Apps Script untuk melacak kenapa satu nopol menampilkan tujuan yang salah.
+// Mencetak (Logger) semua baris PENGIRIMAN yang memuat nopol / SPM tsb, dan apa yang dibaca dari sumber
+// jadwal untuk tanggal-tanggal terkait. Contoh: diagNopolPengiriman('L 9197 UT', ['13/10/2026','14/10/2026'])
+function diagNopolPengiriman(nopolAtauSpm, tanggalList) {
+  var q = String(nopolAtauSpm || '').replace(/\s+/g, '').toUpperCase();
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(SH_PENGIRIMAN);
+  var data = sh.getDataRange().getValues();
+  Logger.log('=== Baris di sheet PENGIRIMAN yang memuat "' + nopolAtauSpm + '" ===');
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    var hay = (String(r[5] || '') + String(r[4] || '')).replace(/\s+/g, '').toUpperCase();
+    if (!q || hay.indexOf(q) === -1) continue;
+    var t = _tglPengiriman(r[0]);
+    Logger.log('baris ' + (i + 1) + ' | tgl ' + (t ? _fmtYMD(t) : '(kosong)') + ' | agen ' + r[1] + ' | SPM ' + r[4] + ' | nopol ' + r[5] + ' | mulai ' + _fmtTime(r[7]) + ' | selesai ' + _fmtTime(r[8]) + ' | status ' + r[9]);
+  }
+  (tanggalList || []).forEach(function (tg) {
+    try {
+      var b = _bacaJadwalPPRDariSumber(_parseTanggalFleksibel(tg));
+      Logger.log('=== Sumber jadwal ' + tg + ': ' + (b.success ? b.data.length + ' SPM' : b.error));
+      if (b.success) b.data.forEach(function (x) {
+        var hay = (String(x.nopol || '') + String(x.spm || '')).replace(/\s+/g, '').toUpperCase();
+        if (!q || hay.indexOf(q) !== -1) Logger.log('  SPM ' + x.spm + ' | nama ' + x.nama + ' | nopol ' + x.nopol);
+      });
+    } catch (e) { Logger.log('gagal baca sumber ' + tg + ': ' + e.message); }
+  });
 }

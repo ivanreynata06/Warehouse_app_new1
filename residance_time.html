@@ -236,6 +236,7 @@ td.col-aksi{white-space:nowrap;}
 .status-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:600;}
 .sp-onpro{background:rgba(245,158,11,.12);color:#fcd34d;border:1px solid rgba(245,158,11,.25);}
 .sp-done{background:rgba(16,185,129,.12);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);}
+.sp-lupa{background:rgba(245,158,11,.12);color:#fcd34d;border:1px solid rgba(245,158,11,.3);}
 .sp-wait{background:rgba(139,92,246,.12);color:#c4b5fd;border:1px solid rgba(139,92,246,.25);}
 .sp-cancel{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25);}
 .sp-pending{background:rgba(234,179,8,.12);color:#fde68a;border:1px solid rgba(234,179,8,.25);}
@@ -977,7 +978,7 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <div class="kpi-card c-orange" data-tip="Sedang proses muat">
           <div class="kpi-label">Proses Muat</div>
           <div class="kpi-val c-orange" id="kpi-onpro">-</div>
-          <div class="kpi-sub">on-progress</div>
+          <div class="kpi-sub" id="kpi-onpro-sub">on-progress</div>
           <div class="kpi-icon-wrap"><i data-lucide="loader-2" style="width:14px;color:white;"></i></div>
         </div>
         <div class="kpi-card c-green" data-tip="Sudah selesai dimuat">
@@ -2027,7 +2028,12 @@ function renderAllFromGS(gsData){
     var _isIkutFit=(r.waktuMulai==='Ikut Fitting');
     var _terkirimAtauGagal=!!(terkirimSet[r.spm]||gagalSet[r.spm]);
     var _sudahSelesai=(r.waktuMulai&&r.waktuSelesai)||_isIkutFit||_terkirimAtauGagal;
-    var status=r.isCancelled?'batal':(_sudahSelesai?'selesai':(r.waktuMulai?'on process':'menunggu'));
+    // "On process" hanya berlaku untuk kiriman HARI INI. Baris tanggal lalu yang sudah mulai muat tetapi
+    // tidak pernah diklik Selesai Muat bukan lagi proses berjalan: ditandai 'lupa selesai' supaya tidak
+    // tiba-tiba muncul sebagai "sedang dimuat" / menambah angka Proses Muat.
+    var _todayYmd=(function(){var n=new Date();return n.getFullYear()+'-'+pad2(n.getMonth()+1)+'-'+pad2(n.getDate());})();
+    var _lampau=!!(r.tanggal&&r.tanggal<_todayYmd);
+    var status=r.isCancelled?'batal':(_sudahSelesai?'selesai':(r.waktuMulai?(_lampau?'lupa selesai':'on process'):'menunggu'));
     return Object.assign({},r,{durasiMenit:dur,status:status});
   });
   // dayAll = rows utk filter per-hari (hari ini ATAU tanggal custom/kemarin)
@@ -2060,12 +2066,13 @@ function renderAllFromGS(gsData){
   dayDoneSheet.forEach(function(r){ doneSpmSet[r.spm]=1; });
   dayPendingTerkirim.forEach(function(spm){ doneSpmSet[spm]=1; });
   // Untuk filter semua, tambahkan juga pending terkirim yang tidak ada di rows
-  if(!isDayFilter) pendingTerkirimNotInRows.forEach(function(spm){ doneSpmSet[spm]=1; });
+  // (Filter bulan/semua: JANGAN menambah pending terkirim dari localStorage -- itu data lintas periode
+  //  dan membuat bulan berjalan ikut terhitung di bulan lain. Angka diambil dari baris periode saja.)
 
   var dayDoneCount=Object.keys(doneSpmSet).length;
 
   // "On process" = sedang dimuat, minus yang sudah Terkirim/Gagal secara lokal
-  var dayOnp=dayAll.filter(function(r){ return r.waktuMulai&&!r.waktuSelesai&&!r.isCancelled&&!terkirimSet[r.spm]&&!gagalSet[r.spm]; });
+  var dayOnp=dayAll.filter(function(r){ return r.status==='on process'&&!terkirimSet[r.spm]&&!gagalSet[r.spm]; });
   // "Belum muat" = belum ada waktuMulai, bukan batal, bukan pending terkirim
   var dayWait=dayAll.filter(function(r){
     return !r.waktuMulai&&!r.isCancelled&&!terkirimSet[r.spm]&&!gagalSet[r.spm]&&!doneSpmSet[r.spm];
@@ -2100,10 +2107,14 @@ function renderAllFromGS(gsData){
   renderAll({
     total:isDayFilter?dayAll.length:rows.length,  // total = jumlah baris saja, tanpa pending extra
     onpro:isDayFilter?dayOnp.length:rows.filter(function(r){return r.status==='on process'&&!terkirimSet[r.spm]&&!gagalSet[r.spm];}).length,
-    done:isDayFilter?dayDoneCount:(Object.keys(doneSpmSet).length),
-    doneTerkirim:isDayFilter?dayTerkirim:0,
-    doneGagal:isDayFilter?dayGagal:0,
-    wait:isDayFilter?dayWait.length:rows.filter(function(r){return r.status==='menunggu'&&!doneSpmSet[r.spm];}).length,
+    lupa:rows.filter(function(r){return r.status==='lupa selesai'&&!terkirimSet[r.spm]&&!gagalSet[r.spm];}).length,
+    // Filter bulan/semua: selesai dihitung dari baris periode yang dipilih SAJA (dulu selalu 0 karena
+    // memakai daftar khusus filter harian, dan bisa bercampur dengan data bulan berjalan)
+    done:isDayFilter?dayDoneCount:rows.filter(function(r){return r.status==='selesai';}).length,
+    doneTerkirim:isDayFilter?dayTerkirim:rows.filter(function(r){return terkirimSet[r.spm];}).length,
+    doneGagal:isDayFilter?dayGagal:rows.filter(function(r){return gagalSet[r.spm];}).length,
+    wait:isDayFilter?dayWait.length:rows.filter(function(r){return r.status==='menunggu';}).length,
+    pendingKpi:isDayFilter?null:pendingList.filter(function(p){ return p.status!=='terkirim'&&rows.some(function(r){ return r.spm===p.spm; }); }).length,
     avgMin:avgMin, cities:cities, vehicles:vehicles,
     bulan:{total:rb.total,selesai:rb.selesai,avgMin:monthAvg,batalKirim:monthCancelled,
       isMonthFilter:currentFilter==='bulan'},
@@ -2137,7 +2148,9 @@ function renderKPI(d){
   setText('kpi-onpro',d.onpro||0);
   setText('kpi-done',d.done||0);
   setText('kpi-wait',d.wait||0);
-  setText('kpi-pending',pendingList.filter(function(p){ return p.status!=='terkirim'; }).length);
+  // Filter bulan/semua: pending hanya yang SPM-nya ada di periode terpilih; filter harian tetap semua pending aktif
+  setText('kpi-pending',(d.pendingKpi!=null)?d.pendingKpi:pendingList.filter(function(p){ return p.status!=='terkirim'; }).length);
+  setText('kpi-onpro-sub',d.lupa>0?(d.lupa+' dari tanggal lalu belum diklik selesai'):'on-progress');
   setText('kpi-avg',d.avgMin?formatDurMin(d.avgMin):'-');
   // Sub info selesai muat + breakdown terkirim/gagal
   var pct=d.total?Math.round((d.done/d.total)*100):0;
@@ -2290,15 +2303,16 @@ function renderTable(rows){
     return p.status==='terkirim' && rows.some(function(r){ return r.spm===p.spm; });
   }).length;
   var nDone=rows.filter(function(r){ return (r.status||'').toLowerCase()==='selesai'; }).length + pendingTerkirimInRows;
-  setText('tbl-onpro-badge',nOnpro+' on-process');
+  var nLupa=rows.filter(function(r){ return (r.status||'').toLowerCase()==='lupa selesai'; }).length;
+  setText('tbl-onpro-badge',nOnpro+' on-process'+(nLupa?' · '+nLupa+' lupa selesai':''));
   setText('tbl-done-badge',nDone+' selesai');
   if(!rows.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:18px;">Tidak ada data</td></tr>'; return; }
   tbody.innerHTML=rows.map(function(r,i){
     var dur=null, durClass='';
     if(r.durasiMenit!=null){ dur=formatDurMin(r.durasiMenit); durClass=r.durasiMenit<=30?'dur-fast':(r.durasiMenit<=60?'dur-mid':'dur-slow'); }
     var st=(r.status||'').toLowerCase();
-    var sCls=st==='on process'?'sp-onpro':(st==='selesai'?'sp-done':'sp-wait');
-    var statusLabel=st==='on process'?'On Process':(st==='selesai'?'Selesai':'Menunggu');
+    var sCls=st==='on process'?'sp-onpro':(st==='selesai'?'sp-done':(st==='lupa selesai'?'sp-lupa':'sp-wait'));
+    var statusLabel=st==='on process'?'On Process':(st==='selesai'?'Selesai':(st==='lupa selesai'?'Lupa Selesai':'Menunggu'));
     var isIkutFitting=(r.waktuMulai==='Ikut Fitting');
     if(isIkutFitting){ sCls='sp-fitting'; statusLabel='Ikut Fitting'; }
     var spm=r.spm||'';
@@ -3390,7 +3404,9 @@ function renderActiveLoads(){
     return {spm:spm, agen:l.agen, nopol:l.nopol, jenis:l.jenis, startTime:l.startTime, rowIndex:l.row, local:true};
   });
   if(allData){
-    var srcRows=(currentFilter==='hari'?(allData.todayRows||[]):currentFilter==='tanggal'?(allData.customRows||[]):currentFilter==='bulan-custom'?(allData.customRows||[]):currentFilter==='bulan'?(allData.monthRows||[]):(allData.allRows||allData.monthRows||[]));
+    // Hanya baris HARI INI yang boleh jadi kartu "Sedang Dimuat". Dulu mengikuti filter (bulan/semua/tanggal),
+    // sehingga kiriman tanggal lalu yang lupa diklik selesai tiba-tiba muncul sebagai proses berjalan.
+    var srcRows=(allData.todayRows||[]);
     srcRows.forEach(function(r){
       if(!r.waktuMulai||r.waktuSelesai) return; // bukan on process
       if(activeLoads[r.spm]) return; // sudah diwakili kartu lokal

@@ -287,3 +287,8 @@ Panel di jalur Voucher vs Backflush merekap nomor voucher yang statusnya berbeda
 
 ### SPL multi-halaman
 Formulir SPL OS (Google Dokumen) sekarang menambah halaman otomatis kalau lembur lebih banyak dari jumlah baris template (jumlah baris dibaca dari penanda `{{TGLn}}` terbesar di template, default 8). Halaman tambahan adalah salinan formulir yang sama berisi baris berikutnya; berlaku untuk Print, unduh Word, dan template khusus. PDF cache SPL lama otomatis dibuat ulang.
+
+### Loading Time Pengiriman: perbaikan
+- Sync jadwal sekarang mengikuti koreksi sumber (tujuan / nopol) untuk baris yang belum ada aktivitas muat; baris yang sudah mulai muat tidak diubah.
+- `getPendingRows` dan `getLoadingTimeAnalytics` memakai `_tglPengiriman` (aman beda zona waktu), sehingga kiriman kemarin tidak lagi tampil sebagai kiriman hari ini. Alat bantu `diagNopolPengiriman('L 9197 UT', ['13/10/2026','14/10/2026'])` mencetak baris sheet dan isi sumber jadwal untuk melacak salah tujuan.
+- Filter bulan: Total / Selesai / Proses / Belum muat / Pending dihitung dari baris bulan yang dipilih saja (bulan berjalan tidak ikut). Baris tanggal lalu yang sudah mulai muat tetapi tidak pernah diklik selesai berstatus "Lupa Selesai", bukan "On Process", dan kartu "Sedang Dimuat" hanya berisi kiriman hari ini.
