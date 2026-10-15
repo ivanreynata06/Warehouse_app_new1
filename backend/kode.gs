@@ -8051,7 +8051,14 @@ function _akurasiUpsertAlasan(ss, entries, by) {
 // Diagnosa: jalankan dari editor Apps Script untuk melacak kenapa satu nopol menampilkan tujuan yang salah.
 // Mencetak (Logger) semua baris PENGIRIMAN yang memuat nopol / SPM tsb, dan apa yang dibaca dari sumber
 // jadwal untuk tanggal-tanggal terkait. Contoh: diagNopolPengiriman('L 9197 UT', ['13/10/2026','14/10/2026'])
+// Tombol "Jalankan" di editor Apps Script memanggil fungsi TANPA argumen, jadi pilih fungsi ini di dropdown
+// lalu klik Jalankan. Ubah nopol / tanggal di bawah kalau perlu, lalu buka "Log eksekusi".
+function diagNopolL9197UT() {
+  diagNopolPengiriman('L 9197 UT', ['13/10/2026', '14/10/2026']);
+}
+
 function diagNopolPengiriman(nopolAtauSpm, tanggalList) {
+  if (nopolAtauSpm == null) { Logger.log('Isi nopol/SPM. Cara paling mudah: jalankan diagNopolL9197UT() atau salin pola fungsi itu.'); return; }
   var q = String(nopolAtauSpm || '').replace(/\s+/g, '').toUpperCase();
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(SH_PENGIRIMAN);
   var data = sh.getDataRange().getValues();
