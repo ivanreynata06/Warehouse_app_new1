@@ -7870,7 +7870,33 @@ function _splJumlahBaris(teks) {
 
 // ---- Paraf digital Leader / Sect Head / Dept Head di formulir SPL ----
 // Ukuran gambar paraf (poin) -- kolom Paraf di template sempit. Ubah di sini kalau perlu.
-var SPL_PARAF_W = 36, SPL_PARAF_H = 18;
+// SPL_PARAF_W/H = KOTAK MAKSIMUM (poin); gambar diperbesar sampai mentok salah satu sisi kotak dengan rasio aslinya.
+var SPL_PARAF_W = 42, SPL_PARAF_H = 30;
+// Baca lebar/tinggi PNG dari header IHDR (byte 16-23). Bukan PNG -> rasio 2:1 (default lama).
+function _splUkuranGambar(blob, maxW, maxH) {
+  var w = 2, h = 1;
+  try {
+    var b = blob.getBytes();
+    if (b.length > 24 && b[1] === 80 && b[2] === 78 && b[3] === 71) {
+      var u = function (o) { return ((b[o] & 255) * 16777216) + ((b[o + 1] & 255) << 16) + ((b[o + 2] & 255) << 8) + (b[o + 3] & 255); };
+      var ww = u(16), hh = u(20);
+      if (ww > 0 && hh > 0) { w = ww; h = hh; }
+    }
+  } catch (e) {}
+  var sc = Math.min(maxW / w, maxH / h);
+  return { w: Math.max(4, Math.round(w * sc * 10) / 10), h: Math.max(4, Math.round(h * sc * 10) / 10) };
+}
+// Paraf diberi ruang selebar mungkin: padding sel dikecilkan, spasi paragraf dinolkan
+function _splRapatkanSel(par) {
+  try {
+    var cell = par.getParent();
+    if (cell && cell.getType() === DocumentApp.ElementType.TABLE_CELL) {
+      cell = cell.asTableCell();
+      cell.setPaddingLeft(1).setPaddingRight(1).setPaddingTop(1).setPaddingBottom(1);
+    }
+    par.setSpacingBefore(0).setSpacingAfter(0).setLineSpacing(1);
+  } catch (e) {}
+}
 // Kolom Paraf di baris data template standar (11 kolom): Tanggal, Nama, SIMID, Awal, Akhir, Total,
 // Karyawan(6), Leader(7), Sect Head(8), Dept Head(9), Keterangan(10).
 var SPL_PARAF_KOLOM = { LEADER: 7, SECTHEAD: 8, DEPTHEAD: 9 };
@@ -7890,7 +7916,9 @@ function _splGambarDiSel(cell, blob) {
   cell.clear();
   var par = cell.getChild(0).asParagraph();
   par.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  par.insertInlineImage(0, blob).setWidth(SPL_PARAF_W).setHeight(SPL_PARAF_H);
+  _splRapatkanSel(par);
+  var z = _splUkuranGambar(blob, SPL_PARAF_W, SPL_PARAF_H);
+  par.insertInlineImage(0, blob).setWidth(z.w).setHeight(z.h);
 }
 
 // n = nomor baris data. Prioritas: penanda {{TTD_LEADERn}}/{{TTD_SECTn}}/{{TTD_DEPTn}} kalau ada di template;
@@ -7905,7 +7933,7 @@ function _splTempelParafBaris(target, baris, n, sigs) {
         var elTxt = f.getElement();
         var par = elTxt.getParent().asParagraph(); // ambil induk SEBELUM teks dikosongkan
         elTxt.asText().deleteText(f.getStartOffset(), f.getEndOffsetInclusive());
-        if (sig) { par.setAlignment(DocumentApp.HorizontalAlignment.CENTER); par.insertInlineImage(0, sig.blob).setWidth(SPL_PARAF_W).setHeight(SPL_PARAF_H); }
+        if (sig) { par.setAlignment(DocumentApp.HorizontalAlignment.CENTER); _splRapatkanSel(par); var z2 = _splUkuranGambar(sig.blob, SPL_PARAF_W, SPL_PARAF_H); par.insertInlineImage(0, sig.blob).setWidth(z2.w).setHeight(z2.h); }
         return;
       }
       if (sig && baris && baris.getNumCells() === 11) _splGambarDiSel(baris.getCell(SPL_PARAF_KOLOM[j]), sig.blob);
@@ -8167,7 +8195,7 @@ function _splSig(kode, bulan, tahun) {
     return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || '', l.timestamp || ''].join('~');
   }).sort().join('|');
   var co = _splTtdCutoffBaca(ACTIVE_WORKSPACE);
-  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, _splTtdSidik(), co ? co.getTime() : 0, 'v5-paraf-lama'].join('##');
+  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, _splTtdSidik(), co ? co.getTime() : 0, 'v6-paraf-besar'].join('##');
   var d = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8);
   return { sig: d.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 12), k: k };
 }

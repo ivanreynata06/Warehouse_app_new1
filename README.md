@@ -307,3 +307,6 @@ Upload export "Transaksi by Item Browse" (Upload Data Harian > Akurasi Scan; kol
 
 ### Tanda tangan SPL lama vs baru
 Template SPL memakai penanda per baris `{{TTD_LEADERn}}`, `{{TTD_SECTn}}`, `{{TTD_DEPTn}}`. Lembur yang diinput **sebelum "Batas SPL lama"** (Panel Admin, kartu Tanda Tangan Digital SPL; otomatis = saat tanda tangan pertama diupload) langsung bertanda tangan semua. Lembur yang diinput **sesudah batas** baru bertanda tangan setelah **Disetujui TL**. Batas bisa diubah atau dimatikan.
+
+### Ukuran & ketebalan paraf SPL
+Saat upload, tanda tangan otomatis dipotong rapat ke goresannya, dijadikan hitam pekat, dan ditebalkan (PNG transparan). Di SPL, gambar diperbesar sampai mentok kotak `SPL_PARAF_W` x `SPL_PARAF_H` (kode.gs, sekarang 42 x 30 pt) dengan rasio aslinya, dan padding sel Paraf dikecilkan. Tanda tangan yang diupload sebelum update ini perlu diupload ulang.
