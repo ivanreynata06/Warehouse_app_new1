@@ -295,3 +295,12 @@ Formulir SPL OS (Google Dokumen) sekarang menambah halaman otomatis kalau lembur
 
 ### Tanda tangan digital SPL OS (Leader / Section Head / Dept Head)
 TL, Admin, atau Super Admin bisa upload tanda tangan **Leader**, **Section Head**, dan **Dept Head** di Panel Admin (kartu "Tanda Tangan Digital SPL Outsourcing"; per departemen/plant). Gambar disimpan di Drive, datanya di sheet `SPL_TTD_JABATAN` (dibuat otomatis). Saat SPL OS dicetak/diunduh, ketiga tanda tangan **otomatis tertempel di kolom Paraf** pada setiap baris lembur yang sudah **Disetujui TL**; lembur Pending/Ditolak tidak diberi tanda tangan. Posisi kolom dibaca dari baris data 11 kolom di template standar (Leader=kolom 8, Sect Head=9, Dept Head=10), atau dari penanda opsional `{{TTD_LEADERn}}`, `{{TTD_SECTn}}`, `{{TTD_DEPTn}}` per baris dan `{{TTD_LEADER}}`, `{{TTD_SECT}}`, `{{TTD_DEPT}}` di area Disetujui/Mengetahui. Fungsi backend: `adminGetSplSignatures`, `adminUploadSplSignature`, `adminHapusSplSignature` (wajib **deploy ulang Apps Script** setelah update `kode.gs`).
+
+### Sync Lembur (Monitoring FTE)
+Tombol **Sync Lembur** di Monitoring FTE menarik ulang data lembur terbaru langsung dari sheet `LEMBUR_LOG` (`syncLemburFTE`), menghitung ulang FTE & rekap OS, menulis snapshot Supabase, lalu menampilkan hasil segar tanpa lewat cache. Kalau ada lembur yang kodenya tidak cocok dengan master karyawan aktif (penyebab "ada di Riwayat tapi 0j di FTE"), daftarnya ditampilkan di samping tombol.
+
+### Job & Bagian SPL OS diatur manual
+Panel Admin > kartu "Job & Bagian di SPL Karyawan OS": TL/Admin/Super Admin bisa mengubah isi kolom JOB dan BAGIAN formulir SPL per karyawan OS (`adminGetSplJobBagian`, `adminSetSplJobBagian`, disimpan di Script Properties `SPL_JB_<workspace>`). Prioritas: manual > `SPL_JOB_BAGIAN_MAP` > template khusus > default.
+
+### Akurasi Scan: BFL vs Transaksi by Item Browse
+Upload export "Transaksi by Item Browse" (Upload Data Harian > Akurasi Scan; kolom Item Number, Effective Date, Loc Qty Change, Document). Di Monitoring Akurasi Scan jalur Backflush muncul panel **BFL vs Transaksi by Item Browse**: tiap voucher berstatus BFL dicocokkan lewat nomor voucher = Document, qty dijumlah per Document+Item. **Sesuai** bila qty sama; **Selisih** bila dokumen belum ada di transaksi (belum masuk stock) atau qty kurang/lebih. Voucher di luar rentang tanggal file transaksi ditandai "Di luar cakupan" dan tidak dihitung selisih. Ada pencarian nomor voucher/document dan opsi menyertakan status MANUAL. Jenis data baru `trx` (wajib **deploy ulang Apps Script**).

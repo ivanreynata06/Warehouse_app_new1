@@ -62,6 +62,7 @@ var API_FUNCTIONS = {
   deleteAbsensi           : deleteAbsensi,
   getAbsensiFTEData       : getAbsensiFTEData,
   diagnosaLemburKaryawan  : diagnosaLemburKaryawan,
+  syncLemburFTE           : syncLemburFTE,
   exportSPL               : exportSPL,
   previewSPL              : previewSPL,
   // Multi-workspace (Plant & Departemen)
@@ -106,6 +107,8 @@ var API_FUNCTIONS = {
   // Tanda Tangan SPL Outsourcing: Leader / Section Head / Dept Head (diupload TL/Admin/Super Admin)
   adminGetSplSignatures   : adminGetSplSignatures,
   adminUploadSplSignature : adminUploadSplSignature,
+  adminGetSplJobBagian    : adminGetSplJobBagian,
+  adminSetSplJobBagian    : adminSetSplJobBagian,
   adminHapusSplSignature  : adminHapusSplSignature,
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
@@ -6477,6 +6480,54 @@ function diagnosaLemburKaryawan(kode, bulan, tahun) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
+// ================================================================
+//  SYNC LEMBURAN -- tarik ulang data lembur TERBARU langsung dari
+//  sheet LEMBUR_LOG, lalu hitung ulang Monitoring FTE bulan tsb.
+//  Dipanggil tombol "Sync Lembur" di Monitoring FTE. Beda dgn "Sync
+//  Sekarang" (cuma mengisi ulang snapshot): fungsi ini
+//   1) menaikkan versi cache (semua cache server basi seketika),
+//   2) menghitung ulang getAbsensiFTEData dari data mentah,
+//   3) menulis hasilnya ke snapshot Supabase (supaya buka halaman
+//      berikutnya juga sudah benar), dan
+//   4) MENGEMBALIKAN hasil segar itu langsung ke halaman, sehingga
+//      tampilan tidak bergantung pada snapshot/cache browser lama.
+//  Juga melaporkan baris lembur yang kodenya tidak cocok dgn master
+//  karyawan aktif (penyebab klasik "ada di Riwayat tapi 0j di FTE").
+// ================================================================
+function syncLemburFTE(bulan, tahun) {
+  try {
+    bulan = Number(bulan); tahun = Number(tahun);
+    _bumpDataCacheVersion();
+    var res = getAbsensiFTEData(bulan, tahun);
+    if (!res || !res.success) return res || { success: false, error: 'Gagal menghitung FTE.' };
+
+    var log = [];
+    try {
+      var put = _syncPutHelper(ACTIVE_WORKSPACE, log);
+      put('fte:bulanan:' + tahun + '-' + _pad2(bulan), function () { return res; });
+    } catch (e) { log.push('GAGAL snapshot: ' + e.message); }
+
+    var lr = getLemburList({ bulan: bulan, tahun: tahun });
+    var lembur = lr.success ? lr.data : [];
+    var kr = getKaryawanList();
+    var aktif = {}, semua = {};
+    (kr.success ? kr.data : []).forEach(function (k) { semua[k.kode] = k; if (k.aktif) aktif[k.kode] = 1; });
+    var tidakCocok = {};
+    lembur.forEach(function (l) {
+      if (!aktif[l.kode]) {
+        var t = tidakCocok[l.kode] || (tidakCocok[l.kode] = { kode: l.kode, nama: l.nama, jumlah: 0, jam: 0, alasan: semua[l.kode] ? 'karyawan NON-AKTIF di master' : 'kode tidak ada di master karyawan' });
+        t.jumlah++; t.jam = Math.round((t.jam + l.totalJam) * 100) / 100;
+      }
+    });
+    var totalJam = Math.round(lembur.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
+    return {
+      success: true, data: res, log: log,
+      jumlahLembur: lembur.length, totalJamLembur: totalJam,
+      tidakCocok: Object.keys(tidakCocok).map(function (k) { return tidakCocok[k]; })
+    };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 function getLemburKategoriBulanan(bulan, tahun) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -7710,6 +7761,65 @@ var SPL_JOB_BAGIAN_DEFAULT = { job: 'Staff Warehouse (OS)', bagian: 'Outsourcing
 //  jumlahEntri }. HARUS di-cleanup (setTrashed) oleh pemanggil setelah
 //  selesai export/convert.
 // ================================================================
+// ---- Job & Bagian SPL yang bisa DIATUR MANUAL lewat Panel Admin (TL/Admin/Super Admin) ----
+// Disimpan di Script Properties 'SPL_JB_<workspaceKey>' = JSON { "KODE": {job, bagian} }.
+// Prioritas: pengaturan manual > SPL_JOB_BAGIAN_MAP (bawaan kode) > template khusus > default.
+function _splJbOverrideBaca(workspaceKey) {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('SPL_JB_' + workspaceKey) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+function _splJobBagianFor(k, khusus) {
+  var ov = _splJbOverrideBaca(ACTIVE_WORKSPACE)[String(k.kode).toUpperCase()];
+  var dasar = SPL_JOB_BAGIAN_MAP[k.kode] || (khusus ? { job: khusus.job, bagian: khusus.bagian } : SPL_JOB_BAGIAN_DEFAULT);
+  if (!ov) return dasar;
+  return { job: ov.job || dasar.job, bagian: ov.bagian || dasar.bagian };
+}
+
+function adminGetSplJobBagian(actorNik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var ov = _splJbOverrideBaca(tgt.workspaceKey), out = [];
+    var sh = tgt.ss.getSheetByName(SH_KARYAWAN_LEMBUR);
+    if (sh) {
+      sh.getDataRange().getValues().slice(1).forEach(function (r) {
+        if (!r[0]) return;
+        var kode = String(r[0]).trim();
+        if (_kategoriDariNIK(kode) !== 'OS') return;
+        var k = { kode: kode, nama: String(r[1] || '') };
+        var dasar = SPL_JOB_BAGIAN_MAP[kode] || (function () { var kh = _splTemplateKhusus(k); return kh ? { job: kh.job, bagian: kh.bagian } : SPL_JOB_BAGIAN_DEFAULT; })();
+        var o = ov[kode.toUpperCase()];
+        out.push({
+          kode: kode, nama: k.nama, aktif: r[7] === true || String(r[7]).toUpperCase() === 'TRUE',
+          job: o && o.job ? o.job : dasar.job, bagian: o && o.bagian ? o.bagian : dasar.bagian,
+          manual: !!o, jobBawaan: dasar.job, bagianBawaan: dasar.bagian
+        });
+      });
+    }
+    return { success: true, data: out, workspaceKey: tgt.workspaceKey };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// job & bagian kosong dua-duanya = hapus pengaturan manual (kembali ke bawaan)
+function adminSetSplJobBagian(actorNik, kode, job, bagian, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    kode = String(kode || '').trim().toUpperCase();
+    if (!kode) return { success: false, error: 'Kode karyawan wajib diisi.' };
+    job = String(job || '').trim().slice(0, 80); bagian = String(bagian || '').trim().slice(0, 80);
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var lock = LockService.getScriptLock(); lock.waitLock(15000);
+    try {
+      var ov = _splJbOverrideBaca(tgt.workspaceKey);
+      if (!job && !bagian) delete ov[kode]; else ov[kode] = { job: job, bagian: bagian };
+      PropertiesService.getScriptProperties().setProperty('SPL_JB_' + tgt.workspaceKey, JSON.stringify(ov));
+    } finally { lock.releaseLock(); }
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 // Jumlah baris data di template = penanda {{TGLn}} terbesar (minimal 8, sesuai template standar)
 function _splJumlahBaris(teks) {
   var m = String(teks || '').match(/\{\{TGL(\d+)\}\}/g) || [], mx = 0;
@@ -7855,7 +7965,7 @@ function _buildSPLDocument(kode, bulan, tahun) {
   lemburList.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : 1; });
   var totalJamLembur = Math.round(lemburList.reduce(function (a, l) { return a + l.totalJam; }, 0) * 100) / 100;
 
-  var jb = SPL_JOB_BAGIAN_MAP[k.kode] || (khusus ? { job: khusus.job, bagian: khusus.bagian } : SPL_JOB_BAGIAN_DEFAULT);
+  var jb = _splJobBagianFor(k, khusus);
 
   // Salin template (bukan edit file aslinya), lalu isi datanya di salinan itu
   var copyFile = DriveApp.getFileById(templateDocId).makeCopy('TMP_SPL_' + k.nama.replace(/\s+/g, '_') + '_' + bulanNama + tahun);
@@ -8008,7 +8118,7 @@ function _splSig(kode, bulan, tahun) {
   if (!k) throw new Error('Karyawan dengan kode ' + kode + ' tidak ditemukan');
   var kh = _splTemplateKhusus(k);
   var tpl = kh ? kh.docId : (PropertiesService.getScriptProperties().getProperty('SPL_TEMPLATE_DOC_ID') || '');
-  var jb = SPL_JOB_BAGIAN_MAP[k.kode] || (kh ? { job: kh.job, bagian: kh.bagian } : SPL_JOB_BAGIAN_DEFAULT);
+  var jb = _splJobBagianFor(k, kh);
   var lr = getLemburList({ kode: kode, bulan: Number(bulan), tahun: Number(tahun) });
   var rows = (lr.success ? lr.data : []).map(function (l) {
     return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || ''].join('~');
@@ -8051,7 +8161,7 @@ function getSPLPdfCepat(kode, bulan, tahun) {
 //  yang sama tampil di PC / akun mana pun (per workspace).
 // ================================================================
 var SH_AKURASI = 'AKURASI_DATA';
-var AKURASI_KINDS = { voucher: 1, std: 1, bfl: 1, ter: 1, alasan: 1 };
+var AKURASI_KINDS = { voucher: 1, std: 1, bfl: 1, ter: 1, alasan: 1, trx: 1 };
 var AKURASI_CHUNK = 40000;
 
 function _getOrCreateAkurasiSheet() {

@@ -204,6 +204,87 @@
     return { rows: rows, error: rows.length ? null : 'Tidak ada baris backflush yang valid.' };
   }
 
+  // ---------- parser: Transaksi by Item Browse (export Sunfish, sheet "Data") ----------
+  // Kolom: Item Number, Group, Description, Effective Date, Loc Qty Change, Document.
+  // Baris disimpan ringkas: { d: nomor document (= nomor voucher), i: item, t: tanggal yyyy-mm-dd, q: qty, g: group }.
+  function parseTrxSheet(aoa) {
+    var h = findHeader(aoa, function (r) { return r.some(function (c) { return /^document/.test(c); }) && r.some(function (c) { return /qty\s*change/.test(c); }); });
+    if (h < 0) return { rows: [], error: 'Header "Document" / "Loc Qty Change" tidak ditemukan. Pastikan ini file Transaksi by Item Browse.' };
+    var H = aoa[h].map(norm);
+    var c = { d: colOf(H, /^document/), it: colOf(H, /item\s*number|^item/), g: colOf(H, /^group/), dt: colOf(H, /effective\s*date|^date|tgl/), q: colOf(H, /qty\s*change/) };
+    if (c.d < 0 || c.q < 0) return { rows: [], error: 'Kolom Document / Loc Qty Change tidak ditemukan.' };
+    var rows = [];
+    for (var i = h + 1; i < aoa.length; i++) {
+      var r = aoa[i] || [];
+      var doc = digits(r[c.d]), q = num(r[c.q]);
+      if (doc.length < 8 || q == null) continue;
+      var raw = c.dt >= 0 ? r[c.dt] : null, ymd = null;
+      if (typeof raw === 'number') ymd = serialToYMD(raw); else ymd = parseDateText(raw, 'dmy');
+      rows.push({ d: doc, i: c.it >= 0 ? digits(r[c.it]) : '', t: ymd ? iso(ymd.y, ymd.m, ymd.d) : '', q: q, g: c.g >= 0 ? String(r[c.g] || '').trim() : '' });
+    }
+    return { rows: rows, error: rows.length ? null : 'Tidak ada baris transaksi yang valid di file ini.' };
+  }
+
+  // ---------- BFL vs Transaksi by Item Browse ----------
+  // Memastikan voucher yang statusnya sudah BFL benar-benar sudah masuk stock, dengan QTY yang sama.
+  // Kunci pencocokan = nomor voucher = nomor Document di transaksi (qty dijumlah per Document + Item).
+  //  Sesuai : qty transaksi = qty voucher.   Selisih : dokumen tidak ada di transaksi (belum masuk stock),
+  //  qty kurang, atau qty lebih.   Di luar cakupan : tanggal voucher di luar rentang tanggal file transaksi
+  //  yang sudah diupload -> belum bisa dinilai, tidak dihitung selisih.
+  // opt.manual = true -> voucher berstatus MANUAL ikut dicek. opt.grace = toleransi hari di luar rentang.
+  function compareBflTrx(vouchers, bflRows, trxRows, opt) {
+    opt = opt || {};
+    function rank(st) { return st === 'BFL' ? 2 : (st === 'MANUAL' ? 1 : 0); }
+    var byNo = {}, recs = [];
+    (bflRows || []).forEach(function (b) { byNo[b.voucher] = b; });
+    var seen = {};
+    (vouchers || []).forEach(function (v) {
+      var b = byNo[v.voucher]; seen[v.voucher] = 1;
+      var st = (b && rank(b.status) > rank(v.status)) ? b.status : (v.status || (b && b.status) || '');
+      recs.push({ voucher: v.voucher, item: v.item || (b && b.item) || '', desc: v.desc || (b && b.desc) || '', group: v.group || (b && b.group) || '', qty: v.qty != null ? v.qty : (b ? b.qty : 0), date: v.date || (b && b.date) || '', status: st, dept: v.dept || (b && b.dept) });
+    });
+    (bflRows || []).forEach(function (b) {
+      if (seen[b.voucher]) return;
+      recs.push({ voucher: b.voucher, item: b.item, desc: b.desc, group: b.group, qty: b.qty, date: b.date, status: b.status || '', dept: b.dept });
+    });
+    var idx = {}, tMin = '', tMax = '';
+    (trxRows || []).forEach(function (t) {
+      var o = idx[t.d] || (idx[t.d] = { total: 0, items: {}, dates: {} });
+      o.total += t.q; o.items[t.i] = (o.items[t.i] || 0) + t.q; if (t.t) o.dates[t.t] = 1;
+      if (t.t) { if (!tMin || t.t < tMin) tMin = t.t; if (!tMax || t.t > tMax) tMax = t.t; }
+    });
+    var res = { items: [], total: 0, sesuai: 0, selisih: 0, belumMasuk: 0, nodata: 0, qtyBfl: 0, qtyTrx: 0,
+                trxMin: tMin, trxMax: tMax, trxCount: (trxRows || []).length, hanyaTrx: 0 };
+    var used = {};
+    recs.forEach(function (r) {
+      if (!(r.status === 'BFL' || (opt.manual && r.status === 'MANUAL'))) return;
+      if (!(r.qty > 0)) return;
+      var o = idx[r.voucher], tq = 0, st, why = '';
+      if (o) {
+        used[r.voucher] = 1;
+        tq = (r.item && (r.item in o.items)) ? o.items[r.item] : (r.item && Object.keys(o.items).length && !(r.item in o.items) ? 0 : o.total);
+        if (r.item && !(r.item in o.items) && Object.keys(o.items).some(function (k) { return k; })) why = 'Dokumen ada tetapi item berbeda';
+      }
+      var inRange = tMin && r.date && r.date >= tMin && r.date <= tMax;
+      var late = (!o && !inRange);
+      if (late) { st = 'nodata'; why = tMin ? 'Tanggal voucher di luar rentang file transaksi (' + tMin + ' s/d ' + tMax + ')' : 'Belum ada file transaksi'; }
+      else if (Math.abs(tq - r.qty) < 0.0001) st = 'sesuai';
+      else {
+        st = 'selisih';
+        if (!o) why = 'Belum masuk stock (dokumen tidak ada di transaksi)';
+        else if (!why) why = tq < r.qty ? 'Qty transaksi kurang dari qty voucher' : 'Qty transaksi lebih dari qty voucher';
+      }
+      var it = { voucher: r.voucher, item: r.item, desc: r.desc, group: r.group, date: r.date, dept: r.dept, qtyBfl: r.qty, qtyTrx: tq, selisih: tq - r.qty, status: st, reason: why, found: !!o, trxDate: o ? Object.keys(o.dates).sort().join(', ') : '' };
+      res.items.push(it); res.total++;
+      if (st === 'sesuai') res.sesuai++;
+      else if (st === 'nodata') res.nodata++;
+      else { res.selisih++; if (!o) res.belumMasuk++; }
+      if (st !== 'nodata') { res.qtyBfl += r.qty; res.qtyTrx += tq; }
+    });
+    Object.keys(idx).forEach(function (d) { if (!used[d] && !seen[d] && !byNo[d]) res.hanyaTrx++; });
+    return res;
+  }
+
   // ---------- parser: Master TER (txt, pemisah "|") ----------
   function parseTER(text) {
     var lines = String(text || '').split(/\r?\n/);
@@ -634,7 +715,7 @@
     PIC_GRUP: PIC_GRUP, SHIFT_JAM: SHIFT_JAM, calShift: calShift, calGroupOn: calGroupOn, picSerahTerima: picSerahTerima, trmByPic: trmByPic, shiftOf: shiftOf, plusDay: plusDay,
     MONTHS: MONTHS, num: num, digits: digits,
     parseVoucherSheet: parseVoucherSheet, resolveVoucherDates: resolveVoucherDates, prepareVoucherRows: prepareVoucherRows,
-    parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTER: parseTER, parseScanOut: parseScanOut,
+    parseStdSheet: parseStdSheet, parseBflSheet: parseBflSheet, parseTrxSheet: parseTrxSheet, compareBflTrx: compareBflTrx, parseTER: parseTER, parseScanOut: parseScanOut,
     outState: outState, mergeRecords: mergeRecords,
     evalIn: evalIn, summarizeIn: summarizeIn, summarizeBfl: summarizeBfl, summarizeOut: summarizeOut,
     isBflOk: isBflOk,

@@ -149,6 +149,7 @@ input.inp::placeholder{color:var(--txt3);}
 /* panel Close */
 .anomp{border-top-color:var(--amber);}
 .anom-warn{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:9px 12px;font-size:11px;color:#f3c46b;line-height:1.55;margin-bottom:4px;} .anom-warn b{color:var(--amber);}
+.trxp{border-top-color:var(--blue,#3b82f6);} .trx-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 4px;} .trx-bar input[type=search]{background:var(--bg2,#12121c);border:1px solid var(--line2,#2a2a3c);color:inherit;border-radius:8px;padding:6px 10px;font-size:11.5px;min-width:220px;} .trx-bar .btn.on{outline:1px solid var(--amber);} .trx-sum{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--txt2);} .trx-sum b{font-size:15px;color:var(--txt1,#fff);}
 .anom-b{font-size:11px;color:var(--amber);}
 .anom-st{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--txt2);padding-top:6px;border-top:1px dashed var(--line2);} .anom-st b.bad{color:var(--red);} .anom-st b.ok{color:var(--green);}
 .pic-line.mut{color:var(--txt3);border-top:1px dashed var(--line2);}
@@ -446,6 +447,7 @@ details.rules code{font-family:var(--mono);font-size:10.5px;background:var(--car
       <div class="kpis" id="kpis"></div>
       <div class="trmp" id="trmp" hidden></div>
       <div class="trmp anomp" id="anomp" hidden></div>
+      <div class="trmp trxp" id="trxp" hidden></div>
       <div class="closep" id="closep" hidden></div>
       <div class="rzp" id="rzp" hidden></div>
       <div class="voidp" id="voidp" hidden></div>
@@ -820,7 +822,7 @@ function renderLane(){
   });
   S._items = items; S._allItems = v.items;
   var okKey = { 'in': 'sesuai', bfl: 'bfl', out: 'full' }[S.lane];
-  renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm(); renderAnom(); renderVoid();
+  renderClose(items); renderComp(scope); renderTrend(); renderReasons(); renderTrm(); renderAnom(); renderTrx(); renderVoid();
   if (S.me) { document.getElementById('closep').hidden = true; document.getElementById('trend-wrap').hidden = true; }
   var dst = document.getElementById('detail-seg-top'); dst.hidden = S.lane !== 'bfl'; dst.innerHTML = S.lane === 'bfl' ? detailSegHtml() : '';
   bd.className = 'board n' + L.cols.length;
@@ -1028,6 +1030,61 @@ function renderAnom(){
   el.innerHTML = '<div class="trmp-h"><div><b>Anomali status: Backflush vs Voucher + Box ID</b><span>Nomor voucher yang sama tetapi statusnya berbeda di dua master. Yang dihitung benar adalah status yang paling beres (BFL, lalu MANUAL, lalu TRM), jadi voucher ini tidak lagi tampil TRM. Rekap ini untuk menelusuri kenapa master Voucher + Box ID tidak ikut ter-update.</span></div>' +
     '<div class="trmp-r"><div class="trmp-n ' + (A.length ? 'bad' : 'ok') + '">' + fmt(A.length) + '<small> BFL di Backflush, TRM di Voucher</small></div>' + (B.length ? '<div class="anom-b">' + fmt(B.length) + ' kebalikan</div>' : '') + '</div></div>' + warn +
     (list.length ? tbl + '<div class="closep-g" style="margin-top:12px;">' + cards + '</div>' + more : '<div class="closep-empty">Tidak ada nomor voucher yang statusnya berbeda antara Backflush dan Voucher + Box ID.</div>');
+}
+// Panel BFL vs Transaksi by Item Browse: voucher BFL benar-benar sudah masuk stock? (kunci = nomor voucher = Document, dibandingkan qty)
+S.trxF = 'all'; S.trxQ = ''; S.trxManual = false;
+function trxResult(){
+  var keepDept = function(r){ return !S.deptSel || r.dept === S.deptSel; };
+  var vr = (S.data.voucher ? S.data.voucher.rows : []).filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r) && r.qty > 0; });
+  var br = (S.data.bfl ? S.data.bfl.rows : []).filter(function(r){ return !RZ.isVoid(S.alasanMap, r.voucher) && keepDept(r) && r.qty > 0; });
+  var f = C.officerFilter(vr, br, [], S.me); vr = f.vr; br = f.bfl;
+  var res = C.compareBflTrx(vr, br, S.data.trx ? S.data.trx.rows : [], { manual: S.trxManual });
+  var inMonth = function(d){ return !S.month || (d || '').indexOf(S.month) === 0; };
+  res.items = res.items.filter(function(i){ return inMonth(i.date); });
+  return res;
+}
+function trxList(){
+  var box = document.getElementById('trx-list'); if (!box) return;
+  var res = S._trx, q = (S.trxQ || '').replace(/\D/g, '');
+  var rows = res.items.filter(function(i){
+    if (S.trxF === 'sesuai' && i.status !== 'sesuai') return false;
+    if (S.trxF === 'selisih' && i.status !== 'selisih') return false;
+    if (S.trxF === 'nodata' && i.status !== 'nodata') return false;
+    if (q && i.voucher.indexOf(q) === -1) return false;
+    return true;
+  });
+  rows.sort(function(a, b){ var ra = a.status === 'selisih' ? 0 : (a.status === 'nodata' ? 1 : 2), rb = b.status === 'selisih' ? 0 : (b.status === 'nodata' ? 1 : 2); return ra - rb || (a.date < b.date ? 1 : -1); });
+  var key = 'trx:list', n = S.shown[key] || 30;
+  if (!rows.length) { box.innerHTML = '<div class="closep-empty">Tidak ada data untuk filter ini.</div>'; return; }
+  var lab = { sesuai: '<span class="chip ok">Sesuai</span>', selisih: '<span class="chip bad">Selisih</span>', nodata: '<span class="chip info">Di luar cakupan</span>' };
+  box.innerHTML = '<div class="tbl-wrap"><table><thead><tr><th>No. Voucher / Document</th><th>Item</th><th>Tanggal</th><th>Qty BFL</th><th>Qty Transaksi</th><th>Selisih</th><th>Status</th><th>Keterangan</th></tr></thead><tbody>' +
+    rows.slice(0, n).map(function(i){
+      return '<tr><td>' + esc(i.voucher) + '</td><td>' + esc(i.item) + '<div style="font-size:9.5px;opacity:.65;">' + esc(descOf(i.item) || i.desc) + '</div></td><td>' + esc(i.date ? dayInfo(i.date).full : '-') + '</td><td>' + fmt(i.qtyBfl) + '</td><td>' + (i.status === 'nodata' ? '-' : fmt(i.qtyTrx)) + '</td><td class="' + (i.status === 'selisih' ? 'neg' : 'zero') + '">' + (i.status === 'nodata' ? '-' : sgn(i.selisih)) + '</td><td>' + lab[i.status] + '</td><td style="font-size:10.5px;">' + esc(i.reason || '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    (rows.length > n ? '<button class="btn sm" style="margin-top:10px;" onclick="moreCards(\'' + key + '\')">Tampilkan ' + Math.min(30, rows.length - n) + ' lagi (' + fmt(rows.length - n) + ' tersisa)</button>' : '');
+}
+window.trxSet = function(f){ S.trxF = f; S.shown['trx:list'] = 0; renderTrx(); };
+window.trxSearch = function(v){ S.trxQ = v; S.shown['trx:list'] = 0; trxList(); };
+window.trxManualToggle = function(v){ S.trxManual = !!v; renderTrx(); };
+function renderTrx(){
+  var el = document.getElementById('trxp');
+  if (S.lane !== 'bfl' || !(S.data.voucher || S.data.bfl)) { el.hidden = true; return; }
+  el.hidden = false;
+  if (!S.data.trx || !S.data.trx.rows || !S.data.trx.rows.length) {
+    el.innerHTML = '<div class="trmp-h"><div><b>BFL vs Transaksi by Item Browse</b><span>Belum ada data transaksi. Upload export "Transaksi by Item Browse" di menu Upload Data Harian, tab Akurasi Scan, untuk memastikan voucher BFL benar-benar sudah masuk stock (dicocokkan lewat nomor Document = nomor voucher, dibandingkan qty).</span></div></div>';
+    return;
+  }
+  var res = S._trx = trxResult();
+  var m = S.data.trx.meta || {};
+  var btn = function(k, t){ return '<button class="btn sm' + (S.trxF === k ? ' on' : '') + '" onclick="trxSet(\'' + k + '\')">' + t + '</button>'; };
+  el.innerHTML = '<div class="trmp-h"><div><b>BFL vs Transaksi by Item Browse</b><span>Memastikan voucher berstatus BFL sudah benar-benar masuk stock. Pencocokan lewat nomor voucher = nomor Document, lalu qty dibandingkan. Selisih berarti stock belum masuk atau qty-nya berbeda. Voucher di luar rentang tanggal file transaksi (' + esc(res.trxMin ? dayInfo(res.trxMin).full + ' s/d ' + dayInfo(res.trxMax).full : '-') + ') tidak dihitung selisih.</span></div>' +
+    '<div class="trmp-r"><div class="trmp-n ' + (res.selisih ? 'bad' : 'ok') + '">' + fmt(res.selisih) + '<small> voucher BFL selisih</small></div></div></div>' +
+    '<div class="trx-sum"><div><b>' + fmt(res.total) + '</b><br>voucher dicek</div><div><b style="color:var(--green);">' + fmt(res.sesuai) + '</b><br>sesuai</div><div><b style="color:var(--red);">' + fmt(res.selisih) + '</b><br>selisih (' + fmt(res.belumMasuk) + ' belum masuk stock)</div><div><b>' + fmt(res.nodata) + '</b><br>di luar cakupan</div><div><b>' + fmt(res.qtyBfl) + ' / ' + fmt(res.qtyTrx) + '</b><br>qty BFL / transaksi</div></div>' +
+    '<div class="trx-bar">' + btn('all', 'Semua') + btn('sesuai', 'Sesuai') + btn('selisih', 'Selisih') + btn('nodata', 'Di luar cakupan') +
+    '<input type="search" placeholder="Cari nomor voucher / document" value="' + esc(S.trxQ) + '" oninput="trxSearch(this.value)">' +
+    '<label style="font-size:11px;display:flex;gap:5px;align-items:center;"><input type="checkbox" ' + (S.trxManual ? 'checked' : '') + ' onchange="trxManualToggle(this.checked)"> sertakan status MANUAL</label>' +
+    '<span style="font-size:10px;opacity:.65;">File: ' + esc(m.name || '') + ' · ' + esc(m.at || '') + '</span></div><div id="trx-list"></div>';
+  trxList();
 }
 // Panel khusus Backflush: TRM yang sudah lewat H+1 dan siapa PIC Serah Terimanya
 function renderTrm(){

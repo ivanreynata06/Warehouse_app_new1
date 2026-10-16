@@ -17,8 +17,8 @@
 (function (root) {
   'use strict';
   var C = root.AkurasiCore;
-  var KINDS = ['voucher', 'std', 'bfl', 'ter', 'alasan'];
-  var TITLES = { voucher: 'Master Voucher & Box ID', std: 'Standar Isi Box', bfl: 'Master Backflush', ter: 'Master Scan Out (Barcode Out)' };
+  var KINDS = ['voucher', 'std', 'bfl', 'ter', 'alasan', 'trx'];
+  var TITLES = { voucher: 'Master Voucher & Box ID', std: 'Standar Isi Box', bfl: 'Master Backflush', trx: 'Transaksi by Item Browse (cek stock BFL)', ter: 'Master Scan Out (Barcode Out)' };
   var DBN = 'wh_akurasi2';
 
   function ws() { try { return (root.getWorkspace && root.getWorkspace()) || 'default'; } catch (e) { return 'default'; } }
@@ -117,8 +117,8 @@
   // Upload tetap per departemen (spreadsheet masing-masing); tampilan menyatukan keduanya.
   var DEPTS = ['cibitung_fitting_import', 'cibitung_fitting_rucika'];
   function mergeDepts(by) {
-    var out = { voucher: null, std: null, bfl: null, ter: null, alasan: null };
-    ['voucher', 'bfl', 'ter'].forEach(function (k) {
+    var out = { voucher: null, std: null, bfl: null, ter: null, alasan: null, trx: null };
+    ['voucher', 'bfl', 'ter', 'trx'].forEach(function (k) {
       var rows = [], metas = [];
       DEPTS.forEach(function (w) {
         var rec = (by[w] || {})[k];
@@ -227,6 +227,24 @@
       }
       prog(20, 'Membaca file...');
       if (kind === 'ter') return mergeOut(files, old, opts, now);
+      if (kind === 'trx') return readSheets(files[0]).then(function (sheets) {
+        prog(40, 'Memeriksa isi file...');
+        var p = bestSheet(sheets, C.parseTrxSheet), rows = p.rows;
+        // Upload ulang aman: tanggal yang ada di file baru MENGGANTI baris lama pada tanggal yang sama,
+        // tanggal lain dibiarkan. Data lebih lama dari 60 hari dari tanggal terbaru dibuang (hemat ruang).
+        var tgl = {}, maxT = '';
+        rows.forEach(function (r) { if (r.t) { tgl[r.t] = 1; if (r.t > maxT) maxT = r.t; } });
+        var keep = ((old && old.rows) || []).filter(function (r) { return !tgl[r.t]; });
+        var all = keep.concat(rows);
+        if (maxT) { var lim = new Date(maxT + 'T00:00:00Z'); lim.setUTCDate(lim.getUTCDate() - 60); var limS = lim.toISOString().slice(0, 10); all = all.filter(function (r) { return !r.t || r.t >= limS; }); }
+        var nTgl = Object.keys(tgl).length;
+        return { rec: { rows: all, count: all.length, meta: { name: files[0].name, at: now.text, by: now.by } },
+                 stats: { added: rows.length, updated: 0, same: keep.length },
+                 msg: 'Berhasil: ' + rows.length.toLocaleString('id-ID') + ' baris transaksi dari ' + nTgl + ' tanggal. Total tersimpan ' + all.length.toLocaleString('id-ID') + ' baris.' };
+      }).then(function (o) {
+        prog(70, 'Menyimpan ke server...');
+        return save(kind, o.rec, false).then(function (s) { prog(100, 'Selesai'); return { msg: o.msg, remote: s.remote, warn: s.warn || '', rec: o.rec, stats: o.stats }; });
+      });
       return readSheets(files[0]).then(function (sheets) {
         prog(40, 'Memeriksa isi file...');
         if (kind === 'std') {

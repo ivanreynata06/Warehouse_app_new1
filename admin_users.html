@@ -470,6 +470,17 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <div id="target-produktivitas-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);"></div>
       </div>
 
+      <div class="card" id="card-spl-job">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="briefcase" style="width:12px;"></i>Job &amp; Bagian di SPL Karyawan OS — Departemen Ini</div>
+        </div>
+        <div class="modal-note" style="margin:0 0 10px;">
+          Tentukan isi kolom <b>JOB</b> dan <b>BAGIAN</b> pada formulir SPL tiap karyawan outsourcing (mis. Warehouse Technician I, Admin WH Fitting). Kosongkan kedua kolom lalu Simpan untuk kembali ke nilai bawaan sistem.
+        </div>
+        <div id="spl-job-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div id="spl-job-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);"></div>
+      </div>
+
       <div class="card" id="card-spl-ttd">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="pen-tool" style="width:12px;"></i>Tanda Tangan Digital SPL Outsourcing — Departemen Ini</div>
@@ -1032,6 +1043,7 @@ function onWorkspaceSwitch(){
   loadKaryawanMaster(); // Data Karyawan juga per departemen yang dipilih
   loadTargetProduktivitas(); // Target Produktivitas juga per departemen yang dipilih
   loadSplSignatures(); // Tanda tangan SPL OS juga per departemen yang dipilih
+  loadSplJobBagian();
 }
 
 // ---- Tambah Departemen/Plant Baru (Super Admin) ----
@@ -1316,6 +1328,49 @@ function kembalikanTargetProduktivitas(){
 }
 
 
+
+// ---- Job & Bagian SPL OS (diatur manual) ----
+var splJobCache = [];
+function loadSplJobBagian(){
+  var st = document.getElementById('spl-job-status');
+  if (!st) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ st.textContent = 'Gagal memuat: '+(res&&res.error?res.error:''); return; }
+      st.textContent = '';
+      splJobCache = res.data || [];
+      var box = document.getElementById('spl-job-list');
+      if (!splJobCache.length){ box.innerHTML = '<div style="font-size:10.5px;color:var(--text-muted);">Belum ada karyawan OS di master karyawan departemen ini.</div>'; return; }
+      box.innerHTML = splJobCache.map(function(it, i){
+        return '<div style="display:grid;grid-template-columns:minmax(120px,1fr) 1.2fr 1.2fr auto;gap:6px;align-items:center;">'
+          + '<div style="font-size:11px;font-weight:600;">'+escHtml(it.nama)+'<div style="font-size:9px;color:var(--text-muted);font-weight:400;">'+escHtml(it.kode)+(it.manual?' · diatur manual':' · bawaan')+(it.aktif?'':' · nonaktif')+'</div></div>'
+          + '<input type="text" class="form-input" id="spl-job-'+i+'" placeholder="Job" value="'+escHtml(it.job)+'">'
+          + '<input type="text" class="form-input" id="spl-bagian-'+i+'" placeholder="Bagian" value="'+escHtml(it.bagian)+'">'
+          + '<div style="display:flex;gap:6px;"><button class="btn-flat btn-flat-accent" onclick="simpanSplJob('+i+')">Simpan</button>'
+          + (it.manual?'<button class="btn-flat btn-flat-ghost" onclick="resetSplJob('+i+')">Bawaan</button>':'')+'</div></div>';
+      }).join('');
+    })
+    .withFailureHandler(function(err){ st.textContent = 'Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'); })
+    .adminGetSplJobBagian(actorNik, currentTargetWorkspace);
+}
+function _kirimSplJob(kode, job, bagian, pesan){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(pesan,'success'); loadSplJobBagian();
+    })
+    .withFailureHandler(function(e){ showToast('Gagal: '+(e&&e.message?e.message:'cek koneksi'),'error'); })
+    .adminSetSplJobBagian(actorNik, kode, job, bagian, currentTargetWorkspace);
+}
+function simpanSplJob(i){
+  var it = splJobCache[i];
+  var job = document.getElementById('spl-job-'+i).value.trim();
+  var bag = document.getElementById('spl-bagian-'+i).value.trim();
+  if (!job && !bag){ showToast('Isi Job/Bagian, atau pakai tombol Bawaan untuk mengembalikan.','error'); return; }
+  _kirimSplJob(it.kode, job, bag, 'Job & Bagian SPL '+it.nama+' disimpan');
+}
+function resetSplJob(i){ _kirimSplJob(splJobCache[i].kode, '', '', 'Dikembalikan ke nilai bawaan'); }
+
 // ---- Tanda Tangan Digital SPL Outsourcing (Leader / Section Head / Dept Head) ----
 var splTtdCache = [];
 function loadSplSignatures(){
@@ -1592,6 +1647,7 @@ document.addEventListener('DOMContentLoaded', function(){
   setTimeout(loadKaryawanMaster, 350);
   setTimeout(loadTargetProduktivitas, 400);
   setTimeout(loadSplSignatures, 600);
+  setTimeout(loadSplJobBagian, 650);
 });
 </script>
 
