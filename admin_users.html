@@ -470,6 +470,17 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <div id="target-produktivitas-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);"></div>
       </div>
 
+      <div class="card" id="card-spl-ttd">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="pen-tool" style="width:12px;"></i>Tanda Tangan Digital SPL Outsourcing — Departemen Ini</div>
+        </div>
+        <div class="modal-note" style="margin:0 0 10px;">
+          Upload tanda tangan <b>Leader</b>, <b>Section Head</b>, dan <b>Dept Head</b> sekali saja. Setiap lembur karyawan OS yang sudah <b>disetujui TL</b> akan otomatis memunculkan ketiga tanda tangan ini di kolom Paraf formulir SPL (lembur yang masih Pending/Ditolak tidak diberi tanda tangan). Gunakan gambar tanda tangan dengan latar putih/transparan, format PNG/JPG.
+        </div>
+        <div id="spl-ttd-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;"></div>
+        <div id="spl-ttd-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);"></div>
+      </div>
+
       <div class="card">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="user-check" style="width:12px;"></i>Data Karyawan (Monitoring FTE, Lembur &amp; SPL) — Departemen Ini</div>
@@ -1020,6 +1031,7 @@ function onWorkspaceSwitch(){
   loadFonnteStatus(); // status nomor approver WA harus ikut departemen yang dipilih, bukan departemen login sendiri
   loadKaryawanMaster(); // Data Karyawan juga per departemen yang dipilih
   loadTargetProduktivitas(); // Target Produktivitas juga per departemen yang dipilih
+  loadSplSignatures(); // Tanda tangan SPL OS juga per departemen yang dipilih
 }
 
 // ---- Tambah Departemen/Plant Baru (Super Admin) ----
@@ -1303,6 +1315,92 @@ function kembalikanTargetProduktivitas(){
     .adminSetTargetProduktivitas(actorNik, '', currentTargetWorkspace);
 }
 
+
+// ---- Tanda Tangan Digital SPL Outsourcing (Leader / Section Head / Dept Head) ----
+var splTtdCache = [];
+function loadSplSignatures(){
+  var st = document.getElementById('spl-ttd-status');
+  if (!st) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ st.textContent = 'Gagal memuat: '+(res&&res.error?res.error:''); return; }
+      st.textContent = '';
+      splTtdCache = res.data || [];
+      renderSplSignatures();
+    })
+    .withFailureHandler(function(err){ st.textContent = 'Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'); })
+    .adminGetSplSignatures(actorNik, currentTargetWorkspace);
+}
+function renderSplSignatures(){
+  var grid = document.getElementById('spl-ttd-grid');
+  grid.innerHTML = splTtdCache.map(function(it){
+    var prev = it.ada
+      ? '<img src="'+it.preview+'" alt="TTD '+escHtml(it.label)+'" style="max-width:100%;max-height:70px;object-fit:contain;">'
+      : '<span style="font-size:10px;color:var(--text-muted);">Belum ada tanda tangan</span>';
+    var info = it.ada ? ('Diupload '+escHtml(it.waktu||'')+(it.oleh?' oleh '+escHtml(it.oleh):'')) : '';
+    return '<div style="border:1px solid var(--border-color);border-radius:9px;padding:10px;display:flex;flex-direction:column;gap:7px;">'
+      + '<div style="font-size:11px;font-weight:700;">'+escHtml(it.label)+'</div>'
+      + '<div style="background:#fff;border-radius:6px;min-height:80px;display:flex;align-items:center;justify-content:center;padding:4px;">'+prev+'</div>'
+      + (info?'<div style="font-size:9px;color:var(--text-muted);">'+info+'</div>':'')
+      + '<input type="text" class="form-input" id="spl-ttd-nama-'+it.jabatan+'" placeholder="Nama penandatangan" value="'+escHtml(it.nama||'')+'">'
+      + '<input type="file" id="spl-ttd-file-'+it.jabatan+'" accept="image/png,image/jpeg" style="font-size:10px;color:var(--text-muted);">'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;">'
+      + '<button class="btn-flat btn-flat-accent" onclick="uploadSplSignature(\''+it.jabatan+'\')">'+(it.ada?'Ganti':'Upload')+'</button>'
+      + (it.ada?'<button class="btn-flat btn-flat-danger" onclick="hapusSplSignature(\''+it.jabatan+'\')">Hapus</button>':'')
+      + '</div></div>';
+  }).join('');
+}
+// Kecilkan gambar ke kanvas 400x200 (rasio 2:1, latar transparan) supaya ringan dan pas di kolom Paraf
+function normalisasiGambarTtd(file, cb){
+  var fr = new FileReader();
+  fr.onload = function(e){
+    var img = new Image();
+    img.onload = function(){
+      var W = 400, H = 200, c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      var ctx = c.getContext('2d');
+      var sc = Math.min(W/img.width, H/img.height);
+      var w = img.width*sc, h = img.height*sc;
+      ctx.drawImage(img, (W-w)/2, (H-h)/2, w, h);
+      cb(null, c.toDataURL('image/png'));
+    };
+    img.onerror = function(){ cb(new Error('File bukan gambar yang valid')); };
+    img.src = e.target.result;
+  };
+  fr.onerror = function(){ cb(new Error('Gagal membaca file')); };
+  fr.readAsDataURL(file);
+}
+function uploadSplSignature(jabatan){
+  var inp = document.getElementById('spl-ttd-file-'+jabatan);
+  var nama = document.getElementById('spl-ttd-nama-'+jabatan).value.trim();
+  var file = inp && inp.files && inp.files[0];
+  if (!file){ showToast('Pilih file gambar tanda tangan dulu','error'); return; }
+  if (file.size > 5*1024*1024){ showToast('Ukuran file terlalu besar (maks 5 MB)','error'); return; }
+  showToast('Mengupload tanda tangan...','info');
+  normalisasiGambarTtd(file, function(err, dataUrl){
+    if (err){ showToast(err.message,'error'); return; }
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+        showToast('Tanda tangan tersimpan. Otomatis dipakai di SPL OS yang disetujui TL.','success');
+        loadSplSignatures();
+      })
+      .withFailureHandler(function(e){ showToast('Gagal: '+(e&&e.message?e.message:'cek koneksi'),'error'); })
+      .adminUploadSplSignature(actorNik, jabatan, nama, dataUrl, currentTargetWorkspace);
+  });
+}
+function hapusSplSignature(jabatan){
+  if (!confirm('Hapus tanda tangan ini? SPL berikutnya tidak akan memunculkannya lagi.')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Tanda tangan dihapus','success');
+      loadSplSignatures();
+    })
+    .withFailureHandler(function(e){ showToast('Gagal: '+(e&&e.message?e.message:'cek koneksi'),'error'); })
+    .adminHapusSplSignature(actorNik, jabatan, currentTargetWorkspace);
+}
+
 // ---- Data Karyawan (master KARYAWAN_LEMBUR) per departemen ----
 var karyawanMasterCache = [];
 function loadKaryawanMaster(){
@@ -1493,6 +1591,7 @@ document.addEventListener('DOMContentLoaded', function(){
   setTimeout(loadFonnteStatus, 300); // tunggu actorNik terisi dari loadUsers()
   setTimeout(loadKaryawanMaster, 350);
   setTimeout(loadTargetProduktivitas, 400);
+  setTimeout(loadSplSignatures, 600);
 });
 </script>
 

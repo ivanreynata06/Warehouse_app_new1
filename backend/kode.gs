@@ -103,6 +103,10 @@ var API_FUNCTIONS = {
   editLemburByTL          : editLemburByTL,
   uploadTlSignature       : uploadTlSignature,
   hasTlSignature          : hasTlSignature,
+  // Tanda Tangan SPL Outsourcing: Leader / Section Head / Dept Head (diupload TL/Admin/Super Admin)
+  adminGetSplSignatures   : adminGetSplSignatures,
+  adminUploadSplSignature : adminUploadSplSignature,
+  adminHapusSplSignature  : adminHapusSplSignature,
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
   clearStockDataForDate   : clearStockDataForDate,
@@ -6979,6 +6983,145 @@ function hasTlSignature(nik) {
 
 
 // ================================================================
+//  TANDA TANGAN SPL OUTSOURCING — LEADER / SECTION HEAD / DEPT HEAD
+// ------------------------------------------------------------
+//  Diupload SEKALI oleh akun yang boleh kelola user (TL / Admin /
+//  Super Admin) lewat Panel Admin. Setelah itu, setiap kali lembur
+//  karyawan OS sudah DISETUJUI TL (approvalStatus = 'Disetujui'),
+//  tanda tangan ketiga jabatan ini OTOMATIS tertempel di kolom Paraf
+//  (Leader / Sect Head / Dept Head) baris lembur tsb di formulir SPL.
+//  Lembur yang masih Pending / Ditolak TIDAK diberi tanda tangan.
+//
+//  Penyimpanan: gambar di Drive (anyone-with-link, pola sama dgn
+//  uploadTlSignature), metadata di sheet SPL_TTD_JABATAN pada
+//  spreadsheet departemen (jadi tiap departemen/plant punya
+//  tanda tangan sendiri):
+//    A=Jabatan (LEADER|SECTHEAD|DEPTHEAD)  B=Nama penandatangan
+//    C=FileId gambar  D=Diupload oleh (NIK)  E=Waktu upload
+// ================================================================
+var SH_SPL_TTD = 'SPL_TTD_JABATAN';
+var SPL_TTD_JABATAN = {
+  LEADER:   { label: 'Leader',       token: 'LEADER' },
+  SECTHEAD: { label: 'Section Head', token: 'SECT'   },
+  DEPTHEAD: { label: 'Dept Head',    token: 'DEPT'   }
+};
+var SPL_TTD_MAX_CHARS = 3 * 1024 * 1024; // batas data URL ~3 MB (klien sudah mengecilkan gambar)
+
+function _splTtdSheet(ss, buatKalauBelumAda) {
+  var sh = ss.getSheetByName(SH_SPL_TTD);
+  if (!sh && buatKalauBelumAda) {
+    sh = ss.insertSheet(SH_SPL_TTD);
+    sh.getRange('A1:E1').setValues([['Jabatan', 'Nama', 'FileId', 'DiuploadOleh', 'Waktu']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// Peta { LEADER: {rowIndex,nama,fileId,oleh,waktu}, ... } dari sebuah spreadsheet
+function _splTtdPeta(ss) {
+  var out = {}, sh = _splTtdSheet(ss, false);
+  if (!sh || sh.getLastRow() < 2) return out;
+  sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues().forEach(function (r, i) {
+    var j = String(r[0] || '').trim().toUpperCase();
+    if (SPL_TTD_JABATAN[j] && r[2]) out[j] = { rowIndex: i + 2, nama: String(r[1] || ''), fileId: String(r[2]), oleh: String(r[3] || ''), waktu: r[4] };
+  });
+  return out;
+}
+
+function _splTtdBlobDariId(fileId) {
+  try { return DriveApp.getFileById(fileId).getBlob(); } catch (e) { return null; }
+}
+
+// Daftar tanda tangan jabatan + pratinjau gambar (data URL) untuk Panel Admin
+function adminGetSplSignatures(actorNik, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var peta = _splTtdPeta(tgt.ss), data = [];
+    Object.keys(SPL_TTD_JABATAN).forEach(function (j) {
+      var e = peta[j], item = { jabatan: j, label: SPL_TTD_JABATAN[j].label, ada: false, nama: '', preview: '', oleh: '', waktu: '' };
+      if (e) {
+        var blob = _splTtdBlobDariId(e.fileId);
+        if (blob) {
+          item.ada = true; item.nama = e.nama; item.oleh = e.oleh;
+          item.waktu = e.waktu ? Utilities.formatDate(new Date(e.waktu), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm') : '';
+          item.preview = 'data:' + (blob.getContentType() || 'image/png') + ';base64,' + Utilities.base64Encode(blob.getBytes());
+        }
+      }
+      data.push(item);
+    });
+    return { success: true, data: data, workspaceKey: tgt.workspaceKey };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function adminUploadSplSignature(actorNik, jabatan, nama, dataUrl, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh upload tanda tangan.' };
+    jabatan = String(jabatan || '').trim().toUpperCase();
+    if (!SPL_TTD_JABATAN[jabatan]) return { success: false, error: 'Jabatan tidak valid (pilih Leader / Section Head / Dept Head).' };
+    nama = String(nama || '').trim();
+    if (!dataUrl || String(dataUrl).indexOf('data:image/') !== 0) return { success: false, error: 'File harus berupa gambar (PNG/JPG).' };
+    if (String(dataUrl).length > SPL_TTD_MAX_CHARS) return { success: false, error: 'Ukuran gambar terlalu besar (maks ~2 MB).' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+
+    var parts = String(dataUrl).split(',');
+    var mime = (parts[0].match(/data:(image\/[a-zA-Z0-9.+-]+)/) || [])[1] || 'image/png';
+    var ext = mime.indexOf('jpeg') > -1 ? 'jpg' : 'png';
+    var blob = Utilities.newBlob(Utilities.base64Decode(parts[1]), mime, 'ttd_spl_' + jabatan.toLowerCase() + '_' + tgt.workspaceKey + '.' + ext);
+
+    var sh = _splTtdSheet(tgt.ss, true);
+    var peta = _splTtdPeta(tgt.ss);
+    if (peta[jabatan]) { try { DriveApp.getFileById(peta[jabatan].fileId).setTrashed(true); } catch (e) {} }
+
+    var file = DriveApp.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var baris = [jabatan, nama, file.getId(), String(actorNik), new Date()];
+    if (peta[jabatan]) sh.getRange(peta[jabatan].rowIndex, 1, 1, 5).setValues([baris]);
+    else sh.appendRow(baris);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+function adminHapusSplSignature(actorNik, jabatan, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    jabatan = String(jabatan || '').trim().toUpperCase();
+    if (!SPL_TTD_JABATAN[jabatan]) return { success: false, error: 'Jabatan tidak valid.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var e = _splTtdPeta(tgt.ss)[jabatan];
+    if (!e) return { success: true };
+    try { DriveApp.getFileById(e.fileId).setTrashed(true); } catch (x) {}
+    _splTtdSheet(tgt.ss, false).deleteRow(e.rowIndex);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Dipakai saat membangun SPL (departemen/workspace yang sedang aktif):
+// { LEADER: {nama, fileId, blob}, SECTHEAD: {...}, DEPTHEAD: {...} } -- jabatan yang belum diupload tidak ada.
+function _getSplSignatureSet() {
+  var out = {};
+  try {
+    var peta = _splTtdPeta(SpreadsheetApp.openById(SPREADSHEET_ID));
+    Object.keys(peta).forEach(function (j) {
+      var b = _splTtdBlobDariId(peta[j].fileId);
+      if (b) out[j] = { nama: peta[j].nama, fileId: peta[j].fileId, blob: b };
+    });
+  } catch (e) {}
+  return out;
+}
+// Hanya FileId (murah, tanpa unduh gambar) -- untuk sidik jari cache PDF SPL
+function _splTtdSidik() {
+  try {
+    var peta = _splTtdPeta(SpreadsheetApp.openById(SPREADSHEET_ID));
+    return Object.keys(peta).sort().map(function (j) { return j + ':' + peta[j].fileId; }).join(',');
+  } catch (e) { return ''; }
+}
+
+
+// ================================================================
 //  EDIT/HAPUS LEMBUR — hanya boleh oleh akun yang membuat (kolom Kode).
 //  Kalau catatannya masih BARU (<24 jam sejak diinput): boleh langsung
 //  diedit/dihapus tanpa approval. Kalau sudah LEBIH dari 24 jam: tidak
@@ -7574,6 +7717,68 @@ function _splJumlahBaris(teks) {
   return mx || 8;
 }
 
+// ---- Paraf digital Leader / Sect Head / Dept Head di formulir SPL ----
+// Ukuran gambar paraf (poin) -- kolom Paraf di template sempit. Ubah di sini kalau perlu.
+var SPL_PARAF_W = 36, SPL_PARAF_H = 18;
+// Kolom Paraf di baris data template standar (11 kolom): Tanggal, Nama, SIMID, Awal, Akhir, Total,
+// Karyawan(6), Leader(7), Sect Head(8), Dept Head(9), Keterangan(10).
+var SPL_PARAF_KOLOM = { LEADER: 7, SECTHEAD: 8, DEPTHEAD: 9 };
+
+function _splBarisDariPenanda(target, n) {
+  try {
+    var f = target.findText('\\{\\{TGL' + n + '\\}\\}');
+    if (!f) return null;
+    var el = f.getElement();
+    while (el && el.getType() !== DocumentApp.ElementType.TABLE_ROW) el = el.getParent();
+    return el ? el.asTableRow() : null;
+  } catch (e) { return null; }
+}
+
+// Taruh gambar ke dalam sebuah sel tabel (rata tengah), menggantikan isi sel.
+function _splGambarDiSel(cell, blob) {
+  cell.clear();
+  var par = cell.getChild(0).asParagraph();
+  par.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  par.insertInlineImage(0, blob).setWidth(SPL_PARAF_W).setHeight(SPL_PARAF_H);
+}
+
+// n = nomor baris data. Prioritas: penanda {{TTD_LEADERn}}/{{TTD_SECTn}}/{{TTD_DEPTn}} kalau ada di template;
+// kalau tidak ada, pakai posisi kolom standar (baris 11 kolom). sigs = null -> semua penanda dikosongkan.
+function _splTempelParafBaris(target, baris, n, sigs) {
+  Object.keys(SPL_TTD_JABATAN).forEach(function (j) {
+    var pola = '\\{\\{TTD_' + SPL_TTD_JABATAN[j].token + n + '\\}\\}';
+    var sig = sigs && sigs[j];
+    try {
+      var f = target.findText(pola);
+      if (f) {
+        var elTxt = f.getElement();
+        elTxt.asText().setText('');
+        if (sig) elTxt.getParent().asParagraph().insertInlineImage(0, sig.blob).setWidth(SPL_PARAF_W).setHeight(SPL_PARAF_H);
+        return;
+      }
+      if (sig && baris && baris.getNumCells() === 11) _splGambarDiSel(baris.getCell(SPL_PARAF_KOLOM[j]), sig.blob);
+    } catch (e) { /* tidak fatal: formulir tetap jadi tanpa gambar paraf di sel ini */ }
+    try { target.replaceText(pola, ''); } catch (e2) {}
+  });
+}
+
+function _splTempelParafHalaman(target, sigs, adaDisetujui) {
+  Object.keys(SPL_TTD_JABATAN).forEach(function (j) {
+    var pola = '\\{\\{TTD_' + SPL_TTD_JABATAN[j].token + '\\}\\}';
+    var sig = adaDisetujui && sigs && sigs[j];
+    try {
+      var f = target.findText(pola);
+      if (f && sig) {
+        var el = f.getElement();
+        el.asText().setText('');
+        el.getParent().asParagraph().insertInlineImage(0, sig.blob).setWidth(90).setHeight(40);
+        return;
+      }
+    } catch (e) {}
+    try { target.replaceText(pola, ''); } catch (e2) {}
+  });
+}
+
 // Isi SATU halaman formulir. target = Body (halaman 1) atau elemen salinan template (halaman berikutnya).
 // pageIdx menentukan lembur mana yang masuk: baris pageIdx*maxRows ... (pageIdx+1)*maxRows-1.
 function _splIsiHalaman(target, ctx, pageIdx) {
@@ -7583,6 +7788,9 @@ function _splIsiHalaman(target, ctx, pageIdx) {
   for (var i = 0; i < ctx.maxRows; i++) {
     var n = i + 1, idx = pageIdx * ctx.maxRows + i;
     var vTgl = '', vNama = '', vSimid = '', vAwal = '', vAkhir = '', vTotal = '', vKet = '';
+    // Baris tabel untuk baris ke-n HARUS dicari SEBELUM penanda {{TGLn}} diganti (setelah diganti tak bisa dikenali lagi)
+    var barisTabel = (idx < ctx.list.length && ctx.sigs) ? _splBarisDariPenanda(target, n) : null;
+    var barisDisetujui = (idx < ctx.list.length) && ctx.list[idx].approvalStatus === 'Disetujui';
     if (idx < ctx.list.length) {
       var l = ctx.list[idx];
       var p = l.tanggal.split('-');
@@ -7604,7 +7812,11 @@ function _splIsiHalaman(target, ctx, pageIdx) {
     // replaceText() memperlakukan argumen kedua sebagai pola dengan backreference $1,$2: "$" di
     // Keterangan harus di-escape jadi "$$" supaya dianggap literal.
     target.replaceText('\\{\\{KET' + n + '\\}\\}', String(vKet).replace(/\$/g, '$$$$'));
+    // Paraf digital Leader / Sect Head / Dept Head: hanya untuk lembur yang sudah DISETUJUI TL
+    _splTempelParafBaris(target, barisTabel, n, barisDisetujui ? ctx.sigs : null);
   }
+  // Penanda opsional di area Disetujui/Mengetahui (kalau template memasangnya): {{TTD_LEADER}}, {{TTD_SECT}}, {{TTD_DEPT}}
+  _splTempelParafHalaman(target, ctx.sigs, ctx.adaDisetujui);
   // Tanda tangan digital TL di {{TTD_TL}} (kolom "Disetujui"); dipasang di setiap halaman
   if (ctx.sigBlob) {
     var foundTtd = target.findText('\\{\\{TTD_TL\\}\\}');
@@ -7676,7 +7888,10 @@ function _buildSPLDocument(kode, bulan, tahun) {
   // Tanda tangan TL (sekali ambil, dipakai di semua halaman)
   var approvedEntry = lemburList.find(function (l) { return l.approvalStatus === 'Disetujui' && l.approvedBy; });
   var sigBlob = approvedEntry ? _getTlSignatureBlob(approvedEntry.approvedBy) : null;
-  var ctx = { jb: jb, k: k, tahun: tahun, bulanNama: bulanNama, list: lemburList, maxRows: maxRows, sigBlob: sigBlob };
+  // Paraf Leader / Sect Head / Dept Head yang diupload admin (dipasang untuk lembur berstatus Disetujui)
+  var sigs = _getSplSignatureSet();
+  if (!sigBlob && approvedEntry && sigs.LEADER) sigBlob = sigs.LEADER.blob; // cadangan utk kotak "Disetujui" kalau TL approver belum upload TTD sendiri
+  var ctx = { jb: jb, k: k, tahun: tahun, bulanNama: bulanNama, list: lemburList, maxRows: maxRows, sigBlob: sigBlob, sigs: sigs, adaDisetujui: !!approvedEntry };
 
   // Salinan isi template yang masih polos, bahan untuk halaman ke-2 dan seterusnya
   var polos = [];
@@ -7798,7 +8013,7 @@ function _splSig(kode, bulan, tahun) {
   var rows = (lr.success ? lr.data : []).map(function (l) {
     return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || ''].join('~');
   }).sort().join('|');
-  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, 'v3-multihalaman'].join('##');
+  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, _splTtdSidik(), 'v4-paraf-digital'].join('##');
   var d = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8);
   return { sig: d.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 12), k: k };
 }
