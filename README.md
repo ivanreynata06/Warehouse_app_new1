@@ -304,3 +304,6 @@ Panel Admin > kartu "Job & Bagian di SPL Karyawan OS": TL/Admin/Super Admin bisa
 
 ### Akurasi Scan: BFL vs Transaksi by Item Browse
 Upload export "Transaksi by Item Browse" (Upload Data Harian > Akurasi Scan; kolom Item Number, Effective Date, Loc Qty Change, Document). Di Monitoring Akurasi Scan jalur Backflush muncul panel **BFL vs Transaksi by Item Browse**: tiap voucher berstatus BFL dicocokkan lewat nomor voucher = Document, qty dijumlah per Document+Item. **Sesuai** bila qty sama; **Selisih** bila dokumen belum ada di transaksi (belum masuk stock) atau qty kurang/lebih. Voucher di luar rentang tanggal file transaksi ditandai "Di luar cakupan" dan tidak dihitung selisih. Ada pencarian nomor voucher/document dan opsi menyertakan status MANUAL. Jenis data baru `trx` (wajib **deploy ulang Apps Script**).
+
+### Tanda tangan SPL lama vs baru
+Template SPL memakai penanda per baris `{{TTD_LEADERn}}`, `{{TTD_SECTn}}`, `{{TTD_DEPTn}}`. Lembur yang diinput **sebelum "Batas SPL lama"** (Panel Admin, kartu Tanda Tangan Digital SPL; otomatis = saat tanda tangan pertama diupload) langsung bertanda tangan semua. Lembur yang diinput **sesudah batas** baru bertanda tangan setelah **Disetujui TL**. Batas bisa diubah atau dimatikan.

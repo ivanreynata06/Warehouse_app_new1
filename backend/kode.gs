@@ -110,6 +110,7 @@ var API_FUNCTIONS = {
   adminGetSplJobBagian    : adminGetSplJobBagian,
   adminSetSplJobBagian    : adminSetSplJobBagian,
   adminHapusSplSignature  : adminHapusSplSignature,
+  adminSetSplTtdCutoff    : adminSetSplTtdCutoff,
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
   clearStockDataForDate   : clearStockDataForDate,
@@ -7083,6 +7084,42 @@ function _splTtdBlobDariId(fileId) {
   try { return DriveApp.getFileById(fileId).getBlob(); } catch (e) { return null; }
 }
 
+// ---- Batas SPL LAMA ----
+// Lembur yang DIINPUT SEBELUM batas ini dianggap SPL lama: tanda tangan langsung tertempel di semua
+// barisnya. Lembur yang diinput SETELAH batas baru bertanda tangan kalau sudah DISETUJUI TL.
+// Batas otomatis diisi = saat tanda tangan pertama diupload di departemen itu; bisa diubah di Panel Admin.
+function _splTtdCutoffBaca(workspaceKey) {
+  var v = PropertiesService.getScriptProperties().getProperty('SPL_TTD_CUTOFF_' + workspaceKey);
+  if (!v) return null;
+  var d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+function _splBarisBertandatangan(l, cutoff) {
+  if (l.approvalStatus === 'Disetujui') return true;
+  if (!cutoff) return false;
+  var t = l.timestamp ? new Date(l.timestamp) : null;
+  if (!t || isNaN(t.getTime())) return false;
+  return t.getTime() < cutoff.getTime();
+}
+// value: 'yyyy-MM-ddTHH:mm' (WIB). Kosong = matikan penempelan otomatis untuk SPL lama.
+function adminSetSplTtdCutoff(actorNik, value, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    var iso;
+    value = String(value || '').trim();
+    if (!value) iso = '1970-01-01T00:00:00Z';
+    else {
+      var d = new Date(value + ':00+07:00');
+      if (isNaN(d.getTime())) return { success: false, error: 'Format tanggal/jam tidak valid.' };
+      iso = d.toISOString();
+    }
+    PropertiesService.getScriptProperties().setProperty('SPL_TTD_CUTOFF_' + tgt.workspaceKey, iso);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 // Daftar tanda tangan jabatan + pratinjau gambar (data URL) untuk Panel Admin
 function adminGetSplSignatures(actorNik, targetWorkspace) {
   try {
@@ -7102,7 +7139,9 @@ function adminGetSplSignatures(actorNik, targetWorkspace) {
       }
       data.push(item);
     });
-    return { success: true, data: data, workspaceKey: tgt.workspaceKey };
+    var co = _splTtdCutoffBaca(tgt.workspaceKey);
+    var coStr = (co && co.getTime() > 0) ? Utilities.formatDate(co, 'Asia/Jakarta', "yyyy-MM-dd'T'HH:mm") : '';
+    return { success: true, data: data, workspaceKey: tgt.workspaceKey, cutoff: coStr };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -7128,6 +7167,8 @@ function adminUploadSplSignature(actorNik, jabatan, nama, dataUrl, targetWorkspa
 
     var file = DriveApp.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var propsC = PropertiesService.getScriptProperties();
+    if (!propsC.getProperty('SPL_TTD_CUTOFF_' + tgt.workspaceKey)) propsC.setProperty('SPL_TTD_CUTOFF_' + tgt.workspaceKey, new Date().toISOString()); // SPL yang sudah ada saat ini = SPL lama
     var baris = [jabatan, nama, file.getId(), String(actorNik), new Date()];
     if (peta[jabatan]) sh.getRange(peta[jabatan].rowIndex, 1, 1, 5).setValues([baris]);
     else sh.appendRow(baris);
@@ -7862,8 +7903,9 @@ function _splTempelParafBaris(target, baris, n, sigs) {
       var f = target.findText(pola);
       if (f) {
         var elTxt = f.getElement();
-        elTxt.asText().setText('');
-        if (sig) elTxt.getParent().asParagraph().insertInlineImage(0, sig.blob).setWidth(SPL_PARAF_W).setHeight(SPL_PARAF_H);
+        var par = elTxt.getParent().asParagraph(); // ambil induk SEBELUM teks dikosongkan
+        elTxt.asText().deleteText(f.getStartOffset(), f.getEndOffsetInclusive());
+        if (sig) { par.setAlignment(DocumentApp.HorizontalAlignment.CENTER); par.insertInlineImage(0, sig.blob).setWidth(SPL_PARAF_W).setHeight(SPL_PARAF_H); }
         return;
       }
       if (sig && baris && baris.getNumCells() === 11) _splGambarDiSel(baris.getCell(SPL_PARAF_KOLOM[j]), sig.blob);
@@ -7880,8 +7922,9 @@ function _splTempelParafHalaman(target, sigs, adaDisetujui) {
       var f = target.findText(pola);
       if (f && sig) {
         var el = f.getElement();
-        el.asText().setText('');
-        el.getParent().asParagraph().insertInlineImage(0, sig.blob).setWidth(90).setHeight(40);
+        var par2 = el.getParent().asParagraph();
+        el.asText().deleteText(f.getStartOffset(), f.getEndOffsetInclusive());
+        par2.insertInlineImage(0, sig.blob).setWidth(90).setHeight(40);
         return;
       }
     } catch (e) {}
@@ -7900,7 +7943,7 @@ function _splIsiHalaman(target, ctx, pageIdx) {
     var vTgl = '', vNama = '', vSimid = '', vAwal = '', vAkhir = '', vTotal = '', vKet = '';
     // Baris tabel untuk baris ke-n HARUS dicari SEBELUM penanda {{TGLn}} diganti (setelah diganti tak bisa dikenali lagi)
     var barisTabel = (idx < ctx.list.length && ctx.sigs) ? _splBarisDariPenanda(target, n) : null;
-    var barisDisetujui = (idx < ctx.list.length) && ctx.list[idx].approvalStatus === 'Disetujui';
+    var barisDisetujui = (idx < ctx.list.length) && _splBarisBertandatangan(ctx.list[idx], ctx.cutoff);
     if (idx < ctx.list.length) {
       var l = ctx.list[idx];
       var p = l.tanggal.split('-');
@@ -8001,7 +8044,7 @@ function _buildSPLDocument(kode, bulan, tahun) {
   // Paraf Leader / Sect Head / Dept Head yang diupload admin (dipasang untuk lembur berstatus Disetujui)
   var sigs = _getSplSignatureSet();
   if (!sigBlob && approvedEntry && sigs.LEADER) sigBlob = sigs.LEADER.blob; // cadangan utk kotak "Disetujui" kalau TL approver belum upload TTD sendiri
-  var ctx = { jb: jb, k: k, tahun: tahun, bulanNama: bulanNama, list: lemburList, maxRows: maxRows, sigBlob: sigBlob, sigs: sigs, adaDisetujui: !!approvedEntry };
+  var ctx = { jb: jb, k: k, tahun: tahun, bulanNama: bulanNama, list: lemburList, maxRows: maxRows, sigBlob: sigBlob, sigs: sigs, adaDisetujui: !!approvedEntry, cutoff: _splTtdCutoffBaca(ACTIVE_WORKSPACE) };
 
   // Salinan isi template yang masih polos, bahan untuk halaman ke-2 dan seterusnya
   var polos = [];
@@ -8121,9 +8164,10 @@ function _splSig(kode, bulan, tahun) {
   var jb = _splJobBagianFor(k, kh);
   var lr = getLemburList({ kode: kode, bulan: Number(bulan), tahun: Number(tahun) });
   var rows = (lr.success ? lr.data : []).map(function (l) {
-    return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || ''].join('~');
+    return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || '', l.timestamp || ''].join('~');
   }).sort().join('|');
-  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, _splTtdSidik(), 'v4-paraf-digital'].join('##');
+  var co = _splTtdCutoffBaca(ACTIVE_WORKSPACE);
+  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, _splTtdSidik(), co ? co.getTime() : 0, 'v5-paraf-lama'].join('##');
   var d = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8);
   return { sig: d.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 12), k: k };
 }

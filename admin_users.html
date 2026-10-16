@@ -488,6 +488,13 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         <div class="modal-note" style="margin:0 0 10px;">
           Upload tanda tangan <b>Leader</b>, <b>Section Head</b>, dan <b>Dept Head</b> sekali saja. Setiap lembur karyawan OS yang sudah <b>disetujui TL</b> akan otomatis memunculkan ketiga tanda tangan ini di kolom Paraf formulir SPL (lembur yang masih Pending/Ditolak tidak diberi tanda tangan). Gunakan gambar tanda tangan dengan latar putih/transparan, format PNG/JPG.
         </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:9px 10px;border:1px dashed var(--border-color);border-radius:9px;">
+          <span style="font-size:10.5px;"><b>Batas SPL lama:</b> lembur yang diinput <u>sebelum</u></span>
+          <input type="datetime-local" id="spl-ttd-cutoff" class="form-input" style="width:190px;">
+          <span style="font-size:10.5px;">langsung bertanda tangan semua; yang diinput sesudahnya baru bertanda tangan setelah disetujui TL.</span>
+          <button class="btn-flat btn-flat-accent" onclick="simpanSplCutoff()">Simpan Batas</button>
+          <button class="btn-flat btn-flat-ghost" onclick="kosongkanSplCutoff()">Matikan</button>
+        </div>
         <div id="spl-ttd-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;"></div>
         <div id="spl-ttd-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);"></div>
       </div>
@@ -1381,11 +1388,27 @@ function loadSplSignatures(){
       if (!res || !res.success){ st.textContent = 'Gagal memuat: '+(res&&res.error?res.error:''); return; }
       st.textContent = '';
       splTtdCache = res.data || [];
+      var ci = document.getElementById('spl-ttd-cutoff'); if (ci) ci.value = res.cutoff || '';
       renderSplSignatures();
     })
     .withFailureHandler(function(err){ st.textContent = 'Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'); })
     .adminGetSplSignatures(actorNik, currentTargetWorkspace);
 }
+function _kirimSplCutoff(v, pesan){
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast(pesan,'success'); loadSplSignatures();
+    })
+    .withFailureHandler(function(e){ showToast('Gagal: '+(e&&e.message?e.message:'cek koneksi'),'error'); })
+    .adminSetSplTtdCutoff(actorNik, v, currentTargetWorkspace);
+}
+function simpanSplCutoff(){
+  var v = document.getElementById('spl-ttd-cutoff').value;
+  if (!v){ showToast('Isi tanggal & jam batas, atau klik Matikan.','error'); return; }
+  _kirimSplCutoff(v, 'Batas SPL lama disimpan');
+}
+function kosongkanSplCutoff(){ _kirimSplCutoff('', 'Penempelan otomatis untuk SPL lama dimatikan'); }
 function renderSplSignatures(){
   var grid = document.getElementById('spl-ttd-grid');
   grid.innerHTML = splTtdCache.map(function(it){
