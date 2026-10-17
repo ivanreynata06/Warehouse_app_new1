@@ -5,6 +5,7 @@
 <script src="./assets/js/config.js?v=20260722d"></script>
 <script src="./assets/js/api-shim.js?v=20260722d"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
+<script src="./assets/js/so-loader.js?v=20261017f"></script>
 <link rel="preconnect" href="https://script.google.com">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -24,7 +25,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',sans-serif;background:
 .mitem{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;color:var(--txt2);font-size:11.5px;cursor:pointer;font-weight:500;white-space:nowrap}
 .mitem:hover{background:rgba(255,255,255,.05);color:var(--txt)}.mitem.active{background:rgba(16,185,129,.15);color:var(--green)}
 .main{flex:1;display:flex;flex-direction:column;min-width:0}
-.top{height:50px;background:var(--bg2);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;padding:0 18px}
+.top{height:50px;background:var(--bg2);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;padding:0 260px 0 18px}
 .top h1{font-family:'Outfit';font-size:15px}.top small{font-size:10px;color:var(--txt2)}
 .who{font-size:11px;color:var(--txt2);display:flex;gap:10px;align-items:center}
 .who b{color:var(--txt)}
@@ -124,6 +125,7 @@ tr.sel-row td{background:rgba(239,68,68,.07)}
   <div class="content">
 
   <!-- DASHBOARD -->
+  <div id="loadBox"></div>
   <div class="pane active" id="p-dash">
     <div id="warnBox"></div>
     <div class="kpis" id="kpis"></div>
@@ -224,14 +226,28 @@ document.getElementById('tabs').addEventListener('click',function(e){
 });
 function goTab(k){document.querySelector('.tab[data-t="'+k+'"]').click()}
 
+var LOAD_STEPS=['Menghubungkan ke server','Mengambil master group SO','Menghitung progres & status','Menyiapkan tampilan'];
+function withTimeout(p,ms){return Promise.race([p,new Promise(function(_,no){setTimeout(function(){no(new Error('Server tidak merespons (timeout). Pastikan Apps Script sudah di-deploy ulang dengan versi terbaru.'))},ms)})])}
 function loadAll(force){
   if(force&&window.clearApiCache) clearApiCache();
   document.getElementById('who').innerHTML='<b>'+esc(NAMA||'-')+'</b> · '+esc(sessionStorage.getItem('wh_role')||'');
-  Promise.all([api('soGetMaster'),api('soGetDashboard'),api('soListLembar','')]).then(function(r){
+  var L=SOLoader.mount(document.getElementById('loadBox'),{title:'Memuat Monitoring Stock Opname',steps:LOAD_STEPS});
+  document.querySelectorAll('.pane').forEach(function(p){p.style.visibility='hidden'});
+  var show=function(){document.querySelectorAll('.pane').forEach(function(p){p.style.visibility=''})};
+  L.step(0);
+  var pm=api('soGetMaster').then(function(x){L.step(1);return x});
+  var pd=api('soGetDashboard').then(function(x){L.step(2);return x});
+  var pl=api('soListLembar','');
+  withTimeout(Promise.all([pm,pd,pl]),60000).then(function(r){
+    L.step(3);
     S.master=r[0].data; S.dash=r[1].data; S.warn=r[1].warnings; S.lembar=r[2].data;
     document.getElementById('subtitle').textContent='Update '+r[1].today+(IS_TL?' · Semua PIC':' · Akun PIC: '+NAMA);
     fillSelects(); renderDash(); renderGcards(); renderSel2(); renderPrint();
-  }).catch(function(e){toast(e.message,true);document.getElementById('subtitle').textContent='Gagal memuat: '+e.message});
+    show(); L.done();
+  }).catch(function(e){
+    document.getElementById('subtitle').textContent='Gagal memuat';
+    L.fail(e.message,function(){loadAll(true)});
+  });
 }
 function fillSelects(){
   var pics=[]; S.master.forEach(function(m){if(isMine(m.pic)&&pics.indexOf(m.pic)===-1)pics.push(m.pic)});

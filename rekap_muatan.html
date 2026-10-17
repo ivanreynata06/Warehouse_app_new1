@@ -7,6 +7,7 @@
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
 <script src="./assets/js/api-shim.js?v=20260722d"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
+<script src="./assets/js/so-loader.js?v=20261017f"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -321,7 +322,7 @@ html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;
       <b style="font-family:'Outfit',sans-serif;font-size:13px">Rekap PIC — Progres Stock Opname</b>
       <a href="#" onclick="navTo('stock_opname');return false" style="font-size:10.5px;color:var(--green);text-decoration:none">Buka Monitoring SO &rarr;</a>
     </div>
-    <div style="overflow:auto;max-height:300px"><table id="rp-tbl" style="width:100%;border-collapse:collapse;font-size:11px"><tbody><tr><td style="padding:14px;color:var(--txt3)">Memuat data SO…</td></tr></tbody></table></div>
+    <div style="overflow:auto;max-height:300px"><table id="rp-tbl" style="width:100%;border-collapse:collapse;font-size:11px"></table><div id="rp-load"></div></div>
   </div>
 
     <!-- FILTER BAR — Bulanan only -->
@@ -911,21 +912,28 @@ function showErr(m){ showLoading(false); console.error(m); }
   var tl=role==='TL'||role.indexOf('ADMIN')!==-1;
   function mine(p){if(tl)return true;p=String(p).toUpperCase();return nama&&(p.indexOf(nama)!==-1||nama.indexOf(p)!==-1||p.split(/[ \/]/).some(function(w){return w.length>=4&&nama.indexOf(w)!==-1}))}
   var col={'ON TRACK':'#7cb0ff','TERLAMBAT':'#ff8a8a','SELESAI':'#4fd9a8','BELUM MULAI':'#9da3b8'};
+  var L=null,to=null;
   function go(){
-    if(!window.google||!google.script)return setTimeout(go,300);
+    if(!window.google||!google.script||!window.SOLoader)return setTimeout(go,300);
+    var t=document.getElementById('rp-tbl');t.innerHTML='';
+    L=SOLoader.mount(document.getElementById('rp-load'),{title:'Memuat Rekap PIC',steps:['Menghubungkan ke server','Mengambil data Stock Opname','Menghitung rekap per PIC']});L.step(0);
+    setTimeout(function(){if(L)L.step(1)},700);
+    to=setTimeout(function(){if(L){L.fail('Server tidak merespons. Pastikan Apps Script sudah di-deploy ulang.',go);L=null}},60000);
     google.script.run.withSuccessHandler(function(r){
-      var t=document.getElementById('rp-tbl');if(!r||!r.success){t.innerHTML='<tbody><tr><td style="padding:14px;color:#ff8a8a">'+e(r&&r.error||'Gagal memuat SO')+'</td></tr></tbody>';return}
+      if(!L)return;clearTimeout(to);
+      if(!r||!r.success){L.fail(r&&r.error||'Gagal memuat SO',go);L=null;return}
+      L.step(2);
       var by={};r.groups.filter(function(g){return mine(g.pic)}).forEach(function(g){(by[g.pic]=by[g.pic]||[]).push(g)});
       var h='<thead><tr style="color:#b8c4e0;background:#1a2540;font-size:10px;text-transform:uppercase"><th style="padding:8px;text-align:left">PIC</th><th>Jumlah Group SO</th><th>Item Target</th><th>Sudah di-SO</th><th>% Target Durasi Dikerjakan</th><th>Group Terlambat</th><th>Selisih OPEN</th><th>Selisih CLOSED</th></tr></thead><tbody>';
       Object.keys(by).forEach(function(p){var g=by[p],T=0,D=0,L=0,O=0,C=0;g.forEach(function(x){T+=x.targetItem;D+=x.telahSo;if(x.status==='TERLAMBAT')L++;O+=x.open;C+=x.closed});
         var pc=T?(D/T*100).toFixed(1):'0.0';
         h+='<tr style="border-top:1px solid var(--border);text-align:center"><td style="padding:8px;text-align:left"><b>'+e(p)+'</b><div style="font-size:9.5px;color:var(--txt3)">'+g.map(function(x){return '<span style="color:'+col[x.status]+'">'+e(x.group)+' '+x.progress+'%</span>'}).join(' · ')+'</div></td><td>'+g.length+'</td><td>'+T+'</td><td>'+D+'</td><td>'+pc.replace('.',',')+'%</td><td style="color:'+(L?'#ff8a8a':'inherit')+'">'+L+'</td><td style="color:'+(O?'#ff8a8a':'inherit')+'">'+O+'</td><td style="color:#4fd9a8">'+C+'</td></tr>'});
       var sel=r.selisih.filter(function(x){return mine(x.pic)&&x.statusSel==='OPEN'});
-      h+='</tbody>';t.innerHTML=h;
+      h+='</tbody>';t.innerHTML=h;L.done();L=null;
       if(sel.length){var d=document.createElement('div');d.style.cssText='padding:10px 14px;border-top:1px solid var(--border);font-size:11px';
         d.innerHTML='<b style="color:#ff8a8a">Detail selisih OPEN ('+sel.length+')</b><br>'+sel.slice(0,40).map(function(x){return e(x.pic)+' · '+e(x.group)+' · <span style="font-family:monospace">'+e(x.item)+'</span> · sistem '+x.sistem+' / fisik '+x.fisik+' (selisih '+x.selisih+')'+(x.ket?' — '+e(x.ket):'')}).join('<br>');
         t.parentElement.parentElement.appendChild(d)}
-    }).withFailureHandler(function(){document.getElementById('rp-tbl').innerHTML='<tbody><tr><td style="padding:14px;color:#ff8a8a">Gagal terhubung ke backend</td></tr></tbody>'}).soGetRekapPIC();
+    }).withFailureHandler(function(){if(L){clearTimeout(to);L.fail('Gagal terhubung ke backend. Cek koneksi.',go);L=null}}).soGetRekapPIC();
   }
   go();
 })();
