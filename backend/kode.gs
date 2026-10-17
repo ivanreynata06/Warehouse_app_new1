@@ -136,7 +136,12 @@ var API_FUNCTIONS = {
   getAkurasiDataGabungan  : getAkurasiDataGabungan,
   getAkurasiData          : getAkurasiData,
   saveAkurasiData         : saveAkurasiData,
-  hapusAkurasiData        : hapusAkurasiData
+  hapusAkurasiData        : hapusAkurasiData,
+  // Stock Opname
+  soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
+  soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
+  soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih,
+  soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -327,10 +332,11 @@ var MENU_CATALOG = [
   { key: 'kanban',           label: 'Monitoring Kanban', file: 'kanban.html' },
   { key: 'fte_dashboard',    label: 'Monitoring FTE', file: 'fte_dashboard.html' },
   { key: 'akurasi_scan',     label: 'Akurasi Scan Barcode', file: 'akurasi_scan.html' },
-  { key: 'rekap',            label: 'Rekap Muatan', file: 'rekap_muatan.html' },
+  { key: 'rekap',            label: 'Rekap PIC', file: 'rekap_muatan.html' },
   { key: 'residance',        label: 'Loading Time (Jadwal Pengiriman)', file: 'residance_time.html' },
   { key: 'input_lembur',     label: 'Input Lembur & Cuti', file: 'input_lembur.html' },
-  { key: 'upload',           label: 'Upload Data Harian', file: 'upload_data.html' }
+  { key: 'upload',           label: 'Upload Data Harian', file: 'upload_data.html' },
+  { key: 'stock_opname',     label: 'Monitoring Stock Opname', file: 'stock_opname.html' }
 ];
 var MENU_CATALOG_KEYS = MENU_CATALOG.map(function (m) { return m.key; });
 
@@ -8548,4 +8554,296 @@ function diagNopolPengiriman(nopolAtauSpm, tanggalList) {
       });
     } catch (e) { Logger.log('gagal baca sumber ' + tg + ': ' + e.message); }
   });
+}
+
+
+// ================================================================
+//  STOCK OPNAME (SO) -- Monitoring, Lembar SO per PIC, Pengisian,
+//  Selisih + Close, Rekap PIC.
+//  Sheet yang dipakai (otomatis dibuat di spreadsheet departemen):
+//    SO_MASTER : daftar PIC x Group SO + target durasi
+//    SO_LEMBAR : 1 baris per lembar SO (hasil upload QAD)
+//    SO_DETAIL : 1 baris per item di lembar (sistem, fisik, selisih)
+//  Item yg boleh masuk lembar = item yang ADA di sheet per-group
+//  (sheet bernama sama dgn kode group, mis. "I053"). Item lain dibuang.
+//  Group dgn Mode MINGGUAN (mis. I053 - Saepul Ganni) target per minggu.
+// ================================================================
+var SO_MASTER_HDR = ['PIC', 'Group', 'Deskripsi', 'Target Durasi', 'Hari', 'Mode'];
+var SO_LEMBAR_HDR = ['ID', 'PIC', 'Group', 'Dibuat', 'Mulai', 'Akhir', 'Dibuat Oleh', 'Jumlah Item'];
+var SO_DETAIL_HDR = ['LembarID', 'Item', 'Deskripsi', 'UM', 'Lokasi', 'Sistem', 'Fisik', 'Selisih',
+                     'Tgl Isi', 'Diisi Oleh', 'Status Selisih', 'Keterangan', 'Tgl Close', 'Close Oleh', 'Alasan Close'];
+var SO_MASTER_SEED = [
+  ['SAEPUL GANNI', 'I053', 'PIPA PPR RKG', '1 WEEK (1 MONTH)', 30, 'MINGGUAN'],
+  ['DONI/IMAN', 'P010', 'FITTING PE-100', '3 MONTH', 90, 'BULANAN'],
+  ['SULISTIYO', 'P053', 'FITTING KINDRACO', '3 MONTH', 90, 'BULANAN'],
+  ['SULISTIYO', 'R051', 'GLUE CLEANER', '3 MONTH', 90, 'BULANAN'],
+  ['SULISTIYO', 'KELOX DFR', 'KELOX', '1 MONTH', 30, 'BULANAN'],
+  ['SULISTIYO', 'S010', 'LUBRICANT', '1 MONTH', 30, 'BULANAN'],
+  ['SULISTIYO', 'I070', 'PIPA PPR GREY', '3 MONTH', 90, 'BULANAN'],
+  ['SULISTIYO', 'M010', 'RUCIKA SAFE', '1 MONTH', 30, 'BULANAN'],
+  ['SULISTIYO', 'X053', 'VALSIR (LEM)', '3 MONTH', 90, 'BULANAN'],
+  ['IVAN REYNATA', 'Z073', 'PIPA TRC & JACKING', '3 MONTH', 90, 'BULANAN'],
+  ['IVAN REYNATA', 'M000', 'WAVINSAFE IM', '3 MONTH', 90, 'BULANAN']
+];
+
+function _soSheet(name, hdr, seed) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1, 1, hdr.length).setValues([hdr]).setFontWeight('bold').setBackground('#cfe2f3');
+    sh.setFrozenRows(1);
+    sh.getRange(2, 1, 2000, hdr.length).setNumberFormat('@');
+    if (seed && seed.length) sh.getRange(2, 1, seed.length, hdr.length).setValues(seed);
+  }
+  return sh;
+}
+function _soRows(sh, nCols) {
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, nCols).getValues();
+}
+function _soToday() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+function _soAddDays(iso, n) {
+  var p = iso.split('-'); var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + n);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+function _soDiffDays(a, b) { // b - a (hari)
+  var pa = a.split('-'), pb = b.split('-');
+  return Math.round((new Date(+pb[0], +pb[1] - 1, +pb[2]) - new Date(+pa[0], +pa[1] - 1, +pa[2])) / 86400000);
+}
+function _soMonday(iso) {
+  var p = iso.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]);
+  var dow = (d.getDay() + 6) % 7; // Senin = 0
+  return _soAddDays(iso, -dow);
+}
+function _soNorm(s) { return String(s == null ? '' : s).trim().toUpperCase(); }
+
+// Item yg terdaftar di sheet per-group (sheet bernama kode group).
+function _soGroupItemMap(group) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var want = _soNorm(group).replace(/\s+/g, '');
+  var sh = null;
+  ss.getSheets().some(function (s) {
+    if (_soNorm(s.getName()).replace(/\s+/g, '') === want) { sh = s; return true; }
+    return false;
+  });
+  var map = {};
+  if (!sh || sh.getLastRow() < 1) return { found: !!sh, map: map };
+  var vals = sh.getDataRange().getValues();
+  var col = 0, start = 0;
+  for (var r = 0; r < Math.min(vals.length, 6); r++) { // cari header kolom item
+    for (var c = 0; c < vals[r].length; c++) {
+      if (/^(item|kode|part|material|sku)/i.test(String(vals[r][c]).trim())) { col = c; start = r + 1; r = 99; break; }
+    }
+  }
+  for (var i = start; i < vals.length; i++) {
+    var code = _soNorm(vals[i][col]);
+    if (code) map[code] = String(vals[i][col + 1] || '').trim();
+  }
+  return { found: true, map: map };
+}
+
+function soGetMaster() {
+  try {
+    var rows = _soRows(_soSheet('SO_MASTER', SO_MASTER_HDR, SO_MASTER_SEED), 6);
+    return { success: true, data: rows.filter(function (r) { return r[1]; }).map(function (r) {
+      return { pic: String(r[0]), group: String(r[1]), desc: String(r[2]), targetLabel: String(r[3]), hari: Number(r[4]) || 30, mode: String(r[5] || 'BULANAN').toUpperCase() };
+    }) };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// Daftar kode item valid utk 1 group (dipakai frontend utk preview sebelum buat lembar)
+function soGetGroupItems(group) {
+  try {
+    var g = _soGroupItemMap(group);
+    if (!g.found) return { success: false, error: 'Sheet group "' + group + '" tidak ditemukan di spreadsheet.' };
+    return { success: true, items: g.map };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// payload: {pic, group, items:[{item,desc,um,lokasi,sistem}], user}
+function soBuatLembar(payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var g = _soGroupItemMap(payload.group);
+    if (!g.found) return { success: false, error: 'Sheet group "' + payload.group + '" tidak ditemukan.' };
+    var master = soGetMaster().data.filter(function (m) { return _soNorm(m.group) === _soNorm(payload.group); })[0];
+    if (!master) return { success: false, error: 'Group belum terdaftar di SO_MASTER.' };
+    var seen = {}, keep = [], dropped = 0;
+    (payload.items || []).forEach(function (it) {
+      var k = _soNorm(it.item);
+      if (!k || seen[k]) return;
+      if (!g.map.hasOwnProperty(k)) { dropped++; return; } // tidak ada di sheet group -> jangan ditarik
+      seen[k] = 1; keep.push(it);
+    });
+    if (!keep.length) return { success: false, error: 'Tidak ada item yang cocok dengan sheet group ' + payload.group + '.' };
+    lock.waitLock(25000);
+    var today = _soToday();
+    var mulai = master.mode === 'MINGGUAN' ? _soMonday(today) : today;
+    var akhir = master.mode === 'MINGGUAN' ? _soAddDays(mulai, 6) : _soAddDays(today, master.hari);
+    var id = 'SO-' + _soNorm(payload.group).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmm');
+    var sl = _soSheet('SO_LEMBAR', SO_LEMBAR_HDR), sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR);
+    sl.appendRow([id, master.pic, master.group, today, mulai, akhir, payload.user || '', keep.length]);
+    var rows = keep.map(function (it) {
+      var desc = it.desc || g.map[_soNorm(it.item)] || '';
+      return [id, String(it.item).trim(), desc, it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', ''];
+    });
+    sd.getRange(sd.getLastRow() + 1, 1, rows.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(rows);
+    return { success: true, id: id, dipakai: keep.length, dibuang: dropped, mulai: mulai, akhir: akhir };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
+}
+
+function _soLembarList() {
+  return _soRows(_soSheet('SO_LEMBAR', SO_LEMBAR_HDR), 8).map(function (r) {
+    return { id: String(r[0]), pic: String(r[1]), group: String(r[2]), dibuat: String(r[3]), mulai: String(r[4]), akhir: String(r[5]), oleh: String(r[6]), jumlah: Number(r[7]) || 0 };
+  });
+}
+function _soDetailRows() {
+  return _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 15).map(function (r, i) {
+    return { row: i + 2, lembar: String(r[0]), item: String(r[1]), desc: String(r[2]), um: String(r[3]), lokasi: String(r[4]),
+      sistem: Number(r[5]) || 0, fisik: r[6] === '' ? null : Number(r[6]), selisih: r[7] === '' ? null : Number(r[7]),
+      tglIsi: String(r[8]), diisiOleh: String(r[9]), statusSel: String(r[10]), ket: String(r[11]),
+      tglClose: String(r[12]), closeOleh: String(r[13]), alasanClose: String(r[14]) };
+  });
+}
+
+// Daftar lembar (+ ringkas progres). pic kosong = semua
+function soListLembar(pic) {
+  try {
+    var det = _soDetailRows(), agg = {};
+    det.forEach(function (d) {
+      var a = agg[d.lembar] = agg[d.lembar] || { total: 0, isi: 0, open: 0, closed: 0 };
+      a.total++; if (d.fisik !== null) a.isi++;
+      if (d.statusSel === 'OPEN') a.open++; if (d.statusSel === 'CLOSED') a.closed++;
+    });
+    var out = _soLembarList().filter(function (l) { return !pic || _soNorm(l.pic) === _soNorm(pic); })
+      .map(function (l) { var a = agg[l.id] || { total: 0, isi: 0, open: 0, closed: 0 }; l.isi = a.isi; l.open = a.open; l.closed = a.closed; return l; });
+    out.reverse();
+    return { success: true, data: out };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+function soGetLembarDetail(id) {
+  try {
+    var l = _soLembarList().filter(function (x) { return x.id === id; })[0];
+    if (!l) return { success: false, error: 'Lembar tidak ditemukan.' };
+    return { success: true, lembar: l, items: _soDetailRows().filter(function (d) { return d.lembar === id; }) };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// payload: {id, user, rows:[{row, fisik}]}  -> selisih otomatis, status OPEN bila selisih != 0
+function soSimpanIsi(payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    lock.waitLock(25000);
+    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), today = _soToday(), n = 0;
+    (payload.rows || []).forEach(function (r) {
+      var row = Number(r.row); if (!row || row < 2) return;
+      var cur = sd.getRange(row, 1, 1, 15).getValues()[0];
+      if (String(cur[0]) !== payload.id) return; // pengaman: baris harus milik lembar ini
+      if (r.fisik === '' || r.fisik === null || r.fisik === undefined) return;
+      var fisik = Number(r.fisik), sistem = Number(cur[5]) || 0, sel = fisik - sistem;
+      var status = sel === 0 ? '' : (String(cur[10]) === 'CLOSED' ? 'CLOSED' : 'OPEN');
+      sd.getRange(row, 7, 1, 5).setValues([[fisik, sel, today, payload.user || '', status]]);
+      n++;
+    });
+    return { success: true, tersimpan: n };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
+}
+
+// payload: {row, id, ket, user}  -> keterangan selisih (tetap OPEN)
+function soSimpanKeterangan(payload) {
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), row = Number(payload.row);
+    if (String(sd.getRange(row, 1).getValue()) !== payload.id) return { success: false, error: 'Baris tidak cocok.' };
+    sd.getRange(row, 12).setValue(String(payload.ket || ''));
+    return { success: true };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// payload: {row, id, alasan, user} -> selisih ditandai CLOSED (sudah tidak bermasalah)
+function soCloseSelisih(payload) {
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), row = Number(payload.row);
+    var cur = sd.getRange(row, 1, 1, 15).getValues()[0];
+    if (String(cur[0]) !== payload.id) return { success: false, error: 'Baris tidak cocok.' };
+    if (!payload.alasan || !String(payload.alasan).trim()) return { success: false, error: 'Alasan close wajib diisi.' };
+    sd.getRange(row, 11).setValue('CLOSED');
+    sd.getRange(row, 13, 1, 3).setValues([[_soToday(), payload.user || '', String(payload.alasan)]]);
+    return { success: true };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// Dashboard monitoring: 1 baris per PIC x Group (lembar terbaru) + peringatan TL
+function soGetDashboard() {
+  try {
+    var master = soGetMaster().data, lembar = _soLembarList(), det = _soDetailRows(), today = _soToday();
+    var byLembar = {};
+    det.forEach(function (d) {
+      var a = byLembar[d.lembar] = byLembar[d.lembar] || { total: 0, isi: 0, open: 0, closed: 0 };
+      a.total++; if (d.fisik !== null) a.isi++;
+      if (d.statusSel === 'OPEN') a.open++; if (d.statusSel === 'CLOSED') a.closed++;
+    });
+    var warnings = [];
+    var rows = master.map(function (m) {
+      var mine = lembar.filter(function (l) { return _soNorm(l.group) === _soNorm(m.group); });
+      var cur = mine.length ? mine[mine.length - 1] : null;
+      var gi = _soGroupItemMap(m.group);
+      var row = { pic: m.pic, group: m.group, desc: m.desc, targetLabel: m.targetLabel, mode: m.mode,
+        totalSku: Object.keys(gi.map).length, targetItem: 0, telahSo: 0, progress: 0, status: 'BELUM MULAI',
+        selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null };
+      if (m.mode === 'MINGGUAN') { row.mulai = _soMonday(today); row.akhir = _soAddDays(row.mulai, 6); }
+      if (cur) {
+        var a = byLembar[cur.id] || { total: 0, isi: 0, open: 0, closed: 0 };
+        row.lembarId = cur.id; row.targetItem = a.total; row.telahSo = a.isi; row.open = a.open; row.closed = a.closed;
+        row.progress = a.total ? Math.round(a.isi / a.total * 10000) / 100 : 0;
+        row.mulai = cur.mulai; row.akhir = cur.akhir;
+        var span = Math.max(1, _soDiffDays(cur.mulai, cur.akhir) + 1), el = Math.min(span, Math.max(0, _soDiffDays(cur.mulai, today) + 1));
+        row.sisaHari = _soDiffDays(today, cur.akhir);
+        if (row.progress >= 100) row.status = 'SELESAI';
+        else if (today > cur.akhir) row.status = 'TERLAMBAT';
+        else row.status = row.progress >= (el / span * 100) - 5 ? 'ON TRACK' : 'TERLAMBAT';
+        row.selisih = a.open > 0 ? 'OPEN' : (a.closed > 0 ? 'CLOSED' : '-');
+      }
+      // Peringatan TL: group MINGGUAN (mis. I053) harus selesai tiap minggu
+      if (m.mode === 'MINGGUAN') {
+        var thisMon = _soMonday(today), lastMon = _soAddDays(thisMon, -7);
+        var lw = mine.filter(function (l) { return l.mulai === lastMon; }).pop();
+        if (lw) {
+          var la = byLembar[lw.id] || { total: 0, isi: 0 };
+          if (la.isi < la.total) warnings.push({ level: 'danger', group: m.group, pic: m.pic, msg: 'Minggu lalu (' + lastMon + ') belum selesai: ' + la.isi + '/' + la.total + ' item.' });
+        } else if (mine.length) {
+          warnings.push({ level: 'danger', group: m.group, pic: m.pic, msg: 'Tidak ada lembar SO minggu lalu (' + lastMon + ').' });
+        }
+        if (!cur || cur.mulai !== thisMon) {
+          warnings.push({ level: 'warn', group: m.group, pic: m.pic, msg: 'Lembar SO minggu ini belum dibuat.' });
+        } else if (row.status === 'TERLAMBAT') {
+          warnings.push({ level: 'warn', group: m.group, pic: m.pic, msg: 'Progres minggu ini ' + row.progress + '% - tertinggal dari target mingguan.' });
+        }
+      }
+      return row;
+    });
+    return { success: true, today: today, data: rows, warnings: warnings };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// Rekap per PIC: ringkasan group + daftar selisih (dipakai Rekap PIC)
+function soGetRekapPIC() {
+  try {
+    var dash = soGetDashboard();
+    if (!dash.success) return dash;
+    var det = _soDetailRows(), lembar = _soLembarList(), picOf = {}, grpOf = {};
+    lembar.forEach(function (l) { picOf[l.id] = l.pic; grpOf[l.id] = l.group; });
+    var selisih = det.filter(function (d) { return d.statusSel === 'OPEN' || d.statusSel === 'CLOSED'; }).map(function (d) {
+      d.pic = picOf[d.lembar] || ''; d.group = grpOf[d.lembar] || ''; return d;
+    });
+    return { success: true, groups: dash.data, selisih: selisih, warnings: dash.warnings };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
 }

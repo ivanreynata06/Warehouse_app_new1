@@ -16,6 +16,7 @@ Repo ini adalah hasil pemisahan dashboard kamu:
 index.html               <- WH Control Tower (LANDING PAGE / menu utama saat buka link)
 kanban.html               <- Dashboard Kanban PPR
 rekap_muatan.html         <- Monitoring Tonase Persiapan
+stock_opname.html         <- Monitoring Stock Opname (dashboard, buat lembar dari QAD, pengisian, selisih+close, print)
 monitoring_stock.html     <- Dashboard Pipa & Fitting PPR (Monitoring Stock, Inbound & Outbound)
 residance_time.html       <- Loading Time Pengiriman
 akurasi_scan.html         <- Akurasi Scan Barcode (Monitoring > Akurasi Scan Barcode)
@@ -313,3 +314,8 @@ Saat upload, tanda tangan otomatis dipotong rapat ke goresannya, dijadikan hitam
 
 ### Ukuran paraf bisa diatur
 Panel Admin > Tanda Tangan Digital SPL > "Ukuran maksimum paraf di SPL" (lebar x tinggi, poin; bawaan 56 x 38). Disimpan per departemen di Script Properties `SPL_TTD_UKURAN_<workspace>` (`adminSetSplTtdUkuran`). PDF SPL otomatis dibuat ulang.
+
+
+## Stock Opname
+
+Sheet SO_MASTER / SO_LEMBAR / SO_DETAIL dibuat otomatis oleh `kode.gs` (fungsi `so*`). Item lembar hanya diambil jika ada di sheet per-group (sheet bernama kode group, mis. `I053`). Group MINGGUAN (I053) targetnya per minggu; TL mendapat peringatan jika tidak selesai. **Deploy ulang Apps Script (New version) setelah update `kode.gs`**, lalu aktifkan menu *Monitoring Stock Opname* di Kelola Menu.

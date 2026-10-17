@@ -58,7 +58,8 @@
     'rekap'           : 'rekap_muatan.html',
     'residance'       : 'residance_time.html',
     'input_lembur'    : 'input_lembur.html',
-    'upload'          : 'upload_data.html'
+    'upload'          : 'upload_data.html',
+    'stock_opname'    : 'stock_opname.html'
   };
   var isFittingImport = workspace === 'cibitung_fitting_import';
   var isFittingRucika = workspace === 'cibitung_fitting_rucika';
@@ -99,7 +100,7 @@
   // & "kanban" SENGAJA tidak dimasukkan -- role terbatas tidak pernah
   // lihat itu di departemen manapun. "upload" diatur terpisah lewat
   // canUploadData (selalu fullAccess-only, di semua departemen).
-  var MENU_KEYS_RESTRICTED_ROLE = ['wh_control_tower', 'input_lembur', 'residance', 'fte_dashboard', 'rekap'];
+  var MENU_KEYS_RESTRICTED_ROLE = ['wh_control_tower', 'input_lembur', 'residance', 'fte_dashboard', 'rekap', 'stock_opname'];
   var HIDDEN_NAV_KEYS_RESTRICTED = ['kanban', 'index'];
   if (isSerahTerima) {
     MENU_KEYS_RESTRICTED_ROLE.push('akurasi_scan');
@@ -115,7 +116,7 @@
     var k = priorityKeys.filter(function (key) { return menuKeys.indexOf(key) !== -1; })[0];
     return k ? fileForKey[k] : 'monitoring_stock.html';
   }
-  var GENERAL_LANDING_PRIORITY = ['index', 'wh_control_tower', 'input_lembur', 'fte_dashboard', 'upload', 'kanban', 'rekap', 'residance'];
+  var GENERAL_LANDING_PRIORITY = ['index', 'wh_control_tower', 'input_lembur', 'fte_dashboard', 'upload', 'kanban', 'rekap', 'residance', 'stock_opname'];
   var RESTRICTED_LANDING_PRIORITY = ['wh_control_tower', 'input_lembur', 'fte_dashboard', 'residance', 'rekap'];
   if (isSerahTerima) RESTRICTED_LANDING_PRIORITY.push('akurasi_scan');
 
