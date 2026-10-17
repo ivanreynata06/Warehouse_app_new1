@@ -495,6 +495,14 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <button class="btn-flat btn-flat-accent" onclick="simpanSplCutoff()">Simpan Batas</button>
           <button class="btn-flat btn-flat-ghost" onclick="kosongkanSplCutoff()">Matikan</button>
         </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:9px 10px;border:1px dashed var(--border-color);border-radius:9px;">
+          <span style="font-size:10.5px;"><b>Ukuran maksimum paraf di SPL:</b> lebar</span>
+          <input type="number" id="spl-ttd-w" class="form-input" min="10" max="200" step="1" style="width:70px;">
+          <span style="font-size:10.5px;">tinggi</span>
+          <input type="number" id="spl-ttd-h" class="form-input" min="8" max="120" step="1" style="width:70px;">
+          <span style="font-size:10.5px;">poin (1 poin = 1/72 inci). Gambar membesar sampai mentok salah satu sisi, rasio asli terjaga. Kalau melebihi lebar kolom Paraf di template, kecilkan atau lebarkan kolomnya.</span>
+          <button class="btn-flat btn-flat-accent" onclick="simpanSplUkuran()">Simpan Ukuran</button>
+        </div>
         <div id="spl-ttd-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;"></div>
         <div id="spl-ttd-status" style="margin-top:8px;font-size:9.5px;color:var(--text-muted);"></div>
       </div>
@@ -1389,6 +1397,7 @@ function loadSplSignatures(){
       st.textContent = '';
       splTtdCache = res.data || [];
       var ci = document.getElementById('spl-ttd-cutoff'); if (ci) ci.value = res.cutoff || '';
+      if (res.ukuran){ var uw = document.getElementById('spl-ttd-w'), uh = document.getElementById('spl-ttd-h'); if (uw) uw.value = res.ukuran.w; if (uh) uh.value = res.ukuran.h; }
       renderSplSignatures();
     })
     .withFailureHandler(function(err){ st.textContent = 'Gagal memuat: '+(err&&err.message?err.message:'cek koneksi'); })
@@ -1409,6 +1418,17 @@ function simpanSplCutoff(){
   _kirimSplCutoff(v, 'Batas SPL lama disimpan');
 }
 function kosongkanSplCutoff(){ _kirimSplCutoff('', 'Penempelan otomatis untuk SPL lama dimatikan'); }
+function simpanSplUkuran(){
+  var w = parseFloat(document.getElementById('spl-ttd-w').value), h = parseFloat(document.getElementById('spl-ttd-h').value);
+  if (!(w >= 10 && w <= 200) || !(h >= 8 && h <= 120)){ showToast('Lebar 10-200 dan tinggi 8-120 poin.','error'); return; }
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Ukuran paraf disimpan. SPL berikutnya memakai ukuran ini.','success'); loadSplSignatures();
+    })
+    .withFailureHandler(function(e){ showToast('Gagal: '+(e&&e.message?e.message:'cek koneksi'),'error'); })
+    .adminSetSplTtdUkuran(actorNik, w, h, currentTargetWorkspace);
+}
 function renderSplSignatures(){
   var grid = document.getElementById('spl-ttd-grid');
   grid.innerHTML = splTtdCache.map(function(it){

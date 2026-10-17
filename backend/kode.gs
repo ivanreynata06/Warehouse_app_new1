@@ -112,6 +112,7 @@ var API_FUNCTIONS = {
   adminHapusSplSignature  : adminHapusSplSignature,
   adminSetSplTtdCutoff    : adminSetSplTtdCutoff,
   diagnosaSplTtd          : diagnosaSplTtd,
+  adminSetSplTtdUkuran    : adminSetSplTtdUkuran,
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
   clearStockDataForDate   : clearStockDataForDate,
@@ -7190,7 +7191,7 @@ function adminGetSplSignatures(actorNik, targetWorkspace) {
     });
     var co = _splTtdCutoffBaca(tgt.workspaceKey);
     var coStr = (co && co.getTime() > 0) ? Utilities.formatDate(co, 'Asia/Jakarta', "yyyy-MM-dd'T'HH:mm") : '';
-    return { success: true, data: data, workspaceKey: tgt.workspaceKey, cutoff: coStr };
+    return { success: true, data: data, workspaceKey: tgt.workspaceKey, cutoff: coStr, ukuran: _splUkuranBaca(tgt.workspaceKey) };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -7920,7 +7921,28 @@ function _splJumlahBaris(teks) {
 // ---- Paraf digital Leader / Sect Head / Dept Head di formulir SPL ----
 // Ukuran gambar paraf (poin) -- kolom Paraf di template sempit. Ubah di sini kalau perlu.
 // SPL_PARAF_W/H = KOTAK MAKSIMUM (poin); gambar diperbesar sampai mentok salah satu sisi kotak dengan rasio aslinya.
-var SPL_PARAF_W = 42, SPL_PARAF_H = 30;
+var SPL_PARAF_W = 56, SPL_PARAF_H = 38; // bawaan; bisa diatur per departemen di Panel Admin
+var _SPL_UKURAN_CACHE = null;
+function _splUkuranBaca(workspaceKey) {
+  try {
+    var o = JSON.parse(PropertiesService.getScriptProperties().getProperty('SPL_TTD_UKURAN_' + workspaceKey) || 'null');
+    if (o && o.w > 0 && o.h > 0) return { w: Math.min(200, Math.max(10, Number(o.w))), h: Math.min(120, Math.max(8, Number(o.h))) };
+  } catch (e) {}
+  return { w: SPL_PARAF_W, h: SPL_PARAF_H };
+}
+function _splUkuranAktif() { return _SPL_UKURAN_CACHE || (_SPL_UKURAN_CACHE = _splUkuranBaca(ACTIVE_WORKSPACE)); }
+// w, h dalam poin (1 poin = 1/72 inci). Gambar diperbesar sampai mentok salah satu sisi kotak ini.
+function adminSetSplTtdUkuran(actorNik, w, h, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin.' };
+    w = Number(w); h = Number(h);
+    if (!(w >= 10 && w <= 200) || !(h >= 8 && h <= 120)) return { success: false, error: 'Lebar harus 10-200 dan tinggi 8-120 (poin).' };
+    var tgt = _resolveAdminTargetSpreadsheet(actorNik, targetWorkspace);
+    if (tgt.error) return { success: false, error: tgt.error };
+    PropertiesService.getScriptProperties().setProperty('SPL_TTD_UKURAN_' + tgt.workspaceKey, JSON.stringify({ w: w, h: h }));
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
 // Baca lebar/tinggi PNG dari header IHDR (byte 16-23). Bukan PNG -> rasio 2:1 (default lama).
 function _splUkuranGambar(blob, maxW, maxH) {
   var w = 2, h = 1;
@@ -7966,7 +7988,7 @@ function _splGambarDiSel(cell, blob) {
   var par = cell.getChild(0).asParagraph();
   par.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
   _splRapatkanSel(par);
-  var z = _splUkuranGambar(blob, SPL_PARAF_W, SPL_PARAF_H);
+  var uk = _splUkuranAktif(); var z = _splUkuranGambar(blob, uk.w, uk.h);
   par.insertInlineImage(0, blob).setWidth(z.w).setHeight(z.h);
 }
 
@@ -7982,7 +8004,7 @@ function _splTempelParafBaris(target, baris, n, sigs) {
         var elTxt = f.getElement();
         var par = elTxt.getParent().asParagraph(); // ambil induk SEBELUM teks dikosongkan
         elTxt.asText().deleteText(f.getStartOffset(), f.getEndOffsetInclusive());
-        if (sig) { par.setAlignment(DocumentApp.HorizontalAlignment.CENTER); _splRapatkanSel(par); var z2 = _splUkuranGambar(sig.blob, SPL_PARAF_W, SPL_PARAF_H); par.insertInlineImage(0, sig.blob).setWidth(z2.w).setHeight(z2.h); }
+        if (sig) { par.setAlignment(DocumentApp.HorizontalAlignment.CENTER); _splRapatkanSel(par); var uk2 = _splUkuranAktif(); var z2 = _splUkuranGambar(sig.blob, uk2.w, uk2.h); par.insertInlineImage(0, sig.blob).setWidth(z2.w).setHeight(z2.h); }
         return;
       }
       if (sig && baris && baris.getNumCells() === 11) _splGambarDiSel(baris.getCell(SPL_PARAF_KOLOM[j]), sig.blob);
@@ -8244,7 +8266,7 @@ function _splSig(kode, bulan, tahun) {
     return [l.tanggal, l.jamMulai, l.jamSelesai, l.keterangan || '', l.approvalStatus || '', l.approvedBy || '', l.timestamp || ''].join('~');
   }).sort().join('|');
   var co = _splTtdCutoffBaca(ACTIVE_WORKSPACE);
-  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, _splTtdSidik(), co ? co.getTime() : 0, 'v6-paraf-besar'].join('##');
+  var raw = [tpl, jb.job, jb.bagian, k.nama, rows, _splTtdSidik(), co ? co.getTime() : 0, JSON.stringify(_splUkuranBaca(ACTIVE_WORKSPACE)), 'v7-ukuran'].join('##');
   var d = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8);
   return { sig: d.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 12), k: k };
 }

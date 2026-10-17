@@ -310,3 +310,6 @@ Template SPL memakai penanda per baris `{{TTD_LEADERn}}`, `{{TTD_SECTn}}`, `{{TT
 
 ### Ukuran & ketebalan paraf SPL
 Saat upload, tanda tangan otomatis dipotong rapat ke goresannya, dijadikan hitam pekat, dan ditebalkan (PNG transparan). Di SPL, gambar diperbesar sampai mentok kotak `SPL_PARAF_W` x `SPL_PARAF_H` (kode.gs, sekarang 42 x 30 pt) dengan rasio aslinya, dan padding sel Paraf dikecilkan. Tanda tangan yang diupload sebelum update ini perlu diupload ulang.
+
+### Ukuran paraf bisa diatur
+Panel Admin > Tanda Tangan Digital SPL > "Ukuran maksimum paraf di SPL" (lebar x tinggi, poin; bawaan 56 x 38). Disimpan per departemen di Script Properties `SPL_TTD_UKURAN_<workspace>` (`adminSetSplTtdUkuran`). PDF SPL otomatis dibuat ulang.
