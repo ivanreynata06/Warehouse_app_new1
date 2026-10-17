@@ -111,6 +111,7 @@ var API_FUNCTIONS = {
   adminSetSplJobBagian    : adminSetSplJobBagian,
   adminHapusSplSignature  : adminHapusSplSignature,
   adminSetSplTtdCutoff    : adminSetSplTtdCutoff,
+  diagnosaSplTtd          : diagnosaSplTtd,
   // Upload Data Harian (Stock / Outbound / Inbound)
   appendStockData         : appendStockData,
   clearStockDataForDate   : clearStockDataForDate,
@@ -7120,6 +7121,54 @@ function adminSetSplTtdCutoff(actorNik, value, targetWorkspace) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
+// Peringatan singkat bila SPL ini seharusnya bertanda tangan tetapi tanda tangan jabatan tertentu
+// belum ada di departemen yang sedang aktif (tanda tangan disimpan PER DEPARTEMEN/spreadsheet).
+function _splPeringatanTtd(kode, bulan, tahun) {
+  try {
+    var lr = getLemburList({ kode: kode, bulan: Number(bulan), tahun: Number(tahun) });
+    var co = _splTtdCutoffBaca(ACTIVE_WORKSPACE);
+    var perlu = (lr.success ? lr.data : []).some(function (l) { return _splBarisBertandatangan(l, co); });
+    if (!perlu) return '';
+    var ada = _getSplSignatureSet();
+    var hilang = Object.keys(SPL_TTD_JABATAN).filter(function (j) { return !ada[j]; }).map(function (j) { return SPL_TTD_JABATAN[j].label; });
+    if (!hilang.length) return '';
+    return 'Tanda tangan ' + hilang.join(', ') + ' belum diupload untuk departemen ini (' + ACTIVE_WORKSPACE + '), jadi kolom Paraf kosong. Upload di Kelola User > Tanda Tangan Digital SPL pada departemen ini.';
+  } catch (e) { return ''; }
+}
+
+// Diagnosa lengkap: kenapa paraf muncul / tidak muncul di SPL satu karyawan
+function diagnosaSplTtd(kode, bulan, tahun) {
+  try {
+    bulan = Number(bulan); tahun = Number(tahun);
+    var out = { success: true, workspace: ACTIVE_WORKSPACE, spreadsheetId: SPREADSHEET_ID };
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var peta = _splTtdPeta(ss);
+    var set = _getSplSignatureSet();
+    out.tandaTangan = Object.keys(SPL_TTD_JABATAN).map(function (j) {
+      return { jabatan: SPL_TTD_JABATAN[j].label, tercatat: !!peta[j], gambarBisaDibuka: !!set[j], nama: peta[j] ? peta[j].nama : '' };
+    });
+    var co = _splTtdCutoffBaca(ACTIVE_WORKSPACE);
+    out.batasSplLama = co ? Utilities.formatDate(co, 'Asia/Jakarta', 'yyyy-MM-dd HH:mm') : '(belum diatur)';
+    var lr = getLemburList({ kode: kode, bulan: bulan, tahun: tahun });
+    out.baris = (lr.success ? lr.data : []).map(function (l) {
+      return { tanggal: l.tanggal, status: l.approvalStatus, diinput: l.timestamp || '', bertandaTangan: _splBarisBertandatangan(l, co) };
+    });
+    // departemen lain yang sudah punya tanda tangan (petunjuk kalau salah departemen)
+    out.departemenLain = [];
+    Object.keys(WORKSPACE_MAP).forEach(function (key) {
+      var id = WORKSPACE_MAP[key];
+      if (!id || id === SPREADSHEET_ID) return;
+      try { var n = Object.keys(_splTtdPeta(SpreadsheetApp.openById(id))).length; if (n) out.departemenLain.push({ workspace: key, jumlahTandaTangan: n }); } catch (e) {}
+    });
+    var hilang = out.tandaTangan.filter(function (t) { return !t.gambarBisaDibuka; }).map(function (t) { return t.jabatan; });
+    var perlu = out.baris.some(function (b) { return b.bertandaTangan; });
+    out.kesimpulan = !perlu ? 'Belum ada baris lembur yang memenuhi syarat tanda tangan (belum Disetujui dan bukan SPL lama).'
+      : hilang.length ? 'Tanda tangan ' + hilang.join(', ') + ' BELUM ada / gambarnya tidak bisa dibuka di departemen ' + ACTIVE_WORKSPACE + (out.departemenLain.length ? ' (tapi sudah ada di: ' + out.departemenLain.map(function (d) { return d.workspace; }).join(', ') + ' -- tanda tangan tidak dibagi antar departemen, upload di departemen ini).' : '.')
+      : 'Tanda tangan lengkap & baris memenuhi syarat. Kalau paraf belum muncul, muat ulang halaman (Ctrl+F5) karena PDF lama masih tersimpan di browser, atau cek penanda {{TTD_LEADERn}} di template.';
+    return out;
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 // Daftar tanda tangan jabatan + pratinjau gambar (data URL) untuk Panel Admin
 function adminGetSplSignatures(actorNik, targetWorkspace) {
   try {
@@ -8209,7 +8258,7 @@ function getSPLPdfCepat(kode, bulan, tahun) {
     var hit = folder.getFilesByName(name);
     if (hit.hasNext()) {
       var f = hit.next();
-      return { success: true, cached: true, filename: name, base64: Utilities.base64Encode(f.getBlob().getBytes()) };
+      return { success: true, cached: true, filename: name, base64: Utilities.base64Encode(f.getBlob().getBytes()), peringatan: _splPeringatanTtd(kode, bulan, tahun) };
     }
     var r = previewSPL(kode, bulan, tahun);
     if (!r.success) return r;
@@ -8217,7 +8266,7 @@ function getSPLPdfCepat(kode, bulan, tahun) {
     var old = folder.searchFiles("title contains '" + prefix + "'");
     while (old.hasNext()) { try { old.next().setTrashed(true); } catch (e) {} }
     folder.createFile(Utilities.newBlob(Utilities.base64Decode(r.base64), 'application/pdf', name));
-    r.cached = false; r.filename = name;
+    r.cached = false; r.filename = name; r.peringatan = _splPeringatanTtd(kode, bulan, tahun);
     return r;
   } catch (err) {
     return { success: false, error: err.message };

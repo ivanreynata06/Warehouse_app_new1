@@ -597,6 +597,20 @@ function onPeriodeChange(){
 // Berguna kalau baru saja input lembur/absensi/upload Outbound-Inbound
 // tapi angkanya di layar masih kelihatan belum berubah (paling lama
 // nunggu 5 menit otomatis, tapi ini supaya bisa langsung tanpa nunggu).
+// Diagnosa tanda tangan digital SPL (paraf Leader/Sect Head/Dept Head) untuk 1 karyawan OS
+function diagnosaTtd(kode){
+  google.script.run
+    .withSuccessHandler(function(r){
+      if (!r || !r.success){ alert('Diagnosa TTD gagal: '+(r&&r.error?r.error:'')); return; }
+      var t = 'DIAGNOSA TANDA TANGAN SPL\nDepartemen: '+r.workspace+'\nBatas SPL lama: '+r.batasSplLama+'\n\nTANDA TANGAN TERSIMPAN:\n'+
+        r.tandaTangan.map(function(x){ return '  '+x.jabatan+': '+(x.tercatat?(x.gambarBisaDibuka?'ADA':'tercatat tapi gambar tidak bisa dibuka'):'BELUM diupload')+(x.nama?' ('+x.nama+')':''); }).join('\n')+
+        '\n\nBARIS LEMBUR:\n'+r.baris.map(function(b){ return '  '+b.tanggal+' | '+b.status+' | '+(b.bertandaTangan?'AKAN bertanda tangan':'tanpa tanda tangan'); }).join('\n')+
+        '\n\nKESIMPULAN: '+r.kesimpulan;
+      alert(t); console.log('Diagnosa TTD:', r);
+    })
+    .withFailureHandler(function(err){ alert('Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi')); })
+    .diagnosaSplTtd(kode, curBulan, curTahun);
+}
 // Diagnosa data lembur mentah 1 karyawan -- utk telusur kalau total jam
 // beda antara Riwayat Lembur, Monitoring FTE, & Print SPL. Ketiganya
 // pakai sumber yg sama (getLemburList), jadi kalau beda, pasti kelihatan
@@ -618,6 +632,7 @@ function diagnosaLembur(){
         }).join('\n');
       alert(teks);
       console.log('Diagnosa Lembur (detail lengkap):', res);
+      diagnosaTtd(kode);
     })
     .withFailureHandler(function(err){ alert('Gagal terhubung: '+(err&&err.message?err.message:'cek koneksi')); })
     .diagnosaLemburKaryawan(kode, curBulan, curTahun);
@@ -1320,7 +1335,7 @@ function ensureSPLPdf(kode){
   e.p = new Promise(function(resolve, reject){
     google.script.run
       .withSuccessHandler(function(res){
-        if (res && res.success && res.base64){ e.url = _b64ToBlobUrl(res.base64); e.state = 'ready'; resolve(e.url); }
+        if (res && res.success && res.base64){ e.url = _b64ToBlobUrl(res.base64); e.state = 'ready'; e.warn = res.peringatan || ''; resolve(e.url); }
         else { e.state = 'error'; reject(new Error((res && res.error) || 'tidak diketahui')); }
       })
       .withFailureHandler(function(err){ e.state = 'error'; reject(new Error((err && err.message) || 'cek koneksi')); })
@@ -1358,11 +1373,11 @@ function _printPdfLangsung(url){
 }
 function previewSPL(kode, nama){
   var e = splPdf[_splKey(kode)];
-  if (e && e.state==='ready'){ _printPdfLangsung(e.url); return; }          // normal: sudah siap, langsung print
+  if (e && e.state==='ready'){ if (e.warn) showToast('⚠️ '+e.warn,'error'); _printPdfLangsung(e.url); return; }          // normal: sudah siap, langsung print
   var btns = document.querySelectorAll('.btn-preview[onclick*="'+kode+'"]');
   btns.forEach(function(b){ b.disabled = true; b.dataset.old = b.innerHTML; b.textContent = 'Menyiapkan...'; });
   showToast('Menyiapkan PDF SPL '+nama+'... (hanya sekali, berikutnya langsung)','info');
-  ensureSPLPdf(kode).then(function(url){ _printPdfLangsung(url); })
+  ensureSPLPdf(kode).then(function(url){ var w = (splPdf[_splKey(kode)]||{}).warn; if (w) showToast('⚠️ '+w,'error'); _printPdfLangsung(url); })
     .catch(function(err){ showToast('Gagal menyiapkan SPL: '+err.message,'error'); })
     .then(function(){ btns.forEach(function(b){ b.disabled = false; if (b.dataset.old) b.innerHTML = b.dataset.old; if (typeof lucide!=='undefined') lucide.createIcons(); }); });
 }
