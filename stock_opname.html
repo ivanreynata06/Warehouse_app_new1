@@ -275,16 +275,17 @@ function parseQad(ev){
       var aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}),h=-1;
       for(var i=0;i<Math.min(15,aoa.length);i++){if(findCol(aoa[i],/^(item|part|material|kode)/i)>=0){h=i;break}}
       if(h<0) throw new Error('Kolom Item/Part tidak ditemukan di 15 baris awal file.');
-      var H=aoa[h],ci=findCol(H,/^(item|part|material|kode)/i),cd=findCol(H,/desc|nama|uraian/i),cq=findCol(H,/qty|on ?hand|stock|stok|saldo/i),cu=findCol(H,/^(um|uom|unit|satuan)/i),cl=findCol(H,/loc|lokasi|bin/i);
+      var H=aoa[h],ci=findCol(H,/^(item|part|material|kode)/i),cd=findCol(H,/desc|nama|uraian/i),cq=findCol(H,/qty|on ?hand|stock|stok|saldo/i),cu=findCol(H,/^(um|uom|unit|satuan)/i),cl=findCol(H,/loc|lokasi|bin/i); var cg=findCol(H,/^group/i);
       if(cq<0) throw new Error('Kolom Qty/Stock tidak ditemukan.');
       var map={};
       aoa.slice(h+1).forEach(function(r){
         var it=String(r[ci]).trim(); if(!it) return;
         var q=Number(String(r[cq]).replace(/,/g,''))||0, k=it.toUpperCase();
-        if(!map[k]) map[k]={item:it,desc:cd>=0?String(r[cd]).trim():'',um:cu>=0?String(r[cu]).trim():'',lokasi:cl>=0?String(r[cl]).trim():'',sistem:0};
-        map[k].sistem+=q;
+        var grp=cg>=0?String(r[cg]).trim().toUpperCase():'', loc=cl>=0?String(r[cl]).trim():'', kk=grp+'|'+k;
+        if(!map[kk]) map[kk]={item:it,grp:grp,desc:cd>=0?String(r[cd]).trim():'',um:cu>=0?String(r[cu]).trim():'',lokasi:'',locs:[],sistem:0};
+        map[kk].sistem+=q; if(loc&&map[kk].locs.indexOf(loc.toUpperCase())<0) map[kk].locs.push(loc.toUpperCase());
       });
-      S.qad=Object.keys(map).map(function(k){return map[k]});
+      S.qad=Object.keys(map).map(function(k){var x=map[k];x.lokasi=x.locs.join(', ');return x});S.qadAll=S.qad;
       checkGroup();
     }catch(err){toast(err.message,true)}
   };
@@ -294,10 +295,13 @@ function checkGroup(){
   var g=document.getElementById('bGroup').value; if(!g) return toast('Pilih group dulu',true);
   api('soGetGroupItems',g).then(function(r){
     S.valid=r.items; S.pick={};
+    var hasGrp=(S.qadAll||[]).some(function(x){return x.grp}), gU=g.toUpperCase().replace(/\s+/g,'');
+    S.qad=(S.qadAll||[]).filter(function(x){return !hasGrp||x.grp.replace(/\s+/g,'')===gU});
+    var inGrp=S.qad.length;
     S.qad=S.qad.filter(function(x){return S.valid.hasOwnProperty(x.item.toUpperCase())});
     S.qad.forEach(function(x){S.pick[x.item.toUpperCase()]=x.sistem>0});
     document.getElementById('bPreview').style.display='block';
-    document.getElementById('bInfo').textContent='Group '+g+': '+Object.keys(S.valid).length+' SKU terdaftar di sheet group · '+S.qad.length+' item QAD cocok (item di luar sheet group tidak ditarik).';
+    document.getElementById('bInfo').textContent='Group '+g+': '+Object.keys(S.valid).length+' SKU terdaftar di sheet group · '+S.qad.length+' item QAD cocok dari '+inGrp+' item QAD ber-Group '+g+' (item yang tidak ada di sheet group tidak ditarik).';
     renderPick();
   }).catch(function(e){toast(e.message,true)});
 }
