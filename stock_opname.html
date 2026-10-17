@@ -160,7 +160,7 @@ tr.sel-row td{background:rgba(239,68,68,.07)}
 
   <!-- PENGISIAN -->
   <div class="pane" id="p-isi">
-    <div class="card"><div class="card-h"><h3>Group saya — status pengerjaan</h3></div><div class="card-b"><div class="gcards" id="gcards"></div></div></div>
+    <div class="card"><div class="card-h"><h3>Group tanggung jawab saya — status pengerjaan</h3></div><div class="card-b"><div class="gcards" id="gcards"></div></div></div>
     <div class="card" id="isiCard" style="display:none">
       <div class="card-h"><h3 id="isiTitle"></h3>
         <div class="row"><select id="isiFilter" onchange="renderIsi()"><option value="all">Semua item</option><option value="todo">Belum diisi</option><option value="sel">Ada selisih</option></select>
@@ -209,14 +209,16 @@ function fmt(n){return Number(n||0).toLocaleString('id-ID')}
 function norm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim()}
 
 // PIC milik user login (cocokkan nama login dengan nama PIC di master)
-function isMine(pic){
-  if(IS_TL) return true;
+// Milik akun login (STRICT, tanpa bypass TL) -> dipakai Buat Lembar & Pengisian
+function ownPic(pic){
   var a=norm(NAMA), b=norm(pic); if(!a) return false;
   if(a.indexOf(b)!==-1||b.indexOf(a)!==-1) return true;
   var wa=a.split(' ').filter(function(w){return w.length>=4});
   return b.split(/ |\//).some(function(w){return w.length>=4&&wa.indexOf(w)!==-1});
 }
-function myGroups(){return S.master.filter(function(m){return isMine(m.pic)})}
+// Dashboard / Selisih / Print: TL & Admin melihat semua PIC
+function isMine(pic){return IS_TL||ownPic(pic)}
+function myGroups(){return S.master.filter(function(m){return ownPic(m.pic)})}
 
 document.getElementById('tabs').addEventListener('click',function(e){
   var t=e.target.closest('.tab'); if(!t) return;
@@ -253,7 +255,7 @@ function fillSelects(){
   var pics=[]; S.master.forEach(function(m){if(isMine(m.pic)&&pics.indexOf(m.pic)===-1)pics.push(m.pic)});
   var f=document.getElementById('fPic'),old=f.value;
   f.innerHTML=(IS_TL?'<option value="">Semua PIC</option>':'')+pics.map(function(p){return '<option>'+esc(p)+'</option>'}).join(''); if(old) f.value=old;
-  document.getElementById('bGroup').innerHTML=myGroups().map(function(m){return '<option value="'+esc(m.group)+'">'+esc(m.group)+' — '+esc(m.desc)+' ('+esc(m.pic)+')</option>'}).join('');
+  document.getElementById('bGroup').innerHTML=(myGroups().length?'':'<option value="">— akun ini bukan PIC group SO —</option>')+myGroups().map(function(m){return '<option value="'+esc(m.group)+'">'+esc(m.group)+' — '+esc(m.desc)+' ('+esc(m.pic)+')</option>'}).join('');
 }
 
 /* ---------- DASHBOARD ---------- */
@@ -346,10 +348,10 @@ function buatLembar(){
 
 /* ---------- PENGISIAN ---------- */
 function renderGcards(){
-  var rows=S.dash.filter(function(r){return isMine(r.pic)});
+  var rows=S.dash.filter(function(r){return ownPic(r.pic)});
   document.getElementById('gcards').innerHTML=rows.map(function(r){
     return '<div class="gc" onclick="bukaLembar(\''+esc(r.lembarId)+'\')"><b>'+esc(r.group)+'</b>'+statusChip(r.status).replace('class="chip','style="float:right" class="chip')+'<small>'+esc(r.desc)+' · '+esc(r.pic)+'</small>'+
-    '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div></div>'}).join('')||'<div class="empty">Tidak ada group</div>';
+    '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div></div>'}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO.</div>';
 }
 function bukaLembar(id){
   if(!id) return toast('Belum ada lembar. Buat dulu di tab Buat Lembar SO.',true);
