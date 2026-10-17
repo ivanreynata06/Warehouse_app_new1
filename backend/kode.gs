@@ -141,7 +141,7 @@ var API_FUNCTIONS = {
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
   soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih,
-  soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC
+  soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC, soGetAll: soGetAll
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -8611,12 +8611,19 @@ var SO_MASTER_SEED = [
 
 // Sheet "FORM SO" (berisi sheet per-group) -- dipakai untuk Fitting Import; departemen lain pakai spreadsheet-nya sendiri.
 var SO_SPREADSHEET_ID = '1vb9HGqNU8_wsocBzz8RveOtIzc82K1RUmF-lKXIb7k4';
+var _SO_MEM = {}; // memo per-eksekusi (tiap request = eksekusi baru), supaya spreadsheet/sheet tidak dibuka berulang
 function _soSS() {
-  return SpreadsheetApp.openById(ACTIVE_WORKSPACE === 'cibitung_fitting_import' ? SO_SPREADSHEET_ID : SPREADSHEET_ID);
+  if (!_SO_MEM.ss) _SO_MEM.ss = SpreadsheetApp.openById(ACTIVE_WORKSPACE === 'cibitung_fitting_import' ? SO_SPREADSHEET_ID : SPREADSHEET_ID);
+  return _SO_MEM.ss;
+}
+function _soSheetByKey(group) {
+  if (!_SO_MEM.tabs) { _SO_MEM.tabs = {}; _soSS().getSheets().forEach(function (sh) { var k = _soKey(sh.getName()); if (!_SO_MEM.tabs[k]) _SO_MEM.tabs[k] = sh; }); }
+  return _SO_MEM.tabs[_soKey(group)] || null;
 }
 function _soKey(s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 
 function _soSheet(name, hdr, seed) {
+  if (_SO_MEM['sh_' + name]) return _SO_MEM['sh_' + name];
   var ss = _soSS();
   var sh = ss.getSheetByName(name);
   if (!sh) {
@@ -8626,6 +8633,7 @@ function _soSheet(name, hdr, seed) {
     sh.getRange(2, 1, 2000, hdr.length).setNumberFormat('@');
     if (seed && seed.length) sh.getRange(2, 1, seed.length, hdr.length).setValues(seed);
   }
+  _SO_MEM['sh_' + name] = sh;
   return sh;
 }
 function _soRows(sh, nCols) {
@@ -8651,13 +8659,7 @@ function _soNorm(s) { return String(s == null ? '' : s).trim().toUpperCase(); }
 
 // Item yg terdaftar di sheet per-group (sheet bernama kode group).
 function _soGroupItemMap(group) {
-  var ss = _soSS();
-  var want = _soKey(group);
-  var sh = null;
-  ss.getSheets().some(function (s) {
-    if (_soKey(s.getName()) === want) { sh = s; return true; }
-    return false;
-  });
+  var sh = _soSheetByKey(group);
   var map = {};
   if (!sh || sh.getLastRow() < 1) return { found: !!sh, map: map };
   var vals = sh.getDataRange().getValues();
@@ -8674,16 +8676,34 @@ function _soGroupItemMap(group) {
   return { found: true, map: map };
 }
 
+// Jumlah SKU per group (dashboard) -- baca 1 kolom saja + cache 10 menit; force=true -> hitung ulang
+function _soGroupCount(group) {
+  var cache = CacheService.getScriptCache(), key = 'SOC_' + ACTIVE_WORKSPACE + '_' + _soKey(group);
+  if (!_SO_MEM.force) { var hit = cache.get(key); if (hit !== null) return Number(hit) || 0; }
+  var sh = _soSheetByKey(group), n = 0;
+  if (sh && sh.getLastRow() > 0) {
+    var last = sh.getLastRow(), cols = Math.min(sh.getLastColumn(), 8), col = 1, start = 1;
+    var head = sh.getRange(1, 1, Math.min(6, last), Math.max(1, cols)).getValues();
+    outer: for (var r = 0; r < head.length; r++) for (var c = 0; c < head[r].length; c++) {
+      if (/^(item|kode|part|material|sku)/i.test(String(head[r][c]).trim())) { col = c + 1; start = r + 2; break outer; }
+    }
+    if (last >= start) sh.getRange(start, col, last - start + 1, 1).getValues().forEach(function (v) { if (String(v[0]).trim()) n++; });
+  }
+  try { cache.put(key, String(n), 600); } catch (e) {}
+  return n;
+}
+
 function soGetMaster() {
+  if (_SO_MEM.master) return _SO_MEM.master;
   try {
     var shM = _soSheet('SO_MASTER', SO_MASTER_HDR, SO_MASTER_SEED);
     var rows = _soRows(shM, 6);
     var have = {}; rows.forEach(function (r) { have[_soKey(r[1])] = 1; });
     var add = SO_MASTER_SEED.filter(function (r) { return !have[_soKey(r[1])]; }); // lengkapi group yg belum ada
     if (add.length) { shM.getRange(rows.length + 2, 1, add.length, 6).setNumberFormat('@').setValues(add); rows = rows.concat(add); }
-    return { success: true, data: rows.filter(function (r) { return r[1]; }).map(function (r) {
+    return (_SO_MEM.master = { success: true, data: rows.filter(function (r) { return r[1]; }).map(function (r) {
       return { pic: String(r[0]), group: String(r[1]), desc: String(r[2]), targetLabel: String(r[3]), hari: Number(r[4]) || 30, mode: String(r[5] || 'BULANAN').toUpperCase() };
-    }) };
+    }) });
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
@@ -8731,12 +8751,14 @@ function soBuatLembar(payload) {
 }
 
 function _soLembarList() {
-  return _soRows(_soSheet('SO_LEMBAR', SO_LEMBAR_HDR), 8).map(function (r) {
+  if (_SO_MEM.lembar) return _SO_MEM.lembar;
+  return _SO_MEM.lembar = _soRows(_soSheet('SO_LEMBAR', SO_LEMBAR_HDR), 8).map(function (r) {
     return { id: String(r[0]), pic: String(r[1]), group: String(r[2]), dibuat: String(r[3]), mulai: String(r[4]), akhir: String(r[5]), oleh: String(r[6]), jumlah: Number(r[7]) || 0 };
   });
 }
 function _soDetailRows() {
-  return _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 15).map(function (r, i) {
+  if (_SO_MEM.det) return _SO_MEM.det;
+  return _SO_MEM.det = _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 15).map(function (r, i) {
     return { row: i + 2, lembar: String(r[0]), item: String(r[1]), desc: String(r[2]), um: String(r[3]), lokasi: String(r[4]),
       sistem: Number(r[5]) || 0, fisik: r[6] === '' ? null : Number(r[6]), selisih: r[7] === '' ? null : Number(r[7]),
       tglIsi: String(r[8]), diisiOleh: String(r[9]), statusSel: String(r[10]), ket: String(r[11]),
@@ -8829,9 +8851,9 @@ function soGetDashboard() {
     var rows = master.map(function (m) {
       var mine = lembar.filter(function (l) { return _soNorm(l.group) === _soNorm(m.group); });
       var cur = mine.length ? mine[mine.length - 1] : null;
-      var gi = _soGroupItemMap(m.group);
+      var skuCount = _soGroupCount(m.group);
       var row = { pic: m.pic, group: m.group, desc: m.desc, targetLabel: m.targetLabel, mode: m.mode,
-        totalSku: Object.keys(gi.map).length, targetItem: 0, telahSo: 0, progress: 0, status: 'BELUM MULAI',
+        totalSku: skuCount, targetItem: 0, telahSo: 0, progress: 0, status: 'BELUM MULAI',
         selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null };
       if (m.mode === 'MINGGUAN') { row.mulai = _soMonday(today); row.akhir = _soAddDays(row.mulai, 6); }
       if (cur) {
@@ -8879,5 +8901,24 @@ function soGetRekapPIC() {
       d.pic = picOf[d.lembar] || ''; d.group = grpOf[d.lembar] || ''; return d;
     });
     return { success: true, groups: dash.data, selisih: selisih, warnings: dash.warnings };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+
+// SATU panggilan utk halaman Monitoring SO: master + dashboard + daftar lembar + selisih (data dibaca sekali)
+function soGetAll(force) {
+  try {
+    _SO_MEM.force = !!force;
+    var dash = soGetDashboard();
+    if (!dash.success) return dash;
+    var lembar = soListLembar('');
+    if (!lembar.success) return lembar;
+    var det = _soDetailRows(), picOf = {}, grpOf = {};
+    _soLembarList().forEach(function (l) { picOf[l.id] = l.pic; grpOf[l.id] = l.group; });
+    var selisih = det.filter(function (d) { return d.statusSel === 'OPEN' || d.statusSel === 'CLOSED'; }).map(function (d) {
+      return { row: d.row, lembar: d.lembar, item: d.item, desc: d.desc, sistem: d.sistem, fisik: d.fisik, selisih: d.selisih,
+               statusSel: d.statusSel, ket: d.ket, tglClose: d.tglClose, alasanClose: d.alasanClose, pic: picOf[d.lembar] || '', group: grpOf[d.lembar] || '' };
+    });
+    return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, lembar: lembar.data, selisih: selisih };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
