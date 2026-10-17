@@ -8583,11 +8583,41 @@ var SO_MASTER_SEED = [
   ['SULISTIYO', 'M010', 'RUCIKA SAFE', '1 MONTH', 30, 'BULANAN'],
   ['SULISTIYO', 'X053', 'VALSIR (LEM)', '3 MONTH', 90, 'BULANAN'],
   ['IVAN REYNATA', 'Z073', 'PIPA TRC & JACKING', '3 MONTH', 90, 'BULANAN'],
-  ['IVAN REYNATA', 'M000', 'WAVINSAFE IM', '3 MONTH', 90, 'BULANAN']
+  ['IVAN REYNATA', 'M000', 'WAVINSAFE IM', '3 MONTH', 90, 'BULANAN'],
+  ['IVAN REYNATA', 'Z071', 'ANEKA PRATAMA', '3 MONTH', 90, 'BULANAN'],
+  ['IVAN REYNATA', 'Z070', 'PEMBELIAN', '3 MONTH', 90, 'BULANAN'],
+  ['IVAN REYNATA', 'Z072', 'FITTING EXOPLASS', '3 MONTH', 90, 'BULANAN'],
+  ['IVAN REYNATA', 'L010', 'WAVINLOK', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'M050', 'VDL', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'M051', 'NINGBO', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'N051', 'RUCIKA LITE OSTENDORF', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'Q052', 'PILSA', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'Q054', 'PILSA GN', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'Q050', 'WAVIN EKOPLASTIK', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'Q051', 'WAVIN', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'AQUACELL', 'PLANT KARAWANG', '3 MONTH', 90, 'BULANAN'],
+  ['WANG SUTRISNO', 'Q055', 'FITTING RKG', '1 MONTH', 30, 'BULANAN'],
+  ['WANG SUTRISNO', 'H050', 'WELDING MECHINE', '1 MONTH', 30, 'BULANAN'],
+  ['DONI & IMAN', 'LG20', 'MAEZAWA', '3 MONTH', 90, 'BULANAN'],
+  ['DONI & IMAN', 'T050', 'AQUACELL', '3 MONTH', 90, 'BULANAN'],
+  ['DONI & IMAN', 'T051', 'QUICKSTREAM', '3 MONTH', 90, 'BULANAN'],
+  ['DONI & IMAN', 'T053', 'BLUCHER', '3 MONTH', 90, 'BULANAN'],
+  ['DONI & IMAN', 'Q070', 'FITTING KELEN GREY', '1 MONTH', 30, 'BULANAN'],
+  ['DONI & IMAN', 'T054', 'SYFON CBT & DFR', '1 MONTH', 30, 'BULANAN'],
+  ['DONI & IMAN', 'Y051', 'KELOX DFR', '1 MONTH', 30, 'BULANAN'],
+  ['IVAN REYNATA', 'K053', 'FAUCET POLE', '3 MONTH', 90, 'BULANAN'],
+  ['DONI & IMAN', 'KELOX', 'RUCIKA DFR', '1 MONTH', 30, 'BULANAN']
 ];
 
+// Sheet "FORM SO" (berisi sheet per-group) -- dipakai untuk Fitting Import; departemen lain pakai spreadsheet-nya sendiri.
+var SO_SPREADSHEET_ID = '1vb9HGqNU8_wsocBzz8RveOtIzc82K1RUmF-lKXIb7k4';
+function _soSS() {
+  return SpreadsheetApp.openById(ACTIVE_WORKSPACE === 'cibitung_fitting_import' ? SO_SPREADSHEET_ID : SPREADSHEET_ID);
+}
+function _soKey(s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
 function _soSheet(name, hdr, seed) {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var ss = _soSS();
   var sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
@@ -8621,11 +8651,11 @@ function _soNorm(s) { return String(s == null ? '' : s).trim().toUpperCase(); }
 
 // Item yg terdaftar di sheet per-group (sheet bernama kode group).
 function _soGroupItemMap(group) {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var want = _soNorm(group).replace(/\s+/g, '');
+  var ss = _soSS();
+  var want = _soKey(group);
   var sh = null;
   ss.getSheets().some(function (s) {
-    if (_soNorm(s.getName()).replace(/\s+/g, '') === want) { sh = s; return true; }
+    if (_soKey(s.getName()) === want) { sh = s; return true; }
     return false;
   });
   var map = {};
@@ -8646,7 +8676,11 @@ function _soGroupItemMap(group) {
 
 function soGetMaster() {
   try {
-    var rows = _soRows(_soSheet('SO_MASTER', SO_MASTER_HDR, SO_MASTER_SEED), 6);
+    var shM = _soSheet('SO_MASTER', SO_MASTER_HDR, SO_MASTER_SEED);
+    var rows = _soRows(shM, 6);
+    var have = {}; rows.forEach(function (r) { have[_soKey(r[1])] = 1; });
+    var add = SO_MASTER_SEED.filter(function (r) { return !have[_soKey(r[1])]; }); // lengkapi group yg belum ada
+    if (add.length) { shM.getRange(rows.length + 2, 1, add.length, 6).setNumberFormat('@').setValues(add); rows = rows.concat(add); }
     return { success: true, data: rows.filter(function (r) { return r[1]; }).map(function (r) {
       return { pic: String(r[0]), group: String(r[1]), desc: String(r[2]), targetLabel: String(r[3]), hari: Number(r[4]) || 30, mode: String(r[5] || 'BULANAN').toUpperCase() };
     }) };
