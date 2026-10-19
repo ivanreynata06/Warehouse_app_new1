@@ -141,7 +141,7 @@ var API_FUNCTIONS = {
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
   soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih,
-  soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC, soGetAll: soGetAll
+  soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC, soGetAll: soGetAll, soGetRiwayatItems: soGetRiwayatItems
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -8571,7 +8571,7 @@ function diagNopolPengiriman(nopolAtauSpm, tanggalList) {
 var SO_MASTER_HDR = ['PIC', 'Group', 'Deskripsi', 'Target Durasi', 'Hari', 'Mode'];
 var SO_LEMBAR_HDR = ['ID', 'PIC', 'Group', 'Dibuat', 'Mulai', 'Akhir', 'Dibuat Oleh', 'Jumlah Item'];
 var SO_DETAIL_HDR = ['LembarID', 'Item', 'Deskripsi', 'UM', 'Lokasi', 'Sistem', 'Fisik', 'Selisih',
-                     'Tgl Isi', 'Diisi Oleh', 'Status Selisih', 'Keterangan', 'Tgl Close', 'Close Oleh', 'Alasan Close'];
+                     'Tgl Isi', 'Diisi Oleh', 'Status Selisih', 'Keterangan', 'Tgl Close', 'Close Oleh', 'Alasan Close', 'Konfirmasi'];
 var SO_MASTER_SEED = [
   ['SAEPUL GANNI', 'I053', 'PIPA PPR RKG', '1 WEEK (1 MONTH)', 30, 'MINGGUAN'],
   ['DONI/IMAN', 'P010', 'FITTING PE-100', '3 MONTH', 90, 'BULANAN'],
@@ -8632,6 +8632,11 @@ function _soSheet(name, hdr, seed) {
     sh.setFrozenRows(1);
     sh.getRange(2, 1, 2000, hdr.length).setNumberFormat('@');
     if (seed && seed.length) sh.getRange(2, 1, seed.length, hdr.length).setValues(seed);
+  }
+  if (sh.getMaxColumns() < hdr.length) sh.insertColumnsAfter(sh.getMaxColumns(), hdr.length - sh.getMaxColumns());
+  if (sh.getRange(1, hdr.length).getValue() === '') { // sheet lama: tambahkan kolom baru
+    sh.getRange(1, hdr.length).setValue(hdr[hdr.length - 1]).setFontWeight('bold').setBackground('#cfe2f3');
+    sh.getRange(2, hdr.length, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@');
   }
   _SO_MEM['sh_' + name] = sh;
   return sh;
@@ -8742,7 +8747,7 @@ function soBuatLembar(payload) {
     sl.appendRow([id, master.pic, master.group, today, mulai, akhir, payload.user || '', keep.length]);
     var rows = keep.map(function (it) {
       var desc = it.desc || g.map[_soNorm(it.item)] || '';
-      return [id, String(it.item).trim(), desc, it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', ''];
+      return [id, String(it.item).trim(), desc, it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', ''];
     });
     sd.getRange(sd.getLastRow() + 1, 1, rows.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(rows);
     return { success: true, id: id, dipakai: keep.length, dibuang: dropped, mulai: mulai, akhir: akhir };
@@ -8758,11 +8763,11 @@ function _soLembarList() {
 }
 function _soDetailRows() {
   if (_SO_MEM.det) return _SO_MEM.det;
-  return _SO_MEM.det = _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 15).map(function (r, i) {
+  return _SO_MEM.det = _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 16).map(function (r, i) {
     return { row: i + 2, lembar: String(r[0]), item: String(r[1]), desc: String(r[2]), um: String(r[3]), lokasi: String(r[4]),
       sistem: Number(r[5]) || 0, fisik: r[6] === '' ? null : Number(r[6]), selisih: r[7] === '' ? null : Number(r[7]),
       tglIsi: String(r[8]), diisiOleh: String(r[9]), statusSel: String(r[10]), ket: String(r[11]),
-      tglClose: String(r[12]), closeOleh: String(r[13]), alasanClose: String(r[14]) };
+      tglClose: String(r[12]), closeOleh: String(r[13]), alasanClose: String(r[14]), konfirmasi: String(r[15]) };
   });
 }
 
@@ -8790,26 +8795,55 @@ function soGetLembarDetail(id) {
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
-// payload: {id, user, rows:[{row, fisik}]}  -> selisih otomatis, status OPEN bila selisih != 0
+// payload: {id, user, rows:[{row, fisik, konfirmasi}]}
+// Selisih otomatis. Baris yang selisih != 0 hanya disimpan bila konfirmasi=true; selain itu ditahan
+// (dikembalikan di `ditahan`) supaya PIC cek ulang dulu.
 function soSimpanIsi(payload) {
   var lock = LockService.getScriptLock();
   try {
     payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
     lock.waitLock(25000);
-    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), today = _soToday(), n = 0;
+    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), today = _soToday(), n = 0, ditahan = [];
+    var last = sd.getLastRow(); if (last < 2) return { success: true, tersimpan: 0, ditahan: [] };
+    var all = sd.getRange(1, 1, last, 16).getValues(), minR = 0, maxR = 0;
     (payload.rows || []).forEach(function (r) {
-      var row = Number(r.row); if (!row || row < 2) return;
-      var cur = sd.getRange(row, 1, 1, 15).getValues()[0];
+      var row = Number(r.row); if (!row || row < 2 || row > last) return;
+      var cur = all[row - 1];
       if (String(cur[0]) !== payload.id) return; // pengaman: baris harus milik lembar ini
       if (r.fisik === '' || r.fisik === null || r.fisik === undefined) return;
-      var fisik = Number(r.fisik), sistem = Number(cur[5]) || 0, sel = fisik - sistem;
+      var fisik = Number(r.fisik), sistem = Number(cur[5]) || 0, sel = fisik - sistem, konf = String(cur[15]);
+      if (sel !== 0 && !r.konfirmasi) { ditahan.push(row); return; }
+      if (sel === 0) konf = '';
+      else konf = 'DIKONFIRMASI ' + today + ' ' + (payload.user || '');
       var status = sel === 0 ? '' : (String(cur[10]) === 'CLOSED' ? 'CLOSED' : 'OPEN');
-      sd.getRange(row, 7, 1, 5).setValues([[fisik, sel, today, payload.user || '', status]]);
-      n++;
+      cur[6] = fisik; cur[7] = sel; cur[8] = today; cur[9] = payload.user || ''; cur[10] = status; cur[15] = konf;
+      if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; n++;
     });
-    return { success: true, tersimpan: n };
+    if (n) sd.getRange(minR, 7, maxR - minR + 1, 10).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(6, 16); }));
+    return { success: true, tersimpan: n, ditahan: ditahan };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
+}
+
+// payload: {group, id (lembar yg sedang diisi), items:[kode item]} -> hasil SO sebelumnya per item (lembar lain, group sama)
+function soGetRiwayatItems(payload) {
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var want = {}; (payload.items || []).forEach(function (i) { want[_soNorm(i)] = 1; });
+    var prev = _soLembarList().filter(function (l) { return _soNorm(l.group) === _soNorm(payload.group) && l.id !== payload.id; });
+    var order = {}, info = {}; prev.forEach(function (l, i) { order[l.id] = i; info[l.id] = l; });
+    var best = {};
+    _soDetailRows().forEach(function (d) {
+      var k = _soNorm(d.item);
+      if (!want[k] || order[d.lembar] === undefined || d.fisik === null) return;
+      if (!best[k] || order[d.lembar] > order[best[k].lembar]) best[k] = d;
+    });
+    var out = {};
+    Object.keys(best).forEach(function (k) {
+      var d = best[k]; out[k] = { lembar: d.lembar, tgl: d.tglIsi || info[d.lembar].dibuat, sistem: d.sistem, fisik: d.fisik, selisih: d.selisih, status: d.statusSel };
+    });
+    return { success: true, data: out };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
 // payload: {row, id, ket, user}  -> keterangan selisih (tetap OPEN)
@@ -8917,7 +8951,7 @@ function soGetAll(force) {
     _soLembarList().forEach(function (l) { picOf[l.id] = l.pic; grpOf[l.id] = l.group; });
     var selisih = det.filter(function (d) { return d.statusSel === 'OPEN' || d.statusSel === 'CLOSED'; }).map(function (d) {
       return { row: d.row, lembar: d.lembar, item: d.item, desc: d.desc, sistem: d.sistem, fisik: d.fisik, selisih: d.selisih,
-               statusSel: d.statusSel, ket: d.ket, tglClose: d.tglClose, alasanClose: d.alasanClose, pic: picOf[d.lembar] || '', group: grpOf[d.lembar] || '' };
+               statusSel: d.statusSel, ket: d.ket, tglClose: d.tglClose, alasanClose: d.alasanClose, konfirmasi: d.konfirmasi, pic: picOf[d.lembar] || '', group: grpOf[d.lembar] || '' };
     });
     return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, lembar: lembar.data, selisih: selisih };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
