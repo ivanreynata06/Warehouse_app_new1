@@ -145,6 +145,12 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
   <div class="content">
 
   <!-- DASHBOARD -->
+  <div class="card" id="fbar"><div class="card-b row" style="gap:12px">
+    <b style="font-family:'Outfit';font-size:12px">Periode SO</b>
+    <select id="fPreset" onchange="setPreset(this.value)"><option value="all">Semua periode</option><option value="week">Minggu ini</option><option value="month">Bulan ini</option><option value="lastmonth">Bulan lalu</option><option value="d30">30 hari terakhir</option><option value="custom">Kustom…</option></select>
+    <label class="muted">Dari <input type="date" id="fFrom" onchange="setCustom()"></label>
+    <label class="muted">Sampai <input type="date" id="fTo" onchange="setCustom()"></label>
+    <span class="muted" id="fInfo"></span></div></div>
   <div id="loadBox"></div>
   <div class="pane active" id="p-dash">
     <div id="warnBox"></div>
@@ -153,7 +159,7 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
       <div class="card-h"><h3>Progres SO per PIC &amp; Group</h3>
         <div class="row"><select id="fPic" onchange="renderDash()"></select></div></div>
       <div class="tw"><table><thead><tr>
-        <th class="l">Nama PIC</th><th>Group</th><th class="l">Deskripsi</th><th>Target Durasi</th><th>Total SKU</th>
+        <th class="l">Nama PIC</th><th>Group</th><th class="l">Deskripsi</th><th>Target Durasi</th><th>Periode SO</th><th>Total SKU</th>
         <th>Target Item</th><th>Sudah di-SO</th><th>% Progress</th><th>Sisa Hari</th><th>Status</th><th>Selisih</th></tr></thead>
         <tbody id="dashBody"></tbody></table></div>
     </div>
@@ -236,6 +242,7 @@ function navTo(pg){var t=(PAGE_MAP[pg||'']||'index.html')+'?v='+(window.SITE_VER
 
 var NAMA=(sessionStorage.getItem('wh_nama')||'').trim(), ROLE=(sessionStorage.getItem('wh_role')||'').toUpperCase();
 var IS_TL=ROLE==='TL'||ROLE.indexOf('ADMIN')!==-1;
+var F={from:'',to:''};
 var S={master:[],dash:[],warn:[],lembar:[],cur:null,qad:[],valid:null,pick:{}};
 
 function api(fn){var a=[].slice.call(arguments,1);return new Promise(function(ok,no){
@@ -247,12 +254,19 @@ function fmt(n){return Number(n||0).toLocaleString('id-ID')}
 function norm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim()}
 
 // PIC milik user login (cocokkan nama login dengan nama PIC di master)
-// Milik akun login (STRICT, tanpa bypass TL) -> dipakai Buat Lembar & Pengisian
+// Milik akun login (STRICT, tanpa bypass TL) -> dipakai Buat Lembar & Pengisian.
+// 1) pemetaan manual sheet SO_AKUN (NIK / nama akun -> PIC); 2) kemiripan nama (toleran salah ketik, mis. Sulistyo = Sulistiyo)
+var NIK=(sessionStorage.getItem('wh_nik')||'').trim();
+function lev(a,b){var m=a.length,n=b.length,d=[],i,j;for(i=0;i<=m;i++){d[i]=[i]}for(j=1;j<=n;j++)d[0][j]=j;
+  for(i=1;i<=m;i++)for(j=1;j<=n;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[m][n]}
+function tokMatch(x,y){if(x===y)return true;if(x.length<4||y.length<4)return false;
+  if(x.indexOf(y)===0||y.indexOf(x)===0)return true;var L=Math.min(x.length,y.length);if(L<6)return false;return lev(x,y)<=(Math.max(x.length,y.length)>=9?2:1)}
+function picTokens(s){return norm(s).split(/ /).filter(function(w){return w.length>=4})}
 function ownPic(pic){
-  var a=norm(NAMA), b=norm(pic); if(!a) return false;
-  if(a.indexOf(b)!==-1||b.indexOf(a)!==-1) return true;
-  var wa=a.split(' ').filter(function(w){return w.length>=4});
-  return b.split(/ |\//).some(function(w){return w.length>=4&&wa.indexOf(w)!==-1});
+  var mine=(S.akun||[]).filter(function(m){var k=norm(m.akun);return k&&(k===norm(NAMA)||k===norm(NIK))});
+  if(mine.length) return mine.some(function(m){var p=norm(m.pic),q=norm(pic);return p===q||picTokens(m.pic).some(function(w){return picTokens(pic).indexOf(w)>=0})});
+  var wa=picTokens(NAMA); if(!wa.length) return false;
+  return picTokens(pic).some(function(w){return wa.some(function(x){return tokMatch(w,x)})});
 }
 // Dashboard / Selisih / Print: TL & Admin melihat semua PIC
 function isMine(pic){return IS_TL||ownPic(pic)}
@@ -268,6 +282,34 @@ function goTab(k){document.querySelector('.tab[data-t="'+k+'"]').click()}
 
 var LOAD_STEPS=['Menghubungkan ke server','Mengambil master group SO','Menghitung progres & status','Menyiapkan tampilan'];
 function withTimeout(p,ms){return Promise.race([p,new Promise(function(_,no){setTimeout(function(){no(new Error('Server tidak merespons (timeout). Pastikan Apps Script sudah di-deploy ulang dengan versi terbaru.'))},ms)})])}
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function setPreset(v){var t=new Date(),a='',b='';
+  if(v==='week'){var d=(t.getDay()+6)%7;var m=new Date(t);m.setDate(t.getDate()-d);var e=new Date(m);e.setDate(m.getDate()+6);a=iso(m);b=iso(e)}
+  else if(v==='month'){a=iso(new Date(t.getFullYear(),t.getMonth(),1));b=iso(new Date(t.getFullYear(),t.getMonth()+1,0))}
+  else if(v==='lastmonth'){a=iso(new Date(t.getFullYear(),t.getMonth()-1,1));b=iso(new Date(t.getFullYear(),t.getMonth(),0))}
+  else if(v==='d30'){var s=new Date(t);s.setDate(t.getDate()-30);a=iso(s);b=iso(t)}
+  else if(v==='custom'){document.getElementById('fFrom').focus();return}
+  document.getElementById('fFrom').value=a;document.getElementById('fTo').value=b;applyFilter()}
+function setCustom(){document.getElementById('fPreset').value='custom';applyFilter()}
+function applyFilter(){F.from=document.getElementById('fFrom').value;F.to=document.getElementById('fTo').value;
+  document.getElementById('fInfo').textContent=(F.from||F.to)?('Menampilkan SO yang periodenya beririsan dengan '+(F.from||'…')+' s/d '+(F.to||'…')):'';
+  renderDash();renderSel();renderPrint();renderRiw()}
+function inRange(l){return (!F.from||l.akhir>=F.from)&&(!F.to||l.mulai<=F.to)}
+function dd(a,b){return Math.round((new Date(b)-new Date(a))/864e5)}
+// Dashboard sesuai filter periode: pakai lembar terbaru yang beririsan dengan rentang tanggal
+function dashRows(){
+  if(!F.from&&!F.to) return S.dash;
+  return S.master.map(function(m){
+    var base=S.dash.filter(function(d){return d.group===m.group})[0]||{};
+    var r={pic:m.pic,group:m.group,desc:m.desc,targetLabel:m.targetLabel,mode:m.mode,totalSku:base.totalSku,targetItem:0,telahSo:0,progress:0,status:'BELUM MULAI',selisih:'-',open:0,closed:0,lembarId:'',mulai:'',akhir:'',sisaHari:null,berikutnya:''};
+    var l=S.lembar.filter(function(x){return x.group===m.group&&inRange(x)})[0]; // S.lembar: terbaru dulu
+    if(!l) return r;
+    r.lembarId=l.id;r.targetItem=l.jumlah;r.telahSo=l.isi;r.open=l.open;r.closed=l.closed;r.mulai=l.mulai;r.akhir=l.akhir;
+    r.progress=l.jumlah?Math.round(l.isi/l.jumlah*10000)/100:0;r.sisaHari=dd(S.today,l.akhir);
+    var span=Math.max(1,dd(l.mulai,l.akhir)+1),el=Math.min(span,Math.max(0,dd(l.mulai,S.today)+1));
+    r.status=r.progress>=100?'SELESAI':(S.today>l.akhir?'TERLAMBAT':(r.progress>=(el/span*100)-5?'ON TRACK':'TERLAMBAT'));
+    r.selisih=l.open>0?'OPEN':(l.closed>0?'CLOSED':'-');return r});
+}
 function loadAll(force){
   if(force&&window.clearApiCache) clearApiCache();
   document.getElementById('who').innerHTML='<b>'+esc(NAMA||'-')+'</b> · '+esc(sessionStorage.getItem('wh_role')||'');
@@ -278,10 +320,12 @@ function loadAll(force){
   setTimeout(function(){L.step(1)},700); setTimeout(function(){L.step(2)},2200);
   withTimeout(api('soGetAll',!!force),60000).then(function(r){
     L.step(3);
-    S.master=r.master; S.dash=r.dash; S.warn=r.warnings; S.lembar=r.lembar; S.sel=r.selisih;
+    S.today=r.today; S.akun=r.akun||[]; S.master=r.master; S.dash=r.dash; S.warn=r.warnings; S.lembar=r.lembar; S.sel=r.selisih;
     document.getElementById('subtitle').textContent='Update '+r.today+(IS_TL?' · Semua PIC':' · Akun PIC: '+NAMA);
     fillSelects(); renderDash(); renderGcards(); renderSel(); renderPrint(); renderRiw();
     show(); L.done();
+    if(S.dash.some(function(d){return d.totalSku==null})) api('soGetSkuCounts').then(function(c){
+      S.dash.forEach(function(d){var k=String(d.group).toUpperCase().replace(/[^A-Z0-9]/g,'');if(c.counts[k]!==undefined)d.totalSku=c.counts[k]});renderDash()}).catch(function(){});
   }).catch(function(e){
     document.getElementById('subtitle').textContent='Gagal memuat';
     L.fail(e.message,function(){loadAll(true)});
@@ -300,7 +344,7 @@ function selChip(s){return s==='OPEN'?'<span class="chip c-open">OPEN</span>':s=
 function barCls(r){return r.status==='TERLAMBAT'?'late':r.progress<50?'mid':''}
 function renderDash(){
   var pic=document.getElementById('fPic').value;
-  var rows=S.dash.filter(function(r){return isMine(r.pic)&&(!pic||r.pic===pic)});
+  var rows=dashRows().filter(function(r){return isMine(r.pic)&&(!pic||r.pic===pic)});
   var cnt=function(s){return rows.filter(function(r){return r.status===s}).length};
   var open=rows.reduce(function(a,r){return a+r.open},0);
   document.getElementById('kpis').innerHTML=
@@ -311,11 +355,11 @@ function renderDash(){
   var w=S.warn.filter(function(x){return IS_TL||isMine(x.pic)});
   document.getElementById('warnBox').innerHTML=w.length?'<div class="warn'+(w.some(function(x){return x.level==='danger'})?'':' w')+'"><b>Peringatan SO Mingguan'+(IS_TL?' — perlu evaluasi TL':'')+'</b>'+w.map(function(x){return '• <b style="display:inline">'+esc(x.group)+'</b> ('+esc(x.pic)+'): '+esc(x.msg)}).join('<br>')+'</div>':'';
   document.getElementById('dashBody').innerHTML=rows.length?rows.map(function(r){
-    return '<tr><td class="l">'+esc(r.pic)+'</td><td><b>'+esc(r.group)+'</b></td><td class="l">'+esc(r.desc)+'</td><td>'+esc(r.targetLabel)+'</td>'+
-    '<td class="mono">'+fmt(r.totalSku)+'</td><td class="mono">'+fmt(r.targetItem)+'</td><td class="mono">'+fmt(r.telahSo)+'</td>'+
+    return '<tr><td class="l">'+esc(r.pic)+'</td><td><b>'+esc(r.group)+'</b></td><td class="l">'+esc(r.desc)+'</td><td>'+esc(r.targetLabel)+'</td><td class="mono" style="font-size:10.5px">'+(r.mulai?esc(r.mulai)+'<br>'+esc(r.akhir):'—')+'</td>'+
+    '<td class="mono">'+(r.totalSku==null?'<span class="muted">…</span>':fmt(r.totalSku))+'</td><td class="mono">'+fmt(r.targetItem)+'</td><td class="mono">'+fmt(r.telahSo)+'</td>'+
     '<td style="min-width:120px"><div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><span class="mono">'+String(r.progress).replace('.',',')+'%</span></td>'+
     '<td class="mono">'+(r.sisaHari==null?'—':(r.sisaHari<0?'lewat '+(-r.sisaHari)+' hr':r.sisaHari+' hr'))+'</td>'+
-    '<td>'+statusChip(r.status)+(r.berikutnya?'<div class="muted" style="font-size:9.5px;margin-top:3px">berikut: '+esc(r.berikutnya)+'</div>':'')+'</td><td>'+selChip(r.selisih)+'</td></tr>';}).join(''):'<tr><td colspan="11" class="empty">Belum ada data</td></tr>';
+    '<td>'+statusChip(r.status)+(r.berikutnya?'<div class="muted" style="font-size:9.5px;margin-top:3px">berikut: '+esc(r.berikutnya)+'</div>':'')+'</td><td>'+selChip(r.selisih)+'</td></tr>';}).join(''):'<tr><td colspan="12" class="empty">Belum ada data</td></tr>';
 }
 
 /* ---------- BUAT LEMBAR ---------- */
@@ -407,7 +451,7 @@ function renderGcards(){
   var rows=S.dash.filter(function(r){return ownPic(r.pic)});
   document.getElementById('gcards').innerHTML=rows.map(function(r){
     return '<div class="gc" onclick="bukaLembar(\''+esc(r.lembarId)+'\')"><b>'+esc(r.group)+'</b>'+statusChip(r.status).replace('class="chip','style="float:right" class="chip')+'<small>'+esc(r.desc)+' · '+esc(r.pic)+'</small>'+
-    '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div></div>'}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO.</div>';
+    '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div></div>'}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO (NIK '+esc(NIK)+'). Minta admin menambahkan akun ini di sheet <b>SO_AKUN</b> (kolom A: NIK/nama akun, kolom B: nama PIC sesuai sheet DASHBOARD).</div>';
 }
 function bukaLembar(id){
   if(!id) return toast('Belum ada lembar. Buat dulu di tab Buat Lembar SO.',true);
@@ -482,7 +526,8 @@ function kirimIsi(rows){
 /* ---------- SELISIH ---------- */
 function renderSel2(){api('soGetRekapPIC').then(function(r){S.sel=r.selisih;renderSel()}).catch(function(){})}
 function renderSel(){
-  var f=document.getElementById('sFilter').value,rows=(S.sel||[]).filter(function(x){return isMine(x.pic)&&(f==='all'||x.statusSel===f)});
+  var f=document.getElementById('sFilter').value,LM={};S.lembar.forEach(function(l){LM[l.id]=l});
+  var rows=(S.sel||[]).filter(function(x){return isMine(x.pic)&&(f==='all'||x.statusSel===f)&&(!LM[x.lembar]||inRange(LM[x.lembar]))});
   document.getElementById('selBody').innerHTML=rows.map(function(x){var open=x.statusSel==='OPEN';
     return '<tr><td class="l">'+esc(x.pic)+'</td><td><b>'+esc(x.group)+'</b></td><td class="l mono">'+esc(x.item)+'</td><td class="l">'+esc(x.desc)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td class="mono">'+fmt(x.fisik)+'</td><td class="mono" style="color:var(--red)">'+fmt(x.selisih)+'</td>'+
     '<td class="l">'+(open?'<input type="text" id="kt'+x.row+'" value="'+esc(x.ket)+'" placeholder="Keterangan selisih…" style="width:200px"> <button class="btn" onclick="simpanKet('+x.row+',\''+x.lembar+'\')">Simpan</button>':esc(x.ket)+'<div class="muted">Close: '+esc(x.alasanClose)+' ('+esc(x.tglClose)+')</div>')+'</td>'+
@@ -494,7 +539,7 @@ function closeSel(row,id){var a=prompt('Alasan close (mis. selisih ketemu / suda
 
 /* ---------- PRINT ---------- */
 function renderPrint(){
-  document.getElementById('prBody').innerHTML=S.lembar.filter(function(l){return isMine(l.pic)}).map(function(l){
+  document.getElementById('prBody').innerHTML=S.lembar.filter(function(l){return isMine(l.pic)&&inRange(l)}).map(function(l){
     return '<tr><td><input type="checkbox" class="pchk" value="'+esc(l.id)+'"></td><td class="mono">'+esc(l.id)+'</td><td class="l">'+esc(l.pic)+'</td><td><b>'+esc(l.group)+'</b></td><td>'+esc(l.mulai)+' s/d '+esc(l.akhir)+'</td><td class="mono">'+l.jumlah+'</td><td class="mono">'+l.isi+'</td></tr>'}).join('')||'<tr><td colspan="7" class="empty">Belum ada lembar</td></tr>';
 }
 function chkAll(v){[].forEach.call(document.querySelectorAll('.pchk'),function(c){c.checked=v})}
@@ -533,7 +578,7 @@ function doPrint(){
 }
 
 /* ---------- RIWAYAT SO ---------- */
-function riwRows(){var g=document.getElementById('rGroup').value;return S.lembar.filter(function(l){return isMine(l.pic)&&(!g||l.group===g)})}
+function riwRows(){var g=document.getElementById('rGroup').value;return S.lembar.filter(function(l){return isMine(l.pic)&&inRange(l)&&(!g||l.group===g)})}
 function renderRiw(){
   var sel=document.getElementById('rGroup'),old=sel.value,gs=[];
   S.lembar.filter(function(l){return isMine(l.pic)}).forEach(function(l){if(gs.indexOf(l.group)<0)gs.push(l.group)});

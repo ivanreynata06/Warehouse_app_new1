@@ -141,7 +141,7 @@ var API_FUNCTIONS = {
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
   soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih,
-  soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC, soGetAll: soGetAll, soGetRiwayatItems: soGetRiwayatItems, soGetLembarAktif: soGetLembarAktif
+  soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC, soGetAll: soGetAll, soGetSkuCounts: soGetSkuCounts, soGetRiwayatItems: soGetRiwayatItems, soGetLembarAktif: soGetLembarAktif
 };
 
 // Fungsi READ (baca data) yang aman di-cache di server selama beberapa
@@ -8633,10 +8633,15 @@ function _soSheet(name, hdr, seed) {
     sh.getRange(2, 1, 2000, hdr.length).setNumberFormat('@');
     if (seed && seed.length) sh.getRange(2, 1, seed.length, hdr.length).setValues(seed);
   }
-  if (sh.getMaxColumns() < hdr.length) sh.insertColumnsAfter(sh.getMaxColumns(), hdr.length - sh.getMaxColumns());
-  if (sh.getRange(1, hdr.length).getValue() === '') { // sheet lama: tambahkan kolom baru
-    sh.getRange(1, hdr.length).setValue(hdr[hdr.length - 1]).setFontWeight('bold').setBackground('#cfe2f3');
-    sh.getRange(2, hdr.length, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@');
+  var hk = 'SOH_' + ACTIVE_WORKSPACE + '_' + name + '_' + hdr.length, hc = CacheService.getScriptCache(), hOk = false;
+  try { hOk = !!hc.get(hk); } catch (e) {}
+  if (!hOk) {
+    if (sh.getMaxColumns() < hdr.length) sh.insertColumnsAfter(sh.getMaxColumns(), hdr.length - sh.getMaxColumns());
+    if (sh.getRange(1, hdr.length).getValue() === '') { // sheet lama: tambahkan kolom baru
+      sh.getRange(1, hdr.length).setValue(hdr[hdr.length - 1]).setFontWeight('bold').setBackground('#cfe2f3');
+      sh.getRange(2, hdr.length, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@');
+    }
+    try { hc.put(hk, '1', 21600); } catch (e) {}
   }
   _SO_MEM['sh_' + name] = sh;
   return sh;
@@ -8681,26 +8686,69 @@ function _soGroupItemMap(group) {
   return { found: true, map: map };
 }
 
-// Jumlah SKU per group (dashboard) -- baca 1 kolom saja + cache 10 menit; force=true -> hitung ulang
-function _soGroupCount(group) {
-  var cache = CacheService.getScriptCache(), key = 'SOC_' + ACTIVE_WORKSPACE + '_' + _soKey(group);
-  if (!_SO_MEM.force) { var hit = cache.get(key); if (hit !== null) return Number(hit) || 0; }
-  var sh = _soSheetByKey(group), n = 0;
-  if (sh && sh.getLastRow() > 0) {
-    var last = sh.getLastRow(), cols = Math.min(sh.getLastColumn(), 8), col = 1, start = 1;
-    var head = sh.getRange(1, 1, Math.min(6, last), Math.max(1, cols)).getValues();
-    outer: for (var r = 0; r < head.length; r++) for (var c = 0; c < head[r].length; c++) {
-      if (/^(item|kode|part|material|sku)/i.test(String(head[r][c]).trim())) { col = c + 1; start = r + 2; break outer; }
-    }
-    if (last >= start) sh.getRange(start, col, last - start + 1, 1).getValues().forEach(function (v) { if (String(v[0]).trim()) n++; });
+// Jumlah SKU per group. TIDAK dihitung saat dashboard dimuat (lambat: baca puluhan sheet) --
+// dashboard hanya membaca cache; frontend memanggil soGetSkuCounts di latar belakang.
+function _soCountsCached() {
+  try { var v = CacheService.getScriptCache().get('SOCNT_' + ACTIVE_WORKSPACE); return v ? JSON.parse(v) : null; } catch (e) { return null; }
+}
+function soGetSkuCounts(force) {
+  try {
+    if (!force) { var hit = _soCountsCached(); if (hit) return { success: true, counts: hit }; }
+    var counts = {};
+    soGetMaster().data.forEach(function (m) {
+      var key = _soKey(m.group), sh = _soSheetByKey(m.group), n = 0;
+      if (sh && sh.getLastRow() > 0) {
+        var v = sh.getDataRange().getValues(), col = 0, start = 0;
+        outer: for (var r = 0; r < Math.min(v.length, 6); r++) for (var c = 0; c < Math.min(v[r].length, 8); c++) {
+          if (/^(item|kode|part|material|sku)/i.test(String(v[r][c]).trim())) { col = c; start = r + 1; break outer; }
+        }
+        for (var i = start; i < v.length; i++) if (String(v[i][col]).trim()) n++;
+      }
+      counts[key] = n;
+    });
+    try { CacheService.getScriptCache().put('SOCNT_' + ACTIVE_WORKSPACE, JSON.stringify(counts), 10800); } catch (e) {}
+    return { success: true, counts: counts };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// Sumber master = sheet DASHBOARD di file FORM SO (kolom NAMA PIC / GROUP / DESKRIPSI / TARGET DURASI SO),
+// jadi perubahan di sheet itu otomatis ikut. Jika tidak ada -> sheet SO_MASTER (seed).
+function _soMasterFromDashboard() {
+  var sh = _soSheetByKey('DASHBOARD');
+  if (!sh || sh.getLastRow() < 2) return null;
+  var v = sh.getDataRange().getValues(), hr = -1, cp = -1, cg = -1, cd = -1, ct = -1;
+  for (var r = 0; r < Math.min(v.length, 30) && hr < 0; r++) {
+    for (var c = 0; c < v[r].length; c++) if (/^nama\s*pic/i.test(String(v[r][c]).trim())) { hr = r; cp = c; break; }
   }
-  try { cache.put(key, String(n), 600); } catch (e) {}
-  return n;
+  if (hr < 0) return null;
+  v[hr].forEach(function (h, c) {
+    h = String(h).trim();
+    if (/^group/i.test(h)) cg = c; else if (/^deskripsi/i.test(h)) cd = c; else if (/^target\s*durasi/i.test(h)) ct = c;
+  });
+  if (cg < 0) return null;
+  var out = [], seen = {};
+  for (var i = hr + 1; i < v.length; i++) {
+    var pic = String(v[i][cp]).trim(), grp = String(v[i][cg]).trim();
+    if (!grp || !pic || seen[_soKey(grp)]) continue;
+    seen[_soKey(grp)] = 1;
+    var label = ct >= 0 ? String(v[i][ct]).trim().toUpperCase() : '3 MONTH', mm = label.match(/(\d+)\s*(MONTH|BULAN)/);
+    out.push({ pic: pic, group: grp, desc: cd >= 0 ? String(v[i][cd]).replace(/[()]/g, '').trim() : '', targetLabel: label,
+      hari: mm ? Number(mm[1]) * 30 : 30, mode: /WEEK|MINGGU/.test(label) ? 'MINGGUAN' : 'BULANAN' });
+  }
+  return out;
+}
+
+// Pemetaan akun login -> PIC (jika nama akun tidak mirip nama PIC). Isi sheet SO_AKUN: kolom A = NIK atau Nama akun, B = nama PIC.
+function _soAkunMap() {
+  return _soRows(_soSheet('SO_AKUN', ['Akun (NIK / Nama)', 'PIC']), 2).filter(function (r) { return r[0] && r[1]; })
+    .map(function (r) { return { akun: String(r[0]), pic: String(r[1]) }; });
 }
 
 function soGetMaster() {
   if (_SO_MEM.master) return _SO_MEM.master;
   try {
+    var dm = _soMasterFromDashboard();
+    if (dm && dm.length) return (_SO_MEM.master = { success: true, sumber: 'DASHBOARD', data: dm });
     var shM = _soSheet('SO_MASTER', SO_MASTER_HDR, SO_MASTER_SEED);
     var rows = _soRows(shM, 6);
     var have = {}; rows.forEach(function (r) { have[_soKey(r[1])] = 1; });
@@ -8968,13 +9016,13 @@ function soGetDashboard() {
       a.total++; if (d.fisik !== null) a.isi++;
       if (d.statusSel === 'OPEN') a.open++; if (d.statusSel === 'CLOSED') a.closed++;
     });
-    var warnings = [];
+    var warnings = [], counts = _soCountsCached();
     var rows = master.map(function (m) {
       var mine = lembar.filter(function (l) { return _soNorm(l.group) === _soNorm(m.group); });
       var cur = null, nxt = null; // periode berjalan = lembar terakhir yg sudah mulai; lembar berikutnya (otomatis) belum mulai
       mine.forEach(function (l) { if (l.mulai <= today) cur = l; else if (!nxt) nxt = l; });
       if (!cur && mine.length) cur = mine[0];
-      var skuCount = _soGroupCount(m.group);
+      var skuCount = counts ? (counts[_soKey(m.group)] || 0) : null;
       var row = { pic: m.pic, group: m.group, desc: m.desc, targetLabel: m.targetLabel, mode: m.mode,
         totalSku: skuCount, targetItem: 0, telahSo: 0, progress: 0, status: 'BELUM MULAI',
         selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null, berikutnya: (nxt && nxt !== cur) ? nxt.mulai : '' };
@@ -9031,7 +9079,6 @@ function soGetRekapPIC() {
 // SATU panggilan utk halaman Monitoring SO: master + dashboard + daftar lembar + selisih (data dibaca sekali)
 function soGetAll(force) {
   try {
-    _SO_MEM.force = !!force;
     var dash = soGetDashboard();
     if (!dash.success) return dash;
     var lembar = soListLembar('');
@@ -9042,6 +9089,6 @@ function soGetAll(force) {
       return { row: d.row, lembar: d.lembar, item: d.item, desc: d.desc, sistem: d.sistem, fisik: d.fisik, selisih: d.selisih,
                statusSel: d.statusSel, ket: d.ket, tglClose: d.tglClose, alasanClose: d.alasanClose, konfirmasi: d.konfirmasi, pic: picOf[d.lembar] || '', group: grpOf[d.lembar] || '' };
     });
-    return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, lembar: lembar.data, selisih: selisih };
+    return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, lembar: lembar.data, selisih: selisih, akun: _soAkunMap(), sumberMaster: soGetMaster().sumber || 'SO_MASTER' };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
