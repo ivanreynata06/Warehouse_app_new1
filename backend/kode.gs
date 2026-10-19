@@ -47,6 +47,7 @@ var API_FUNCTIONS = {
   getKategoriLemburList   : getKategoriLemburList,
   getLemburKategoriBulanan: getLemburKategoriBulanan,
   getLemburKategoriTrend6Bulan: getLemburKategoriTrend6Bulan,
+  getFTETrendTahunan: getFTETrendTahunan,
   getOvertimeTrend6Bulan  : getOvertimeTrend6Bulan,
   saveLembur              : saveLembur,
   getLemburList           : getLemburList,
@@ -7620,6 +7621,87 @@ function getOvertimeTrend6Bulan(bulanAkhir, tahunAkhir) {
       scriptCacheOt.put(cacheKeyOt, JSON.stringify(hasilOt), isBulanBerjalanOt ? 180 : 21600);
     } catch (cacheErrOt) { /* gagal cache tidak masalah, tetap return data */ }
     return hasilOt;
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ---- GRAFIK PERKEMBANGAN FTE PER BULAN (Januari - Desember) ----
+// Total kirim/terima per bulan dalam 1 tahun, baca sheet SEKALI (bukan 12x readTransaksi).
+// Aturan baris sama persis dengan readTransaksi().
+function _fteTransaksiPerBulan(ss, sheetName, tahun) {
+  var out = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return out;
+  var data = sheet.getDataRange().getValues(), rucika = isRucikaFitting();
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i], tgl = toDate(row[4]);
+    if (!tgl || tgl.getFullYear() !== tahun) continue;
+    if (!rucika && !getKategoriTransaksiV2(row[1], row[2], row[3])) continue;
+    out[tgl.getMonth()] += parseFloat(row[5]) || 0;
+  }
+  return out;
+}
+
+// Satu panggilan utk grafik tahunan: FTE (karyawan internal + FTE lembur), Over Time %, jam lembur Internal/OS,
+// dan produktivitas Ton/FTE tiap bulan. Bulan tanpa data lembur / belum berjalan -> adaData:false (tampil kosong).
+// Catatan: jumlah karyawan = karyawan Internal aktif SAAT INI (master tidak menyimpan riwayat jumlah per bulan).
+function getFTETrendTahunan(tahun) {
+  try {
+    var now = new Date();
+    tahun = Number(tahun) || now.getFullYear();
+    var cache = CacheService.getScriptCache();
+    var key = 'fteYear_' + ACTIVE_WORKSPACE + '_v' + _getDataCacheVersion() + '_' + tahun;
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+
+    var kar = getKaryawanList();
+    if (!kar.success) return kar;
+    var kodeInt = {}, kodeOS = {}, jumlahKaryawan = 0;
+    kar.data.forEach(function (k) {
+      if (!k.aktif) return;
+      if (k.kategori === 'Internal') { kodeInt[k.kode] = 1; jumlahKaryawan++; } else kodeOS[k.kode] = 1;
+    });
+
+    var lembur = getLemburList({});
+    var jamInt = [], jamOS = [], ada = [];
+    for (var m = 0; m < 12; m++) { jamInt.push(0); jamOS.push(0); ada.push(false); }
+    (lembur.success ? lembur.data : []).forEach(function (l) {
+      var t = new Date(l.tanggal);
+      if (isNaN(t.getTime()) || t.getFullYear() !== tahun) return;
+      var b = t.getMonth(), jam = Number(l.totalJam) || 0;
+      if (kodeInt[l.kode]) { jamInt[b] += jam; ada[b] = true; }
+      else if (kodeOS[l.kode]) { jamOS[b] += jam; ada[b] = true; }
+    });
+
+    var kirim = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], terima = kirim.slice();
+    try {
+      var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+      kirim = _fteTransaksiPerBulan(ss, SH_KIRIM, tahun);
+      terima = _fteTransaksiPerBulan(ss, SH_PRODUKSI, tahun);
+    } catch (e) { /* produktivitas dikosongkan, grafik FTE tetap jalan */ }
+
+    var bulan = [];
+    for (var i = 1; i <= 12; i++) {
+      var future = tahun > now.getFullYear() || (tahun === now.getFullYear() && i > now.getMonth() + 1);
+      if (future || !ada[i - 1]) { bulan.push({ bulan: i, adaData: false, berjalan: future }); continue; }
+      var fteLembur = jumlahKaryawan > 0 ? jamInt[i - 1] / FTE_STANDAR_JAM_BULAN : 0;
+      var totalFTE = jumlahKaryawan + fteLembur;
+      var kt = (kirim[i - 1] + terima[i - 1]) / 2;
+      var ton = totalFTE > 0 ? kt / totalFTE / 1000 : 0;
+      bulan.push({
+        bulan: i, adaData: true, berjalan: false,
+        jumlahKaryawan: jumlahKaryawan,
+        jamLemburInternal: Math.round(jamInt[i - 1] * 100) / 100,
+        jamLemburOS: Math.round(jamOS[i - 1] * 100) / 100,
+        fteLembur: Math.round(fteLembur * 10000) / 10000,
+        totalFTE: Math.round(totalFTE * 10000) / 10000,
+        overtimePct: jumlahKaryawan > 0 ? Math.round((fteLembur / jumlahKaryawan) * 10000) / 100 : 0,
+        produktivitasTonFTE: kt > 0 ? Math.round(ton * 100) / 100 : null
+      });
+    }
+    var hasil = { success: true, tahun: tahun, jumlahKaryawan: jumlahKaryawan,
+      target: { overtimePctMax: 6, produktivitasTonFTE: _targetProduktivitasTonFTE() }, bulan: bulan };
+    try { cache.put(key, JSON.stringify(hasil), tahun === now.getFullYear() ? 180 : 21600); } catch (e2) {}
+    return hasil;
   } catch (err) { return { success: false, error: err.message }; }
 }
 

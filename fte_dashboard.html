@@ -21,6 +21,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="./assets/js/fte-year-chart.js?v=20261019a"></script>
 <script src="https://unpkg.com/lucide@latest" defer></script>
 <style>
 :root {
@@ -226,6 +227,35 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
   .kpi-row{grid-template-columns:repeat(2,1fr);}
   .grid-2c{grid-template-columns:1fr;}
 }
+
+/* ===== Grafik perkembangan FTE tahunan ===== */
+.fy-card{position:relative;gap:14px;padding:18px 20px 16px;background:linear-gradient(180deg,var(--bg-card),color-mix(in srgb,var(--bg-card) 92%,#d4af37 8%));}
+.fy-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,#06b6d4,#3b82f6,#d4af37,#22c55e);background-size:200% 100%;animation:fyFlow 6s linear infinite;}
+@keyframes fyFlow{to{background-position:200% 0;}}
+.fy-tools{display:flex;gap:8px;align-items:center;}
+.fy-tools select,.fy-btn{background:var(--bg-main);color:var(--text-main);border:1px solid var(--border-color);border-radius:8px;padding:5px 10px;font-size:10.5px;font-family:var(--font-body);font-weight:600;cursor:pointer;transition:all .15s;}
+.fy-tools select:hover,.fy-btn:hover{border-color:var(--accent-gold);color:var(--accent-gold2);}
+.fy-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
+.fy-kpi{position:relative;border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;background:var(--bg-main);overflow:hidden;animation:fyUp .7s cubic-bezier(.2,.8,.2,1) both;}
+.fy-kpi:nth-child(2){animation-delay:.08s}.fy-kpi:nth-child(3){animation-delay:.16s}.fy-kpi:nth-child(4){animation-delay:.24s}
+.fy-kpi::after{content:"";position:absolute;right:-18px;top:-18px;width:70px;height:70px;border-radius:50%;background:radial-gradient(circle,var(--fyc,#d4af37) 0%,transparent 70%);opacity:.22;}
+@keyframes fyUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
+.fy-kpi span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);font-weight:700;}
+.fy-kpi b{display:block;font-family:var(--font-display);font-size:28px;line-height:1.15;margin:4px 0 2px;color:var(--fyc,#d4af37);font-variant-numeric:tabular-nums;}
+.fy-kpi small{font-size:9.5px;color:var(--text-muted);}
+#fy-body{display:flex;flex-direction:column;gap:14px;transition:opacity .4s;}
+.fy-main-wrap{position:relative;height:430px;}
+.fy-sub{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.fy-sub-card{border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;background:var(--bg-main);}
+.fy-sub-card h4{font-family:var(--font-display);font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-main);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;}
+.fy-sub-card h4 em{font-style:normal;font-size:8.5px;color:var(--text-muted);font-weight:600;letter-spacing:.3px;text-transform:none;}
+.fy-sub-wrap{position:relative;height:300px;}
+.fy-state{position:absolute;inset:48px 0 0 0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:color-mix(in srgb,var(--bg-card) 88%,transparent);backdrop-filter:blur(3px);z-index:3;font-size:12px;color:var(--text-muted);border-radius:12px;}
+.fy-spin{width:38px;height:38px;border-radius:50%;border:3px solid var(--border-color);border-top-color:#d4af37;border-right-color:#3b82f6;animation:fySpin .9s linear infinite;}
+@keyframes fySpin{to{transform:rotate(360deg);}}
+.fy-empty{display:none;position:absolute;inset:130px 0 0 0;align-items:center;justify-content:center;text-align:center;color:var(--text-muted);font-size:12px;z-index:2;pointer-events:none;padding:20px;}
+.fy-note{font-size:9.5px;color:var(--text-muted);line-height:1.5;}
+@media (max-width:1100px){.fy-kpis{grid-template-columns:repeat(2,1fr);}.fy-sub{grid-template-columns:1fr;}.fy-main-wrap{height:340px;}}
 </style>
 </head>
 <body>
@@ -455,6 +485,29 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <div class="card fy-card" id="fy-card">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="activity" style="width:14px;color:#d4af37;"></i>Perkembangan FTE per Bulan &mdash; Januari s/d Desember</div>
+          <div class="fy-tools"><select id="fy-tahun" title="Tahun"></select><button class="fy-btn" onclick="FteYear.replay()">&#8635; Putar ulang animasi</button></div>
+        </div>
+        <div class="fy-kpis">
+          <div class="fy-kpi" style="--fyc:#3b82f6"><span>Rata-rata Total FTE</span><b id="fy-k1">—</b><small id="fy-k1s"></small></div>
+          <div class="fy-kpi" style="--fyc:#d4af37"><span>FTE Tertinggi</span><b id="fy-k2">—</b><small id="fy-k2s"></small></div>
+          <div class="fy-kpi" style="--fyc:#22c55e"><span>Rata-rata Over Time</span><b id="fy-k3">—</b><small id="fy-k3s"></small></div>
+          <div class="fy-kpi" style="--fyc:#8b5cf6"><span>Bulan Sesuai Target</span><b id="fy-k4">—</b><small id="fy-k4s"></small></div>
+        </div>
+        <div id="fy-body">
+          <div class="fy-main-wrap"><canvas id="fy-main"></canvas></div>
+          <div class="fy-sub">
+            <div class="fy-sub-card"><h4>Over Time % per Bulan <em>target &lt; 6%</em></h4><div class="fy-sub-wrap"><canvas id="fy-ot"></canvas></div></div>
+            <div class="fy-sub-card"><h4>Produktivitas Ton/FTE per Bulan <em>bar hijau = mencapai target</em></h4><div class="fy-sub-wrap"><canvas id="fy-prod"></canvas></div></div>
+          </div>
+        </div>
+        <div class="fy-empty" id="fy-empty">Belum ada data lembur pada tahun ini. Grafik terisi otomatis begitu data lembur diinput.</div>
+        <div class="fy-state" id="fy-state"></div>
+        <div class="fy-note">Total FTE = karyawan Internal aktif + FTE lembur (jam lembur &divide; 173). Jumlah karyawan memakai data aktif saat ini. Bulan tanpa data lembur atau belum berjalan ditampilkan kosong.</div>
+      </div>
+
       <div class="grid-2c">
         <div class="card">
           <div class="card-hdr">
@@ -556,7 +609,7 @@ function toggleTheme(){
   var isLight = document.body.classList.toggle('theme-light');
   localStorage.setItem('lembur_theme', isLight?'light':'dark');
   updateThemeBtn(isLight);
-  setTimeout(function(){ if(chartOT) chartOT.destroy(); loadTrendChart(); if(chartKategori) chartKategori.destroy(); loadKategoriTrendChart(); }, 60);
+  setTimeout(function(){ if(chartOT) chartOT.destroy(); loadTrendChart(); if(chartKategori) chartKategori.destroy(); loadKategoriTrendChart(); if(window.FteYear) FteYear.rerender(); }, 60);
 }
 function updateThemeBtn(isLight){
   document.getElementById('theme-icon').setAttribute('data-lucide', isLight?'sun':'moon');
@@ -668,7 +721,7 @@ function syncLembur(){
         resultEl.style.color = '#f2b705';
       }
       resultEl.textContent = msg;
-      loadTrendChart(); loadKategoriTrendChart();
+      loadTrendChart(); loadKategoriTrendChart(); if(window.FteYear) FteYear.load();
       prefetchSPL();
     })
     .withFailureHandler(function(err){
@@ -702,6 +755,7 @@ function syncFteSekarang(){
       loadAll();
       loadTrendChart();
       loadKategoriTrendChart();
+      if(window.FteYear) FteYear.load();
       setTimeout(function(){ resultEl.textContent=''; }, 4000);
     })
     .withFailureHandler(function(err){
@@ -1067,6 +1121,7 @@ function renderAll(){
   renderHoliday();
   loadTrendChart();
   loadKategoriTrendChart();
+  if(window.FteYear){ if(!window.__fyInit){ window.__fyInit=1; FteYear.init(curTahun); } else FteYear.setYear(curTahun); }
 }
 
 function renderProduktivitasStatus(){
