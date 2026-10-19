@@ -365,7 +365,12 @@ function checkGroup(){
       (S.aktif?'Lembar aktif <b>'+esc(S.aktif.id)+'</b> ('+esc(S.aktif.mulai)+' s/d '+esc(S.aktif.akhir)+') akan <b>digabung</b>: <b>'+c.locked+'</b> item sudah di-SO (dikunci), <b>'+c.update+'</b> belum di-SO (qty diperbarui), <b>'+c.new+'</b> item baru ditambahkan'+(removed?', <b>'+removed+'</b> item belum di-SO yang tidak ada di upload akan <b>dikeluarkan dari target</b>':'')+'. ':'Belum ada lembar aktif — akan dibuat lembar baru ('+c.new+' item = target periode ini). ')+
       (c.out?c.out+' item di luar list sheet group ikut ditarik karena ada QTY. ':'')+(dropped?dropped+' item QTY 0 tidak ditarik.':'');
     renderPick();
-  }).catch(function(e){toast(e.message,true)});
+  }).catch(function(e){
+    if(/tidak dikenali|tidak diizinkan/i.test(e.message)) {
+      document.getElementById('bInfo').innerHTML='<span style="color:var(--red)"><b>Backend Apps Script belum diperbarui.</b> Buka Apps Script → tempel <code>backend/kode.gs</code> terbaru → Deploy → Manage deployments → Edit → Version: <b>New version</b> → Deploy.</span>';
+      document.getElementById('bPreview').style.display='block';
+    }
+    toast(e.message,true)});
 }
 document.addEventListener('change',function(e){if(e.target.id==='bGroup'&&S.qadAll&&document.getElementById('bFile').files.length)checkGroup()});
 function stateChip(x){var h='';

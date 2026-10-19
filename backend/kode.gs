@@ -8720,6 +8720,12 @@ function soGetGroupItems(group) {
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
+// ID lembar harus unik (mencegah item dua lembar tercampur bila dibuat di detik yang sama)
+function _soUniqueId(base, existing) {
+  var id = base, n = 2;
+  while (existing.indexOf(id) >= 0) id = base + '-' + (n++);
+  return id;
+}
 // Lembar terakhir group itu, dianggap aktif selama periodenya belum lewat (termasuk lembar periode berikutnya yg dibuat otomatis)
 function _soLembarAktif(group) {
   var today = _soToday();
@@ -8757,7 +8763,7 @@ function _soCekSelesaiDanLanjut(id) {
     var tm = _soMonday(today); if (mulai < tm) mulai = tm;
     akhir = _soAddDays(mulai, 6);
   } else { mulai = today; akhir = _soAddDays(today, master.hari); }
-  var nid = 'SO-' + _soNorm(cur[2]).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss');
+  var nid = _soUniqueId('SO-' + _soNorm(cur[2]).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), ls.map(function (r) { return String(r[0]); }));
   sl.appendRow([nid, String(cur[1]), String(cur[2]), today, mulai, akhir, 'AUTO', det.length]);
   var rows = det.map(function (r) { return [nid, r[1], r[2], r[3], r[4], Number(r[5]) || 0, '', '', '', '', '', '', '', '', '', '']; });
   sd.getRange(sd.getLastRow() + 1, 1, rows.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(rows);
@@ -8823,7 +8829,7 @@ function soBuatLembar(payload) {
     var today = _soToday();
     var mulai = master.mode === 'MINGGUAN' ? _soMonday(today) : today;
     var akhir = master.mode === 'MINGGUAN' ? _soAddDays(mulai, 6) : _soAddDays(today, master.hari);
-    var id = 'SO-' + _soNorm(payload.group).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss');
+    var id = _soUniqueId('SO-' + _soNorm(payload.group).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), _soLembarList().map(function (l) { return l.id; }));
     sl.appendRow([id, master.pic, master.group, today, mulai, akhir, payload.user || '', keep.length]);
     var rows = keep.map(function (it) {
       var desc = it.desc || g.map[_soNorm(it.item)] || '';
