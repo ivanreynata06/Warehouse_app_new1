@@ -173,6 +173,7 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
           <label class="muted"><input type="checkbox" id="bStock" checked onchange="renderPick()"> Hanya stok &gt; 0</label>
           <button class="btn" onclick="pickAll(true)">Pilih semua</button><button class="btn" onclick="pickAll(false)">Kosongkan</button></div></div>
       <div class="card-b muted" id="bInfo"></div>
+      <div class="card-b row" id="bWeekly" style="display:none;border-top:1px solid var(--bd);background:rgba(59,130,246,.06)"><span id="bWkInfo" class="muted" style="flex:1;min-width:220px"></span><label class="muted">Jumlah item minggu ini <input type="number" id="bAutoN" min="1" value="50" style="width:80px;margin-left:6px"></label><button class="btn p" onclick="pickAuto()">Pilih otomatis</button></div>
       <div class="tw"><table><thead><tr><th></th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Qty Sistem</th><th>Status</th></tr></thead><tbody id="bBody"></tbody></table></div>
       <div class="card-b row"><button class="btn p" id="bGo" onclick="buatLembar()">Buat Lembar SO</button><span class="muted" id="bCount"></span></div>
     </div>
@@ -349,28 +350,39 @@ function checkGroup(){
   var g=document.getElementById('bGroup').value; if(!g) return toast('Pilih group dulu',true);
   Promise.all([api('soGetGroupItems',g),api('soGetLembarAktif',g)]).then(function(rs){
     var gi=rs[0],ak=rs[1];
-    S.valid=gi.items||{}; S.aktif=ak.lembar; S.exist=ak.items||{}; S.pick={};
+    S.valid=gi.items||{}; S.aktif=ak.lembar; S.exist=ak.items||{}; S.siklus=ak.siklus||{}; S.weekly=!!ak.mingguan; S.pick={};
     var hasGrp=(S.qadAll||[]).some(function(x){return x.grp}), gU=g.toUpperCase().replace(/\s+/g,'');
     var inGrp=(S.qadAll||[]).filter(function(x){return !hasGrp||x.grp.replace(/\s+/g,'')===gU});
     var dropped=0;
     S.qad=inGrp.filter(function(x){var k=x.item.toUpperCase();x.inSheet=S.valid.hasOwnProperty(k);
       if(!x.inSheet&&!(x.sistem>0)){dropped++;return false}   // tidak ada di list & QTY 0 -> tidak ditarik
-      var e=S.exist[k];x.state=!e?'new':(e.fisik!==null?'locked':'update');return true});
-    S.qad.forEach(function(x){S.pick[x.item.toUpperCase()]=x.state!=='locked'&&x.sistem>0});
+      var e=S.exist[k];x.state=!e?'new':(e.fisik!==null?'locked':'update');x.cycle=S.siklus[k]||'';return true});
+    S.qad.forEach(function(x){S.pick[x.item.toUpperCase()]=S.weekly?x.state==='update':(x.state!=='locked'&&x.sistem>0)}); // group mingguan: PIC memilih sendiri item minggu ini
     var c={locked:0,update:0,new:0,out:0};S.qad.forEach(function(x){c[x.state]++;if(!x.inSheet)c.out++});
     document.getElementById('bPreview').style.display='block';
     document.getElementById('bGo').textContent=S.aktif?'Perbarui Lembar SO':'Buat Lembar SO';
     document.getElementById('bInfo').innerHTML='Group <b>'+esc(g)+'</b>: '+(gi.found?Object.keys(S.valid).length+' SKU di sheet group':'<span style="color:var(--amber)">sheet group tidak ditemukan — item ditarik dari data QAD</span>')+' · '+inGrp.length+' baris QAD ber-Group '+esc(g)+'.<br>'+
       (S.aktif?'Lembar aktif <b>'+esc(S.aktif.id)+'</b> (s/d '+esc(S.aktif.akhir)+') akan <b>digabung</b>: <b>'+c.locked+'</b> item sudah di-SO (dikunci), <b>'+c.update+'</b> belum di-SO (qty diperbarui), <b>'+c.new+'</b> item baru. ':'Belum ada lembar aktif — akan dibuat lembar baru ('+c.new+' item). ')+
       (c.out?c.out+' item di luar list sheet group ikut ditarik karena ada QTY. ':'')+(dropped?dropped+' item dibuang (di luar list & QTY 0).':'');
+    var wk=document.getElementById('bWeekly');wk.style.display=S.weekly?'flex':'none';
+    if(S.weekly){var done=S.qad.filter(function(x){return x.cycle}).length,sisa=S.qad.filter(function(x){return !x.cycle&&x.state!=='locked'&&x.sistem>0}).length;
+      document.getElementById('bWkInfo').innerHTML='<b>SO mingguan</b> — '+done+' item sudah di-SO dalam 30 hari terakhir, <b>'+sisa+'</b> item belum. Pilih item untuk minggu ini (atau pilih otomatis).'}
     renderPick();
   }).catch(function(e){toast(e.message,true)});
+}
+function pickAuto(){
+  var n=Math.max(1,Number(document.getElementById('bAutoN').value)||1),only=document.getElementById('bStock').checked;
+  S.qad.forEach(function(x){if(x.state!=='locked')S.pick[x.item.toUpperCase()]=false});
+  var cand=S.qad.filter(function(x){return x.state!=='locked'&&!x.cycle&&x.sistem>0}).sort(function(a,b){return (a.state==='update'?0:1)-(b.state==='update'?0:1)||(a.item<b.item?-1:1)});
+  cand.slice(0,n).forEach(function(x){S.pick[x.item.toUpperCase()]=true});
+  renderPick();toast(Math.min(n,cand.length)+' item dipilih otomatis (yang belum di-SO bulan ini)');
 }
 document.addEventListener('change',function(e){if(e.target.id==='bGroup'&&S.qadAll&&document.getElementById('bFile').files.length)checkGroup()});
 function stateChip(x){var h='';
   if(x.state==='locked') h='<span class="chip c-done">SUDAH DI-SO</span>';
   else if(x.state==='update') h='<span class="chip c-ok">UPDATE QTY</span>';
   else h='<span class="chip c-idle">BARU</span>';
+  if(x.cycle) h+=' <span class="chip" style="background:rgba(59,130,246,.18);color:#7cb0ff">SO '+esc(x.cycle)+'</span>';
   if(!x.inSheet) h+=' <span class="chip" style="background:rgba(245,158,11,.2);color:#f6c667">DI LUAR LIST</span>';
   return h}
 function renderPick(){

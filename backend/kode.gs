@@ -8729,11 +8729,22 @@ function _soLembarAktif(group) {
 }
 function soGetLembarAktif(group) {
   try {
-    var l = _soLembarAktif(group);
-    if (!l) return { success: true, lembar: null, items: {} };
-    var items = {};
-    _soDetailRows().forEach(function (d) { if (d.lembar === l.id) items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem }; });
-    return { success: true, lembar: l, items: items };
+    var l = _soLembarAktif(group), items = {}, siklus = {};
+    var det = _soDetailRows();
+    if (l) det.forEach(function (d) { if (d.lembar === l.id) items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem }; });
+    // Group MINGGUAN: item yang sudah di-SO di minggu-minggu sebelumnya (30 hari terakhir) -> supaya tidak diulang
+    var m = soGetMaster().data.filter(function (x) { return _soNorm(x.group) === _soNorm(group); })[0];
+    if (m && m.mode === 'MINGGUAN') {
+      var batas = _soAddDays(_soToday(), -30), other = {};
+      _soLembarList().forEach(function (x) { if (_soNorm(x.group) === _soNorm(group) && x.mulai >= batas && (!l || x.id !== l.id)) other[x.id] = x; });
+      det.forEach(function (d) {
+        if (other[d.lembar] && d.fisik !== null) {
+          var k = _soNorm(d.item), tgl = d.tglIsi || other[d.lembar].mulai;
+          if (!siklus[k] || tgl > siklus[k]) siklus[k] = tgl;
+        }
+      });
+    }
+    return { success: true, lembar: l, items: items, mingguan: !!(m && m.mode === 'MINGGUAN'), siklus: siklus };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
