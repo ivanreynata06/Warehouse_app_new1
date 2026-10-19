@@ -8720,39 +8720,55 @@ function soGetGroupItems(group) {
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
-// Lembar yang masih aktif utk 1 group (periode belum lewat) + status tiap item (sudah di-SO atau belum)
+// Lembar terakhir group itu, dianggap aktif selama periodenya belum lewat (termasuk lembar periode berikutnya yg dibuat otomatis)
 function _soLembarAktif(group) {
   var today = _soToday();
   var mine = _soLembarList().filter(function (l) { return _soNorm(l.group) === _soNorm(group); });
   var cur = mine.length ? mine[mine.length - 1] : null;
-  return (cur && today <= cur.akhir && today >= cur.mulai) ? cur : null;
+  return (cur && today <= cur.akhir) ? cur : null;
 }
 function soGetLembarAktif(group) {
   try {
-    var l = _soLembarAktif(group), items = {}, siklus = {};
-    var det = _soDetailRows();
-    if (l) det.forEach(function (d) { if (d.lembar === l.id) items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem }; });
-    // Group MINGGUAN: item yang sudah di-SO di minggu-minggu sebelumnya (30 hari terakhir) -> supaya tidak diulang
-    var m = soGetMaster().data.filter(function (x) { return _soNorm(x.group) === _soNorm(group); })[0];
-    if (m && m.mode === 'MINGGUAN') {
-      var batas = _soAddDays(_soToday(), -30), other = {};
-      _soLembarList().forEach(function (x) { if (_soNorm(x.group) === _soNorm(group) && x.mulai >= batas && (!l || x.id !== l.id)) other[x.id] = x; });
-      det.forEach(function (d) {
-        if (other[d.lembar] && d.fisik !== null) {
-          var k = _soNorm(d.item), tgl = d.tglIsi || other[d.lembar].mulai;
-          if (!siklus[k] || tgl > siklus[k]) siklus[k] = tgl;
-        }
-      });
-    }
-    return { success: true, lembar: l, items: items, mingguan: !!(m && m.mode === 'MINGGUAN'), siklus: siklus };
+    var l = _soLembarAktif(group), items = {};
+    if (l) _soDetailRows().forEach(function (d) { if (d.lembar === l.id) items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem }; });
+    return { success: true, lembar: l, items: items };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
+// Bila SEMUA item lembar sudah di-SO -> otomatis pindah ke periode berikutnya:
+// dibuat lembar baru (item yg sama, qty sistem terakhir, fisik kosong). MINGGUAN -> mulai Senin minggu berikutnya;
+// BULANAN/3 BULAN -> mulai hari ini sepanjang target durasi. PIC upload ulang utk menyegarkan qty / tambah / kurangi item.
+function _soCekSelesaiDanLanjut(id) {
+  var sl = _soSheet('SO_LEMBAR', SO_LEMBAR_HDR), sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR);
+  var ls = _soRows(sl, 8), cur = null;
+  ls.forEach(function (r) { if (String(r[0]) === id) cur = r; });
+  if (!cur) return null;
+  var lastOfGroup = null;
+  ls.forEach(function (r) { if (_soNorm(r[2]) === _soNorm(cur[2])) lastOfGroup = r; });
+  if (!lastOfGroup || String(lastOfGroup[0]) !== id) return null; // hanya lembar terakhir group yg melanjutkan
+  var last = sd.getLastRow(); if (last < 2) return null;
+  var det = sd.getRange(2, 1, last - 1, 7).getValues().filter(function (r) { return String(r[0]) === id; });
+  if (!det.length || det.some(function (r) { return String(r[6]) === ''; })) return null;
+  var master = soGetMaster().data.filter(function (m) { return _soNorm(m.group) === _soNorm(cur[2]); })[0];
+  if (!master) return null;
+  var today = _soToday(), mulai, akhir;
+  if (master.mode === 'MINGGUAN') {
+    mulai = _soAddDays(_soMonday(String(cur[4])), 7);
+    var tm = _soMonday(today); if (mulai < tm) mulai = tm;
+    akhir = _soAddDays(mulai, 6);
+  } else { mulai = today; akhir = _soAddDays(today, master.hari); }
+  var nid = 'SO-' + _soNorm(cur[2]).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss');
+  sl.appendRow([nid, String(cur[1]), String(cur[2]), today, mulai, akhir, 'AUTO', det.length]);
+  var rows = det.map(function (r) { return [nid, r[1], r[2], r[3], r[4], Number(r[5]) || 0, '', '', '', '', '', '', '', '', '', '']; });
+  sd.getRange(sd.getLastRow() + 1, 1, rows.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(rows);
+  return { id: nid, mulai: mulai, akhir: akhir, jumlah: rows.length };
+}
+
 // payload: {pic, group, items:[{item,desc,um,lokasi,sistem}], user}
-// - Lembar aktif utk group itu sudah ada  -> DIGABUNG: item yg sudah di-SO dibiarkan (terkunci), item yg belum di-SO
-//   diperbarui datanya dari upload terbaru, item baru ditambahkan.
-// - Belum ada / periode lewat             -> lembar baru.
-// - Item yg tidak ada di sheet group tetap ditarik bila QTY-nya > 0; QTY 0 / minus dan tidak ada di sheet group dibuang.
+// Item hasil upload (QTY > 0) = TARGET periode (minggu / 1 bulan / 3 bulan) dan terkunci.
+// Upload ulang di periode yang sama (digabung): item sudah di-SO tetap; belum di-SO diperbarui qty-nya;
+// item baru bernilai ditambahkan; item belum di-SO yg tidak ada lagi di upload dikeluarkan (target berkurang).
+// Item QTY 0/minus tidak pernah ditarik. Item di luar list sheet group tetap ditarik bila QTY > 0.
 function soBuatLembar(payload) {
   var lock = LockService.getScriptLock();
   try {
@@ -8760,29 +8776,27 @@ function soBuatLembar(payload) {
     var g = _soGroupItemMap(payload.group);
     var master = soGetMaster().data.filter(function (m) { return _soNorm(m.group) === _soNorm(payload.group); })[0];
     if (!master) return { success: false, error: 'Group belum terdaftar di SO_MASTER.' };
-    var seen = {}, keep = [], dibuang = 0, tambahan = 0;
+    var seen = {}, keep = [], keepKeys = {}, dibuang = 0, tambahan = 0;
     (payload.items || []).forEach(function (it) {
       var k = _soNorm(it.item);
       if (!k || seen[k]) return;
-      var inSheet = g.map.hasOwnProperty(k), qty = Number(it.sistem) || 0;
-      if (!inSheet && qty <= 0) { dibuang++; return; }
-      if (!inSheet) tambahan++;
-      seen[k] = 1; keep.push(it);
+      if (!(Number(it.sistem) > 0)) { dibuang++; return; }
+      if (!g.map.hasOwnProperty(k)) tambahan++;
+      seen[k] = 1; keepKeys[k] = 1; keep.push(it);
     });
-    if (!keep.length) return { success: false, error: 'Tidak ada item yang bisa dimasukkan (di luar list sheet group dan QTY 0).' };
+    if (!keep.length) return { success: false, error: 'Tidak ada item bernilai (QTY > 0) pada data upload.' };
     lock.waitLock(25000);
     var sl = _soSheet('SO_LEMBAR', SO_LEMBAR_HDR), sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR);
     var aktif = _soLembarAktif(payload.group);
 
     if (aktif) {
-      var last = sd.getLastRow(), all = last >= 2 ? sd.getRange(1, 1, last, 6).getValues() : [[]], rowOf = {};
-      for (var r = 1; r < all.length; r++) if (String(all[r][0]) === aktif.id) rowOf[_soNorm(all[r][1])] = r + 1;
-      var fisikCol = last >= 2 ? sd.getRange(1, 7, last, 1).getValues() : [[]];
-      var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0;
+      var last = sd.getLastRow(), all = last >= 2 ? sd.getRange(1, 1, last, 7).getValues() : [[]], rowOf = {}, filled = {};
+      for (var r = 1; r < all.length; r++) if (String(all[r][0]) === aktif.id) { var kk = _soNorm(all[r][1]); rowOf[kk] = r + 1; filled[kk] = String(all[r][6]) !== ''; }
+      var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0, hapus = [];
       keep.forEach(function (it) {
         var k = _soNorm(it.item), row = rowOf[k];
         if (row) {
-          if (String(fisikCol[row - 1][0]) !== '') { dikunci++; return; } // sudah di-SO -> jangan diubah
+          if (filled[k]) { dikunci++; return; }
           var c = all[row - 1];
           c[2] = it.desc || c[2] || g.map[k] || ''; c[3] = it.um || c[3] || ''; c[4] = it.lokasi || c[4] || ''; c[5] = Number(it.sistem) || 0;
           if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++;
@@ -8790,25 +8804,33 @@ function soBuatLembar(payload) {
           baru.push([aktif.id, String(it.item).trim(), it.desc || g.map[k] || '', it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', '']);
         }
       });
+      Object.keys(rowOf).forEach(function (k) { if (!filled[k] && !keepKeys[k]) hapus.push(rowOf[k]); }); // target berkurang
       if (diperbarui) sd.getRange(minR, 3, maxR - minR + 1, 4).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(2, 6); }));
       if (baru.length) sd.getRange(sd.getLastRow() + 1, 1, baru.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(baru);
-      var total = Object.keys(rowOf).length + baru.length;
+      hapus.sort(function (a, b) { return b - a; });
+      for (var h = 0; h < hapus.length;) { // hapus baris berurutan sekaligus (dari bawah)
+        var start = hapus[h], cnt = 1;
+        while (h + cnt < hapus.length && hapus[h + cnt] === start - cnt) cnt++;
+        sd.deleteRows(start - cnt + 1, cnt); h += cnt;
+      }
+      var total = Object.keys(rowOf).length - hapus.length + baru.length;
       var ls = sl.getRange(1, 1, sl.getLastRow(), 1).getValues();
       for (var i = 1; i < ls.length; i++) if (String(ls[i][0]) === aktif.id) { sl.getRange(i + 1, 8).setValue(total); break; }
-      return { success: true, id: aktif.id, digabung: true, baru: baru.length, diperbarui: diperbarui, dikunci: dikunci, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: aktif.mulai, akhir: aktif.akhir };
+      var lanjut = _soCekSelesaiDanLanjut(aktif.id);
+      return { success: true, id: aktif.id, digabung: true, baru: baru.length, diperbarui: diperbarui, dikunci: dikunci, dihapus: hapus.length, total: total, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: aktif.mulai, akhir: aktif.akhir, lanjut: lanjut };
     }
 
     var today = _soToday();
     var mulai = master.mode === 'MINGGUAN' ? _soMonday(today) : today;
     var akhir = master.mode === 'MINGGUAN' ? _soAddDays(mulai, 6) : _soAddDays(today, master.hari);
-    var id = 'SO-' + _soNorm(payload.group).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmm');
+    var id = 'SO-' + _soNorm(payload.group).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss');
     sl.appendRow([id, master.pic, master.group, today, mulai, akhir, payload.user || '', keep.length]);
     var rows = keep.map(function (it) {
       var desc = it.desc || g.map[_soNorm(it.item)] || '';
       return [id, String(it.item).trim(), desc, it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', ''];
     });
     sd.getRange(sd.getLastRow() + 1, 1, rows.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(rows);
-    return { success: true, id: id, digabung: false, baru: keep.length, diperbarui: 0, dikunci: 0, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: mulai, akhir: akhir };
+    return { success: true, id: id, digabung: false, baru: keep.length, diperbarui: 0, dikunci: 0, dihapus: 0, total: keep.length, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: mulai, akhir: akhir };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
@@ -8878,7 +8900,8 @@ function soSimpanIsi(payload) {
       if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; n++;
     });
     if (n) sd.getRange(minR, 7, maxR - minR + 1, 10).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(6, 16); }));
-    return { success: true, tersimpan: n, ditahan: ditahan };
+    var lanjut = n ? _soCekSelesaiDanLanjut(payload.id) : null;
+    return { success: true, tersimpan: n, ditahan: ditahan, lanjut: lanjut };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
@@ -8942,11 +8965,13 @@ function soGetDashboard() {
     var warnings = [];
     var rows = master.map(function (m) {
       var mine = lembar.filter(function (l) { return _soNorm(l.group) === _soNorm(m.group); });
-      var cur = mine.length ? mine[mine.length - 1] : null;
+      var cur = null, nxt = null; // periode berjalan = lembar terakhir yg sudah mulai; lembar berikutnya (otomatis) belum mulai
+      mine.forEach(function (l) { if (l.mulai <= today) cur = l; else if (!nxt) nxt = l; });
+      if (!cur && mine.length) cur = mine[0];
       var skuCount = _soGroupCount(m.group);
       var row = { pic: m.pic, group: m.group, desc: m.desc, targetLabel: m.targetLabel, mode: m.mode,
         totalSku: skuCount, targetItem: 0, telahSo: 0, progress: 0, status: 'BELUM MULAI',
-        selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null };
+        selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null, berikutnya: (nxt && nxt !== cur) ? nxt.mulai : '' };
       if (m.mode === 'MINGGUAN') { row.mulai = _soMonday(today); row.akhir = _soAddDays(row.mulai, 6); }
       if (cur) {
         var a = byLembar[cur.id] || { total: 0, isi: 0, open: 0, closed: 0 };
