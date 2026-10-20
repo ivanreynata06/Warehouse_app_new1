@@ -8996,8 +8996,9 @@ function soListLembar(pic) {
       a.total++; if (d.fisik !== null) a.isi++;
       if (d.statusSel === 'OPEN') a.open++; if (d.statusSel === 'CLOSED') a.closed++;
     });
+    var latestOf = {}; _soLembarList().forEach(function (l) { latestOf[_soNorm(l.group)] = l.id; });
     var out = _soLembarList().filter(function (l) { return !pic || _soNorm(l.pic) === _soNorm(pic); })
-      .map(function (l) { var a = agg[l.id] || { total: 0, isi: 0, open: 0, closed: 0 }; l.isi = a.isi; l.open = a.open; l.closed = a.closed; return l; });
+      .map(function (l) { var a = agg[l.id] || { total: 0, isi: 0, open: 0, closed: 0 }; l.isi = a.isi; l.open = a.open; l.closed = a.closed; l.terkunci = latestOf[_soNorm(l.group)] !== l.id; return l; });
     out.reverse();
     return { success: true, data: out };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
@@ -9007,6 +9008,8 @@ function soGetLembarDetail(id) {
   try {
     var l = _soLembarList().filter(function (x) { return x.id === id; })[0];
     if (!l) return { success: false, error: 'Lembar tidak ditemukan.' };
+    var lastId = null; _soLembarList().forEach(function (x) { if (_soNorm(x.group) === _soNorm(l.group)) lastId = x.id; });
+    l.terkunci = lastId !== l.id;
     return { success: true, lembar: l, items: _soDetailRows().filter(function (d) { return d.lembar === id; }) };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
@@ -9018,6 +9021,11 @@ function soSimpanIsi(payload) {
   var lock = LockService.getScriptLock();
   try {
     payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    // Data SO periode sebelumnya TERKUNCI begitu periode berikutnya (lembar baru) sudah ada
+    var lm = _soLembarList().filter(function (x) { return x.id === payload.id; })[0];
+    if (!lm) return { success: false, error: 'Lembar tidak ditemukan.' };
+    var latest = null; _soLembarList().forEach(function (x) { if (_soNorm(x.group) === _soNorm(lm.group)) latest = x; });
+    if (latest && latest.id !== lm.id) return { success: false, error: 'Lembar periode sebelumnya sudah terkunci karena periode berikutnya sudah dimulai.' };
     lock.waitLock(25000);
     var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), today = _soToday(), n = 0, ditahan = [];
     var last = sd.getLastRow(); if (last < 2) return { success: true, tersimpan: 0, ditahan: [] };
@@ -9089,16 +9097,50 @@ function soCloseSelisih(payload) {
 }
 
 // Dashboard monitoring: 1 baris per PIC x Group (lembar terbaru) + peringatan TL
+// Senin pertama yg dihitung utk group MINGGUAN (I053). Aplikasi baru berjalan -> minggu sebelum tanggal ini TIDAK dianggap terlambat.
+var SO_MINGGUAN_MULAI = '2026-10-19';
+var SO_BULAN_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+function _soTglId(iso) { var p = iso.split('-'); return Number(p[2]) + ' ' + SO_BULAN_ID[Number(p[1]) - 1] + ' ' + p[0]; }
+// Minggu ke-N dalam bulan (minggu pertama = Senin pertama pada bulan itu; bulan ditentukan dari hari Senin-nya)
+function _soMingguKe(mondayIso) {
+  var p = mondayIso.split('-'), first = p[0] + '-' + p[1] + '-01', fm = _soMonday(first);
+  if (fm < first) fm = _soAddDays(fm, 7);
+  return Math.floor(_soDiffDays(fm, mondayIso) / 7) + 1;
+}
+// Detail mingguan utk group MINGGUAN: status tiap minggu sejak SO_MINGGUAN_MULAI + peringatan minggu terlambat
+function _soMingguanDetail(m, mine, byLembar, today) {
+  var out = { weeks: [], warnings: [], sisaMinggu: 0 }, thisMon = _soMonday(today);
+  for (var w = SO_MINGGUAN_MULAI; w <= thisMon; w = _soAddDays(w, 7)) {
+    var akhir = _soAddDays(w, 6), l = null;
+    mine.forEach(function (x) { if (x.mulai === w) l = x; });
+    var a = l ? (byLembar[l.id] || { total: 0, isi: 0, last: '' }) : null;
+    var pr = a && a.total ? Math.round(a.isi / a.total * 10000) / 100 : 0, st;
+    if (!l) st = today > akhir ? 'TERLAMBAT' : 'BELUM MULAI';
+    else if (pr >= 100) st = (a.last && a.last > akhir) ? 'SELESAI TERLAMBAT' : 'SELESAI';
+    else st = today > akhir ? 'TERLAMBAT' : 'ON PROGRESS';
+    var wk = { mulai: w, akhir: akhir, minggu: _soMingguKe(w), bulan: SO_BULAN_ID[Number(w.split('-')[1]) - 1] + ' ' + w.split('-')[0],
+      lembarId: l ? l.id : '', jumlah: a ? a.total : 0, isi: a ? a.isi : 0, progress: pr, status: st,
+      tglSelesai: (l && pr >= 100) ? a.last : '', sejak: st === 'TERLAMBAT' ? _soAddDays(akhir, 1) : '' };
+    out.weeks.push(wk);
+    if (st === 'TERLAMBAT') out.warnings.push({ level: 'danger', group: m.group, pic: m.pic, sejak: wk.sejak, progress: pr, isi: wk.isi, total: wk.jumlah,
+      minggu: wk.minggu, periode: _soTglId(w) + ' - ' + _soTglId(akhir),
+      msg: 'SO ' + m.pic + ' group ' + m.group + ' minggu ke-' + wk.minggu + ' (' + _soTglId(w) + ' - ' + _soTglId(akhir) + ') terlambat sejak ' + _soTglId(wk.sejak) + '. Segera selesaikan dan input datanya pada sistem.' });
+  }
+  var p2 = today.split('-'), endMonth = p2[0] + '-' + p2[1] + '-' + ('0' + new Date(Number(p2[0]), Number(p2[1]), 0).getDate()).slice(-2);
+  for (var w2 = thisMon; w2 <= endMonth; w2 = _soAddDays(w2, 7)) out.sisaMinggu++;
+  return out;
+}
+
 function soGetDashboard() {
   try {
     var master = soGetMaster().data, lembar = _soLembarList(), det = _soDetailRows(), today = _soToday();
     var byLembar = {};
     det.forEach(function (d) {
-      var a = byLembar[d.lembar] = byLembar[d.lembar] || { total: 0, isi: 0, open: 0, closed: 0 };
-      a.total++; if (d.fisik !== null) a.isi++;
+      var a = byLembar[d.lembar] = byLembar[d.lembar] || { total: 0, isi: 0, open: 0, closed: 0, last: '' };
+      a.total++; if (d.fisik !== null) { a.isi++; if (d.tglIsi && d.tglIsi > a.last) a.last = d.tglIsi; }
       if (d.statusSel === 'OPEN') a.open++; if (d.statusSel === 'CLOSED') a.closed++;
     });
-    var warnings = [], counts = _soCountsCached();
+    var warnings = [], mingguan = [], counts = _soCountsCached();
     var rows = master.map(function (m) {
       var mine = lembar.filter(function (l) { return _soNorm(l.group) === _soNorm(m.group); });
       var cur = null, nxt = null; // periode berjalan = lembar terakhir yg sudah mulai; lembar berikutnya (otomatis) belum mulai
@@ -9107,7 +9149,7 @@ function soGetDashboard() {
       var skuCount = counts ? (counts[_soKey(m.group)] || 0) : null;
       var row = { pic: m.pic, group: m.group, desc: m.desc, targetLabel: m.targetLabel, mode: m.mode,
         totalSku: skuCount, targetItem: 0, telahSo: 0, progress: 0, status: 'BELUM MULAI',
-        selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null, berikutnya: (nxt && nxt !== cur) ? nxt.mulai : '' };
+        selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null, sejak: '', mingguTelat: 0, berikutnya: (nxt && nxt !== cur) ? nxt.mulai : '' };
       if (m.mode === 'MINGGUAN') { row.mulai = _soMonday(today); row.akhir = _soAddDays(row.mulai, 6); }
       if (cur) {
         var a = byLembar[cur.id] || { total: 0, isi: 0, open: 0, closed: 0 };
@@ -9116,30 +9158,28 @@ function soGetDashboard() {
         row.mulai = cur.mulai; row.akhir = cur.akhir;
         var span = Math.max(1, _soDiffDays(cur.mulai, cur.akhir) + 1), el = Math.min(span, Math.max(0, _soDiffDays(cur.mulai, today) + 1));
         row.sisaHari = _soDiffDays(today, cur.akhir);
-        if (row.progress >= 100) row.status = 'SELESAI';
-        else if (today > cur.akhir) row.status = 'TERLAMBAT';
-        else row.status = row.progress >= (el / span * 100) - 5 ? 'ON TRACK' : 'TERLAMBAT';
+        // ON PROGRESS selama masih dalam durasi SO; TERLAMBAT hanya bila durasi lewat & belum 100%
+        if (row.progress >= 100) row.status = (a.last && a.last > cur.akhir) ? 'SELESAI TERLAMBAT' : 'SELESAI';
+        else if (today > cur.akhir) { row.status = 'TERLAMBAT'; row.sejak = _soAddDays(cur.akhir, 1); }
+        else row.status = 'ON PROGRESS';
         row.selisih = a.open > 0 ? 'OPEN' : (a.closed > 0 ? 'CLOSED' : '-');
       }
-      // Peringatan TL: group MINGGUAN (mis. I053) harus selesai tiap minggu
       if (m.mode === 'MINGGUAN') {
-        var thisMon = _soMonday(today), lastMon = _soAddDays(thisMon, -7);
-        var lw = mine.filter(function (l) { return l.mulai === lastMon; }).pop();
-        if (lw) {
-          var la = byLembar[lw.id] || { total: 0, isi: 0 };
-          if (la.isi < la.total) warnings.push({ level: 'danger', group: m.group, pic: m.pic, msg: 'Minggu lalu (' + lastMon + ') belum selesai: ' + la.isi + '/' + la.total + ' item.' });
-        } else if (mine.length) {
-          warnings.push({ level: 'danger', group: m.group, pic: m.pic, msg: 'Tidak ada lembar SO minggu lalu (' + lastMon + ').' });
-        }
-        if (!cur || cur.mulai !== thisMon) {
-          warnings.push({ level: 'warn', group: m.group, pic: m.pic, msg: 'Lembar SO minggu ini belum dibuat.' });
-        } else if (row.status === 'TERLAMBAT') {
-          warnings.push({ level: 'warn', group: m.group, pic: m.pic, msg: 'Progres minggu ini ' + row.progress + '% - tertinggal dari target mingguan.' });
-        }
+        // I053: target selesai TIAP MINGGU; minggu sebelum SO_MINGGUAN_MULAI tidak dihitung
+        var wd = _soMingguanDetail(m, mine, byLembar, today), thisMon = _soMonday(today);
+        mingguan.push({ group: m.group, pic: m.pic, desc: m.desc, mulaiHitung: SO_MINGGUAN_MULAI, sisaMinggu: wd.sisaMinggu, weeks: wd.weeks });
+        row.mingguTelat = wd.weeks.filter(function (x) { return x.status === 'TERLAMBAT'; }).length;
+        wd.warnings.forEach(function (x) { warnings.push(x); });
+        if (SO_MINGGUAN_MULAI <= thisMon && !mine.some(function (l) { return l.mulai === thisMon; }))
+          warnings.push({ level: 'warn', group: m.group, pic: m.pic, msg: 'Lembar SO minggu ini (' + _soTglId(thisMon) + ') belum dibuat. Upload data QAD untuk memulai SO minggu ini.' });
+      } else if (row.status === 'TERLAMBAT') {
+        warnings.push({ level: 'danger', group: m.group, pic: m.pic, sejak: row.sejak, progress: row.progress, isi: row.telahSo, total: row.targetItem,
+          periode: _soTglId(row.mulai) + ' - ' + _soTglId(row.akhir),
+          msg: 'SO ' + m.pic + ' group ' + m.group + ' terlambat sejak ' + _soTglId(row.sejak) + '. Segera selesaikan dan input datanya pada sistem.' });
       }
       return row;
     });
-    return { success: true, today: today, data: rows, warnings: warnings };
+    return { success: true, today: today, data: rows, warnings: warnings, mingguan: mingguan };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
@@ -9171,6 +9211,6 @@ function soGetAll(force) {
       return { row: d.row, lembar: d.lembar, item: d.item, desc: d.desc, sistem: d.sistem, fisik: d.fisik, selisih: d.selisih,
                statusSel: d.statusSel, ket: d.ket, tglClose: d.tglClose, alasanClose: d.alasanClose, konfirmasi: d.konfirmasi, pic: picOf[d.lembar] || '', group: grpOf[d.lembar] || '' };
     });
-    return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, lembar: lembar.data, selisih: selisih, akun: _soAkunMap(), sumberMaster: soGetMaster().sumber || 'SO_MASTER' };
+    return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, mingguan: dash.mingguan, lembar: lembar.data, selisih: selisih, akun: _soAkunMap(), sumberMaster: soGetMaster().sumber || 'SO_MASTER' };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }

@@ -74,6 +74,18 @@ input.fisik{width:90px;text-align:right;font-family:var(--mono)}
 .toast.err{background:#ef4444}
 tr.sel-row td{background:rgba(239,68,68,.07)}
 #printArea{display:none}
+.c-prog{background:rgba(59,130,246,.18);color:#7cb0ff;display:inline-flex;align-items:center;gap:7px}
+.blink{width:8px;height:8px;border-radius:50%;background:#3b82f6;display:inline-block;animation:blinkDot 1.25s ease-in-out infinite}
+@keyframes blinkDot{0%{opacity:1;box-shadow:0 0 0 0 rgba(59,130,246,.7)}50%{opacity:.3}75%{box-shadow:0 0 0 8px rgba(59,130,246,0)}100%{opacity:1;box-shadow:0 0 0 0 rgba(59,130,246,0)}}
+.c-late2{background:rgba(245,158,11,.2);color:#f6c667}
+.wc{display:flex;gap:12px;align-items:flex-start;border:1px solid rgba(239,68,68,.45);background:linear-gradient(180deg,rgba(239,68,68,.12),rgba(239,68,68,.04));border-radius:12px;padding:12px 14px;font-size:12px;line-height:1.5}
+.wc.w{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.07)}
+.wc .ic{width:30px;height:30px;border-radius:50%;background:rgba(239,68,68,.2);color:#ff8a8a;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;animation:icPulse 2s ease-in-out infinite}
+.wc.w .ic{background:rgba(245,158,11,.2);color:#f6c667;animation:none}
+@keyframes icPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 7px rgba(239,68,68,0)}}
+.wc b{font-family:'Outfit';font-size:12.5px}.wc-act{margin-top:4px;color:#ffb4b4;font-weight:600}
+#warnBox,#warnBox2{display:flex;flex-direction:column;gap:8px}#warnBox:empty,#warnBox2:empty{display:none}
+.gc.late{border-color:rgba(239,68,68,.55)}.gc .lt{color:#ff8a8a;font-size:10.5px;margin-top:5px;font-weight:600}
 .modal{position:fixed;inset:0;background:rgba(5,5,12,.72);display:none;align-items:center;justify-content:center;z-index:120;padding:16px}
 .modal.show{display:flex}
 .mbox{background:var(--card);border:1px solid var(--bd2);border-radius:14px;width:min(760px,100%);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.5)}
@@ -155,6 +167,7 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
   <div class="pane active" id="p-dash">
     <div id="warnBox"></div>
     <div class="kpis" id="kpis"></div>
+    <div id="weeklyBox" style="display:flex;flex-direction:column;gap:12px"></div>
     <div class="card">
       <div class="card-h"><h3>Progres SO per PIC &amp; Group</h3>
         <div class="row"><select id="fPic" onchange="renderDash()"></select></div></div>
@@ -186,12 +199,14 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
 
   <!-- PENGISIAN -->
   <div class="pane" id="p-isi">
+    <div id="warnBox2"></div>
+    <div id="weeklyBox2" style="display:flex;flex-direction:column;gap:12px"></div>
     <div class="card"><div class="card-h"><h3>Group tanggung jawab saya — status pengerjaan</h3></div><div class="card-b"><div class="gcards" id="gcards"></div></div></div>
     <div class="card" id="isiCard" style="display:none">
       <div class="card-h"><h3 id="isiTitle"></h3>
         <div class="row"><select id="isiFilter" onchange="renderIsi()"><option value="all">Semua item</option><option value="todo">Belum diisi</option><option value="sel">Ada selisih</option></select>
           <input type="search" id="isiSearch" placeholder="Cari item…" oninput="renderIsi()">
-          <button class="btn p" onclick="simpanIsi()">Simpan Pengisian</button></div></div>
+          <button class="btn p" id="btnSimpanIsi" onclick="simpanIsi()">Simpan Pengisian</button></div></div>
       <div class="card-b"><div class="bar" id="isiBar"><i style="width:0"></i></div><div class="muted" id="isiProg" style="margin-top:6px"></div></div>
       <div class="tw"><table><thead><tr><th>No</th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Sistem</th><th>Fisik</th><th>Selisih</th></tr></thead><tbody id="isiBody"></tbody></table></div>
     </div>
@@ -307,7 +322,7 @@ function dashRows(){
     r.lembarId=l.id;r.targetItem=l.jumlah;r.telahSo=l.isi;r.open=l.open;r.closed=l.closed;r.mulai=l.mulai;r.akhir=l.akhir;
     r.progress=l.jumlah?Math.round(l.isi/l.jumlah*10000)/100:0;r.sisaHari=dd(S.today,l.akhir);
     var span=Math.max(1,dd(l.mulai,l.akhir)+1),el=Math.min(span,Math.max(0,dd(l.mulai,S.today)+1));
-    r.status=r.progress>=100?'SELESAI':(S.today>l.akhir?'TERLAMBAT':(r.progress>=(el/span*100)-5?'ON TRACK':'TERLAMBAT'));
+    r.status=r.progress>=100?'SELESAI':(S.today>l.akhir?'TERLAMBAT':'ON PROGRESS');if(r.status==='TERLAMBAT'){var q=l.akhir.split('-');r.sejak=iso(new Date(+q[0],+q[1]-1,+q[2]+1))}
     r.selisih=l.open>0?'OPEN':(l.closed>0?'CLOSED':'-');return r});
 }
 function loadAll(force){
@@ -320,7 +335,7 @@ function loadAll(force){
   setTimeout(function(){L.step(1)},700); setTimeout(function(){L.step(2)},2200);
   withTimeout(api('soGetAll',!!force),60000).then(function(r){
     L.step(3);
-    S.today=r.today; S.akun=r.akun||[]; S.master=r.master; S.dash=r.dash; S.warn=r.warnings; S.lembar=r.lembar; S.sel=r.selisih;
+    S.today=r.today; S.mingguan=r.mingguan||[]; S.akun=r.akun||[]; S.master=r.master; S.dash=r.dash; S.warn=r.warnings; S.lembar=r.lembar; S.sel=r.selisih;
     document.getElementById('subtitle').textContent='Update '+r.today+(IS_TL?' · Semua PIC':' · Akun PIC: '+NAMA);
     fillSelects(); renderDash(); renderGcards(); renderSel(); renderPrint(); renderRiw();
     show(); L.done();
@@ -339,7 +354,36 @@ function fillSelects(){
 }
 
 /* ---------- DASHBOARD ---------- */
-function statusChip(s){var c={'ON TRACK':'c-ok','TERLAMBAT':'c-late','SELESAI':'c-done','BELUM MULAI':'c-idle'}[s]||'c-idle';return '<span class="chip '+c+'">'+s+'</span>'}
+function idDate(iso){if(!iso)return '';var p=iso.split('-'),b=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];return +p[2]+' '+b[+p[1]-1]+' '+p[0]}
+function rng(w){var a=w.mulai.split('-'),b=w.akhir.split('-'),bl=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];return (+a[2])+(a[1]!==b[1]?' '+bl[+a[1]-1]:'')+'–'+(+b[2])+' '+bl[+b[1]-1]}
+// Kartu peringatan SO terlambat (TL: semua PIC; PIC: miliknya sendiri)
+function renderWarn(id,list){
+  var el=document.getElementById(id); if(!el) return;
+  el.innerHTML=list.map(function(x){
+    if(x.level!=='danger') return '<div class="wc w"><div class="ic">!</div><div><b>'+esc(x.group)+' · '+esc(x.pic)+'</b><div>'+esc(x.msg)+'</div></div></div>';
+    var own=ownPic(x.pic),info=x.total?'Progres '+fmt(x.isi)+' / '+fmt(x.total)+' item ('+String(x.progress).replace('.',',')+'%). ':'';
+    return '<div class="wc"><div class="ic">⚠</div><div><b>SO TERLAMBAT — '+esc(x.pic)+' · Group '+esc(x.group)+(x.minggu?' · Minggu ke-'+x.minggu:'')+'</b>'+
+      '<div>'+(x.periode?'Periode '+esc(x.periode)+'. ':'')+'Terlambat SO sejak <b>'+idDate(x.sejak)+'</b>. '+info+'</div>'+
+      '<div class="wc-act">'+(own?'Pengingat untuk Anda: segera selesaikan dan input datanya pada sistem.':(IS_TL?'Mohon TL menindaklanjuti: PIC perlu segera menyelesaikan dan menginput datanya pada sistem.':'Segera selesaikan dan input datanya pada sistem.'))+'</div></div></div>'}).join('');
+}
+// SO mingguan (I053): status tiap minggu, minggu yang belum selesai, sisa minggu bulan ini
+function renderWeekly(id,filter){
+  var el=document.getElementById(id); if(!el) return;
+  el.innerHTML=(S.mingguan||[]).filter(filter).map(function(m){
+    var late=m.weeks.filter(function(w){return w.status==='TERLAMBAT'});
+    var lt=late.length?'<span style="color:#ff8a8a"><b>Minggu belum selesai:</b> '+late.map(function(w){return 'Minggu ke-'+w.minggu+' '+esc(w.bulan)+' ('+rng(w)+') — '+String(w.progress).replace('.',',')+'%'}).join(' · ')+'</span>':'<span style="color:#4fd9a8">Tidak ada minggu yang terlambat.</span>';
+    return '<div class="card"><div class="card-h"><h3>SO Mingguan — '+esc(m.group)+' · '+esc(m.desc)+' · '+esc(m.pic)+'</h3><span class="muted">Sisa minggu bulan ini: <b>'+m.sisaMinggu+'</b></span></div>'+
+    '<div class="card-b muted">Target selesai <b>tiap minggu</b>. Perhitungan dimulai '+idDate(m.mulaiHitung)+' — minggu sebelumnya tidak dianggap terlambat karena aplikasi baru berjalan. Data minggu lalu terkunci setelah minggu berikutnya dimulai.<br>'+lt+'</div>'+
+    '<div class="tw" style="max-height:none"><table><thead><tr><th>Minggu ke</th><th>Periode</th><th>Item</th><th>Terisi</th><th>Progress</th><th>Status</th><th>Selesai pada</th><th>Aksi</th></tr></thead><tbody>'+
+    m.weeks.slice().reverse().map(function(w){return '<tr><td><b>Minggu ke-'+w.minggu+'</b><div class="muted" style="font-size:9.5px">'+esc(w.bulan)+'</div></td><td class="mono" style="font-size:10.5px">'+rng(w)+'</td><td class="mono">'+fmt(w.jumlah)+'</td><td class="mono">'+fmt(w.isi)+'</td>'+
+      '<td style="min-width:130px"><div class="bar '+(w.status==='TERLAMBAT'?'late':'')+'"><i style="width:'+Math.min(100,w.progress)+'%"></i></div><span class="mono">'+String(w.progress).replace('.',',')+'%</span></td><td>'+statusChip(w.status)+'</td><td class="mono" style="font-size:10.5px">'+(w.tglSelesai?idDate(w.tglSelesai):'—')+'</td>'+
+      '<td>'+(w.lembarId?'<button class="btn" onclick="lihatRiw(\''+esc(w.lembarId)+'\')">Lihat</button>':'<span class="muted">—</span>')+'</td></tr>'}).join('')+'</tbody></table></div></div>';
+  }).join('');
+}
+function statusChip(s){
+  if(s==='ON PROGRESS'||s==='ON TRACK') return '<span class="chip c-prog"><i class="blink"></i>ON PROGRESS</span>';
+  var c={'TERLAMBAT':'c-late','SELESAI':'c-done','SELESAI TERLAMBAT':'c-late2','BELUM MULAI':'c-idle'}[s]||'c-idle';return '<span class="chip '+c+'">'+s+'</span>'}
+function _oldStatusChip(s){var c={'ON TRACK':'c-ok','TERLAMBAT':'c-late','SELESAI':'c-done','BELUM MULAI':'c-idle'}[s]||'c-idle';return '<span class="chip '+c+'">'+s+'</span>'}
 function selChip(s){return s==='OPEN'?'<span class="chip c-open">OPEN</span>':s==='CLOSED'?'<span class="chip c-closed">CLOSED</span>':'<span class="muted">—</span>'}
 function barCls(r){return r.status==='TERLAMBAT'?'late':r.progress<50?'mid':''}
 function renderDash(){
@@ -349,17 +393,17 @@ function renderDash(){
   var open=rows.reduce(function(a,r){return a+r.open},0);
   document.getElementById('kpis').innerHTML=
     '<div class="kpi"><span>Group SO</span><b>'+rows.length+'</b></div>'+
-    '<div class="kpi g"><span>On Track / Selesai</span><b>'+(cnt('ON TRACK')+cnt('SELESAI'))+'</b></div>'+
+    '<div class="kpi g"><span>On Progress / Selesai</span><b>'+(cnt('ON PROGRESS')+cnt('SELESAI')+cnt('SELESAI TERLAMBAT'))+'</b></div>'+
     '<div class="kpi r"><span>Terlambat</span><b>'+cnt('TERLAMBAT')+'</b></div>'+
     '<div class="kpi a"><span>Selisih OPEN (item)</span><b>'+open+'</b></div>';
-  var w=S.warn.filter(function(x){return IS_TL||isMine(x.pic)});
-  document.getElementById('warnBox').innerHTML=w.length?'<div class="warn'+(w.some(function(x){return x.level==='danger'})?'':' w')+'"><b>Peringatan SO Mingguan'+(IS_TL?' — perlu evaluasi TL':'')+'</b>'+w.map(function(x){return '• <b style="display:inline">'+esc(x.group)+'</b> ('+esc(x.pic)+'): '+esc(x.msg)}).join('<br>')+'</div>':'';
+  renderWarn('warnBox',S.warn.filter(function(x){return IS_TL||isMine(x.pic)}));
+  renderWeekly('weeklyBox',function(m){return isMine(m.pic)});
   document.getElementById('dashBody').innerHTML=rows.length?rows.map(function(r){
     return '<tr><td class="l">'+esc(r.pic)+'</td><td><b>'+esc(r.group)+'</b></td><td class="l">'+esc(r.desc)+'</td><td>'+esc(r.targetLabel)+'</td><td class="mono" style="font-size:10.5px">'+(r.mulai?esc(r.mulai)+'<br>'+esc(r.akhir):'—')+'</td>'+
     '<td class="mono">'+(r.totalSku==null?'<span class="muted">…</span>':fmt(r.totalSku))+'</td><td class="mono">'+fmt(r.targetItem)+'</td><td class="mono">'+fmt(r.telahSo)+'</td>'+
     '<td style="min-width:120px"><div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><span class="mono">'+String(r.progress).replace('.',',')+'%</span></td>'+
     '<td class="mono">'+(r.sisaHari==null?'—':(r.sisaHari<0?'lewat '+(-r.sisaHari)+' hr':r.sisaHari+' hr'))+'</td>'+
-    '<td>'+statusChip(r.status)+(r.berikutnya?'<div class="muted" style="font-size:9.5px;margin-top:3px">berikut: '+esc(r.berikutnya)+'</div>':'')+'</td><td>'+selChip(r.selisih)+'</td></tr>';}).join(''):'<tr><td colspan="12" class="empty">Belum ada data</td></tr>';
+    '<td>'+statusChip(r.status)+(r.status==='TERLAMBAT'&&r.sejak?'<div style="font-size:9.5px;margin-top:3px;color:#ff8a8a">sejak '+idDate(r.sejak)+'</div>':'')+(r.mingguTelat?'<div style="font-size:9.5px;margin-top:3px;color:#ff8a8a">'+r.mingguTelat+' minggu belum selesai</div>':'')+(r.berikutnya?'<div class="muted" style="font-size:9.5px;margin-top:3px">berikut: '+esc(r.berikutnya)+'</div>':'')+'</td><td>'+selChip(r.selisih)+'</td></tr>';}).join(''):'<tr><td colspan="12" class="empty">Belum ada data</td></tr>';
 }
 
 /* ---------- BUAT LEMBAR ---------- */
@@ -449,30 +493,33 @@ function buatLembar(){
 /* ---------- PENGISIAN ---------- */
 function renderGcards(){
   var rows=S.dash.filter(function(r){return ownPic(r.pic)});
+  renderWarn('warnBox2',S.warn.filter(function(x){return ownPic(x.pic)}));
+  renderWeekly('weeklyBox2',function(m){return ownPic(m.pic)});
   document.getElementById('gcards').innerHTML=rows.map(function(r){
-    return '<div class="gc" onclick="bukaLembar(\''+esc(r.lembarId)+'\')"><b>'+esc(r.group)+'</b>'+statusChip(r.status).replace('class="chip','style="float:right" class="chip')+'<small>'+esc(r.desc)+' · '+esc(r.pic)+'</small>'+
-    '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div></div>'}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO (NIK '+esc(NIK)+'). Minta admin menambahkan akun ini di sheet <b>SO_AKUN</b> (kolom A: NIK/nama akun, kolom B: nama PIC sesuai sheet DASHBOARD).</div>';
+    return '<div class="gc'+(r.status==='TERLAMBAT'?' late':'')+'" onclick="bukaLembar(\''+esc(r.lembarId)+'\')"><b>'+esc(r.group)+'</b>'+statusChip(r.status).replace('class="chip','style="float:right" class="chip')+'<small>'+esc(r.desc)+' · '+esc(r.pic)+'</small>'+
+    '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div>'+(r.status==='TERLAMBAT'&&r.sejak?'<div class="lt">Terlambat sejak '+idDate(r.sejak)+'</div>':'')+(r.mingguTelat?'<div class="lt">'+r.mingguTelat+' minggu belum selesai</div>':'')+'</div>'}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO (NIK '+esc(NIK)+'). Minta admin menambahkan akun ini di sheet <b>SO_AKUN</b> (kolom A: NIK/nama akun, kolom B: nama PIC sesuai sheet DASHBOARD).</div>';
 }
 function bukaLembar(id){
   if(!id) return toast('Belum ada lembar. Buat dulu di tab Buat Lembar SO.',true);
   api('soGetLembarDetail',id).then(function(r){
     if(S.curId!==id){S.draft={};S.recheck={};S.curId=id}
     S.cur=r;document.getElementById('isiCard').style.display='block';
-    document.getElementById('isiTitle').textContent=r.lembar.group+' · '+r.lembar.pic+' · '+r.lembar.mulai+' s/d '+r.lembar.akhir;renderIsi();
+    document.getElementById('isiTitle').innerHTML=esc(r.lembar.group+' · '+r.lembar.pic+' · '+r.lembar.mulai+' s/d '+r.lembar.akhir)+(r.lembar.terkunci?' <span class="chip c-idle">🔒 TERKUNCI</span>':'');renderIsi();
     document.getElementById('isiCard').scrollIntoView({behavior:'smooth'})}).catch(function(e){toast(e.message,true)});
 }
 S.draft={};S.recheck={};
 function renderIsi(){
   if(!S.cur) return;
+  var lk=!!S.cur.lembar.terkunci;document.getElementById('btnSimpanIsi').style.display=lk?'none':'';
   var f=document.getElementById('isiFilter').value,q=document.getElementById('isiSearch').value.toUpperCase(),all=S.cur.items;
   var rows=all.filter(function(x){return (f==='all'||(f==='todo'&&x.fisik===null)||(f==='sel'&&(x.selisih||S.recheck[x.row])))&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1)});
   var done=all.filter(function(x){return x.fisik!==null}).length,pct=all.length?done/all.length*100:0;
   document.getElementById('isiBar').firstChild.style.width=pct+'%';
-  document.getElementById('isiProg').textContent=done+' dari '+all.length+' item terisi ('+pct.toFixed(1).replace('.',',')+'%)';
+  document.getElementById('isiProg').innerHTML=done+' dari '+all.length+' item terisi ('+pct.toFixed(1).replace('.',',')+'%)'+(lk?' · <b style="color:#f6c667">Data periode ini terkunci karena periode berikutnya sudah dimulai — hanya dapat dilihat.</b>':'');
   document.getElementById('isiBody').innerHTML=rows.slice(0,600).map(function(x,i){
     var dv=S.draft[x.row]!==undefined?S.draft[x.row]:(x.fisik===null?'':x.fisik),sel=dv===''?null:Number(dv)-x.sistem;
     return '<tr class="'+(x.selisih?'sel-row':'')+'"><td>'+(all.indexOf(x)+1)+'</td><td class="l mono">'+esc(x.item)+(S.recheck[x.row]?' <span class="chip c-late" style="background:rgba(245,158,11,.2);color:#f6c667">CEK ULANG</span>':'')+(x.konfirmasi?'<div class="muted" style="font-size:9.5px">'+esc(x.konfirmasi)+'</div>':'')+'</td><td class="l">'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td>'+
-    '<td><input class="fisik'+(S.recheck[x.row]?' recheck':'')+'" type="number" step="any" data-row="'+x.row+'" value="'+dv+'" oninput="liveSel(this,'+x.sistem+')"></td><td class="mono" id="sl'+x.row+'" style="color:'+(sel?'var(--red)':'var(--green)')+'">'+(sel===null?'':fmt(sel))+'</td></tr>'}).join('')||'<tr><td colspan="8" class="empty">Tidak ada item</td></tr>';
+    '<td><input class="fisik'+(S.recheck[x.row]?' recheck':'')+'" type="number" step="any" data-row="'+x.row+'" value="'+dv+'" oninput="liveSel(this,'+x.sistem+')"'+(lk?' disabled':'')+'></td><td class="mono" id="sl'+x.row+'" style="color:'+(sel?'var(--red)':'var(--green)')+'">'+(sel===null?'':fmt(sel))+'</td></tr>'}).join('')||'<tr><td colspan="8" class="empty">Tidak ada item</td></tr>';
 }
 function liveSel(inp,sis){S.draft[inp.dataset.row]=inp.value;var c=document.getElementById('sl'+inp.dataset.row);if(inp.value===''){c.textContent='';return}var s=Number(inp.value)-sis;c.textContent=fmt(s);c.style.color=s?'var(--red)':'var(--green)'}
 function openModal(html,wide){var m=document.getElementById('mbox');m.className='mbox'+(wide?' wide':'');m.innerHTML=html;document.getElementById('modal').classList.add('show')}
@@ -585,7 +632,7 @@ function renderRiw(){
   if(sel.options.length!==gs.length+1){sel.innerHTML='<option value="">Semua group</option>'+gs.map(function(g){return '<option>'+esc(g)+'</option>'}).join('');sel.value=old}
   var rows=riwRows();
   document.getElementById('riwBody').innerHTML=rows.map(function(l){var pc=l.jumlah?Math.round(l.isi/l.jumlah*1000)/10:0;
-    return '<tr><td class="l mono">'+esc(l.id)+'</td><td class="l">'+esc(l.pic)+'</td><td><b>'+esc(l.group)+'</b></td><td>'+esc(l.mulai)+' s/d '+esc(l.akhir)+'</td><td class="mono">'+l.jumlah+'</td><td class="mono">'+l.isi+'</td><td class="mono">'+String(pc).replace('.',',')+'%</td><td>'+(l.open?'<span class="chip c-open">'+l.open+'</span>':'<span class="muted">—</span>')+'</td><td>'+(l.closed?'<span class="chip c-closed">'+l.closed+'</span>':'<span class="muted">—</span>')+'</td>'+
+    return '<tr><td class="l mono">'+esc(l.id)+(l.terkunci?' <span title="Terkunci">🔒</span>':'')+'</td><td class="l">'+esc(l.pic)+'</td><td><b>'+esc(l.group)+'</b></td><td>'+esc(l.mulai)+' s/d '+esc(l.akhir)+'</td><td class="mono">'+l.jumlah+'</td><td class="mono">'+l.isi+'</td><td class="mono">'+String(pc).replace('.',',')+'%</td><td>'+(l.open?'<span class="chip c-open">'+l.open+'</span>':'<span class="muted">—</span>')+'</td><td>'+(l.closed?'<span class="chip c-closed">'+l.closed+'</span>':'<span class="muted">—</span>')+'</td>'+
     '<td><button class="btn" onclick="lihatRiw(\''+esc(l.id)+'\')">Lihat</button> <button class="btn p" onclick="unduhLembar(\''+esc(l.id)+'\')">Unduh</button></td></tr>'}).join('')||'<tr><td colspan="10" class="empty">Belum ada riwayat SO</td></tr>';
 }
 function lihatRiw(id){
