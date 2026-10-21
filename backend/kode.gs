@@ -48,6 +48,7 @@ var API_FUNCTIONS = {
   getLemburKategoriBulanan: getLemburKategoriBulanan,
   getLemburKategoriTrend6Bulan: getLemburKategoriTrend6Bulan,
   getFTETrendTahunan: getFTETrendTahunan,
+  auditProduktivitasFTE: auditProduktivitasFTE,
   getSupabaseStorageStats: getSupabaseStorageStats,
   setSupabaseDbLimitMB: setSupabaseDbLimitMB,
   getOvertimeTrend6Bulan  : getOvertimeTrend6Bulan,
@@ -2424,7 +2425,10 @@ function _parseAngkaFleksibel(v) {
   return isNaN(n) ? 0 : n;
 }
 
-function appendStockData(rows, tanggal) {
+function appendStockData(rows, tanggal, batchKey) {
+  return _uploadIdempotent(SH_STOCK, batchKey, function () { return _appendStockDataImpl(rows, tanggal); });
+}
+function _appendStockDataImpl(rows, tanggal) {
   try {
     if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -2482,25 +2486,63 @@ function appendStockData(rows, tanggal) {
 
 // rows: array of array, urutan kolom PERSIS:
 // [ItemNumber, DrawingCode, Description, Description2, EffectiveDate, TotalWeight]
-function appendOutboundData(rows) {
+// ================================================================
+//  PERLINDUNGAN UPLOAD GANDA
+//  Halaman Upload Data Harian mengulang (retry) batch yang timeout/putus koneksi. Kalau server SUDAH
+//  sempat menulis batch itu tapi jawabannya tidak sampai, retry menulis baris yang sama dua kali ->
+//  total Kirim/Terima/Stock membengkak (produktivitas ikut "tinggi"). Sekarang tiap batch membawa
+//  batchKey unik (uploadId#nomor); batch dgn key yang sudah pernah sukses TIDAK ditulis ulang.
+// ================================================================
+function _uploadIdempotent(sheetName, batchKey, fn) {
+  if (!batchKey) return fn();
+  var cache = CacheService.getScriptCache(), key = 'upl_' + ACTIVE_WORKSPACE + '_' + sheetName + '_' + batchKey;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var hit = cache.get(key);
+    if (hit) { var o = JSON.parse(hit); o.diulang = true; return o; }
+    var res = fn();
+    if (res && res.success) { try { cache.put(key, JSON.stringify(res), 21600); } catch (e) {} }
+    return res;
+  } finally { lock.releaseLock(); }
+}
+
+// Berapa baris upload (item+tanggal+berat) yang SUDAH ada di sheet -- hanya peringatan, tidak ada data yang dibuang.
+function _hitungBarisIdentik(sheet, rows) {
+  try {
+    var last = sheet.getLastRow(); if (last < 2) return 0;
+    var tz = Session.getScriptTimeZone();
+    var sig = function (item, tgl, berat) {
+      var t = tgl instanceof Date ? Utilities.formatDate(tgl, tz, 'yyyy-MM-dd') : String(tgl);
+      return String(item).trim().toUpperCase() + '|' + t + '|' + (Math.round(Number(berat) * 10000) / 10000);
+    };
+    var existing = {}, ex = sheet.getRange(2, 1, last - 1, 6).getValues();
+    ex.forEach(function (r) { var k = sig(r[0], r[4], r[5]); existing[k] = (existing[k] || 0) + 1; });
+    var n = 0;
+    rows.forEach(function (r) { var k = sig(r[0], r[4], r[5]); if (existing[k]) { n++; existing[k]--; } });
+    return n;
+  } catch (e) { return 0; }
+}
+
+function appendOutboundData(rows, batchKey) {
   // KIRIM (Outbound): konvensi sumbernya MINUS = kiriman normal,
   // POSITIF = retur/koreksi -> NEGASIKAN (lihat komentar di
   // _appendKirimProduksi) supaya totalnya benar.
-  return _appendKirimProduksi(rows, SH_KIRIM, true);
+  return _uploadIdempotent(SH_KIRIM, batchKey, function () { return _appendKirimProduksi(rows, SH_KIRIM, true, batchKey); });
 }
 
 // Sama seperti appendOutboundData, tapi target sheetnya DASHBOARD_PRODUKSI
-function appendInboundData(rows) {
+function appendInboundData(rows, batchKey) {
   // PRODUKSI (Inbound): konvensi sumbernya KEBALIKAN dari Kirim --
   // MAYORITAS baris sudah POSITIF (produksi/penerimaan normal), cuma
   // sebagian kecil MINUS (koreksi/retur ke supplier) yang MEMANG harus
   // tetap minus supaya mengurangi total dgn benar. Makanya di sini
   // TIDAK dinegasikan sama sekali -- disimpan APA ADANYA sesuai file
   // sumber. (Ini beda dgn Outbound! Jangan disamakan lagi.)
-  return _appendKirimProduksi(rows, SH_PRODUKSI, false);
+  return _uploadIdempotent(SH_PRODUKSI, batchKey, function () { return _appendKirimProduksi(rows, SH_PRODUKSI, false, batchKey); });
 }
 
-function _appendKirimProduksi(rows, sheetName, negasikan) {
+function _appendKirimProduksi(rows, sheetName, negasikan, batchKey) {
   try {
     if (!rows || !rows.length) return { success: false, error: 'Tidak ada baris data untuk diupload.' };
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -2521,12 +2563,14 @@ function _appendKirimProduksi(rows, sheetName, negasikan) {
       ];
     });
 
+    // Peringatan data ganda hanya dicek di batch pertama (sebelum ada baris dari upload ini yg masuk)
+    var identik = (!batchKey || /#0$/.test(String(batchKey))) ? _hitungBarisIdentik(sheet, out) : 0;
     var startRow = sheet.getLastRow() + 1;
     sheet.getRange(startRow, 1, out.length, 6).setValues(out);
     // Sama seperti Stock: tidak ditunggu sync-nya di sini, biar cepat.
     // Trigger onEdit + arsip bulanan otomatis yang menangani sync/backup.
     _bumpDataCacheVersion(); // supaya dashboard tidak nampilin angka lama (lihat callWithServerCache)
-    return { success: true, jumlah: out.length };
+    return { success: true, jumlah: out.length, identik: identik };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -7822,10 +7866,10 @@ function getAbsensiFTEData(bulan, tahun) {
     var insightProduktivitas =
       'Produktivitas bulan ini ' + (produktivitasTercapai ? 'sudah mencapai/melebihi' : 'masih di bawah') +
       ' target ' + PRODUKTIVITAS_TARGET_TON_FTE + ' Ton/FTE' + (produktivitasTercapai ? ' (baik).' : ' (belum tercapai).') + ' ' +
-      'Turut dipengaruhi oleh total ' + totalJamLemburInternal + ' jam lembur karyawan internal' +
+      'Dihitung dari rata-rata Kirim ' + Math.round(totalKirim / 10) / 100 + ' Ton & Terima ' + Math.round(totalTerima / 10) / 100 + ' Ton, dibagi ' + totalFTE + ' FTE (' + jumlahKaryawan + ' karyawan internal + ' + fteLemburTotal + ' FTE lembur dari ' + totalJamLemburInternal + ' jam). ' +
       (jumlahMangkirTotal > 0
-        ? ' dan ' + jumlahMangkirTotal + ' kali ketidakhadiran tanpa keterangan (mangkir) karyawan internal bulan ini -- makin banyak lembur & makin sedikit karyawan aktif hadir, makin sedikit FTE efektif, sehingga angka produktivitas per FTE ikut terdorong turun' + (produktivitasTercapai ? '.' : ' hingga di bawah target.')
-        : ' -- tidak ada ketidakhadiran tanpa keterangan (mangkir) karyawan internal bulan ini.');
+        ? 'Ada ' + jumlahMangkirTotal + ' kali ketidakhadiran tanpa keterangan (mangkir) karyawan internal bulan ini.'
+        : 'Tidak ada ketidakhadiran tanpa keterangan (mangkir) karyawan internal bulan ini.');
 
     var hasilFte = {
       success: true,
@@ -7841,6 +7885,7 @@ function getAbsensiFTEData(bulan, tahun) {
         totalPengiriman: Math.round(totalKirim * 100) / 100,
         totalPenerimaan: Math.round(totalTerima * 100) / 100,
         jumlahKirimTerima: jumlahKirimTerima,
+        jumlahBulanBerjalan: (bulan === (new Date().getMonth() + 1) && tahun === new Date().getFullYear()),
         produktivitasKgFTE: produktivitasKgFTE,
         produktivitasTonFTE: produktivitasTonFTE,
         produktivitasTarget: PRODUKTIVITAS_TARGET_TON_FTE,
@@ -9356,5 +9401,103 @@ function setSupabaseDbLimitMB(actorNik, mb) {
     if (!(mb >= 50 && mb <= 1048576)) return { success: false, error: 'Batas harus antara 50 MB dan 1.048.576 MB.' };
     PropertiesService.getScriptProperties().setProperty('SUPABASE_DB_LIMIT_MB', String(Math.round(mb)));
     return { success: true, limitMB: Math.round(mb) };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// ================================================================
+//  AUDIT PRODUKTIVITAS FTE -- membongkar tiap langkah hitung dari DATA ASLI sheet
+//  (hanya TL / Admin). Mencari: baris ganda, hari yang ter-upload 2x, baris yang tidak
+//  dihitung (tanpa kategori), tanggal berupa teks, berat minus, baris terbesar, rincian
+//  jumlah karyawan, lalu menghitung ulang produktivitas dgn beberapa skenario pembanding.
+// ================================================================
+function _auditSheetTransaksi(ss, sheetName, range) {
+  var out = { sheet: sheetName, ada: false, totalBaris: 0, barisBulan: 0, barisTerhitung: 0, terhitung: 0, barisDikecualikan: 0, dikecualikan: 0,
+    positif: 0, negatif: 0, barisNegatif: 0, tanggalTeks: 0, tanpaTanggal: 0, perKategori: {}, perHari: [], duplikat: { kelompok: 0, barisLebih: 0, beratLebih: 0, contoh: [] }, hariGanda: [], terbesar: [] };
+  var sh = ss.getSheetByName(sheetName); if (!sh) return out;
+  out.ada = true;
+  var data = sh.getDataRange().getValues(), rucika = isRucikaFitting(), tz = Session.getScriptTimeZone();
+  out.totalBaris = Math.max(0, data.length - 1);
+  var sig = {}, hari = {}, hariSig = {}, top = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i], raw = row[4];
+    if (typeof raw === 'string' && raw.trim()) out.tanggalTeks++;
+    var tgl = toDate(raw);
+    if (!tgl) { out.tanpaTanggal++; continue; }
+    if (!inRange(tgl, range)) continue;
+    out.barisBulan++;
+    var w = parseFloat(row[5]) || 0, kat;
+    if (rucika) kat = getKategoriRucika(_drawingTransaksiRucika(row), _namaItemLengkap(row[6], row[2], row[3]));
+    else kat = getKategoriTransaksiV2(row[1], row[2], row[3]);
+    if (!kat) { out.barisDikecualikan++; out.dikecualikan += w; continue; }
+    out.barisTerhitung++; out.terhitung += w; out.perKategori[kat] = (out.perKategori[kat] || 0) + w;
+    if (w < 0) { out.barisNegatif++; out.negatif += w; } else out.positif += w;
+    var dk = Utilities.formatDate(tgl, tz, 'yyyy-MM-dd');
+    hari[dk] = hari[dk] || { tgl: dk, baris: 0, berat: 0 }; hari[dk].baris++; hari[dk].berat += w;
+    var k = [String(row[0]).trim().toUpperCase(), String(row[2]).trim(), String(row[3]).trim(), dk, Math.round(w * 10000) / 10000].join('|');
+    if (!sig[k]) sig[k] = { n: 0, item: String(row[0]).trim(), desc: String(row[2]).trim(), tgl: dk, berat: w };
+    sig[k].n++;
+    hariSig[dk] = hariSig[dk] || { total: 0, dup: 0 }; hariSig[dk].total++;
+    top.push({ item: String(row[0]).trim(), desc: String(row[2]).trim(), tgl: dk, berat: w });
+  }
+  var dups = [];
+  Object.keys(sig).forEach(function (k) {
+    var g = sig[k]; if (g.n > 1) { out.duplikat.kelompok++; out.duplikat.barisLebih += g.n - 1; out.duplikat.beratLebih += (g.n - 1) * g.berat; dups.push({ item: g.item, desc: g.desc, tgl: g.tgl, berat: g.berat, salinan: g.n, beratLebih: (g.n - 1) * g.berat }); }
+  });
+  dups.sort(function (a, b) { return Math.abs(b.beratLebih) - Math.abs(a.beratLebih); });
+  out.duplikat.contoh = dups.slice(0, 8);
+  Object.keys(sig).forEach(function (k) { var g = sig[k]; if (g.n > 1 && hariSig[g.tgl]) hariSig[g.tgl].dup += g.n; }); // semua salinan, termasuk yg pertama
+  Object.keys(hariSig).forEach(function (dk) { var h = hariSig[dk]; if (h.total >= 5 && h.dup / h.total >= 0.8) out.hariGanda.push({ tgl: dk, baris: h.total, berat: hari[dk].berat }); });
+  top.sort(function (a, b) { return Math.abs(b.berat) - Math.abs(a.berat); });
+  out.terbesar = top.slice(0, 8);
+  out.perHari = Object.keys(hari).sort().map(function (d) { return hari[d]; });
+  return out;
+}
+
+function auditProduktivitasFTE(actorNik, bulan, tahun) {
+  try {
+    if (!_actorIsFullAccess(actorNik) && !_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL / Admin.' };
+    bulan = Number(bulan); tahun = Number(tahun);
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID), range = buildIODateRange({ bulan: bulan, tahun: tahun });
+    var kirim = _auditSheetTransaksi(ss, SH_KIRIM, range), terima = _auditSheetTransaksi(ss, SH_PRODUKSI, range);
+
+    var kar = getKaryawanList(); if (!kar.success) return kar;
+    var aktif = kar.data.filter(function (k) { return k.aktif; });
+    var internal = aktif.filter(function (k) { return k.kategori === 'Internal'; }), os = aktif.filter(function (k) { return k.kategori === 'OS'; });
+    var lemb = getLemburList({ bulan: bulan, tahun: tahun }), kodeInt = {}; internal.forEach(function (k) { kodeInt[k.kode] = 1; });
+    var jamInt = 0; (lemb.success ? lemb.data : []).forEach(function (l) { if (kodeInt[l.kode]) jamInt += Number(l.totalJam) || 0; });
+    var fteLembur = internal.length ? jamInt / FTE_STANDAR_JAM_BULAN : 0, totalFTE = internal.length + fteLembur;
+
+    var kg = function (kirimKg, terimaKg, fte) { var avg = (kirimKg + terimaKg) / 2; return { avgKg: Math.round(avg * 100) / 100, ton: fte > 0 ? Math.round(avg / fte / 10) / 100 : 0 }; };
+    var asIs = kg(kirim.terhitung, terima.terhitung, totalFTE);
+    var tanpaDup = kg(kirim.terhitung - kirim.duplikat.beratLebih, terima.terhitung - terima.duplikat.beratLebih, totalFTE);
+    var now = new Date(), berjalan = (bulan === now.getMonth() + 1 && tahun === now.getFullYear());
+    var hariBulan = new Date(tahun, bulan, 0).getDate(), hariLewat = berjalan ? now.getDate() : hariBulan;
+    var skenario = [
+      { nama: 'Perhitungan sekarang', ton: asIs.ton, ket: '(Kirim + Terima) / 2 ÷ ' + (Math.round(totalFTE * 1000) / 1000) + ' FTE' },
+      { nama: 'Tanpa baris ganda (identik)', ton: tanpaDup.ton, ket: 'membuang ' + (kirim.duplikat.barisLebih + terima.duplikat.barisLebih) + ' baris kelebihan' },
+      { nama: 'Hanya Kirim', ton: totalFTE > 0 ? Math.round(kirim.terhitung / totalFTE / 10) / 100 : 0, ket: 'Kirim ÷ FTE' },
+      { nama: 'Hanya Terima', ton: totalFTE > 0 ? Math.round(terima.terhitung / totalFTE / 10) / 100 : 0, ket: 'Terima ÷ FTE' },
+      { nama: 'FTE ditambah karyawan OS', ton: (totalFTE + os.length) > 0 ? Math.round(asIs.avgKg / (totalFTE + os.length) / 10) / 100 : 0, ket: totalFTE + os.length > 0 ? 'FTE ' + (Math.round((totalFTE + os.length) * 100) / 100) + ' (internal + ' + os.length + ' OS)' : '' }
+    ];
+    if (berjalan) skenario.push({ nama: 'Proyeksi akhir bulan', ton: Math.round(asIs.ton * hariBulan / Math.max(1, hariLewat) * 100) / 100, ket: 'data baru s/d tgl ' + hariLewat + ' dari ' + hariBulan + ' hari' });
+
+    var temuan = [];
+    var dupTotal = kirim.duplikat.barisLebih + terima.duplikat.barisLebih;
+    if (dupTotal > 0) temuan.push({ level: 'danger', teks: 'Ditemukan ' + dupTotal + ' baris identik (item + tanggal + berat sama) -- Kirim ' + kirim.duplikat.barisLebih + ' baris (' + Math.round(kirim.duplikat.beratLebih) + ' Kg), Terima ' + terima.duplikat.barisLebih + ' baris (' + Math.round(terima.duplikat.beratLebih) + ' Kg). Kemungkinan upload ganda / retry upload.' });
+    kirim.hariGanda.concat(terima.hariGanda).forEach(function (h) { temuan.push({ level: 'danger', teks: 'Tanggal ' + h.tgl + ' tampak ter-upload 2x atau lebih (hampir semua baris-nya identik, ' + h.baris + ' baris, ' + Math.round(h.berat) + ' Kg).' }); });
+    if (kirim.terhitung > 0 && terima.terhitung / kirim.terhitung >= 3) temuan.push({ level: 'warn', teks: 'Terima (' + Math.round(terima.terhitung / 1000) + ' Ton) lebih dari 3x Kirim (' + Math.round(kirim.terhitung / 1000) + ' Ton). Rata-rata (Kirim+Terima)/2 jadi didominasi Terima. Cek baris terbesar & apakah DASHBOARD_PRODUKSI memuat transaksi non-penerimaan.' });
+    if (kirim.barisDikecualikan + terima.barisDikecualikan > 0) temuan.push({ level: 'warn', teks: (kirim.barisDikecualikan + terima.barisDikecualikan) + ' baris bulan ini TIDAK dihitung karena kategorinya tidak dikenali (bukan Pipa/Fitting) -- total ' + Math.round(kirim.dikecualikan + terima.dikecualikan) + ' Kg.' });
+    if (kirim.tanggalTeks + terima.tanggalTeks > 0) temuan.push({ level: 'warn', teks: (kirim.tanggalTeks + terima.tanggalTeks) + ' sel tanggal berupa TEKS (bukan tanggal asli) -- format dd/mm vs mm/dd bisa salah bulan.' });
+    if (kirim.tanpaTanggal + terima.tanpaTanggal > 0) temuan.push({ level: 'warn', teks: (kirim.tanpaTanggal + terima.tanpaTanggal) + ' baris tanpa tanggal terbaca -- tidak ikut terhitung di bulan mana pun.' });
+    if (kirim.barisNegatif > 0 && kirim.negatif < 0) temuan.push({ level: 'info', teks: 'Kirim punya ' + kirim.barisNegatif + ' baris minus (retur/koreksi) total ' + Math.round(kirim.negatif) + ' Kg -- ikut mengurangi total.' });
+    if (internal.length <= 5) temuan.push({ level: 'info', teks: 'Pembagi FTE hanya ' + internal.length + ' karyawan internal aktif + ' + (Math.round(fteLembur * 1000) / 1000) + ' FTE lembur. Karyawan OS (' + os.length + ' orang) TIDAK ikut sebagai pembagi. Makin sedikit pembagi, makin tinggi Ton/FTE.' });
+    if (berjalan) temuan.push({ level: 'info', teks: 'Bulan ini masih berjalan (tgl ' + hariLewat + ' dari ' + hariBulan + '): data Kirim/Terima belum penuh sebulan, sedangkan jumlah karyawan sudah penuh.' });
+    if (!temuan.length) temuan.push({ level: 'ok', teks: 'Tidak ada anomali data yang terdeteksi. Angka berasal langsung dari baris sheet.' });
+
+    return { success: true, bulan: bulan, tahun: tahun, berjalan: berjalan,
+      kirim: kirim, terima: terima,
+      fte: { karyawanInternal: internal.length, namaInternal: internal.map(function (k) { return { kode: k.kode, nama: k.nama, jabatan: k.jabatan }; }), karyawanOS: os.length, nonaktif: kar.data.length - aktif.length, jamLemburInternal: Math.round(jamInt * 100) / 100, fteLembur: Math.round(fteLembur * 10000) / 10000, totalFTE: Math.round(totalFTE * 10000) / 10000, standarJam: FTE_STANDAR_JAM_BULAN },
+      hitung: { avgKg: asIs.avgKg, kgPerFTE: totalFTE > 0 ? Math.round(asIs.avgKg / totalFTE * 100) / 100 : 0, tonPerFTE: asIs.ton, target: _targetProduktivitasTonFTE() },
+      skenario: skenario, temuan: temuan };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }

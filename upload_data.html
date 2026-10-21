@@ -1183,6 +1183,8 @@ function submitData(tab){
 
   function startBatchUpload(){
   var totalOk = 0;
+  var totalIdentik = 0, totalDiulang = 0;
+  var uploadId = 'u' + Date.now() + Math.random().toString(36).slice(2, 7); // kunci unik utk 1x upload -> retry batch tidak menulis ganda
   var batchIdx = 0;
 
   function uploadNextBatch(){
@@ -1218,7 +1220,9 @@ function submitData(tab){
             verif = ' (Tidak bisa verifikasi otomatis: '+(stat&&stat.error?stat.error:'-')+')';
           }
           var syncNote = ' Monitoring Stock/Kanban akan ikut ter-update otomatis di belakang layar; backup permanen ke Supabase berjalan otomatis tiap tanggal 2. Klik "Sync Sekarang" untuk memaksa update sekarang.';
-          showStatus(tab,'ok','Berhasil! '+totalOk+' baris tersimpan ke sheet.'+verif+syncNote);
+          var peringatan = (totalIdentik > 0 ? ' ⚠️ PERHATIAN: ' + totalIdentik + ' baris pada file ini IDENTIK (item + tanggal + berat sama) dengan data yang SUDAH ada di sheet sebelum upload -- kemungkinan file/tanggal yang sama ter-upload dua kali, total bisa membengkak. Cek lewat tombol "Audit perhitungan" di Monitoring FTE.' : '') +
+            (totalDiulang > 0 ? ' (' + totalDiulang + ' batch sempat terkirim ulang karena koneksi, dan SUDAH dicegah agar tidak tertulis dobel.)' : '');
+          showStatus(tab,'ok','Berhasil! '+totalOk+' baris tersimpan ke sheet.'+verif+peringatan+syncNote);
         })
         .withFailureHandler(function(){
           showStatus(tab,'ok','Berhasil! '+totalOk+' baris tersimpan ke sheet. (Verifikasi otomatis gagal terhubung, cek manual di sheet kalau perlu.)');
@@ -1235,8 +1239,8 @@ function submitData(tab){
     showStatus(tab,'info', batchLabel + (totalOk>0 ? ' — '+totalOk+' baris sebelumnya sudah tersimpan.' : ''));
 
     var callArgs = (tab === 'stock')
-      ? [batch, (document.getElementById('tanggal-stock')||{}).value || '']
-      : [batch];
+      ? [batch, (document.getElementById('tanggal-stock')||{}).value || '', uploadId + '#' + batchIdx]
+      : [batch, uploadId + '#' + batchIdx];
 
     var MAX_RETRY = 2;
     var retryCount = 0;
@@ -1246,6 +1250,8 @@ function submitData(tab){
         .withSuccessHandler(function(res){
           if (res && res.success){
             totalOk += res.jumlah;
+            totalIdentik += (res.identik || 0);
+            if (res.diulang) totalDiulang++;
             batchIdx++;
             uploadNextBatch();
           } else if (retryCount < MAX_RETRY){

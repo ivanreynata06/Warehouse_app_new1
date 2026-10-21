@@ -372,7 +372,9 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <div class="hero-produktivitas-status" id="hero-produktivitas-status"><i data-lucide="check-circle" style="width:10px;"></i><span>Memuat...</span></div>
           <div class="hero-produktivitas-target">Target: <b id="kpi-produktivitas-target">62,3</b> Ton/FTE</div>
           <div class="hero-produktivitas-breakdown">
-            <span id="kpi-produktivitaskg">—</span> Kg/FTE &nbsp;•&nbsp; <span id="kpi-kirimterima">—</span> Kg kirim+terima
+            <span id="kpi-produktivitaskg">—</span> Kg/FTE &nbsp;•&nbsp; <span id="kpi-kirimterima">—</span> Kg rata-rata kirim+terima
+            <div id="kpi-rincian-prod" style="margin-top:5px;line-height:1.7;"></div>
+            <button type="button" class="fy-btn" style="margin-top:8px;width:100%;" onclick="openAuditProduktivitas()">🔍 Audit perhitungan</button>
           </div>
           <div class="hero-produktivitas-insight" id="hero-produktivitas-insight">Memuat insight...</div>
         </div>
@@ -1165,6 +1167,11 @@ function renderKPI(){
   document.getElementById('kpi-produktivitasTon').textContent = tonFteTxt;
   document.getElementById('kpi-produktivitaskg').textContent = kgFteTxt;
   document.getElementById('kpi-kirimterima').textContent = kirimTerimaTxt;
+  var nf0 = function(v){ return (v||0).toLocaleString('id-ID',{maximumFractionDigits:0}); };
+  document.getElementById('kpi-rincian-prod').innerHTML =
+    'Kirim: <b>'+nf0(d.totalPengiriman)+'</b> Kg &nbsp;|&nbsp; Terima: <b>'+nf0(d.totalPenerimaan)+'</b> Kg<br>'+
+    'Pembagi: <b>'+d.totalFTE.toLocaleString('id-ID',{maximumFractionDigits:3})+'</b> FTE ('+d.jumlahKaryawan+' internal + '+d.fteLembur.toLocaleString('id-ID',{maximumFractionDigits:3})+' lembur)'+
+    (d.jumlahBulanBerjalan ? '<br><span style="color:#f6c667">Bulan masih berjalan — data kirim/terima belum penuh sebulan</span>' : '');
 }
 
 function initials(nama){
@@ -1473,6 +1480,57 @@ setInterval(function(){
 
 if(typeof lucide!=='undefined') lucide.createIcons();
 loadAll();
+</script>
+
+<div id="audit-modal" style="display:none;position:fixed;inset:0;background:rgba(5,5,12,.74);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:14px;width:min(900px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.5);">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <b style="font-family:var(--font-display);font-size:14px;">Audit Perhitungan Produktivitas</b>
+      <button type="button" class="fy-btn" onclick="closeAuditProduktivitas()">Tutup</button>
+    </div>
+    <div id="audit-body" style="padding:16px 18px;overflow:auto;font-size:11.5px;line-height:1.6;color:var(--text-main);">Memuat…</div>
+  </div>
+</div>
+<script>
+function closeAuditProduktivitas(){ document.getElementById('audit-modal').style.display='none'; }
+function openAuditProduktivitas(){
+  var m=document.getElementById('audit-modal'), b=document.getElementById('audit-body');
+  m.style.display='flex'; b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-muted);">Membaca data sheet Kirim & Terima… (bisa 10–30 detik)</div>';
+  var nik = window.WH_SESSION ? window.WH_SESSION.nik : '';
+  google.script.run.withSuccessHandler(function(r){ renderAudit(r); })
+    .withFailureHandler(function(e){ b.innerHTML='<div style="color:#ff8a8a;">Gagal: '+esc2(e&&e.message)+'</div>'; })
+    .auditProduktivitasFTE(nik, curBulan, curTahun);
+}
+function esc2(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function renderAudit(r){
+  var b=document.getElementById('audit-body');
+  if(!r||!r.success){ b.innerHTML='<div style="color:#ff8a8a;">'+esc2(r&&r.error||'Gagal memuat audit')+'</div>'; return; }
+  var n0=function(v){return (v||0).toLocaleString('id-ID',{maximumFractionDigits:0});}, n2=function(v){return (v||0).toLocaleString('id-ID',{maximumFractionDigits:2});};
+  var col={danger:'#ff6b6b',warn:'#f6c667',info:'#7cb0ff',ok:'#4fd9a8'}, ic={danger:'⛔',warn:'⚠️',info:'ℹ️',ok:'✅'};
+  var sheetBox=function(t,s){
+    return '<div style="border:1px solid var(--border-color);border-radius:10px;padding:10px 12px;flex:1;min-width:250px;"><b>'+t+'</b>'+
+    '<table style="width:100%;font-size:11px;margin-top:6px;border-collapse:collapse;">'+
+    [['Baris di sheet',n0(s.totalBaris)],['Baris di bulan ini',n0(s.barisBulan)],['Baris dihitung',n0(s.barisTerhitung)+' → '+n0(s.terhitung)+' Kg'],
+     ['Baris tidak dihitung',n0(s.barisDikecualikan)+' → '+n0(s.dikecualikan)+' Kg'],['Berat plus / minus',n0(s.positif)+' / '+n0(s.negatif)+' Kg'],
+     ['Baris identik (kelebihan)',n0(s.duplikat.barisLebih)+' → '+n0(s.duplikat.beratLebih)+' Kg'],['Tanggal berupa teks',n0(s.tanggalTeks)]]
+     .map(function(x){return '<tr><td style="padding:3px 0;color:var(--text-muted);">'+x[0]+'</td><td style="text-align:right;font-weight:600;">'+x[1]+'</td></tr>';}).join('')+'</table></div>';
+  };
+  var h='';
+  h+='<div style="margin-bottom:12px;">'+r.temuan.map(function(t){return '<div style="padding:8px 11px;margin-bottom:6px;border-radius:8px;border:1px solid '+col[t.level]+'55;background:'+col[t.level]+'14;">'+ic[t.level]+' '+esc2(t.teks)+'</div>';}).join('')+'</div>';
+  h+='<b>Langkah hitung (bulan '+r.bulan+'/'+r.tahun+')</b>';
+  h+='<div style="margin:6px 0 12px;padding:10px 12px;border-radius:10px;background:rgba(212,175,55,.07);border:1px solid rgba(212,175,55,.25);">'+
+     '(Kirim '+n0(r.kirim.terhitung)+' + Terima '+n0(r.terima.terhitung)+') ÷ 2 = <b>'+n0(r.hitung.avgKg)+' Kg</b><br>'+
+     '÷ FTE <b>'+n2(r.fte.totalFTE)+'</b> ('+r.fte.karyawanInternal+' internal aktif + '+n2(r.fte.fteLembur)+' FTE lembur dari '+n2(r.fte.jamLemburInternal)+' jam ÷ '+r.fte.standarJam+')<br>'+
+     '= <b>'+n0(r.hitung.kgPerFTE)+' Kg/FTE</b> = <b style="color:#4ade80;font-size:14px;">'+n2(r.hitung.tonPerFTE)+' Ton/FTE</b> (target '+n2(r.hitung.target)+')</div>';
+  h+='<b>Bandingkan skenario</b><table style="width:100%;margin:6px 0 12px;border-collapse:collapse;font-size:11px;">'+r.skenario.map(function(s){return '<tr style="border-bottom:1px solid rgba(255,255,255,.06);"><td style="padding:5px 0;">'+esc2(s.nama)+'</td><td style="color:var(--text-muted);">'+esc2(s.ket)+'</td><td style="text-align:right;font-weight:700;">'+n2(s.ton)+' Ton/FTE</td></tr>';}).join('')+'</table>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">'+sheetBox('Pengiriman (DASHBOARD_KIRIM)',r.kirim)+sheetBox('Penerimaan (DASHBOARD_PRODUKSI)',r.terima)+'</div>';
+  var dupRows=r.kirim.duplikat.contoh.map(function(x){return ['Kirim',x]}).concat(r.terima.duplikat.contoh.map(function(x){return ['Terima',x]}));
+  if(dupRows.length) h+='<b>Contoh baris identik</b><table style="width:100%;margin:6px 0 12px;border-collapse:collapse;font-size:10.5px;"><tr style="color:var(--text-muted);text-align:left;"><th>Sheet</th><th>Item</th><th>Tanggal</th><th style="text-align:right;">Berat</th><th style="text-align:right;">Salinan</th></tr>'+dupRows.map(function(d){var x=d[1];return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);"><td>'+d[0]+'</td><td>'+esc2(x.item)+'</td><td>'+x.tgl+'</td><td style="text-align:right;">'+n2(x.berat)+'</td><td style="text-align:right;">'+x.salinan+'×</td></tr>';}).join('')+'</table>';
+  var big=r.kirim.terbesar.slice(0,4).map(function(x){return ['Kirim',x]}).concat(r.terima.terbesar.slice(0,4).map(function(x){return ['Terima',x]}));
+  h+='<b>Baris terbesar</b><table style="width:100%;margin:6px 0 12px;border-collapse:collapse;font-size:10.5px;"><tr style="color:var(--text-muted);text-align:left;"><th>Sheet</th><th>Item</th><th>Deskripsi</th><th>Tanggal</th><th style="text-align:right;">Berat (Kg)</th></tr>'+big.map(function(d){var x=d[1];return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);"><td>'+d[0]+'</td><td>'+esc2(x.item)+'</td><td>'+esc2(x.desc)+'</td><td>'+x.tgl+'</td><td style="text-align:right;">'+n2(x.berat)+'</td></tr>';}).join('')+'</table>';
+  h+='<b>Karyawan yang dihitung sebagai pembagi FTE ('+r.fte.karyawanInternal+' internal aktif)</b><div style="margin:6px 0;color:var(--text-muted);">'+r.fte.namaInternal.map(function(k){return esc2(k.nama)+' ('+esc2(k.kode)+')';}).join(' · ')+'<br>Karyawan OS aktif (tidak ikut pembagi): '+r.fte.karyawanOS+' · Nonaktif: '+r.fte.nonaktif+'</div>';
+  b.innerHTML=h;
+}
 </script>
 </body>
 </html>
