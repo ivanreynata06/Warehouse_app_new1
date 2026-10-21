@@ -48,6 +48,8 @@ var API_FUNCTIONS = {
   getLemburKategoriBulanan: getLemburKategoriBulanan,
   getLemburKategoriTrend6Bulan: getLemburKategoriTrend6Bulan,
   getFTETrendTahunan: getFTETrendTahunan,
+  getSupabaseStorageStats: getSupabaseStorageStats,
+  setSupabaseDbLimitMB: setSupabaseDbLimitMB,
   getOvertimeTrend6Bulan  : getOvertimeTrend6Bulan,
   saveLembur              : saveLembur,
   getLemburList           : getLemburList,
@@ -3555,6 +3557,7 @@ function syncAllToSupabase() {
       allLogs.push('=== ' + workspaceKey + ' === GAGAL TOTAL: ' + err.message);
     }
   });
+  try { _supabaseRpc('wh_storage_stats', {}); } catch (e) { /* riwayat ukuran DB: abaikan bila fungsi SQL belum dibuat */ }
   Logger.log(allLogs.join('\n\n'));
   return allLogs;
 }
@@ -9212,5 +9215,146 @@ function soGetAll(force) {
                statusSel: d.statusSel, ket: d.ket, tglClose: d.tglClose, alasanClose: d.alasanClose, konfirmasi: d.konfirmasi, pic: picOf[d.lembar] || '', group: grpOf[d.lembar] || '' };
     });
     return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, mingguan: dash.mingguan, lembar: lembar.data, selisih: selisih, akun: _soAkunMap(), sumberMaster: soGetMaster().sumber || 'SO_MASTER' };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// ================================================================
+//  MONITORING PENYIMPANAN SUPABASE (menu Kelola User) -- hanya Super Admin & TL
+// ----------------------------------------------------------------
+//  Data diambil dari fungsi SQL wh_storage_stats() (lihat supabase/storage_stats.sql
+//  -> WAJIB dijalankan sekali di SQL Editor Supabase). Batas kapasitas paket diatur lewat
+//  Script Property SUPABASE_DB_LIMIT_MB (default 500 = paket Free; Pro = 8192).
+//  Estimasi "penuh dalam berapa lama" = sisa kapasitas / pertumbuhan per hari, dgn pola
+//  data yang SAMA seperti sekarang (snapshot harian bertambah 1 key/hari, arsip bulanan 1 key/bulan,
+//  snapshot lain ditimpa -> tidak menambah ukuran). Bila riwayat >= 14 hari tersedia, laju
+//  pertumbuhan aktual (regresi linear ukuran DB) dipakai sebagai pembanding.
+// ================================================================
+var SB_MENU_MAP = {
+  stock: 'Monitoring Stock', stock_trend: 'Monitoring Stock',
+  outbound: 'Dashboard WH Import (Inbound & Outbound)', inbound: 'Dashboard WH Import (Inbound & Outbound)', io_trend: 'Dashboard WH Import (Inbound & Outbound)',
+  kanban: 'Monitoring Kanban', rekap: 'Rekap PIC (Rekap Muatan)', residence_time: 'Loading Time',
+  fte: 'Monitoring FTE', ot_trend6: 'Monitoring FTE', kat_trend6: 'Monitoring FTE',
+  group_list: 'Umum (daftar group)'
+};
+var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode'];
+
+function _actorIsTlOrSuper(actorNik) {
+  if (_isSuperAdmin(actorNik)) return true;
+  var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_AKUN_LOGIN);
+  if (!sh) return false;
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(actorNik)) return String(data[i][2] || '').trim().toUpperCase() === 'TL';
+  }
+  return false;
+}
+
+function _supabaseRpc(fn, body) {
+  var props = PropertiesService.getScriptProperties();
+  var baseUrl = props.getProperty('SUPABASE_URL'), svcKey = props.getProperty('SUPABASE_SERVICE_KEY');
+  if (!baseUrl || !svcKey) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_KEY belum di-set di Script Properties');
+  var res = UrlFetchApp.fetch(baseUrl.replace(/\/$/, '') + '/rest/v1/rpc/' + fn, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { apikey: svcKey, Authorization: 'Bearer ' + svcKey }, payload: JSON.stringify(body || {})
+  });
+  var code = res.getResponseCode(), text = res.getContentText();
+  if (code === 404 || /PGRST202|Could not find the function/i.test(text)) {
+    throw new Error('Fungsi ' + fn + ' belum ada di Supabase -- jalankan supabase/storage_stats.sql di SQL Editor Supabase.');
+  }
+  if (code >= 300) throw new Error('Supabase RPC ' + fn + ' gagal (' + code + '): ' + text.slice(0, 250));
+  return JSON.parse(text);
+}
+
+function _sbDayDiff(a, b) { // YYYY-MM-DD
+  var pa = a.split('-'), pb = b.split('-');
+  return Math.round((new Date(+pb[0], +pb[1] - 1, +pb[2]) - new Date(+pa[0], +pa[1] - 1, +pa[2])) / 86400000);
+}
+function _sbMonthDiff(a, b) { // YYYY-MM
+  var pa = a.split('-'), pb = b.split('-');
+  return (+pb[0] - +pa[0]) * 12 + (+pb[1] - +pa[1]);
+}
+
+// Pertumbuhan (byte/hari) per kelompok snapshot dgn pola data yang sama seperti sekarang
+function _sbGrowthPerDay(g) {
+  var avg = Number(g.avg_bytes) || 0, keys = Number(g.keys) || 0;
+  if (g.pattern === 'daily') {
+    var span = Math.max(1, _sbDayDiff(g.first_period, g.last_period) + 1);
+    return avg * Math.min(1, keys / span);
+  }
+  if (g.pattern === 'monthly') {
+    var m = Math.max(1, _sbMonthDiff(g.first_period.slice(0, 7), g.last_period.slice(0, 7)) + 1);
+    return avg * Math.min(1, keys / m) / 30.4375;
+  }
+  return 0; // snapshot yg ditimpa (upsert) -> tidak menambah ukuran
+}
+
+// Laju aktual dari riwayat harian (regresi linear). null bila data kurang / tidak naik.
+function _sbGrowthEmpiris(history) {
+  var h = (history || []).filter(function (r) { return r && r.day && r.db_bytes != null; });
+  if (h.length < 3) return { perDay: null, hari: h.length ? _sbDayDiff(h[0].day, h[h.length - 1].day) : 0 };
+  var t0 = h[0].day, xs = h.map(function (r) { return _sbDayDiff(t0, r.day); }), ys = h.map(function (r) { return Number(r.db_bytes); });
+  var n = xs.length, mx = xs.reduce(function (a, b) { return a + b; }, 0) / n, my = ys.reduce(function (a, b) { return a + b; }, 0) / n;
+  var num = 0, den = 0;
+  for (var i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) * (xs[i] - mx); }
+  var span = xs[n - 1] - xs[0];
+  return { perDay: (den > 0 && num > 0) ? num / den : null, hari: span };
+}
+
+function _sbEstimasi(limitBytes, usedBytes, perDayModel, emp, todayIso) {
+  var perDay = perDayModel, metode = 'model';
+  if (emp.perDay && emp.hari >= 14) { perDay = emp.perDay; metode = 'riwayat'; }
+  var sisa = Math.max(0, limitBytes - usedBytes), hari = perDay > 0 ? sisa / perDay : null;
+  var tgl = null;
+  if (hari !== null && isFinite(hari)) {
+    var p = todayIso.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2] + Math.min(Math.floor(hari), 36500));
+    tgl = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  return { perDayModel: perDayModel, perDayRiwayat: emp.perDay, riwayatHari: emp.hari, perDay: perDay, metode: metode,
+    sisaBytes: sisa, sisaHari: hari, sisaBulan: hari === null ? null : hari / 30.4375, sisaTahun: hari === null ? null : hari / 365.25, tanggalPenuh: tgl };
+}
+
+function getSupabaseStorageStats(actorNik, force) {
+  try {
+    if (!_actorIsTlOrSuper(actorNik)) return { success: false, error: 'Akses ditolak -- hanya Super Admin dan TL.' };
+    var cache = CacheService.getScriptCache(), props = PropertiesService.getScriptProperties();
+    var limitMB = Number(props.getProperty('SUPABASE_DB_LIMIT_MB')) || 500;
+    var key = 'SB_STORAGE_v1_' + limitMB;
+    if (!force) { var hit = cache.get(key); if (hit) { var o = JSON.parse(hit); o.dariCache = true; o.isSuperAdmin = _isSuperAdmin(actorNik); return o; } }
+
+    var raw = _supabaseRpc('wh_storage_stats', {});
+    var used = Number(raw.db_bytes) || 0, limitBytes = limitMB * 1024 * 1024;
+    var groups = raw.groups || [], perMenu = {}, perWs = {}, growthTotal = 0;
+    groups.forEach(function (g) {
+      var menu = SB_MENU_MAP[g.type] || ('Lainnya (' + g.type + ')'), gr = _sbGrowthPerDay(g);
+      growthTotal += gr; g.growthPerDay = gr;
+      var m = perMenu[menu] = perMenu[menu] || { menu: menu, keys: 0, bytes: 0, growthPerDay: 0, jenis: {} };
+      m.keys += Number(g.keys) || 0; m.bytes += Number(g.bytes) || 0; m.growthPerDay += gr; m.jenis[g.type + (g.mode ? ':' + g.mode : '')] = 1;
+      var w = perWs[g.ws] = perWs[g.ws] || { ws: g.ws, keys: 0, bytes: 0, growthPerDay: 0 };
+      w.keys += Number(g.keys) || 0; w.bytes += Number(g.bytes) || 0; w.growthPerDay += gr;
+    });
+    var menus = Object.keys(perMenu).map(function (k) { perMenu[k].jenis = Object.keys(perMenu[k].jenis); return perMenu[k]; }).sort(function (a, b) { return b.bytes - a.bytes; });
+    var wss = Object.keys(perWs).map(function (k) { return perWs[k]; }).sort(function (a, b) { return b.bytes - a.bytes; });
+    var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var est = _sbEstimasi(limitBytes, used, growthTotal, _sbGrowthEmpiris(raw.history), today);
+
+    var out = { success: true, generatedAt: raw.generated_at || new Date().toISOString(), today: today,
+      limitMB: limitMB, plan: limitMB === 500 ? 'Free (500 MB)' : (limitMB === 8192 ? 'Pro (8 GB)' : 'Kustom'),
+      dbBytes: used, appBytes: Number(raw.app_bytes) || 0, limitBytes: limitBytes,
+      sisaBytes: Math.max(0, limitBytes - used), persen: limitBytes ? Math.round(used / limitBytes * 10000) / 100 : 0,
+      snapshotRows: Number(raw.snapshot_rows) || 0, tables: raw.tables || [], menus: menus, departemen: wss,
+      estimasi: est, history: raw.history || [], tidakDisimpan: SB_TIDAK_DISIMPAN, isSuperAdmin: _isSuperAdmin(actorNik) };
+    try { cache.put(key, JSON.stringify(out), 300); } catch (e) { /* >100KB: lewati cache */ }
+    return out;
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// Ubah batas kapasitas paket (MB) -- hanya Super Admin. Free = 500, Pro = 8192.
+function setSupabaseDbLimitMB(actorNik, mb) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- hanya Super Admin.' };
+    mb = Number(mb);
+    if (!(mb >= 50 && mb <= 1048576)) return { success: false, error: 'Batas harus antara 50 MB dan 1.048.576 MB.' };
+    PropertiesService.getScriptProperties().setProperty('SUPABASE_DB_LIMIT_MB', String(Math.round(mb)));
+    return { success: true, limitMB: Math.round(mb) };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }

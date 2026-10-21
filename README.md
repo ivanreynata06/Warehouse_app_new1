@@ -319,3 +319,8 @@ Panel Admin > Tanda Tangan Digital SPL > "Ukuran maksimum paraf di SPL" (lebar x
 ## Stock Opname
 
 Sheet SO_MASTER / SO_LEMBAR / SO_DETAIL dibuat otomatis oleh `kode.gs` (fungsi `so*`). Item lembar hanya diambil jika ada di sheet per-group (sheet bernama kode group, mis. `I053`). Group MINGGUAN (I053) targetnya per minggu; TL mendapat peringatan jika tidak selesai. **Deploy ulang Apps Script (New version) setelah update `kode.gs`**, lalu aktifkan menu *Monitoring Stock Opname* di Kelola Menu.
+
+
+## Penyimpanan Supabase (Kelola User)
+
+Kartu grafik kapasitas/estimasi/menu hanya tampil untuk **Super Admin dan TL**. Setup sekali: jalankan `supabase/storage_stats.sql` di SQL Editor Supabase, lalu deploy ulang Apps Script. Batas paket default 500 MB (Free); Super Admin dapat mengubahnya di kartu tersebut (Pro = 8192 MB).

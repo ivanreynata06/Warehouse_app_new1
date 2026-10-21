@@ -6,6 +6,8 @@
 <script src="./assets/js/config.js?v=20260722d"></script>
 <script src="./assets/js/api-shim.js?v=20260722d"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="./assets/js/sb-storage-card.js?v=20261021a"></script>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
 
@@ -243,6 +245,50 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 @media (max-width:860px){
   .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:60;box-shadow:10px 0 30px rgba(0,0,0,.45);}
 }
+
+/* ===== Penyimpanan Supabase (Super Admin & TL) ===== */
+.sb-card{gap:14px;overflow:hidden;}
+.sb-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,#06b6d4,#3b82f6,#d4af37,#22c55e);background-size:200% 100%;animation:sbFlow 6s linear infinite;}
+@keyframes sbFlow{to{background-position:200% 0;}}
+.sb-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.sb-pill{font-size:9.5px;font-weight:700;padding:3px 10px;border-radius:99px;background:rgba(59,130,246,.15);color:#7cb0ff;border:1px solid rgba(59,130,246,.3);}
+.sb-top{display:grid;grid-template-columns:minmax(260px,1.1fr) minmax(280px,1.3fr) minmax(220px,1fr);gap:14px;}
+.sb-box,.sb-panel{border:1px solid var(--border-color);border-radius:12px;background:var(--bg-main);padding:14px 16px;}
+.sb-box h4,.sb-panel h4{font-family:var(--font-display);font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-main);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.sb-box h4 em,.sb-panel h4 em{font-style:normal;font-size:9px;color:var(--text-muted);font-weight:600;text-transform:none;letter-spacing:.2px;}
+.sb-gauge-box{display:flex;gap:14px;align-items:center;}
+.sb-gauge-wrap{position:relative;width:190px;height:190px;flex-shrink:0;}
+.sb-stats{display:flex;flex-direction:column;gap:9px;font-size:10.5px;color:var(--text-muted);}
+.sb-stats b{display:block;font-family:var(--font-display);font-size:19px;color:var(--text-main);font-variant-numeric:tabular-nums;line-height:1.15;}
+.sb-est{display:flex;flex-direction:column;gap:5px;justify-content:center;}
+.sb-est .big{font-family:var(--font-display);font-size:38px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums;}
+.sb-est .sub{font-size:11px;color:var(--text-muted);}
+.sb-est .date{font-size:12px;font-weight:700;color:var(--accent-gold2);margin-top:4px;}
+.sb-est .rate{font-size:10.5px;color:var(--text-main);margin-top:6px;padding:7px 10px;border-radius:8px;background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.2);}
+.sb-est .meth{font-size:9.5px;color:var(--text-muted);margin-top:4px;line-height:1.5;}
+.sb-info{display:flex;flex-direction:column;gap:8px;font-size:10.5px;color:var(--text-muted);justify-content:center;}
+.sb-info div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--border-color);padding-bottom:6px;}
+.sb-info b{color:var(--text-main);font-variant-numeric:tabular-nums;}
+.sb-proj-wrap{position:relative;height:320px;}.sb-h300{position:relative;height:310px;}
+.sb-two{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;}
+.sb-two.eq{grid-template-columns:1fr 1fr;}
+.sb-card table{width:100%;border-collapse:collapse;font-size:10.5px;}
+.sb-card th{text-align:left;padding:7px 8px;color:var(--text-muted);font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border-color);}
+.sb-card td{padding:8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+.sb-n{font-variant-numeric:tabular-nums;white-space:nowrap;}
+.sb-card code{font-family:var(--font-mono);font-size:9px;background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;}
+.sb-jenis{max-width:260px;line-height:1.9;}
+.sb-dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;}
+.sb-bar{height:5px;border-radius:4px;background:var(--border-color);overflow:hidden;margin-bottom:3px;}.sb-bar i{display:block;height:100%;border-radius:4px;}
+.sb-chip{display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border-radius:99px;font-size:10px;border:1px solid var(--border-color);color:var(--text-muted);}
+.sb-empty{text-align:center;color:var(--text-muted);padding:18px;}
+.sb-note{font-size:9.5px;color:var(--text-muted);line-height:1.6;}
+.sb-state{position:absolute;inset:48px 0 0 0;display:none;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg-card) 90%,transparent);backdrop-filter:blur(3px);z-index:5;font-size:12px;color:var(--text-muted);}
+.sb-spin{width:38px;height:38px;border-radius:50%;border:3px solid var(--border-color);border-top-color:#d4af37;border-right-color:#3b82f6;animation:sbSpin .9s linear infinite;}
+@keyframes sbSpin{to{transform:rotate(360deg);}}
+.sb-admin{display:none;gap:8px;align-items:center;flex-wrap:wrap;font-size:10.5px;color:var(--text-muted);padding:10px 12px;border:1px dashed rgba(212,175,55,.4);border-radius:10px;}
+.sb-admin input{width:110px;background:var(--bg-main);color:var(--text-main);border:1px solid var(--border-color);border-radius:7px;padding:5px 8px;font-size:11px;}
+@media (max-width:1100px){.sb-top,.sb-two{grid-template-columns:1fr;}.sb-gauge-box{justify-content:center;}}
 </style>
 </head>
 <body>
@@ -386,6 +432,68 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <div id="list-cross-tl" style="font-size:11px;"></div>
           </div>
         </div>
+      </div>
+
+      <!-- ═══ PENYIMPANAN SUPABASE -- hanya tampil utk Super Admin & TL (divalidasi ulang di backend) ═══ -->
+      <div class="card sb-card" id="sb-card" style="display:none;position:relative;border:1px solid rgba(212,175,55,.35);">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="database" style="width:12px;color:var(--accent-gold);"></i>Penyimpanan Supabase</div>
+          <div class="sb-tools">
+            <span class="card-badge badge-gold"><i data-lucide="key" style="width:9px;"></i> Super Admin &amp; TL</span>
+            <span class="sb-pill" id="sb-plan">—</span>
+            <button class="btn-flat btn-flat-ghost" onclick="SbStorage.load(true)">&#8635; Muat ulang</button>
+            <button class="btn-flat btn-flat-ghost" onclick="SbStorage.replay()">Putar ulang animasi</button>
+          </div>
+        </div>
+        <div class="sb-top">
+          <div class="sb-box">
+            <h4>Kapasitas database <em id="sb-updated"></em></h4>
+            <div class="sb-gauge-box">
+              <div class="sb-gauge-wrap"><canvas id="sb-gauge"></canvas></div>
+              <div class="sb-stats">
+                <div>Terpakai<b id="sb-used">—</b></div>
+                <div>Sisa kapasitas<b id="sb-free">—</b></div>
+                <div>Batas paket<b id="sb-limit">—</b></div>
+              </div>
+            </div>
+          </div>
+          <div class="sb-box sb-est">
+            <h4>Estimasi sampai penuh <em>dengan pola data yang sama</em></h4>
+            <div class="big" id="sb-est-big">—</div>
+            <div class="sub" id="sb-est-sub"></div>
+            <div class="date" id="sb-est-date"></div>
+            <div class="rate" id="sb-rate"></div>
+            <div class="meth" id="sb-method"></div>
+          </div>
+          <div class="sb-box sb-info">
+            <h4>Rincian ukuran</h4>
+            <div><span>Data aplikasi (schema public)</span><b id="sb-app">—</b></div>
+            <div><span>Sistem bawaan Supabase</span><b id="sb-sys">—</b></div>
+            <div><span>Jumlah snapshot tersimpan</span><b id="sb-rows">—</b></div>
+          </div>
+        </div>
+        <div class="sb-panel"><h4>Proyeksi pemakaian terhadap batas paket <em>garis merah = batas kapasitas</em></h4><div class="sb-proj-wrap"><canvas id="sb-proj"></canvas></div></div>
+        <div class="sb-two">
+          <div class="sb-panel"><h4>Ukuran data per menu <em>10 terbesar</em></h4><div class="sb-h300"><canvas id="sb-menu"></canvas></div></div>
+          <div class="sb-panel"><h4>Per departemen / plant</h4><div class="sb-h300"><canvas id="sb-ws"></canvas></div></div>
+        </div>
+        <div class="sb-panel">
+          <h4>Menu yang datanya disimpan di Supabase</h4>
+          <div style="overflow:auto"><table><thead><tr><th>Menu</th><th>Jenis data (key)</th><th>Snapshot</th><th>Ukuran</th><th>Porsi</th><th>Pertumbuhan</th></tr></thead><tbody id="sb-menu-body"></tbody></table></div>
+        </div>
+        <div class="sb-two eq">
+          <div class="sb-panel"><h4>Tidak disimpan di Supabase <em>tetap di Google Sheets</em></h4><div id="sb-no"></div></div>
+          <div class="sb-panel"><h4>Tabel database</h4><div style="overflow:auto"><table><thead><tr><th>Tabel</th><th>Baris</th><th>Data</th><th>Index</th><th>Total</th></tr></thead><tbody id="sb-tables"></tbody></table></div></div>
+        </div>
+        <div class="sb-admin" id="sb-admin-box">
+          <span><b>Batas kapasitas paket (MB)</b> — Free = 500, Pro = 8192</span>
+          <input type="number" id="sb-limit-input" min="50" step="1">
+          <button class="btn-flat btn-flat-ghost" onclick="document.getElementById('sb-limit-input').value=500">Free 500</button>
+          <button class="btn-flat btn-flat-ghost" onclick="document.getElementById('sb-limit-input').value=8192">Pro 8192</button>
+          <button class="btn-modal-save" onclick="SbStorage.saveLimit()">Simpan batas</button>
+        </div>
+        <div class="sb-note">Ukuran database = <b>Database size</b> di dashboard Supabase (sudah termasuk &plusmn;10 MB sistem bawaan). Estimasi memakai pola yang berjalan sekarang: snapshot <b>harian</b> bertambah 1 key per hari, arsip <b>bulanan</b> 1 key per bulan, sedangkan snapshot lain <b>ditimpa</b> sehingga tidak menambah ukuran. Setelah riwayat ukuran terkumpul &ge; 14 hari (dicatat otomatis tiap sync harian), laju pertumbuhan aktual dipakai sebagai dasar.</div>
+        <div class="sb-state" id="sb-state"></div>
       </div>
 
       <!-- ═══ KELOLA MENU PER DEPARTEMEN/PLANT -- cuma tampil utk Super Admin ═══ -->
@@ -778,6 +886,7 @@ function loadUsers(){
     setTimeout(function(){ window.location.href = './index.html'; }, 1200);
     return;
   }
+  if (!window.__sbInit && window.SbStorage) { window.__sbInit = 1; SbStorage.init(actorNik); }
   showLoading(true, 'Memuat daftar user...');
   google.script.run
     .withSuccessHandler(function(res){
