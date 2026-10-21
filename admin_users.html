@@ -247,8 +247,9 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
 }
 
 /* ===== Penyimpanan Supabase (Super Admin & TL) ===== */
-.sb-card{gap:14px;overflow:hidden;}
-.sb-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,#06b6d4,#3b82f6,#d4af37,#22c55e);background-size:200% 100%;animation:sbFlow 6s linear infinite;}
+.sb-card{gap:14px;flex:0 0 auto;min-height:max-content;}
+.sb-card>*{flex-shrink:0;}
+.sb-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;border-radius:12px 12px 0 0;background:linear-gradient(90deg,#06b6d4,#3b82f6,#d4af37,#22c55e);background-size:200% 100%;animation:sbFlow 6s linear infinite;}
 @keyframes sbFlow{to{background-position:200% 0;}}
 .sb-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 .sb-pill{font-size:9.5px;font-weight:700;padding:3px 10px;border-radius:99px;background:rgba(59,130,246,.15);color:#7cb0ff;border:1px solid rgba(59,130,246,.3);}
