@@ -175,6 +175,40 @@
     });
   }
 
+
+  /* ---------- hapus per rentang tanggal ---------- */
+  // dari / sampai: 'yyyy-mm-dd'. Voucher, Backflush, Scan Out memakai field date; Transaksi memakai t.
+  // Alur: ambil data TERBARU dari server -> buang baris di rentang -> simpan -> baca ulang server
+  // dan hitung baris yang masih tersisa di rentang (verifikasi). Gagal di langkah mana pun = error.
+  function dateField(kind) { return kind === 'trx' ? 't' : 'date'; }
+  function inRange(r, f, dari, sampai) { var d = r && r[f] || ''; return !!d && d >= dari && d <= sampai; }
+  function hapusRentang(kind, dari, sampai) {
+    if (['voucher', 'bfl', 'ter', 'trx'].indexOf(kind) < 0) return Promise.reject(new Error('Jenis data ini tidak punya tanggal, tidak bisa dihapus per rentang.'));
+    if (!dari || !sampai || dari > sampai) return Promise.reject(new Error('Rentang tanggal tidak valid.'));
+    var f = dateField(kind);
+    return load().then(function (cur) {
+      if (cur.source !== 'server') throw new Error('Server tidak terjangkau (' + cur.warn + '). Penghapusan dibatalkan, data di server belum diubah.');
+      var rec = cur.data[kind];
+      if (!rec || !rec.rows || !rec.rows.length) return { dihapus: 0, sisaDiServer: 0, sisaTotal: 0, terverifikasi: true };
+      var keep = rec.rows.filter(function (r) { return !inRange(r, f, dari, sampai); });
+      var gone = rec.rows.length - keep.length;
+      if (!gone) return { dihapus: 0, sisaDiServer: 0, sisaTotal: keep.length, terverifikasi: true };
+      var write;
+      if (!keep.length) write = clear(kind);
+      else { var nr = {}; for (var x in rec) nr[x] = rec[x]; nr.rows = keep; nr.count = keep.length; write = save(kind, nr, false); }
+      return write.then(function (w) {
+        if (!w.remote) throw new Error('Gagal menyimpan ke server: ' + (w.warn || 'tidak diketahui') + '. Data di server BELUM terhapus.');
+        return load().then(function (v) {
+          if (v.source !== 'server') throw new Error('Penghapusan terkirim, tapi tidak bisa diverifikasi ke server (' + v.warn + '). Muat ulang halaman lalu cek.');
+          var rows2 = (v.data[kind] && v.data[kind].rows) || [];
+          var sisa = rows2.filter(function (r) { return inRange(r, f, dari, sampai); }).length;
+          if (sisa > 0) { var e = new Error('Penghapusan di server TIDAK tuntas: masih ada ' + sisa.toLocaleString('id-ID') + ' baris di rentang ini.'); e.sisa = sisa; throw e; }
+          return { dihapus: gone, sisaDiServer: 0, sisaTotal: rows2.length, terverifikasi: true };
+        });
+      });
+    });
+  }
+
   /* ---------- baca file ---------- */
   function readSheets(file) {
     if (typeof root.XLSX === 'undefined') return Promise.reject(new Error('Library Excel belum termuat. Periksa koneksi lalu coba lagi.'));
@@ -346,5 +380,5 @@
   }
   function cacheAlasan(obj) { return lset('alasan', obj); }
 
-  root.AkurasiStore = { KINDS: KINDS, TITLES: TITLES, load: load, loadAll: loadAll, save: save, clear: clear, ingest: ingest, saveAlasan: saveAlasan, cacheAlasan: cacheAlasan };
+  root.AkurasiStore = { KINDS: KINDS, TITLES: TITLES, load: load, loadAll: loadAll, save: save, clear: clear, hapusRentang: hapusRentang, dateField: dateField, ingest: ingest, saveAlasan: saveAlasan, cacheAlasan: cacheAlasan };
 })(typeof window !== 'undefined' ? window : this);
