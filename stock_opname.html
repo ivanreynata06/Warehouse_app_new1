@@ -106,6 +106,85 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
 .pset{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end}
 .pset label{display:flex;flex-direction:column;gap:5px;font-size:10.5px;color:var(--txt2);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
 .pset input,.pset select{font-size:12px}
+/* ===== Detail group / lembar, kartu selisih, revisi (tampilan lembut) ===== */
+tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(16,185,129,.07)}
+.hint{font-size:10.5px;color:var(--txt3);font-weight:500}
+.dtabs{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 4px}
+.dtab{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;border:1px solid var(--bd2);background:rgba(255,255,255,.03);color:var(--txt2);font:600 11.5px 'Inter',sans-serif;cursor:pointer;transition:all .25s}
+.dtab:hover{border-color:rgba(16,185,129,.5);color:var(--txt)}
+.dtab.on{background:linear-gradient(135deg,rgba(16,185,129,.2),rgba(6,182,212,.14));border-color:rgba(16,185,129,.55);color:#7ef0c6}
+.dtab em{font-style:normal;font-size:10px;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.08)}
+.dtab em.w{background:rgba(251,113,133,.2);color:#fda4af}
+.dstat{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.dstat div{background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:12px;padding:9px 12px}
+.dstat span{display:block;font-size:9.5px;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.dstat b{font-family:'Outfit';font-size:18px}
+.dlock{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700}
+.dlock.k{background:rgba(148,163,184,.16);color:#cbd5e1}.dlock.o{background:rgba(251,191,36,.16);color:#fcd34d}.dlock.a{background:rgba(52,211,153,.16);color:#6ee7b7}
+.dtool{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.dsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.dsum>div{position:relative;border-radius:16px;padding:12px 14px;background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.012));border:1px solid rgba(255,255,255,.07);animation:dcIn .55s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i)*70ms)}
+.dsum span{display:block;font-size:10px;color:var(--txt2);font-weight:600;letter-spacing:.3px}
+.dsum b{display:block;font-family:'Outfit';font-size:24px;margin-top:2px}
+.dsum .r b{color:#fda4af}.dsum .a b{color:#fcd34d}.dsum .g b{color:#6ee7b7}.dsum .c b{color:#7dd3fc}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.dcard{--ac:#fb7185;--acbg:rgba(251,113,133,.13);position:relative;overflow:hidden;border-radius:18px;padding:16px 16px 13px;
+  background:linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.012)),var(--card2);border:1px solid rgba(255,255,255,.075);
+  box-shadow:0 10px 30px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);transition:transform .3s cubic-bezier(.2,.8,.2,1),border-color .3s;
+  animation:dcIn .6s cubic-bezier(.2,.8,.2,1) backwards,dcBreath 4.6s ease-in-out infinite;animation-delay:calc(var(--i)*60ms),calc(var(--i)*60ms + .9s)}
+.dcard:before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,var(--ac),transparent 75%)}
+.dcard:after{content:"";position:absolute;right:-70px;top:-80px;width:190px;height:190px;border-radius:50%;background:radial-gradient(circle,var(--acbg),transparent 68%);pointer-events:none}
+.dcard:hover{transform:translateY(-4px);border-color:var(--ac)}
+.dcard.lebih{--ac:#fbbf24;--acbg:rgba(251,191,36,.14)}
+.dcard.closed{--ac:#34d399;--acbg:rgba(52,211,153,.12);animation:dcIn .6s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i)*60ms)}
+.dc-top{display:flex;justify-content:space-between;align-items:center;gap:8px;position:relative;z-index:1}
+.dc-item{font-family:var(--mono);font-weight:600;font-size:12.5px;letter-spacing:.2px}
+.dc-st{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;letter-spacing:.6px;padding:3px 10px;border-radius:999px;background:var(--acbg);color:var(--ac)}
+.dc-st i{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:dcDot 1.8s ease-in-out infinite}
+.dcard.closed .dc-st i{animation:none}
+.dc-desc{font-size:11.5px;color:var(--txt2);margin:5px 0 8px;line-height:1.4;position:relative;z-index:1;min-height:16px}
+.dc-delta{display:flex;align-items:baseline;gap:8px;position:relative;z-index:1}
+.dc-delta b{font-family:'Outfit';font-size:30px;line-height:1;color:var(--ac)}
+.dc-delta small{font-size:10.5px;color:var(--txt2)}
+.dc-bars{display:flex;flex-direction:column;gap:7px;margin:11px 0 9px;position:relative;z-index:1}
+.dc-bars div{display:grid;grid-template-columns:44px 1fr 54px;gap:8px;align-items:center;font-size:10.5px;color:var(--txt2)}
+.dc-bars em{font-style:normal;font-family:var(--mono);text-align:right;color:var(--txt)}
+.dc-bars span{height:7px;background:rgba(255,255,255,.07);border-radius:6px;overflow:hidden}
+.dc-bars span i{display:block;height:100%;width:var(--w);border-radius:6px;transform-origin:left;animation:dbGrow 1s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i)*60ms + .3s)}
+.dc-bars .s i{background:linear-gradient(90deg,#818cf8,#a5b4fc)}.dc-bars .f i{background:linear-gradient(90deg,var(--ac),color-mix(in srgb,var(--ac) 55%,#fff))}
+.dc-meta{font-size:10.5px;color:var(--txt3);position:relative;z-index:1}
+.dc-note{margin-top:8px;padding:8px 10px;border-radius:10px;font-size:11px;line-height:1.45;background:rgba(255,255,255,.04);border-left:2px solid var(--ac);color:var(--txt);position:relative;z-index:1}
+.dc-note.none{color:var(--txt3);border-left-color:var(--bd2);font-style:italic}
+.dc-foot{margin-top:7px;font-size:10px;color:var(--txt3);position:relative;z-index:1}
+.dempty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:38px 16px;color:var(--txt2);text-align:center;animation:dcIn .6s backwards}
+.dempty-ic{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;background:rgba(52,211,153,.14);color:#6ee7b7;animation:dcPulse 2.4s ease-in-out infinite}
+.dempty b{color:var(--txt);font-family:'Outfit';font-size:14px}
+.dload{display:flex;gap:7px;justify-content:center;padding:40px}.dload i{width:9px;height:9px;border-radius:50%;background:var(--green);animation:dcDot 1s ease-in-out infinite}.dload i:nth-child(2){animation-delay:.15s}.dload i:nth-child(3){animation-delay:.3s}
+@keyframes dcIn{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes dcBreath{0%,100%{box-shadow:0 10px 30px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05),0 0 0 0 transparent}50%{box-shadow:0 12px 34px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.05),0 0 26px var(--acbg)}}
+@keyframes dbGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes dcDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+@keyframes dcPulse{0%,100%{box-shadow:0 0 0 0 rgba(52,211,153,.35)}50%{box-shadow:0 0 0 12px rgba(52,211,153,0)}}
+.rvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.rvc{--ac:#fbbf24;position:relative;border-radius:16px;padding:13px 15px;font-size:11.5px;line-height:1.5;background:linear-gradient(160deg,rgba(255,255,255,.045),rgba(255,255,255,.01)),var(--card2);border:1px solid rgba(255,255,255,.07);border-left:3px solid var(--ac);animation:dcIn .55s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i)*60ms)}
+.rvc.done{--ac:#34d399}
+.rvc-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}.rvc-h b{font-family:'Outfit';font-size:13px}
+.rvc .tag{font-size:9.5px;font-weight:800;letter-spacing:.5px;padding:2px 9px;border-radius:999px;background:color-mix(in srgb,var(--ac) 18%,transparent);color:var(--ac);display:inline-flex;align-items:center;gap:6px}
+.rvc.open .tag i{width:6px;height:6px;border-radius:50%;background:var(--ac);animation:dcDot 1.6s ease-in-out infinite}
+.rvc q{display:block;quotes:none;margin:4px 0;padding:6px 9px;border-radius:9px;background:rgba(255,255,255,.04);color:var(--txt)}
+.rvc .m{color:var(--txt3);font-size:10.5px}
+.rvc .btn{margin-top:7px;font-size:10.5px;padding:4px 11px}
+.revb{display:flex;gap:12px;align-items:center;padding:11px 15px;margin:10px 14px 0;border-radius:14px;border:1px solid rgba(251,191,36,.35);background:linear-gradient(135deg,rgba(251,191,36,.11),rgba(251,191,36,.03));font-size:11.5px;line-height:1.5;animation:dcIn .5s backwards}
+.revb .dot{width:10px;height:10px;border-radius:50%;background:#fbbf24;flex-shrink:0;animation:dcPulse2 1.8s ease-in-out infinite}
+@keyframes dcPulse2{0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,.5)}50%{box-shadow:0 0 0 8px rgba(251,191,36,0)}}
+.revb div{flex:1}
+.flab{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--txt2);font-weight:600}.flab span{color:#fca5a5;font-weight:500}
+.flab textarea{width:100%;padding:9px 11px;border-radius:9px;border:1px solid var(--bd2);background:var(--card2);color:var(--txt);font:12px 'Inter',sans-serif;resize:vertical}
+.flab textarea:focus{outline:none;border-color:var(--green)}
+.rverr{color:#fca5a5;font-size:11px;min-height:14px}
+.chg{width:100%;font-size:10.5px;margin-top:6px}.chg td,.chg th{padding:4px 8px;font-size:10.5px}
+#revBox:empty{display:none}
+@media (prefers-reduced-motion:reduce){.dcard,.dcard *,.dsum>div,.rvc,.dempty,.dempty-ic,.revb,.revb .dot{animation:none!important}}
 @media print{
   html,body{overflow:visible;background:#fff;color:#000;height:auto}
   .shell>.sidebar,.top,.tabs,.content>.pane,.toast{display:none!important}
@@ -166,10 +245,11 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
   <div id="loadBox"></div>
   <div class="pane active" id="p-dash">
     <div id="warnBox"></div>
+    <div id="revBox"></div>
     <div class="kpis" id="kpis"></div>
     <div id="weeklyBox" style="display:flex;flex-direction:column;gap:12px"></div>
     <div class="card">
-      <div class="card-h"><h3>Progres SO per PIC &amp; Group</h3>
+      <div class="card-h"><h3>Progres SO per PIC &amp; Group <span class="hint">· klik baris group untuk melihat isi lembar &amp; item selisih</span></h3>
         <div class="row"><select id="fPic" onchange="renderDash()"></select></div></div>
       <div class="tw"><table><thead><tr>
         <th class="l">Nama PIC</th><th>Group</th><th class="l">Deskripsi</th><th>Target Durasi</th><th>Periode SO</th><th>Total SKU</th>
@@ -200,6 +280,7 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
   <!-- PENGISIAN -->
   <div class="pane" id="p-isi">
     <div id="warnBox2"></div>
+    <div id="revBox2"></div>
     <div id="weeklyBox2" style="display:flex;flex-direction:column;gap:12px"></div>
     <div class="card"><div class="card-h"><h3>Group tanggung jawab saya — status pengerjaan</h3></div><div class="card-b"><div class="gcards" id="gcards"></div></div></div>
     <div class="card" id="isiCard" style="display:none">
@@ -207,7 +288,7 @@ input.fisik.recheck{border-color:var(--amber);background:rgba(245,158,11,.12)}
         <div class="row"><select id="isiFilter" onchange="renderIsi()"><option value="all">Semua item</option><option value="todo">Belum diisi</option><option value="sel">Ada selisih</option></select>
           <input type="search" id="isiSearch" placeholder="Cari item…" oninput="renderIsi()">
           <button class="btn p" id="btnSimpanIsi" onclick="simpanIsi()">Simpan Pengisian</button></div></div>
-      <div class="card-b"><div class="bar" id="isiBar"><i style="width:0"></i></div><div class="muted" id="isiProg" style="margin-top:6px"></div></div>
+      <div id="revBanner"></div><div class="card-b"><div class="bar" id="isiBar"><i style="width:0"></i></div><div class="muted" id="isiProg" style="margin-top:6px"></div></div>
       <div class="tw"><table><thead><tr><th>No</th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Sistem</th><th>Fisik</th><th>Selisih</th></tr></thead><tbody id="isiBody"></tbody></table></div>
     </div>
   </div>
@@ -335,9 +416,9 @@ function loadAll(force){
   setTimeout(function(){L.step(1)},700); setTimeout(function(){L.step(2)},2200);
   withTimeout(api('soGetAll',!!force),60000).then(function(r){
     L.step(3);
-    S.today=r.today; S.mingguan=r.mingguan||[]; S.akun=r.akun||[]; S.master=r.master; S.dash=r.dash; S.warn=r.warnings; S.lembar=r.lembar; S.sel=r.selisih;
+    S.today=r.today; S.revisi=r.revisi||[]; S.mingguan=r.mingguan||[]; S.akun=r.akun||[]; S.master=r.master; S.dash=r.dash; S.warn=r.warnings; S.lembar=r.lembar; S.sel=r.selisih;
     document.getElementById('subtitle').textContent='Update '+r.today+(IS_TL?' · Semua PIC':' · Akun PIC: '+NAMA);
-    fillSelects(); renderDash(); renderGcards(); renderSel(); renderPrint(); renderRiw();
+    fillSelects(); renderDash(); renderGcards(); renderRevBox('revBox',function(x){return IS_TL||isMine(x.pic)}); renderSel(); renderPrint(); renderRiw();
     show(); L.done();
     if(S.dash.some(function(d){return d.totalSku==null})) api('soGetSkuCounts').then(function(c){
       S.dash.forEach(function(d){var k=String(d.group).toUpperCase().replace(/[^A-Z0-9]/g,'');if(c.counts[k]!==undefined)d.totalSku=c.counts[k]});renderDash()}).catch(function(){});
@@ -354,7 +435,7 @@ function fillSelects(){
 }
 
 /* ---------- DASHBOARD ---------- */
-function idDate(iso){if(!iso)return '';var p=iso.split('-'),b=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];return +p[2]+' '+b[+p[1]-1]+' '+p[0]}
+function idDate(iso){if(!iso)return '';if(!/^\d{4}-\d{2}-\d{2}/.test(iso))return String(iso);var p=iso.split('-'),b=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];return +p[2]+' '+b[+p[1]-1]+' '+p[0]}
 function rng(w){var a=w.mulai.split('-'),b=w.akhir.split('-'),bl=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];return (+a[2])+(a[1]!==b[1]?' '+bl[+a[1]-1]:'')+'–'+(+b[2])+' '+bl[+b[1]-1]}
 // Kartu peringatan SO terlambat (TL: semua PIC; PIC: miliknya sendiri)
 function renderWarn(id,list){
@@ -399,7 +480,7 @@ function renderDash(){
   renderWarn('warnBox',S.warn.filter(function(x){return IS_TL||isMine(x.pic)}));
   renderWeekly('weeklyBox',function(m){return isMine(m.pic)});
   document.getElementById('dashBody').innerHTML=rows.length?rows.map(function(r){
-    return '<tr><td class="l">'+esc(r.pic)+'</td><td><b>'+esc(r.group)+'</b></td><td class="l">'+esc(r.desc)+'</td><td>'+esc(r.targetLabel)+'</td><td class="mono" style="font-size:10.5px">'+(r.mulai?esc(r.mulai)+'<br>'+esc(r.akhir):'—')+'</td>'+
+    return '<tr class="clk" title="Klik untuk melihat isi lembar &amp; item selisih" onclick="bukaDetailGroup(\''+esc(r.group)+'\',\''+esc(r.lembarId)+'\')"><td class="l">'+esc(r.pic)+'</td><td><b>'+esc(r.group)+'</b></td><td class="l">'+esc(r.desc)+'</td><td>'+esc(r.targetLabel)+'</td><td class="mono" style="font-size:10.5px">'+(r.mulai?idDate(r.mulai)+'<br>'+idDate(r.akhir):'—')+'</td>'+
     '<td class="mono">'+(r.totalSku==null?'<span class="muted">…</span>':fmt(r.totalSku))+'</td><td class="mono">'+fmt(r.targetItem)+'</td><td class="mono">'+fmt(r.telahSo)+'</td>'+
     '<td style="min-width:120px"><div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><span class="mono">'+String(r.progress).replace('.',',')+'%</span></td>'+
     '<td class="mono">'+(r.sisaHari==null?'—':(r.sisaHari<0?'lewat '+(-r.sisaHari)+' hr':r.sisaHari+' hr'))+'</td>'+
@@ -495,6 +576,7 @@ function renderGcards(){
   var rows=S.dash.filter(function(r){return ownPic(r.pic)});
   renderWarn('warnBox2',S.warn.filter(function(x){return ownPic(x.pic)}));
   renderWeekly('weeklyBox2',function(m){return ownPic(m.pic)});
+  renderRevBox('revBox2',function(x){return ownPic(x.pic)},true);
   document.getElementById('gcards').innerHTML=rows.map(function(r){
     return '<div class="gc'+(r.status==='TERLAMBAT'?' late':'')+'" onclick="bukaLembar(\''+esc(r.lembarId)+'\')"><b>'+esc(r.group)+'</b>'+statusChip(r.status).replace('class="chip','style="float:right" class="chip')+'<small>'+esc(r.desc)+' · '+esc(r.pic)+'</small>'+
     '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div>'+(r.status==='TERLAMBAT'&&r.sejak?'<div class="lt">Terlambat sejak '+idDate(r.sejak)+'</div>':'')+(r.mingguTelat?'<div class="lt">'+r.mingguTelat+' minggu belum selesai</div>':'')+'</div>'}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO (NIK '+esc(NIK)+'). Minta admin menambahkan akun ini di sheet <b>SO_AKUN</b> (kolom A: NIK/nama akun, kolom B: nama PIC sesuai sheet DASHBOARD).</div>';
@@ -504,13 +586,15 @@ function bukaLembar(id){
   api('soGetLembarDetail',id).then(function(r){
     if(S.curId!==id){S.draft={};S.recheck={};S.curId=id}
     S.cur=r;document.getElementById('isiCard').style.display='block';
-    document.getElementById('isiTitle').innerHTML=esc(r.lembar.group+' · '+r.lembar.pic+' · '+r.lembar.mulai+' s/d '+r.lembar.akhir)+(r.lembar.terkunci?' <span class="chip c-idle">🔒 TERKUNCI</span>':'');renderIsi();
+    document.getElementById('isiTitle').innerHTML=esc(r.lembar.group+' · '+r.lembar.pic+' · '+r.lembar.mulai+' s/d '+r.lembar.akhir)+(r.lembar.dibuka?' <span class="dlock o">🔓 DIBUKA UNTUK EDIT</span>':(r.lembar.terkunci?' <span class="chip c-idle">🔒 TERKUNCI</span>':''));renderIsi();
     document.getElementById('isiCard').scrollIntoView({behavior:'smooth'})}).catch(function(e){toast(e.message,true)});
 }
 S.draft={};S.recheck={};
 function renderIsi(){
   if(!S.cur) return;
-  var lk=!!S.cur.lembar.terkunci;document.getElementById('btnSimpanIsi').style.display=lk?'none':'';
+  var lk=!!S.cur.lembar.terkunci&&!S.cur.lembar.dibuka;
+  var ro=(S.cur.revisi||[]).filter(function(x){return x.status==='TERBUKA'})[0];
+  document.getElementById('revBanner').innerHTML=ro?'<div class="revb"><span class="dot"></span><div><b>Lembar ini DIBUKA untuk edit</b> oleh '+esc(ro.dibukaOleh)+' ('+esc(ro.tglBuka)+'). Alasan: '+esc(ro.alasanBuka)+'<br>Koreksi isian yang perlu diubah lalu klik <b>Simpan Pengisian</b>. Setelah selesai, klik <b>Selesai Edit</b> dan isi keterangannya.</div><button class="btn p" onclick="selesaiEditModal(\''+esc(S.cur.lembar.id)+'\',true)">✔ Selesai Edit</button></div>':'';document.getElementById('btnSimpanIsi').style.display=lk?'none':'';
   var f=document.getElementById('isiFilter').value,q=document.getElementById('isiSearch').value.toUpperCase(),all=S.cur.items;
   var rows=all.filter(function(x){return (f==='all'||(f==='todo'&&x.fisik===null)||(f==='sel'&&(x.selisih||S.recheck[x.row])))&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1)});
   var done=all.filter(function(x){return x.fisik!==null}).length,pct=all.length?done/all.length*100:0;
@@ -565,7 +649,7 @@ function setAllDec(v){[].forEach.call(document.querySelectorAll('.seg input[valu
 function kirimIsi(rows){
   api('soSimpanIsi',{id:S.cur.lembar.id,user:NAMA,rows:rows}).then(function(r){
     rows.forEach(function(x){delete S.draft[x.row];delete S.recheck[x.row]});
-    toast(r.lanjut?('Semua item selesai ✓ Otomatis pindah ke periode berikutnya (mulai '+r.lanjut.mulai+', '+r.lanjut.jumlah+' item)'):(r.tersimpan+' item tersimpan'+((r.ditahan&&r.ditahan.length)?' · '+r.ditahan.length+' ditahan (butuh konfirmasi)':'')));
+    toast(r.lanjut?('Semua item selesai ✓ Otomatis pindah ke periode berikutnya (mulai '+r.lanjut.mulai+', '+r.lanjut.jumlah+' item)'):(r.tersimpan+' item tersimpan'+(r.revisi?' · perubahan tercatat di riwayat revisi':'')+((r.ditahan&&r.ditahan.length)?' · '+r.ditahan.length+' ditahan (butuh konfirmasi)':'')));
     var id=S.cur.lembar.id;loadAll(true);bukaLembar(id);
   }).catch(function(e){toast(e.message,true)});
 }
@@ -632,15 +716,10 @@ function renderRiw(){
   if(sel.options.length!==gs.length+1){sel.innerHTML='<option value="">Semua group</option>'+gs.map(function(g){return '<option>'+esc(g)+'</option>'}).join('');sel.value=old}
   var rows=riwRows();
   document.getElementById('riwBody').innerHTML=rows.map(function(l){var pc=l.jumlah?Math.round(l.isi/l.jumlah*1000)/10:0;
-    return '<tr><td class="l mono">'+esc(l.id)+(l.terkunci?' <span title="Terkunci">🔒</span>':'')+'</td><td class="l">'+esc(l.pic)+'</td><td><b>'+esc(l.group)+'</b></td><td>'+esc(l.mulai)+' s/d '+esc(l.akhir)+'</td><td class="mono">'+l.jumlah+'</td><td class="mono">'+l.isi+'</td><td class="mono">'+String(pc).replace('.',',')+'%</td><td>'+(l.open?'<span class="chip c-open">'+l.open+'</span>':'<span class="muted">—</span>')+'</td><td>'+(l.closed?'<span class="chip c-closed">'+l.closed+'</span>':'<span class="muted">—</span>')+'</td>'+
-    '<td><button class="btn" onclick="lihatRiw(\''+esc(l.id)+'\')">Lihat</button> <button class="btn p" onclick="unduhLembar(\''+esc(l.id)+'\')">Unduh</button></td></tr>'}).join('')||'<tr><td colspan="10" class="empty">Belum ada riwayat SO</td></tr>';
+    return '<tr><td class="l mono">'+esc(l.id)+(l.dibuka?' <span title="Dibuka untuk edit">🔓</span>':(l.terkunci?' <span title="Terkunci">🔒</span>':''))+(l.jumlahRevisi?' <span class="muted" title="Jumlah revisi">· '+l.jumlahRevisi+' revisi</span>':'')+'</td><td class="l">'+esc(l.pic)+'</td><td><b>'+esc(l.group)+'</b></td><td>'+esc(l.mulai)+' s/d '+esc(l.akhir)+'</td><td class="mono">'+l.jumlah+'</td><td class="mono">'+l.isi+'</td><td class="mono">'+String(pc).replace('.',',')+'%</td><td>'+(l.open?'<span class="chip c-open">'+l.open+'</span>':'<span class="muted">—</span>')+'</td><td>'+(l.closed?'<span class="chip c-closed">'+l.closed+'</span>':'<span class="muted">—</span>')+'</td>'+
+    '<td>'+(IS_TL&&l.terkunci&&!l.dibuka?'<button class="btn" onclick="bukaKunciModal(\''+esc(l.id)+'\',true)">🔓 Buka Kunci</button> ':'')+(l.dibuka&&(IS_TL||ownPic(l.pic))?'<button class="btn" onclick="goTab(\'isi\');bukaLembar(\''+esc(l.id)+'\')">Edit</button> ':'')+'<button class="btn" onclick="lihatRiw(\''+esc(l.id)+'\')">Lihat</button> <button class="btn p" onclick="unduhLembar(\''+esc(l.id)+'\')">Unduh</button></td></tr>'}).join('')||'<tr><td colspan="10" class="empty">Belum ada riwayat SO</td></tr>';
 }
-function lihatRiw(id){
-  api('soGetLembarDetail',id).then(function(r){var l=r.lembar;
-    openModal('<div class="mh"><h3>'+esc(l.group)+' · '+esc(l.pic)+' · '+esc(l.mulai)+' s/d '+esc(l.akhir)+'</h3><div class="row"><button class="btn p" onclick="unduhLembar(\''+esc(id)+'\')">Unduh XLSX</button><button class="btn" onclick="closeModal()">Tutup</button></div></div>'+
-    '<div class="mb" style="padding:0"><table><thead><tr><th>No</th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Sistem</th><th>Fisik</th><th>Selisih</th><th>Status</th><th class="l">Keterangan</th></tr></thead><tbody>'+
-    r.items.map(function(x,i){return '<tr class="'+(x.selisih?'sel-row':'')+'"><td>'+(i+1)+'</td><td class="l mono">'+esc(x.item)+'</td><td class="l">'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td class="mono">'+(x.fisik===null?'—':fmt(x.fisik))+'</td><td class="mono">'+(x.selisih===null?'':fmt(x.selisih))+'</td><td>'+selChip(x.statusSel)+'</td><td class="l">'+esc(x.ket)+'</td></tr>'}).join('')+'</tbody></table></div>',true)}).catch(function(e){toast(e.message,true)});
-}
+function lihatRiw(id){DG.tab='isi';DG.q='';DG.f='all';bukaDetailLembar(id)}
 function unduhLembar(id){
   api('soGetLembarDetail',id).then(function(r){var l=r.lembar;
     var aoa=[['LEMBAR STOCK OPNAME'],['No. Lembar',l.id],['Group',l.group],['PIC',l.pic],['Periode',l.mulai+' s/d '+l.akhir],[],
@@ -657,6 +736,142 @@ function unduhRekap(){
   rows.forEach(function(l){aoa.push([l.id,l.pic,l.group,l.mulai,l.akhir,l.jumlah,l.isi,l.jumlah?Math.round(l.isi/l.jumlah*1000)/10:0,l.open,l.closed])});
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Rekap SO');XLSX.writeFile(wb,'Rekap_SO_'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
+/* ---------- DETAIL GROUP / LEMBAR (klik baris dashboard) ---------- */
+var DG={id:'',tab:'isi',q:'',f:'all',data:null};
+function lmOf(id){return S.lembar.filter(function(l){return l.id===id})[0]||null}
+function bukaDetailGroup(group,lembarId){
+  DG.tab='isi';DG.q='';DG.f='all';
+  if(!lembarId){var l=S.lembar.filter(function(x){return x.group===group})[0];lembarId=l?l.id:''}
+  bukaDetailLembar(lembarId);
+}
+function lihatRevisi(id){DG.tab='rev';DG.q='';DG.f='all';bukaDetailLembar(id)}
+function bukaDetailLembar(id){
+  if(!id) return toast('Belum ada lembar SO untuk group ini.',true);
+  DG.id=id;
+  openModal('<div class="mh"><h3>Memuat lembar SO…</h3></div><div class="mb"><div class="dload"><i></i><i></i><i></i></div></div>',true);
+  api('soGetLembarDetail',id).then(function(r){DG.data=r;renderDG()}).catch(function(e){closeModal();toast(e.message,true)});
+}
+function lockChip(l){return l.dibuka?'<span class="dlock o">🔓 DIBUKA UNTUK EDIT</span>':(l.terkunci?'<span class="dlock k">🔒 TERKUNCI</span>':'<span class="dlock a">● PERIODE BERJALAN</span>')}
+function renderDG(){
+  var r=DG.data,l=r.lembar,items=r.items,rv=r.revisi||[];
+  var all=items.length,done=items.filter(function(x){return x.fisik!==null}).length,pct=all?Math.round(done/all*1000)/10:0;
+  var selN=items.filter(function(x){return x.selisih!==null&&x.selisih!==0}).length;
+  var master=S.master.filter(function(m){return m.group===l.group})[0]||{};
+  var opts=S.lembar.filter(function(x){return x.group===l.group}).map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===l.id?' selected':'')+'>'+idDate(x.mulai)+' – '+idDate(x.akhir)+(x.dibuka?' · 🔓 dibuka':(x.terkunci?' · 🔒':' · berjalan'))+'</option>'}).join('');
+  var own=ownPic(l.pic),canOpen=IS_TL&&l.terkunci&&!l.dibuka;
+  var foot='<div class="muted">'+(l.dibuka?'Lembar ini sedang dibuka untuk edit. Perubahan tercatat di tab Revisi.':(l.terkunci?'Periode ini sudah berakhir dan terkunci.':'Periode berjalan: PIC dapat mengisi / mengedit di tab Pengisian.'))+'</div><div class="row">'+
+    (canOpen?'<button class="btn" onclick="bukaKunciModal(\''+esc(l.id)+'\',false)">🔓 Buka Kunci untuk Edit</button>':'')+
+    (l.dibuka&&(own||IS_TL)?'<button class="btn" onclick="closeModal();goTab(\'isi\');bukaLembar(\''+esc(l.id)+'\')">Edit di Pengisian</button>':'')+
+    (l.dibuka&&(own||IS_TL)?'<button class="btn p" onclick="selesaiEditModal(\''+esc(l.id)+'\',false)">✔ Selesai Edit</button>':'')+
+    '<button class="btn" onclick="unduhLembar(\''+esc(l.id)+'\')">Unduh XLSX</button></div>';
+  document.getElementById('mbox').className='mbox wide';
+  document.getElementById('mbox').innerHTML=
+    '<div class="mh"><div><h3>'+esc(l.group)+' · '+esc(master.desc||'')+'</h3><div class="muted" style="margin-top:4px">PIC <b style="color:var(--txt)">'+esc(l.pic)+'</b> · '+idDate(l.mulai)+' – '+idDate(l.akhir)+' &nbsp;'+lockChip(l)+'</div></div>'+
+    '<div class="row"><select onchange="DG.tab=\'isi\';bukaDetailLembar(this.value)" title="Pilih periode">'+opts+'</select><button class="btn" onclick="closeModal()">Tutup</button></div></div>'+
+    '<div class="mb"><div class="dstat"><div><span>Item target</span><b>'+fmt(all)+'</b></div><div><span>Sudah di-SO</span><b>'+fmt(done)+'</b></div><div><span>Progress</span><b>'+String(pct).replace('.',',')+'%</b></div><div><span>Item selisih</span><b style="color:'+(selN?'#fda4af':'#6ee7b7')+'">'+fmt(selN)+'</b></div></div>'+
+    '<div class="dtabs"><button class="dtab" data-t="isi" onclick="setDG(\'isi\')">Isi Lembar <em>'+fmt(all)+'</em></button><button class="dtab" data-t="sel" onclick="setDG(\'sel\')">Item Selisih <em class="'+(selN?'w':'')+'">'+fmt(selN)+'</em></button><button class="dtab" data-t="rev" onclick="setDG(\'rev\')">Revisi <em>'+rv.length+'</em></button></div>'+
+    '<div id="dgBody"></div></div><div class="mf">'+foot+'</div>';
+  setDG(DG.tab);
+}
+function setDG(t){
+  DG.tab=t;[].forEach.call(document.querySelectorAll('.dtab'),function(b){b.classList.toggle('on',b.dataset.t===t)});
+  var el=document.getElementById('dgBody');if(!el||!DG.data) return;
+  if(t==='isi'){
+    el.innerHTML='<div class="dtool"><input type="search" id="dgQ" placeholder="Cari item / deskripsi…" value="'+esc(DG.q)+'" oninput="DG.q=this.value;renderDGRows()" style="min-width:230px"><select id="dgF" onchange="DG.f=this.value;renderDGRows()"><option value="all">Semua item</option><option value="todo">Belum diisi</option><option value="sel">Ada selisih</option></select></div><div class="tw" style="max-height:48vh;border:1px solid var(--bd);border-radius:10px"><table><thead><tr><th>No</th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Sistem</th><th>Fisik</th><th>Selisih</th><th>Status</th><th class="l">Diisi</th></tr></thead><tbody id="dgRows"></tbody></table></div><div class="muted" id="dgNote" style="margin-top:6px"></div>';
+    document.getElementById('dgF').value=DG.f;renderDGRows();
+  } else if(t==='sel'){
+    el.innerHTML=selCards(DG.data.items);animateCounts(el);
+  } else {
+    el.innerHTML=revTimeline(DG.data.revisi||[]);
+  }
+}
+function renderDGRows(){
+  var items=DG.data.items,q=(DG.q||'').toUpperCase(),f=DG.f;
+  var rows=items.map(function(x,i){x._no=i+1;return x}).filter(function(x){return (f==='all'||(f==='todo'&&x.fisik===null)||(f==='sel'&&x.selisih))&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1)});
+  document.getElementById('dgRows').innerHTML=rows.slice(0,800).map(function(x){
+    return '<tr class="'+(x.selisih?'sel-row':'')+'"><td>'+x._no+'</td><td class="l mono">'+esc(x.item)+'</td><td class="l">'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td class="mono">'+(x.fisik===null?'<span class="muted">—</span>':fmt(x.fisik))+'</td><td class="mono" style="color:'+(x.selisih?'var(--red)':'var(--txt2)')+'">'+(x.selisih===null?'':fmt(x.selisih))+'</td><td>'+selChip(x.statusSel)+'</td><td class="l" style="font-size:10.5px;color:var(--txt2)">'+(x.diisiOleh?esc(x.diisiOleh)+'<br>'+idDate(x.tglIsi):'—')+'</td></tr>'}).join('')||'<tr><td colspan="10" class="empty">Tidak ada item</td></tr>';
+  document.getElementById('dgNote').textContent='Menampilkan '+Math.min(800,rows.length)+' dari '+rows.length+' item'+(rows.length>800?' (persempit dengan pencarian, atau unduh XLSX untuk data lengkap)':'');
+}
+/* kartu item selisih: animasi lembut */
+function selCards(items){
+  var sel=items.filter(function(x){return x.selisih!==null&&x.selisih!==0});
+  if(!sel.length) return '<div class="dempty"><div class="dempty-ic">✓</div><b>Tidak ada item selisih</b><span>Semua item yang sudah diisi sesuai dengan stok sistem.</span></div>';
+  var kurang=0,lebih=0,open=0,closed=0;
+  sel.forEach(function(x){if(x.selisih<0)kurang+=x.selisih;else lebih+=x.selisih;if(x.statusSel==='CLOSED')closed++;else open++});
+  sel.sort(function(a,b){return (a.statusSel==='CLOSED')-(b.statusSel==='CLOSED')||Math.abs(b.selisih)-Math.abs(a.selisih)});
+  var tiles='<div class="dsum"><div class="c" style="--i:0"><span>Item selisih</span><b data-count="'+sel.length+'">0</b></div><div class="r" style="--i:1"><span>Total kurang</span><b data-count="'+kurang+'">0</b></div><div class="a" style="--i:2"><span>Total lebih</span><b data-count="'+lebih+'" data-plus="1">0</b></div><div class="g" style="--i:3"><span>OPEN · CLOSED</span><b>'+open+' · '+closed+'</b></div></div>';
+  return tiles+'<div class="dgrid">'+sel.map(function(x,i){
+    var cl=x.statusSel==='CLOSED',kind=x.selisih<0?'kurang':'lebih',mx=Math.max(x.sistem,x.fisik||0)||1;
+    return '<div class="dcard '+kind+' '+(cl?'closed':'open')+'" style="--i:'+Math.min(i,14)+'">'+
+      '<div class="dc-top"><span class="dc-item">'+esc(x.item)+'</span><span class="dc-st"><i></i>'+(cl?'CLOSED':'OPEN')+'</span></div>'+
+      '<div class="dc-desc">'+esc(x.desc||'—')+'</div>'+
+      '<div class="dc-delta"><b data-count="'+x.selisih+'" data-plus="1">0</b><small>'+esc(x.um||'')+' · '+(x.selisih<0?'kurang dari sistem':'lebih dari sistem')+'</small></div>'+
+      '<div class="dc-bars"><div class="s"><label>Sistem</label><span class="s"><i style="--w:'+Math.round(x.sistem/mx*100)+'%"></i></span><em>'+fmt(x.sistem)+'</em></div><div class="f"><label>Fisik</label><span class="f"><i style="--w:'+Math.round((x.fisik||0)/mx*100)+'%"></i></span><em>'+fmt(x.fisik)+'</em></div></div>'+
+      '<div class="dc-meta">Diisi '+esc(x.diisiOleh||'-')+(x.tglIsi?' · '+idDate(x.tglIsi):'')+(x.lokasi?' · Lokasi '+esc(x.lokasi):'')+'</div>'+
+      (x.ket?'<div class="dc-note">'+esc(x.ket)+'</div>':'<div class="dc-note none">Belum ada keterangan selisih</div>')+
+      '<div class="dc-foot">'+(cl?'Close: '+esc(x.alasanClose||'-')+' ('+esc(x.closeOleh||'')+' · '+idDate(x.tglClose)+')':(x.konfirmasi?esc(x.konfirmasi):''))+'</div></div>'}).join('')+'</div>';
+}
+function animateCounts(root){
+  var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+  [].forEach.call(root.querySelectorAll('[data-count]'),function(el){
+    var to=Number(el.dataset.count)||0,plus=el.dataset.plus,fm=function(v){return (plus&&v>0?'+':'')+fmt(Math.round(v))};
+    if(reduce){el.textContent=fm(to);return}
+    var t0=null,dur=800;function step(ts){if(!t0)t0=ts;var p=Math.min(1,(ts-t0)/dur),e=1-Math.pow(1-p,3);el.textContent=fm(to*e);if(p<1)requestAnimationFrame(step)}
+    requestAnimationFrame(step)});
+}
+/* ---------- REVISI / BUKA KUNCI ---------- */
+function chgTable(p){
+  if(!p||!p.length) return '<div class="m">Belum ada perubahan isian pada pembukaan ini.</div>';
+  return '<table class="chg"><thead><tr><th class="l">Waktu</th><th class="l">Oleh</th><th class="l">Item</th><th>Fisik lama</th><th>Fisik baru</th><th>Selisih baru</th></tr></thead><tbody>'+p.map(function(g){return '<tr><td class="l mono">'+esc(g.waktu)+'</td><td class="l">'+esc(g.oleh)+'</td><td class="l mono">'+esc(g.item)+'</td><td class="mono">'+(g.fisikLama===null?'—':fmt(g.fisikLama))+'</td><td class="mono">'+fmt(g.fisikBaru)+'</td><td class="mono" style="color:'+(g.selisihBaru?'var(--red)':'var(--green)')+'">'+fmt(g.selisihBaru)+'</td></tr>'}).join('')+'</tbody></table>';
+}
+function revTimeline(rv){
+  if(!rv.length) return '<div class="dempty"><div class="dempty-ic" style="background:rgba(148,163,184,.14);color:#cbd5e1;animation:none">🔒</div><b>Belum pernah dibuka untuk edit</b><span>Jika ada kesalahan pengisian atau stok sudah ketemu, TL / Admin dapat membuka kunci lembar ini dari sini.</span></div>';
+  return '<div class="rvgrid" style="grid-template-columns:1fr">'+rv.map(function(x,i){var op=x.status==='TERBUKA';
+    return '<div class="rvc '+(op?'open':'done')+'" style="--i:'+Math.min(i,10)+'"><div class="rvc-h"><b>Revisi '+esc(x.tglBuka)+'</b><span class="tag">'+(op?'<i></i>TERBUKA':'SELESAI')+'</span></div>'+
+      '<div class="m">Dibuka oleh <b style="color:var(--txt)">'+esc(x.dibukaOleh)+'</b> · '+esc(x.tglBuka)+'</div><q>Alasan buka: '+esc(x.alasanBuka)+'</q>'+
+      (op?'<div class="m">Menunggu PIC menyelesaikan edit dan mengisi keterangan.</div>':'<div class="m">Selesai edit oleh <b style="color:var(--txt)">'+esc(x.selesaiOleh)+'</b> · '+esc(x.tglSelesai)+' · '+fmt(x.jumlahUbah)+' item diubah</div><q>Keterangan edit: '+esc(x.ketEdit)+'</q>')+
+      chgTable(x.perubahan)+'</div>'}).join('')+'</div>';
+}
+function rvBack(fromList){if(!fromList&&DG.id) bukaDetailLembar(DG.id);else closeModal()}
+function bukaKunciModal(id,fromList){
+  var l=(DG.data&&DG.data.lembar&&DG.data.lembar.id===id)?DG.data.lembar:(lmOf(id)||{});
+  openModal('<div class="mh"><h3>🔓 Buka kunci SO untuk diedit</h3></div><div class="mb"><div class="muted">Group <b style="color:var(--txt)">'+esc(l.group)+'</b> · PIC '+esc(l.pic)+' · '+idDate(l.mulai)+' – '+idDate(l.akhir)+'.<br>Setelah dibuka, PIC dapat mengubah isian lembar ini. Semua perubahan dicatat, dan PIC <b>wajib mengisi keterangan</b> saat selesai edit.</div>'+
+    '<label class="flab">Alasan membuka kunci <span>(wajib)</span><textarea id="rvAlasan" rows="3" placeholder="Contoh: salah input fisik item … / stok sudah ketemu setelah pengecekan ulang"></textarea></label><div class="rverr" id="rvErr"></div></div>'+
+    '<div class="mf"><button class="btn" onclick="rvBack('+(fromList?'true':'false')+')">Batal</button><button class="btn p" id="rvGo">Buka Kunci</button></div>');
+  document.getElementById('rvGo').onclick=function(){
+    var v=document.getElementById('rvAlasan').value.trim();
+    if(v.length<5){document.getElementById('rvErr').textContent='Alasan wajib diisi (minimal 5 karakter).';return}
+    this.disabled=true;this.textContent='Membuka…';
+    api('soBukaKunci',{id:id,alasan:v,nik:NIK,user:NAMA}).then(function(){toast('Kunci dibuka. PIC kini dapat mengedit lembar ini.');loadAll(true);if(fromList)closeModal();else bukaDetailLembar(id)})
+      .catch(function(e){var b=document.getElementById('rvGo');b.disabled=false;b.textContent='Buka Kunci';document.getElementById('rvErr').textContent=e.message})};
+}
+function selesaiEditModal(id,fromIsi){
+  var l=(S.cur&&S.cur.lembar&&S.cur.lembar.id===id)?S.cur.lembar:((DG.data&&DG.data.lembar&&DG.data.lembar.id===id)?DG.data.lembar:(lmOf(id)||{}));
+  openModal('<div class="mh"><h3>✔ Selesai edit — isi keterangan</h3></div><div class="mb"><div class="muted">Group <b style="color:var(--txt)">'+esc(l.group)+'</b> · PIC '+esc(l.pic)+'. Setelah ini lembar <b>terkunci kembali</b>. Keterangan akan terlihat oleh TL dan tim terkait.</div>'+
+    '<label class="flab">Keterangan hasil edit <span>(wajib)</span><textarea id="rvKet" rows="4" placeholder="Jelaskan apa yang diedit dan alasannya. Contoh: item … fisik dikoreksi 120 → 125, ternyata ada 5 pcs di rak lain, sudah dipindahkan"></textarea></label><div class="rverr" id="rvErr"></div></div>'+
+    '<div class="mf"><button class="btn" onclick="'+(fromIsi?'closeModal()':'rvBack(false)')+'">Batal</button><button class="btn p" id="rvGo">Simpan & Kunci Kembali</button></div>');
+  document.getElementById('rvGo').onclick=function(){
+    var v=document.getElementById('rvKet').value.trim();
+    if(v.length<5){document.getElementById('rvErr').textContent='Keterangan wajib diisi (minimal 5 karakter).';return}
+    this.disabled=true;this.textContent='Menyimpan…';
+    api('soSelesaiEdit',{id:id,ket:v,nik:NIK,user:NAMA}).then(function(r){closeModal();toast('Edit selesai ('+r.jumlahUbah+' item diubah). Lembar terkunci kembali.');loadAll(true);if(fromIsi)bukaLembar(id)})
+      .catch(function(e){var b=document.getElementById('rvGo');b.disabled=false;b.textContent='Simpan & Kunci Kembali';document.getElementById('rvErr').textContent=e.message})};
+}
+function revCard(x,i){
+  var op=x.status==='TERBUKA';
+  return '<div class="rvc '+(op?'open':'done')+'" style="--i:'+Math.min(i,10)+'"><div class="rvc-h"><b>'+esc(x.group)+'</b><span class="m">PIC '+esc(x.pic)+'</span><span class="tag">'+(op?'<i></i>DIBUKA UNTUK EDIT':'SELESAI DIEDIT')+'</span></div>'+
+    '<div class="m">Dibuka oleh '+esc(x.dibukaOleh)+' · '+esc(x.tglBuka)+'</div><q>Alasan: '+esc(x.alasanBuka)+'</q>'+
+    (op?'':'<div class="m">Selesai oleh '+esc(x.selesaiOleh)+' · '+esc(x.tglSelesai)+' · '+fmt(x.jumlahUbah)+' item diubah</div><q>Keterangan: '+esc(x.ketEdit)+'</q>')+
+    '<button class="btn" onclick="lihatRevisi(\''+esc(x.lembar)+'\')">Lihat rincian</button>'+
+    (op&&ownPic(x.pic)?' <button class="btn p" onclick="goTab(\'isi\');bukaLembar(\''+esc(x.lembar)+'\')">Edit sekarang</button>':'')+'</div>';
+}
+function renderRevBox(id,filter,onlyOpen){
+  var el=document.getElementById(id);if(!el) return;
+  var list=(S.revisi||[]).filter(filter),open=list.filter(function(x){return x.status==='TERBUKA'}),done=onlyOpen?[]:list.filter(function(x){return x.status!=='TERBUKA'}).slice(0,6);
+  if(!open.length&&!done.length){el.innerHTML='';return}
+  el.innerHTML='<div class="card"><div class="card-h"><h3>Revisi SO — kunci dibuka &amp; hasil edit</h3><span class="muted">'+open.length+' sedang dibuka'+(onlyOpen?'':' · '+done.length+' revisi terakhir selesai')+'</span></div><div class="card-b"><div class="rvgrid">'+open.concat(done).map(revCard).join('')+'</div></div></div>';
+}
+
 loadPrintCfg();
 loadAll();
 </script>

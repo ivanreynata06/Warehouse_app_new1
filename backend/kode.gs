@@ -145,7 +145,7 @@ var API_FUNCTIONS = {
   // Stock Opname
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
-  soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih,
+  soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih, soBukaKunci: soBukaKunci, soSelesaiEdit: soSelesaiEdit,
   soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC, soGetAll: soGetAll, soGetSkuCounts: soGetSkuCounts, soGetRiwayatItems: soGetRiwayatItems, soGetLembarAktif: soGetLembarAktif
 };
 
@@ -8851,6 +8851,16 @@ function _soSheet(name, hdr, seed) {
   _SO_MEM['sh_' + name] = sh;
   return sh;
 }
+// Sel tanggal di sheet SO kadang diubah Google Sheets jadi tipe Date (muncul "Mon Oct 19 2026 00:00:00 GMT+0700").
+// Selalu normalkan ke 'yyyy-MM-dd' supaya perbandingan tanggal (minggu ini, terlambat, dst) tidak meleset.
+function _soTgl(v) {
+  var tz = Session.getScriptTimeZone();
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  var s = String(v == null ? '' : v).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/GMT|UTC|^[A-Za-z]{3} [A-Za-z]{3} \d/.test(s)) { var d = new Date(s); if (!isNaN(d.getTime())) return Utilities.formatDate(d, tz, 'yyyy-MM-dd'); }
+  return s;
+}
 function _soRows(sh, nCols) {
   var last = sh.getLastRow();
   if (last < 2) return [];
@@ -9012,7 +9022,7 @@ function _soCekSelesaiDanLanjut(id) {
   if (!master) return null;
   var today = _soToday(), mulai, akhir;
   if (master.mode === 'MINGGUAN') {
-    mulai = _soAddDays(_soMonday(String(cur[4])), 7);
+    mulai = _soAddDays(_soMonday(_soTgl(cur[4])), 7);
     var tm = _soMonday(today); if (mulai < tm) mulai = tm;
     akhir = _soAddDays(mulai, 6);
   } else { mulai = today; akhir = _soAddDays(today, master.hari); }
@@ -9097,7 +9107,7 @@ function soBuatLembar(payload) {
 function _soLembarList() {
   if (_SO_MEM.lembar) return _SO_MEM.lembar;
   return _SO_MEM.lembar = _soRows(_soSheet('SO_LEMBAR', SO_LEMBAR_HDR), 8).map(function (r) {
-    return { id: String(r[0]), pic: String(r[1]), group: String(r[2]), dibuat: String(r[3]), mulai: String(r[4]), akhir: String(r[5]), oleh: String(r[6]), jumlah: Number(r[7]) || 0 };
+    return { id: String(r[0]), pic: String(r[1]), group: String(r[2]), dibuat: _soTgl(r[3]), mulai: _soTgl(r[4]), akhir: _soTgl(r[5]), oleh: String(r[6]), jumlah: Number(r[7]) || 0 };
   });
 }
 function _soDetailRows() {
@@ -9105,8 +9115,8 @@ function _soDetailRows() {
   return _SO_MEM.det = _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 16).map(function (r, i) {
     return { row: i + 2, lembar: String(r[0]), item: String(r[1]), desc: String(r[2]), um: String(r[3]), lokasi: String(r[4]),
       sistem: Number(r[5]) || 0, fisik: r[6] === '' ? null : Number(r[6]), selisih: r[7] === '' ? null : Number(r[7]),
-      tglIsi: String(r[8]), diisiOleh: String(r[9]), statusSel: String(r[10]), ket: String(r[11]),
-      tglClose: String(r[12]), closeOleh: String(r[13]), alasanClose: String(r[14]), konfirmasi: String(r[15]) };
+      tglIsi: _soTgl(r[8]), diisiOleh: String(r[9]), statusSel: String(r[10]), ket: String(r[11]),
+      tglClose: _soTgl(r[12]), closeOleh: String(r[13]), alasanClose: String(r[14]), konfirmasi: String(r[15]) };
   });
 }
 
@@ -9120,8 +9130,10 @@ function soListLembar(pic) {
       if (d.statusSel === 'OPEN') a.open++; if (d.statusSel === 'CLOSED') a.closed++;
     });
     var latestOf = {}; _soLembarList().forEach(function (l) { latestOf[_soNorm(l.group)] = l.id; });
+    var openRev = {}, cntRev = {};
+    _soRevisiList().forEach(function (r) { cntRev[r.lembar] = (cntRev[r.lembar] || 0) + 1; if (r.status === 'TERBUKA') openRev[r.lembar] = r; });
     var out = _soLembarList().filter(function (l) { return !pic || _soNorm(l.pic) === _soNorm(pic); })
-      .map(function (l) { var a = agg[l.id] || { total: 0, isi: 0, open: 0, closed: 0 }; l.isi = a.isi; l.open = a.open; l.closed = a.closed; l.terkunci = latestOf[_soNorm(l.group)] !== l.id; return l; });
+      .map(function (l) { var a = agg[l.id] || { total: 0, isi: 0, open: 0, closed: 0 }; l.isi = a.isi; l.open = a.open; l.closed = a.closed; l.terkunci = latestOf[_soNorm(l.group)] !== l.id; l.dibuka = !!openRev[l.id]; l.jumlahRevisi = cntRev[l.id] || 0; return l; });
     out.reverse();
     return { success: true, data: out };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
@@ -9133,7 +9145,11 @@ function soGetLembarDetail(id) {
     if (!l) return { success: false, error: 'Lembar tidak ditemukan.' };
     var lastId = null; _soLembarList().forEach(function (x) { if (_soNorm(x.group) === _soNorm(l.group)) lastId = x.id; });
     l.terkunci = lastId !== l.id;
-    return { success: true, lembar: l, items: _soDetailRows().filter(function (d) { return d.lembar === id; }) };
+    var rv = _soRevisiList().filter(function (x) { return x.lembar === id; });
+    var lg = rv.length ? _soRevLogRows() : [];
+    l.dibuka = rv.some(function (x) { return x.status === 'TERBUKA'; });
+    rv.forEach(function (x) { x.perubahan = lg.filter(function (g) { return g.rev === x.id; }); });
+    return { success: true, lembar: l, items: _soDetailRows().filter(function (d) { return d.lembar === id; }), revisi: rv.reverse() };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
@@ -9148,9 +9164,10 @@ function soSimpanIsi(payload) {
     var lm = _soLembarList().filter(function (x) { return x.id === payload.id; })[0];
     if (!lm) return { success: false, error: 'Lembar tidak ditemukan.' };
     var latest = null; _soLembarList().forEach(function (x) { if (_soNorm(x.group) === _soNorm(lm.group)) latest = x; });
-    if (latest && latest.id !== lm.id) return { success: false, error: 'Lembar periode sebelumnya sudah terkunci karena periode berikutnya sudah dimulai.' };
+    var rev = _soRevisiAktif(lm.id); // lembar lama yang DIBUKA TL/Admin untuk diedit
+    if (latest && latest.id !== lm.id && !rev) return { success: false, error: 'Lembar periode sebelumnya sudah terkunci karena periode berikutnya sudah dimulai. Minta TL/Admin membuka kuncinya bila perlu diedit.' };
     lock.waitLock(25000);
-    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), today = _soToday(), n = 0, ditahan = [];
+    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), today = _soToday(), n = 0, ditahan = [], revLog = [];
     var last = sd.getLastRow(); if (last < 2) return { success: true, tersimpan: 0, ditahan: [] };
     var all = sd.getRange(1, 1, last, 16).getValues(), minR = 0, maxR = 0;
     (payload.rows || []).forEach(function (r) {
@@ -9162,13 +9179,22 @@ function soSimpanIsi(payload) {
       if (sel !== 0 && !r.konfirmasi) { ditahan.push(row); return; }
       if (sel === 0) konf = '';
       else konf = 'DIKONFIRMASI ' + today + ' ' + (payload.user || '');
-      var status = sel === 0 ? '' : (String(cur[10]) === 'CLOSED' ? 'CLOSED' : 'OPEN');
+      var changedRev = !!rev && (String(cur[6]) === '' || Number(cur[6]) !== fisik);
+      var status = sel === 0 ? '' : ((String(cur[10]) === 'CLOSED' && !changedRev) ? 'CLOSED' : 'OPEN');
+      if (changedRev) {
+        revLog.push([rev.id, _soNow(), payload.user || '', String(cur[1]), String(cur[6]), fisik, String(cur[7]), sel]);
+        cur[12] = ''; cur[13] = ''; cur[14] = ''; // nilai berubah -> info close lama tidak berlaku lagi (jejaknya ada di log revisi)
+      }
       cur[6] = fisik; cur[7] = sel; cur[8] = today; cur[9] = payload.user || ''; cur[10] = status; cur[15] = konf;
       if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; n++;
     });
     if (n) sd.getRange(minR, 7, maxR - minR + 1, 10).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(6, 16); }));
-    var lanjut = n ? _soCekSelesaiDanLanjut(payload.id) : null;
-    return { success: true, tersimpan: n, ditahan: ditahan, lanjut: lanjut };
+    if (revLog.length) {
+      var sr = _soSheet('SO_REVISI_LOG', SO_REVLOG_HDR);
+      sr.getRange(sr.getLastRow() + 1, 1, revLog.length, SO_REVLOG_HDR.length).setNumberFormat('@').setValues(revLog);
+    }
+    var lanjut = (n && !rev) ? _soCekSelesaiDanLanjut(payload.id) : null;
+    return { success: true, tersimpan: n, ditahan: ditahan, lanjut: lanjut, revisi: !!rev, diubah: revLog.length };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
@@ -9217,6 +9243,99 @@ function soCloseSelisih(payload) {
     sd.getRange(row, 13, 1, 3).setValues([[_soToday(), payload.user || '', String(payload.alasan)]]);
     return { success: true };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// ================================================================
+//  BUKA KUNCI / REVISI SO -- lembar periode sebelumnya terkunci otomatis. TL / Admin / Super Admin
+//  dapat MEMBUKA-nya supaya PIC bisa mengedit (salah isi, atau stok sudah ketemu). Setelah selesai
+//  edit, WAJIB mengisi keterangan alasan agar TL & tim terkait tahu. Setiap perubahan fisik dicatat.
+//    SO_REVISI     : 1 baris per pembukaan (siapa, kapan, alasan buka, status, keterangan selesai edit)
+//    SO_REVISI_LOG : 1 baris per item yang berubah (fisik/selisih lama -> baru)
+// ================================================================
+var SO_REVISI_HDR = ['ID', 'LembarID', 'Group', 'PIC', 'Dibuka Oleh', 'Tgl Buka', 'Alasan Buka', 'Status', 'Selesai Oleh', 'Tgl Selesai', 'Keterangan Edit', 'Jumlah Perubahan'];
+var SO_REVLOG_HDR = ['RevID', 'Waktu', 'Diubah Oleh', 'Item', 'Fisik Lama', 'Fisik Baru', 'Selisih Lama', 'Selisih Baru'];
+function _soNow() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'); }
+function _soRevisiList() {
+  if (_SO_MEM.rev) return _SO_MEM.rev;
+  return _SO_MEM.rev = _soRows(_soSheet('SO_REVISI', SO_REVISI_HDR), SO_REVISI_HDR.length).map(function (r) {
+    return { id: String(r[0]), lembar: String(r[1]), group: String(r[2]), pic: String(r[3]), dibukaOleh: String(r[4]), tglBuka: String(r[5]),
+      alasanBuka: String(r[6]), status: String(r[7]), selesaiOleh: String(r[8]), tglSelesai: String(r[9]), ketEdit: String(r[10]), jumlahUbah: Number(r[11]) || 0 };
+  });
+}
+function _soRevLogRows() {
+  return _soRows(_soSheet('SO_REVISI_LOG', SO_REVLOG_HDR), SO_REVLOG_HDR.length).map(function (r) {
+    return { rev: String(r[0]), waktu: String(r[1]), oleh: String(r[2]), item: String(r[3]), fisikLama: r[4] === '' ? null : Number(r[4]), fisikBaru: r[5] === '' ? null : Number(r[5]),
+      selisihLama: r[6] === '' ? null : Number(r[6]), selisihBaru: r[7] === '' ? null : Number(r[7]) };
+  });
+}
+function _soRevisiAktif(lembarId) {
+  var out = null; _soRevisiList().forEach(function (r) { if (r.lembar === lembarId && r.status === 'TERBUKA') out = r; });
+  return out;
+}
+// Cek akun di AKUN_LOGIN departemen aktif (verifikasi sisi server, bukan cuma dari browser)
+function _soUserInfo(nik) {
+  nik = String(nik || '').trim().toUpperCase(); if (!nik) return null;
+  try {
+    var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_AKUN_LOGIN); if (!sh) return null;
+    var data = sh.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim().toUpperCase() === nik && data[i][4] !== false) return { nik: nik, nama: String(data[i][1]), role: String(data[i][2]) };
+    }
+  } catch (e) {}
+  return null;
+}
+function _soBolehBuka(nik) {
+  if (_isSuperAdmin(nik)) return true;
+  var u = _soUserInfo(nik); if (!u) return false;
+  var r = String(u.role).toUpperCase().trim();
+  return r === 'TL' || r.indexOf('ADMIN') !== -1;
+}
+
+// payload: {id (lembar), alasan, nik, user}
+function soBukaKunci(payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    if (!_soBolehBuka(payload.nik)) return { success: false, error: 'Akses ditolak. Hanya TL, Admin, atau Super Admin yang dapat membuka kunci SO.' };
+    var alasan = String(payload.alasan || '').trim();
+    if (alasan.length < 5) return { success: false, error: 'Alasan membuka kunci wajib diisi (minimal 5 karakter).' };
+    lock.waitLock(25000);
+    var lm = _soLembarList().filter(function (x) { return x.id === payload.id; })[0];
+    if (!lm) return { success: false, error: 'Lembar tidak ditemukan.' };
+    var latest = null; _soLembarList().forEach(function (x) { if (_soNorm(x.group) === _soNorm(lm.group)) latest = x; });
+    if (latest && latest.id === lm.id) return { success: false, error: 'Lembar ini adalah periode berjalan dan sudah bisa diedit langsung oleh PIC di tab Pengisian.' };
+    if (_soRevisiAktif(lm.id)) return { success: false, error: 'Lembar ini sudah dalam keadaan terbuka untuk edit.' };
+    var u = _soUserInfo(payload.nik), nama = (u && u.nama) || payload.user || String(payload.nik);
+    var id = _soUniqueId('REV-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), _soRevisiList().map(function (r) { return r.id; }));
+    var sh = _soSheet('SO_REVISI', SO_REVISI_HDR);
+    sh.getRange(sh.getLastRow() + 1, 1, 1, SO_REVISI_HDR.length).setNumberFormat('@').setValues([[id, lm.id, lm.group, lm.pic, nama, _soNow(), alasan, 'TERBUKA', '', '', '', 0]]);
+    _SO_MEM.rev = null;
+    return { success: true, id: id };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
+}
+
+// payload: {id (lembar), ket (WAJIB), nik, user}
+function soSelesaiEdit(payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var ket = String(payload.ket || '').trim();
+    if (ket.length < 5) return { success: false, error: 'Keterangan wajib diisi (minimal 5 karakter): jelaskan apa yang diedit dan alasannya.' };
+    var u = _soUserInfo(payload.nik);
+    if (!u && !_isSuperAdmin(payload.nik)) return { success: false, error: 'Akun tidak dikenali. Login ulang lalu coba lagi.' };
+    lock.waitLock(25000);
+    var rv = _soRevisiAktif(payload.id);
+    if (!rv) return { success: false, error: 'Lembar ini tidak sedang dibuka untuk edit.' };
+    var jml = _soRevLogRows().filter(function (g) { return g.rev === rv.id; }).length;
+    var sh = _soSheet('SO_REVISI', SO_REVISI_HDR), ids = sh.getRange(1, 1, sh.getLastRow(), 1).getValues(), row = 0;
+    for (var i = 1; i < ids.length; i++) if (String(ids[i][0]) === rv.id) { row = i + 1; break; }
+    if (!row) return { success: false, error: 'Catatan revisi tidak ditemukan.' };
+    sh.getRange(row, 8, 1, 5).setValues([['SELESAI', (u && u.nama) || payload.user || String(payload.nik), _soNow(), ket, jml]]);
+    _SO_MEM.rev = null;
+    return { success: true, jumlahUbah: jml };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
 }
 
 // Dashboard monitoring: 1 baris per PIC x Group (lembar terbaru) + peringatan TL
@@ -9302,6 +9421,13 @@ function soGetDashboard() {
       }
       return row;
     });
+    var lmById = {}; lembar.forEach(function (l) { lmById[l.id] = l; });
+    _soRevisiList().forEach(function (rv) {
+      if (rv.status !== 'TERBUKA') return;
+      var l = lmById[rv.lembar];
+      warnings.push({ level: 'warn', revisi: true, lembarId: rv.lembar, group: rv.group, pic: rv.pic,
+        msg: 'SO group ' + rv.group + (l ? ' periode ' + _soTglId(l.mulai) + ' - ' + _soTglId(l.akhir) : '') + ' sedang DIBUKA untuk edit oleh ' + rv.pic + ' (dibuka ' + rv.dibukaOleh + ', ' + rv.tglBuka + '). Alasan: ' + rv.alasanBuka + '. Setelah selesai edit, wajib isi keterangan perubahan.' });
+    });
     return { success: true, today: today, data: rows, warnings: warnings, mingguan: mingguan };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
@@ -9334,7 +9460,7 @@ function soGetAll(force) {
       return { row: d.row, lembar: d.lembar, item: d.item, desc: d.desc, sistem: d.sistem, fisik: d.fisik, selisih: d.selisih,
                statusSel: d.statusSel, ket: d.ket, tglClose: d.tglClose, alasanClose: d.alasanClose, konfirmasi: d.konfirmasi, pic: picOf[d.lembar] || '', group: grpOf[d.lembar] || '' };
     });
-    return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, mingguan: dash.mingguan, lembar: lembar.data, selisih: selisih, akun: _soAkunMap(), sumberMaster: soGetMaster().sumber || 'SO_MASTER' };
+    return { success: true, today: dash.today, master: soGetMaster().data, dash: dash.data, warnings: dash.warnings, mingguan: dash.mingguan, lembar: lembar.data, selisih: selisih, akun: _soAkunMap(), revisi: _soRevisiList().slice().reverse().slice(0, 100), sumberMaster: soGetMaster().sumber || 'SO_MASTER' };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
