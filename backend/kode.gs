@@ -9025,7 +9025,12 @@ function _soCekSelesaiDanLanjut(id) {
     mulai = _soAddDays(_soMonday(_soTgl(cur[4])), 7);
     var tm = _soMonday(today); if (mulai < tm) mulai = tm;
     akhir = _soAddDays(mulai, 6);
-  } else { mulai = today; akhir = _soAddDays(today, master.hari); }
+  } else {
+    // Periode berikutnya dimulai SETELAH durasi periode ini berakhir (bukan hari ini), supaya progres periode
+    // yang sudah selesai tetap tampil selama durasinya (mis. 3 bulan) dan tidak tertimpa lembar kosong.
+    mulai = _soAddDays(_soTgl(cur[5]), 1); if (mulai < today) mulai = today;
+    akhir = _soAddDays(mulai, master.hari);
+  }
   var nid = _soUniqueId('SO-' + _soNorm(cur[2]).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), ls.map(function (r) { return String(r[0]); }));
   sl.appendRow([nid, String(cur[1]), String(cur[2]), today, mulai, akhir, 'AUTO', det.length]);
   var rows = det.map(function (r) { return [nid, r[1], r[2], r[3], r[4], Number(r[5]) || 0, '', '', '', '', '', '', '', '', '', '']; });
@@ -9368,6 +9373,22 @@ function _soMingguanDetail(m, mine, byLembar, today) {
       minggu: wk.minggu, periode: _soTglId(w) + ' - ' + _soTglId(akhir),
       msg: 'SO ' + m.pic + ' group ' + m.group + ' minggu ke-' + wk.minggu + ' (' + _soTglId(w) + ' - ' + _soTglId(akhir) + ') terlambat sejak ' + _soTglId(wk.sejak) + '. Segera selesaikan dan input datanya pada sistem.' });
   }
+  // Rekap per BULAN (bulan ditentukan dari hari Senin tiap minggu): berapa item yang berhasil di-SO PIC dalam sebulan
+  var bm = {}, order = [];
+  out.weeks.forEach(function (wk) {
+    var key = wk.mulai.slice(0, 7), b = bm[key];
+    if (!b) { b = bm[key] = { key: key, label: wk.bulan, minggu: 0, mingguSelesai: 0, itemTarget: 0, itemSelesai: 0, uniq: {} }; order.push(key); }
+    b.minggu++; if (wk.status === 'SELESAI' || wk.status === 'SELESAI TERLAMBAT') b.mingguSelesai++;
+    b.itemTarget += wk.jumlah; b.itemSelesai += wk.isi;
+    var fs = wk.lembarId && _SO_MEM.filled ? _SO_MEM.filled[wk.lembarId] : null;
+    if (fs) Object.keys(fs).forEach(function (k) { b.uniq[k] = 1; });
+  });
+  out.bulanan = order.map(function (k) {
+    var b = bm[k];
+    return { key: b.key, label: b.label, minggu: b.minggu, mingguSelesai: b.mingguSelesai, itemTarget: b.itemTarget, itemSelesai: b.itemSelesai,
+      itemUnik: Object.keys(b.uniq).length, progress: b.itemTarget ? Math.round(b.itemSelesai / b.itemTarget * 10000) / 100 : 0,
+      rataPerMinggu: b.minggu ? Math.round(b.itemSelesai / b.minggu * 10) / 10 : 0 };
+  }).reverse();
   var p2 = today.split('-'), endMonth = p2[0] + '-' + p2[1] + '-' + ('0' + new Date(Number(p2[0]), Number(p2[1]), 0).getDate()).slice(-2);
   for (var w2 = thisMon; w2 <= endMonth; w2 = _soAddDays(w2, 7)) out.sisaMinggu++;
   return out;
@@ -9379,7 +9400,7 @@ function soGetDashboard() {
     var byLembar = {};
     det.forEach(function (d) {
       var a = byLembar[d.lembar] = byLembar[d.lembar] || { total: 0, isi: 0, open: 0, closed: 0, last: '' };
-      a.total++; if (d.fisik !== null) { a.isi++; if (d.tglIsi && d.tglIsi > a.last) a.last = d.tglIsi; }
+      a.total++; if (d.fisik !== null) { a.isi++; if (d.tglIsi && d.tglIsi > a.last) a.last = d.tglIsi; ((_SO_MEM.filled = _SO_MEM.filled || {})[d.lembar] = _SO_MEM.filled[d.lembar] || {})[_soNorm(d.item)] = 1; }
       if (d.statusSel === 'OPEN') a.open++; if (d.statusSel === 'CLOSED') a.closed++;
     });
     var warnings = [], mingguan = [], counts = _soCountsCached();
@@ -9387,6 +9408,10 @@ function soGetDashboard() {
       var mine = lembar.filter(function (l) { return _soNorm(l.group) === _soNorm(m.group); });
       var cur = null, nxt = null; // periode berjalan = lembar terakhir yg sudah mulai; lembar berikutnya (otomatis) belum mulai
       mine.forEach(function (l) { if (l.mulai <= today) cur = l; else if (!nxt) nxt = l; });
+      if (m.mode !== 'MINGGUAN') { // lembar lama yg sudah selesai tetap jadi acuan selama durasinya masih berjalan
+        var cov = mine.filter(function (l) { return l.mulai <= today && today <= l.akhir; });
+        if (cov.length) cur = cov[0];
+      }
       if (!cur && mine.length) cur = mine[0];
       var skuCount = counts ? (counts[_soKey(m.group)] || 0) : null;
       var row = { pic: m.pic, group: m.group, desc: m.desc, targetLabel: m.targetLabel, mode: m.mode,
@@ -9396,7 +9421,7 @@ function soGetDashboard() {
       if (cur) {
         var a = byLembar[cur.id] || { total: 0, isi: 0, open: 0, closed: 0 };
         row.lembarId = cur.id; row.targetItem = a.total; row.telahSo = a.isi; row.open = a.open; row.closed = a.closed;
-        row.progress = a.total ? Math.round(a.isi / a.total * 10000) / 100 : 0;
+        row.progress = a.total ? Math.round(a.isi / a.total * 10000) / 100 : 0; row.selesaiPada = (row.progress >= 100) ? (a.last || '') : '';
         row.mulai = cur.mulai; row.akhir = cur.akhir;
         var span = Math.max(1, _soDiffDays(cur.mulai, cur.akhir) + 1), el = Math.min(span, Math.max(0, _soDiffDays(cur.mulai, today) + 1));
         row.sisaHari = _soDiffDays(today, cur.akhir);
@@ -9409,7 +9434,7 @@ function soGetDashboard() {
       if (m.mode === 'MINGGUAN') {
         // I053: target selesai TIAP MINGGU; minggu sebelum SO_MINGGUAN_MULAI tidak dihitung
         var wd = _soMingguanDetail(m, mine, byLembar, today), thisMon = _soMonday(today);
-        mingguan.push({ group: m.group, pic: m.pic, desc: m.desc, mulaiHitung: SO_MINGGUAN_MULAI, sisaMinggu: wd.sisaMinggu, weeks: wd.weeks });
+        mingguan.push({ group: m.group, pic: m.pic, desc: m.desc, mulaiHitung: SO_MINGGUAN_MULAI, sisaMinggu: wd.sisaMinggu, weeks: wd.weeks, bulanan: wd.bulanan });
         row.mingguTelat = wd.weeks.filter(function (x) { return x.status === 'TERLAMBAT'; }).length;
         wd.warnings.forEach(function (x) { warnings.push(x); });
         if (SO_MINGGUAN_MULAI <= thisMon && !mine.some(function (l) { return l.mulai === thisMon; }))
