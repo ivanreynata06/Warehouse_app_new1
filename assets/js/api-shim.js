@@ -121,7 +121,7 @@
   // URL), gampang melebihi batas panjang URL browser (~8000 karakter)
   // dan request langsung gagal total ("Failed to fetch") sebelum sempat
   // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
-  var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, uploadTlSignature: 1, adminUploadSplSignature: 1, soBuatLembar: 1, soSimpanIsi: 1, soGetRiwayatItems: 1, soSimpanKeterangan: 1, soCloseSelisih: 1 };
+  var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1, uploadTlSignature: 1, adminUploadSplSignature: 1, soBuatLembar: 1, soSimpanIsi: 1, soGetRiwayatItems: 1, soSimpanKeterangan: 1, soCloseSelisih: 1 };
 
   // Bungkus r.json() supaya kalau Apps Script Web App ternyata
   // mengembalikan HALAMAN HTML (bukan JSON) -- ini SELALU terjadi kalau
@@ -161,7 +161,7 @@
       // spreadsheet (tanpa menunggu sync apa pun), jadi cukup cepat --
       // timeout wajar saja. manualSyncNow beda: itu menghitung ulang
       // dashboard, jadi tetap dikasih waktu panjang.
-      var LONG_TIMEOUT_FUNCTIONS = { manualSyncNow: 1, clearStockDataForDate: 1 };
+      var LONG_TIMEOUT_FUNCTIONS = { manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1 };
       var timeoutMs = LONG_TIMEOUT_FUNCTIONS[fnName] ? 270000 : 60000;
       return fetchWithTimeout(BASE_URL, {
         method: 'POST',

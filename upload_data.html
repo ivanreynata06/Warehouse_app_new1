@@ -841,20 +841,31 @@ function hapusDataTanggal(tab){
 
   resultEl.className = 'manage-result show';
   resultEl.textContent = 'Menghapus...';
+  var sheetLabel = { stock:'DASHBOARD_STOCK', outbound:'DASHBOARD_KIRIM', inbound:'DASHBOARD_PRODUKSI' }[tab];
+  function gagal(pesan){
+    resultEl.className = 'manage-result show err';
+    resultEl.textContent = '❌ PENGHAPUSAN SPREADSHEET GAGAL — ' + pesan +
+      ' Data di spreadsheet (' + sheetLabel + ') BELUM bersih: hapus manual di spreadsheet atau klik tombol hapus lagi.';
+    try { alert('⚠️ PENGHAPUSAN DI SPREADSHEET GAGAL\n\n' + pesan + '\n\nData di sheet ' + sheetLabel + ' belum bersih. Hapus manual atau coba lagi.'); } catch(e){}
+    muatRentangTanggal(tab); // tampilkan kondisi sheet yang sebenarnya
+  }
   google.script.run
     .withSuccessHandler(function(res){
       if (!res || !res.success){
-        resultEl.className = 'manage-result show err';
-        resultEl.textContent = 'Gagal: ' + (res && res.error || 'error tidak diketahui');
+        var msg = (res && res.error) || 'error tidak diketahui.';
+        if (res && res.sisaDiSheet > 0) msg += ' (Terhapus ' + (res.dihapus||0) + ' baris, sisa ' + res.sisaDiSheet + ' baris.)';
+        gagal(msg);
         return;
       }
       resultEl.className = 'manage-result show ok';
-      resultEl.textContent = '✅ ' + res.dihapus + ' baris berhasil dihapus.';
+      resultEl.textContent = '✅ Spreadsheet (' + (res.namaSheet || sheetLabel) + '): ' + res.dihapus.toLocaleString('id-ID') +
+        ' baris berhasil dihapus' + (res.terverifikasi ? ' & terverifikasi (0 sisa di rentang ini).' : '.') +
+        ' Dashboard ikut diperbarui otomatis ≤5 menit.';
       muatRentangTanggal(tab); // refresh ringkasan
     })
     .withFailureHandler(function(err){
-      resultEl.className = 'manage-result show err';
-      resultEl.textContent = 'Gagal: ' + err;
+      gagal('Koneksi ke server terputus/timeout (' + (err && err.message ? err.message : err) +
+        '). Status penghapusan di spreadsheet TIDAK DIKETAHUI — mungkin belum atau baru sebagian terhapus.');
     })
     .hapusDataUploadByTanggal(tab, dariDDMMYYYY, sampaiDDMMYYYY);
 }
@@ -1131,7 +1142,46 @@ function clearTab(tab, keepStatus){
 // untuk koneksi/jaringan yang mungkin gagal kalau payload-nya kegedean.
 var BATCH_SIZE = 150;
 
+// Cek dulu apakah tanggal yang diupload SUDAH pernah di-upload; kalau ya, minta konfirmasi.
 function submitData(tab){
+  var rows = PARSED_ROWS[tab];
+  if (!rows || !rows.length){ _submitDataLanjut(tab); return; } // biar pesan error lama yang tampil
+  var tgl = [];
+  if (tab === 'stock'){
+    var te = document.getElementById('tanggal-stock'); if (te && te.value) tgl.push(te.value);
+  } else {
+    var seen = {};
+    rows.forEach(function(r){ var t = String(r[4]||'').trim(); if (t && !seen[t]){ seen[t]=1; tgl.push(t); } });
+  }
+  if (!tgl.length){ _submitDataLanjut(tab); return; }
+  var btn = document.getElementById('btn-submit-'+tab);
+  btn.disabled = true;
+  showStatus(tab,'info','Mengecek apakah tanggal ini sudah pernah di-upload...');
+  function batal(){ btn.disabled = false; showStatus(tab,'err','Upload dibatalkan. Tanggal tersebut sudah ada di sheet — hapus dulu lewat "Kelola Data Ter-upload" kalau ingin upload ulang.'); }
+  google.script.run
+    .withSuccessHandler(function(res){
+      btn.disabled = false;
+      if (!res || !res.success){
+        if (!confirm('⚠️ Pengecekan tanggal ganda gagal ('+((res&&res.error)||'tidak diketahui')+').\n\nLanjutkan upload tanpa pengecekan?')){ showStatus(tab,'err','Upload dibatalkan.'); return; }
+        _submitDataLanjut(tab); return;
+      }
+      if (!res.ada || !res.ada.length){ _submitDataLanjut(tab); return; }
+      var daftar = res.ada.slice(0,10).map(function(x){ return '• '+x.tanggal+' ('+x.baris.toLocaleString('id-ID')+' baris)'; }).join('\n') + (res.ada.length>10 ? '\n• ...dan '+(res.ada.length-10)+' tanggal lain' : '');
+      var pesan = (tab === 'stock')
+        ? '⚠️ PERINGATAN: Data tanggal ini SUDAH PERNAH di-upload:\n\n'+daftar+'\n\nUpload Stock akan MENGGANTI data tanggal tersebut (data lama dihapus dulu). Lanjutkan?'
+        : '⚠️ PERINGATAN: Data tanggal berikut SUDAH PERNAH di-upload:\n\n'+daftar+'\n\nJika dilanjutkan, data akan MASUK LAGI dan total bisa DOBEL. Disarankan hapus dulu lewat "Kelola Data Ter-upload".\n\nTetap lanjutkan upload?';
+      if (!confirm(pesan)){ batal(); return; }
+      _submitDataLanjut(tab);
+    })
+    .withFailureHandler(function(err){
+      btn.disabled = false;
+      if (!confirm('⚠️ Tidak bisa mengecek tanggal ganda ('+(err&&err.message?err.message:'koneksi gagal')+').\n\nLanjutkan upload tanpa pengecekan?')){ showStatus(tab,'err','Upload dibatalkan.'); return; }
+      _submitDataLanjut(tab);
+    })
+    .cekTanggalSudahUpload(tab, tgl);
+}
+
+function _submitDataLanjut(tab){
   var rows = PARSED_ROWS[tab];
   if (!rows || !rows.length){
     showStatus(tab,'err','Tidak ada data valid untuk diupload. Klik "Parse & Preview" dulu.');

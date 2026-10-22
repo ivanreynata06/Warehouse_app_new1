@@ -126,6 +126,7 @@ var API_FUNCTIONS = {
   manualSyncNow           : manualSyncNow,
   getRentangTanggalUpload : getRentangTanggalUpload,
   hapusDataUploadByTanggal: hapusDataUploadByTanggal,
+  cekTanggalSudahUpload   : cekTanggalSudahUpload,
   // TL: hapus lembur langsung + panel Lembur per Karyawan
   hapusLemburByTL         : hapusLemburByTL,
   // Jadwal Pengiriman Fitting -- sync otomatis dari sumber eksternal
@@ -2293,54 +2294,90 @@ function clearStockDataForDate(tanggal) {
 //  bisa hapus data yang salah/lupa tanpa perlu buka Apps Script editor.
 //  colIdx: nomor kolom (1-based) yang berisi tanggal transaksi.
 // ================================================================
+// Ubah isi sel tanggal (Date asli ATAU teks "dd/MM/yyyy" / "yyyy-MM-dd") jadi Date.
+// PENTING: new Date("01/10/2026") dibaca MM/DD oleh JS (=> 10 Jan, bukan 1 Okt), jadi
+// sel bertipe teks WAJIB lewat _parseTanggalFleksibel supaya tidak terlewat saat hapus.
+function _cellKeTanggal(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  var d = _parseTanggalFleksibel(v);
+  return (d instanceof Date && !isNaN(d.getTime())) ? d : null;
+}
+
+// Nomor baris (1-based) yang tanggalnya jatuh di rentang [dari, sampai].
+function _barisDalamRentang(sheet, colIdx, dari, sampai) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var vals = sheet.getRange(2, colIdx, lastRow - 1, 1).getValues();
+  var out = [];
+  for (var i = 0; i < vals.length; i++) {
+    var d = _cellKeTanggal(vals[i][0]);
+    if (d && d >= dari && d <= sampai) out.push(2 + i);
+  }
+  return out;
+}
+
+// Hasil: { success, dihapus, sisaDiSheet, terverifikasi, namaSheet, gagalSpreadsheet?, error? }
+// success=false + gagalSpreadsheet=true => data di SPREADSHEET belum (seluruhnya) terhapus.
 function _hapusDataByTanggalRange(sheetName, colIdx, dariDDMMYYYY, sampaiDDMMYYYY) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); }
+  catch (eLock) {
+    return { success: false, gagalSpreadsheet: true, namaSheet: sheetName, dihapus: 0,
+      error: 'Server sedang sibuk (proses lain masih menulis ke spreadsheet). Tidak ada baris yang dihapus, coba lagi sebentar lagi.' };
+  }
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(sheetName);
-    if (!sheet) return { success: false, error: 'Sheet ' + sheetName + ' tidak ditemukan.' };
-
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 2) return { success: true, dihapus: 0 };
+    if (!sheet) return { success: false, gagalSpreadsheet: true, namaSheet: sheetName, dihapus: 0, error: 'Sheet ' + sheetName + ' tidak ditemukan di spreadsheet.' };
 
     var dari = _parseTanggalFleksibel(dariDDMMYYYY);
     var sampai = _parseTanggalFleksibel(sampaiDDMMYYYY);
     if (!(dari instanceof Date) || isNaN(dari.getTime()) || !(sampai instanceof Date) || isNaN(sampai.getTime())) {
-      return { success: false, error: 'Tanggal dari/sampai tidak valid.' };
+      return { success: false, namaSheet: sheetName, dihapus: 0, error: 'Tanggal dari/sampai tidak valid.' };
     }
+    dari = new Date(dari.getTime()); sampai = new Date(sampai.getTime());
     dari.setHours(0, 0, 0, 0);
     sampai.setHours(23, 59, 59, 999);
 
-    var colVals = sheet.getRange(2, colIdx, lastRow - 1, 1).getValues();
-    var rowsToDelete = [];
-    for (var i = 0; i < colVals.length; i++) {
-      var v = colVals[i][0];
-      if (!v) continue;
-      var d = (v instanceof Date) ? v : new Date(v);
-      if (isNaN(d.getTime())) continue;
-      if (d >= dari && d <= sampai) rowsToDelete.push(2 + i);
-    }
-    if (!rowsToDelete.length) return { success: true, dihapus: 0 };
+    var rowsToDelete = _barisDalamRentang(sheet, colIdx, dari, sampai);
+    if (!rowsToDelete.length) return { success: true, dihapus: 0, sisaDiSheet: 0, terverifikasi: true, namaSheet: sheetName };
 
-    rowsToDelete.sort(function (a, b) { return a - b; });
+    // Google Sheets menolak menghapus SEMUA baris non-frozen -> sisakan 1 baris kosong.
+    try {
+      if (sheet.getMaxRows() - rowsToDelete.length <= sheet.getFrozenRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 1);
+    } catch (eIns) { /* dilanjutkan; kalau tetap gagal akan tertangkap di bawah */ }
+
     var blocks = [];
     var blockStart = rowsToDelete[0], blockLen = 1;
     for (var j = 1; j < rowsToDelete.length; j++) {
-      if (rowsToDelete[j] === blockStart + blockLen) {
-        blockLen++;
-      } else {
-        blocks.push([blockStart, blockLen]);
-        blockStart = rowsToDelete[j]; blockLen = 1;
-      }
+      if (rowsToDelete[j] === blockStart + blockLen) blockLen++;
+      else { blocks.push([blockStart, blockLen]); blockStart = rowsToDelete[j]; blockLen = 1; }
     }
     blocks.push([blockStart, blockLen]);
-    for (var k = blocks.length - 1; k >= 0; k--) {
-      sheet.deleteRows(blocks[k][0], blocks[k][1]);
-    }
 
+    var errHapus = null;
+    for (var k = blocks.length - 1; k >= 0; k--) {
+      try { sheet.deleteRows(blocks[k][0], blocks[k][1]); }
+      catch (eDel) { errHapus = eDel.message; break; }
+    }
+    SpreadsheetApp.flush();
+
+    // VERIFIKASI: baca ulang spreadsheet, hitung baris yang MASIH ada di rentang itu.
+    var sisa = _barisDalamRentang(sheet, colIdx, dari, sampai).length;
+    var dihapusNyata = rowsToDelete.length - sisa;
     _bumpDataCacheVersion();
-    return { success: true, dihapus: rowsToDelete.length };
+
+    if (errHapus || sisa > 0) {
+      return { success: false, gagalSpreadsheet: true, namaSheet: sheetName, dihapus: dihapusNyata, sisaDiSheet: sisa,
+        error: 'Penghapusan di spreadsheet (' + sheetName + ') TIDAK tuntas: ' + dihapusNyata + ' baris terhapus, ' + sisa +
+               ' baris masih tersisa di rentang ini' + (errHapus ? ' (' + errHapus + ')' : '') + '.' };
+    }
+    return { success: true, dihapus: rowsToDelete.length, sisaDiSheet: 0, terverifikasi: true, namaSheet: sheetName };
   } catch (err) {
-    return { success: false, error: err.message };
+    return { success: false, gagalSpreadsheet: true, namaSheet: sheetName, error: 'Gagal menghapus di spreadsheet: ' + err.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
   }
 }
 
@@ -2355,6 +2392,44 @@ function hapusDataUploadByTanggal(tab, dariDDMMYYYY, sampaiDDMMYYYY) {
   var cfg = MAP[tab];
   if (!cfg) return { success: false, error: 'Tab tidak dikenali: ' + tab };
   return _hapusDataByTanggalRange(cfg.sheet, cfg.kolom, dariDDMMYYYY, sampaiDDMMYYYY);
+}
+
+// Cek apakah tanggal-tanggal yang AKAN diupload sudah ada di sheet (peringatan upload ganda).
+// tanggalList: array teks tanggal apa adanya dari file/form. Hasil: { success, ada:[{tanggal:'dd/MM/yyyy', baris:N}] }
+function cekTanggalSudahUpload(tab, tanggalList) {
+  var MAP = {
+    stock:    { sheet: SH_STOCK,    kolom: 10 },
+    outbound: { sheet: SH_KIRIM,    kolom: 5  },
+    inbound:  { sheet: SH_PRODUKSI, kolom: 5  }
+  };
+  var cfg = MAP[tab];
+  if (!cfg) return { success: false, error: 'Tab tidak dikenali: ' + tab };
+  try {
+    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(cfg.sheet);
+    if (!sheet) return { success: false, error: 'Sheet ' + cfg.sheet + ' tidak ditemukan.' };
+    var tz = Session.getScriptTimeZone();
+    var diminta = {};
+    (tanggalList || []).forEach(function (t) {
+      var d = _cellKeTanggal(t);
+      if (d) diminta[Utilities.formatDate(d, tz, 'dd/MM/yyyy')] = true;
+    });
+    var lastRow = sheet.getLastRow();
+    var hitung = {};
+    if (lastRow >= 2 && Object.keys(diminta).length) {
+      var vals = sheet.getRange(2, cfg.kolom, lastRow - 1, 1).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        var d2 = _cellKeTanggal(vals[i][0]);
+        if (!d2) continue;
+        var key = Utilities.formatDate(d2, tz, 'dd/MM/yyyy');
+        if (diminta[key]) hitung[key] = (hitung[key] || 0) + 1;
+      }
+    }
+    var ada = Object.keys(hitung).map(function (k) { return { tanggal: k, baris: hitung[k] }; });
+    ada.sort(function (x, y) { return x.tanggal.split('/').reverse().join('').localeCompare(y.tanggal.split('/').reverse().join('')); });
+    return { success: true, ada: ada };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 }
 
 // Ringkasan rentang tanggal data yang sudah ter-upload -- dipakai
@@ -2380,8 +2455,8 @@ function getRentangTanggalUpload(tab) {
     for (var i = 0; i < colVals.length; i++) {
       var v = colVals[i][0];
       if (!v) continue;
-      var d = (v instanceof Date) ? v : new Date(v);
-      if (isNaN(d.getTime())) continue;
+      var d = _cellKeTanggal(v);
+      if (!d) continue;
       totalBaris++;
       if (!minDate || d.getTime() < minDate.getTime()) minDate = d;
       if (!maxDate || d.getTime() > maxDate.getTime()) maxDate = d;
