@@ -145,7 +145,7 @@ var API_FUNCTIONS = {
   // Stock Opname
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
-  soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih, soBukaKunci: soBukaKunci, soSelesaiEdit: soSelesaiEdit,
+  soSimpanKeterangan: soSimpanKeterangan, soCloseSelisih: soCloseSelisih, soBukaKunci: soBukaKunci, soSelesaiEdit: soSelesaiEdit, soLengkapiLembar: soLengkapiLembar,
   soGetDashboard: soGetDashboard, soGetRekapPIC: soGetRekapPIC, soGetAll: soGetAll, soGetSkuCounts: soGetSkuCounts, soGetRiwayatItems: soGetRiwayatItems, soGetLembarAktif: soGetLembarAktif
 };
 
@@ -9354,6 +9354,85 @@ function soSelesaiEdit(payload) {
     sh.getRange(row, 8, 1, 5).setValues([['SELESAI', (u && u.nama) || payload.user || String(payload.nik), _soNow(), ket, jml]]);
     _SO_MEM.rev = null;
     return { success: true, jumlahUbah: jml };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
+}
+
+
+// ================================================================
+//  LENGKAPI SKU LEMBAR (perbaikan) -- TL / Admin / Super Admin
+//  Dipakai bila lembar sudah "selesai" tetapi SKU-nya tidak lengkap (mis. 12 dari 29 SKU, akibat aturan lama
+//  yang memangkas target). Item yang SUDAH di-SO tidak disentuh sama sekali; SKU yang belum ada ditambahkan
+//  sebagai item belum di-SO (dari data QAD terbaru, QTY > 0); qty item belum di-SO diperbarui.
+//  Lembar periode berikutnya yang dibuat otomatis & belum dikerjakan sama sekali dihapus supaya lembar yang
+//  dilengkapi kembali menjadi lembar berjalan (bisa langsung dilanjutkan PIC). Tercatat di SO_REVISI.
+// payload: {id (lembar), items:[{item,desc,um,lokasi,sistem}], alasan, nik, user}
+// ================================================================
+function soLengkapiLembar(payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    if (!_soBolehBuka(payload.nik)) return { success: false, error: 'Akses ditolak. Hanya TL, Admin, atau Super Admin.' };
+    var alasan = String(payload.alasan || '').trim();
+    if (alasan.length < 5) return { success: false, error: 'Alasan wajib diisi (minimal 5 karakter).' };
+    var lembarAll = _soLembarList(), idx = -1;
+    lembarAll.forEach(function (x, i) { if (x.id === payload.id) idx = i; });
+    if (idx < 0) return { success: false, error: 'Lembar tidak ditemukan.' };
+    var lm = lembarAll[idx], g = _soGroupItemMap(lm.group), seen = {}, items = [];
+    (payload.items || []).forEach(function (it) {
+      var k = _soNorm(it.item); if (!k || seen[k] || !(Number(it.sistem) > 0)) return;
+      seen[k] = 1; items.push(it);
+    });
+    if (!items.length) return { success: false, error: 'Tidak ada item bernilai (QTY > 0) pada data upload.' };
+    lock.waitLock(25000);
+    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), sl = _soSheet('SO_LEMBAR', SO_LEMBAR_HDR);
+    var last = sd.getLastRow(), all = last >= 2 ? sd.getRange(1, 1, last, 7).getValues() : [[]];
+    var rowOf = {}, filled = {}, filledPerLembar = {};
+    for (var r = 1; r < all.length; r++) {
+      var lid = String(all[r][0]), isFilled = String(all[r][6]) !== '';
+      if (isFilled) filledPerLembar[lid] = (filledPerLembar[lid] || 0) + 1;
+      if (lid === lm.id) { var kk = _soNorm(all[r][1]); rowOf[kk] = r + 1; filled[kk] = isFilled; }
+    }
+    var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0;
+    items.forEach(function (it) {
+      var k = _soNorm(it.item), row = rowOf[k];
+      if (row) {
+        if (filled[k]) { dikunci++; return; }                 // sudah di-SO -> TIDAK disentuh
+        var c = all[row - 1];
+        c[2] = it.desc || c[2] || g.map[k] || ''; c[3] = it.um || c[3] || ''; c[4] = it.lokasi || c[4] || ''; c[5] = Number(it.sistem) || 0;
+        if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++;
+      } else {
+        baru.push([lm.id, String(it.item).trim(), it.desc || g.map[k] || '', it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', '']);
+      }
+    });
+    if (diperbarui) sd.getRange(minR, 3, maxR - minR + 1, 4).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(2, 6); }));
+    if (baru.length) sd.getRange(sd.getLastRow() + 1, 1, baru.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(baru);
+    var total = Object.keys(rowOf).length + baru.length;
+    var ids = sl.getRange(1, 1, sl.getLastRow(), 1).getValues();
+    for (var i = 1; i < ids.length; i++) if (String(ids[i][0]) === lm.id) { sl.getRange(i + 1, 8).setValue(total); break; }
+
+    // Lembar periode berikutnya hasil AUTO yang belum disentuh -> dihapus agar lembar ini kembali jadi lembar berjalan
+    var hapusId = {}, berikutnyaDikerjakan = false;
+    lembarAll.slice(idx + 1).forEach(function (x) {
+      if (_soNorm(x.group) !== _soNorm(lm.group)) return;
+      if (String(x.oleh) === 'AUTO' && !filledPerLembar[x.id]) hapusId[x.id] = 1; else berikutnyaDikerjakan = true;
+    });
+    var nHapus = Object.keys(hapusId).length;
+    if (nHapus) {
+      var dRows = []; for (var q = 1; q < all.length; q++) if (hapusId[String(all[q][0])]) dRows.push(q + 1);
+      dRows.sort(function (a, b) { return b - a; });
+      for (var h = 0; h < dRows.length;) { var st = dRows[h], cnt = 1; while (h + cnt < dRows.length && dRows[h + cnt] === st - cnt) cnt++; sd.deleteRows(st - cnt + 1, cnt); h += cnt; }
+      var lRows = []; for (var z = 1; z < ids.length; z++) if (hapusId[String(ids[z][0])]) lRows.push(z + 1);
+      lRows.sort(function (a, b) { return b - a; });
+      lRows.forEach(function (rw) { sl.deleteRow(rw); });
+    }
+    // catat di SO_REVISI (siapa, kapan, alasan, apa yang berubah)
+    var u = _soUserInfo(payload.nik), nama = (u && u.nama) || payload.user || String(payload.nik);
+    var revId = _soUniqueId('REV-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), _soRevisiList().map(function (rv) { return rv.id; }));
+    var shR = _soSheet('SO_REVISI', SO_REVISI_HDR);
+    shR.getRange(shR.getLastRow() + 1, 1, 1, SO_REVISI_HDR.length).setNumberFormat('@').setValues([[revId, lm.id, lm.group, lm.pic, nama, _soNow(), alasan, 'SELESAI', nama, _soNow(),
+      'Melengkapi SKU: +' + baru.length + ' item baru, ' + diperbarui + ' qty diperbarui, ' + dikunci + ' sudah di-SO dipertahankan' + (nHapus ? '; ' + nHapus + ' lembar periode berikutnya (otomatis, belum dikerjakan) dihapus' : ''), baru.length]]);
+    return { success: true, id: lm.id, baru: baru.length, diperbarui: diperbarui, dikunci: dikunci, total: total, lembarBerikutDihapus: nHapus, berikutnyaSudahDikerjakan: berikutnyaDikerjakan };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
