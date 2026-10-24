@@ -9000,7 +9000,7 @@ function soGetLembarAktif(group) {
   try {
     var l = _soLembarAktif(group), items = {};
     if (l) _soDetailRows().forEach(function (d) { if (d.lembar === l.id) items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem }; });
-    return { success: true, lembar: l, items: items };
+    return { success: true, lembar: l, items: items, bolehTambahItem: _soBolehTambahItem(group) };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
@@ -9038,11 +9038,18 @@ function _soCekSelesaiDanLanjut(id) {
   return { id: nid, mulai: mulai, akhir: akhir, jumlah: rows.length };
 }
 
-// payload: {pic, group, items:[{item,desc,um,lokasi,sistem}], user}
-// Item hasil upload (QTY > 0) = TARGET periode (minggu / 1 bulan / 3 bulan) dan terkunci.
-// Upload ulang di periode yang sama (digabung): item sudah di-SO tetap; belum di-SO diperbarui qty-nya;
-// item baru bernilai ditambahkan; item belum di-SO yg tidak ada lagi di upload dikeluarkan (target berkurang).
-// Item QTY 0/minus tidak pernah ditarik. Item di luar list sheet group tetap ditarik bila QTY > 0.
+// Group yang BOLEH menambah item baru saat upload ulang di periode berjalan (group lain: master SKU tetap)
+var SO_GROUP_TAMBAH_ITEM = ['I053', 'Q055'];
+function _soBolehTambahItem(group) { return SO_GROUP_TAMBAH_ITEM.some(function (g) { return _soKey(g) === _soKey(group); }); }
+
+// payload: {pic, group, items:[{item,desc,um,lokasi,sistem}], qadKeys:[kode item bernilai di data QAD terbaru], user}
+// UPLOAD PERTAMA di periode = MASTER SKU lembar (item yang dicentang PIC).
+// UPLOAD ULANG di periode yang sama (digabung ke lembar aktif):
+//   - SKU di lembar TETAP, walau tidak dicentang / tidak ikut dikirim (tidak ada lagi pemangkasan target);
+//   - item sudah di-SO dikunci; item belum di-SO diperbarui qty-nya (bila ikut dikirim);
+//   - SKU belum di-SO DIKELUARKAN hanya bila di data QAD terbaru stok-nya 0 / sudah tidak ada (qadKeys);
+//   - item BARU hanya ditambahkan utk group I053 & Q055; group lain diabaikan.
+// Item QTY 0/minus tidak pernah ditarik. Item di luar list sheet group tetap ditarik (upload pertama) bila QTY > 0.
 function soBuatLembar(payload) {
   var lock = LockService.getScriptLock();
   try {
@@ -9058,15 +9065,20 @@ function soBuatLembar(payload) {
       if (!g.map.hasOwnProperty(k)) tambahan++;
       seen[k] = 1; keepKeys[k] = 1; keep.push(it);
     });
-    if (!keep.length) return { success: false, error: 'Tidak ada item bernilai (QTY > 0) pada data upload.' };
+    var aktif = _soLembarAktif(payload.group);
+    var qadKeys = null;
+    if (payload.qadKeys && payload.qadKeys.length !== undefined) {
+      qadKeys = {}; payload.qadKeys.forEach(function (c) { var k = _soNorm(c); if (k) qadKeys[k] = 1; });
+    }
+    if (aktif && qadKeys && !Object.keys(qadKeys).length) return { success: false, error: 'Data QAD untuk group ini kosong -- tidak ada yang diperbarui (mencegah lembar terhapus karena file salah).' };
+    if (!keep.length && !(aktif && qadKeys)) return { success: false, error: 'Tidak ada item bernilai (QTY > 0) pada data upload.' };
     lock.waitLock(25000);
     var sl = _soSheet('SO_LEMBAR', SO_LEMBAR_HDR), sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR);
-    var aktif = _soLembarAktif(payload.group);
 
     if (aktif) {
       var last = sd.getLastRow(), all = last >= 2 ? sd.getRange(1, 1, last, 7).getValues() : [[]], rowOf = {}, filled = {};
       for (var r = 1; r < all.length; r++) if (String(all[r][0]) === aktif.id) { var kk = _soNorm(all[r][1]); rowOf[kk] = r + 1; filled[kk] = String(all[r][6]) !== ''; }
-      var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0, hapus = [];
+      var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0, hapus = [], ditolakBaru = 0, boleh = _soBolehTambahItem(payload.group);
       keep.forEach(function (it) {
         var k = _soNorm(it.item), row = rowOf[k];
         if (row) {
@@ -9074,11 +9086,14 @@ function soBuatLembar(payload) {
           var c = all[row - 1];
           c[2] = it.desc || c[2] || g.map[k] || ''; c[3] = it.um || c[3] || ''; c[4] = it.lokasi || c[4] || ''; c[5] = Number(it.sistem) || 0;
           if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++;
-        } else {
+        } else if (boleh) {
           baru.push([aktif.id, String(it.item).trim(), it.desc || g.map[k] || '', it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', '']);
+        } else {
+          ditolakBaru++; // master SKU tetap: item baru tidak ditambahkan di group ini
         }
       });
-      Object.keys(rowOf).forEach(function (k) { if (!filled[k] && !keepKeys[k]) hapus.push(rowOf[k]); }); // target berkurang
+      // Keluarkan HANYA SKU belum di-SO yang stok-nya 0 / tidak ada di data QAD terbaru. Tanpa qadKeys (klien lama) -> tidak ada yang dikeluarkan.
+      if (qadKeys) Object.keys(rowOf).forEach(function (k) { if (!filled[k] && !qadKeys[k]) hapus.push(rowOf[k]); });
       if (diperbarui) sd.getRange(minR, 3, maxR - minR + 1, 4).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(2, 6); }));
       if (baru.length) sd.getRange(sd.getLastRow() + 1, 1, baru.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(baru);
       hapus.sort(function (a, b) { return b - a; });
@@ -9091,7 +9106,7 @@ function soBuatLembar(payload) {
       var ls = sl.getRange(1, 1, sl.getLastRow(), 1).getValues();
       for (var i = 1; i < ls.length; i++) if (String(ls[i][0]) === aktif.id) { sl.getRange(i + 1, 8).setValue(total); break; }
       var lanjut = _soCekSelesaiDanLanjut(aktif.id);
-      return { success: true, id: aktif.id, digabung: true, baru: baru.length, diperbarui: diperbarui, dikunci: dikunci, dihapus: hapus.length, total: total, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: aktif.mulai, akhir: aktif.akhir, lanjut: lanjut };
+      return { success: true, id: aktif.id, digabung: true, baru: baru.length, diperbarui: diperbarui, dikunci: dikunci, dihapus: hapus.length, ditolakBaru: ditolakBaru, total: total, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: aktif.mulai, akhir: aktif.akhir, lanjut: lanjut };
     }
 
     var today = _soToday();
