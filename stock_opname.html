@@ -74,6 +74,12 @@ input.fisik{width:90px;text-align:right;font-family:var(--mono)}
 .toast.err{background:#ef4444}
 tr.sel-row td{background:rgba(239,68,68,.07)}
 #printArea{display:none}
+th.sortable{cursor:pointer;user-select:none;transition:color .15s}th.sortable:hover{color:var(--green)}
+th.sortable .si{opacity:.5;font-size:10px;margin-left:3px}th.sortable.on{color:var(--green)}th.sortable.on .si{opacity:1}
+.tb{font-size:9.5px;color:#f6c667;margin-top:3px;line-height:1.35;font-family:'Inter',sans-serif;font-weight:500}
+tr.hold-row td{opacity:.6}
+.cbanner{border:1px solid rgba(245,158,11,.4);background:linear-gradient(180deg,rgba(245,158,11,.1),rgba(245,158,11,.04));border-radius:10px;padding:10px 14px;font-size:12px;line-height:1.55;margin:0 14px 10px}
+.cbanner.ok{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.07)}
 .c-prog{background:rgba(59,130,246,.18);color:#7cb0ff;display:inline-flex;align-items:center;gap:7px}
 .blink{width:8px;height:8px;border-radius:50%;background:#3b82f6;display:inline-block;animation:blinkDot 1.25s ease-in-out infinite}
 @keyframes blinkDot{0%{opacity:1;box-shadow:0 0 0 0 rgba(59,130,246,.7)}50%{opacity:.3}75%{box-shadow:0 0 0 8px rgba(59,130,246,0)}100%{opacity:1;box-shadow:0 0 0 0 rgba(59,130,246,0)}}
@@ -272,7 +278,7 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
           <label class="muted" style="display:none"><input type="checkbox" id="bStock" checked onchange="renderPick()"> Hanya stok &gt; 0</label>
           <button class="btn" onclick="pickAll(true)">Pilih semua</button><button class="btn" onclick="pickAll(false)">Kosongkan</button></div></div>
       <div class="card-b muted" id="bInfo"></div>
-      <div class="tw"><table><thead><tr><th></th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Qty Sistem</th><th>Status</th></tr></thead><tbody id="bBody"></tbody></table></div>
+      <div class="tw"><table><thead id="bHead"></thead><tbody id="bBody"></tbody></table></div>
       <div class="card-b row"><button class="btn p" id="bGo" onclick="buatLembar()">Buat Lembar SO</button><span class="muted" id="bCount"></span></div>
     </div>
   </div>
@@ -288,8 +294,8 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
         <div class="row"><select id="isiFilter" onchange="renderIsi()"><option value="all">Semua item</option><option value="todo">Belum diisi</option><option value="sel">Ada selisih</option></select>
           <input type="search" id="isiSearch" placeholder="Cari item…" oninput="renderIsi()">
           <button class="btn p" id="btnSimpanIsi" onclick="simpanIsi()">Simpan Pengisian</button></div></div>
-      <div id="revBanner"></div><div class="card-b"><div class="bar" id="isiBar"><i style="width:0"></i></div><div class="muted" id="isiProg" style="margin-top:6px"></div></div>
-      <div class="tw"><table><thead><tr><th>No</th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Sistem</th><th>Fisik</th><th>Selisih</th></tr></thead><tbody id="isiBody"></tbody></table></div>
+      <div id="revBanner"></div><div id="carryBanner"></div><div class="card-b"><div class="bar" id="isiBar"><i style="width:0"></i></div><div class="muted" id="isiProg" style="margin-top:6px"></div></div>
+      <div class="tw"><table><thead id="isiHead"></thead><tbody id="isiBody"></tbody></table></div>
     </div>
   </div>
 
@@ -462,6 +468,28 @@ function renderWeekly(id,filter){
       '<td>'+(w.lembarId?'<button class="btn" onclick="lihatRiw(\''+esc(w.lembarId)+'\')">Lihat</button>':'<span class="muted">—</span>')+'</td></tr>'}).join('')+'</tbody></table></div></div>';
   }).join('');
 }
+/* ---------- urut kolom (klik judul kolom) ---------- */
+var SORT={isi:{k:'',d:1},pick:{k:'',d:1},dg:{k:'',d:1}},DEFDIR={item:1,desc:1,sistem:-1,fisik:-1,selisih:-1};
+var SKEY={item:function(x){return x.item},desc:function(x){return x.desc},sistem:function(x){return x.sistem},fisik:function(x){return x.fisik},selisih:function(x){return x.selisih}};
+function cmpVal(a,b){return (typeof a==='number'&&typeof b==='number')?a-b:String(a).localeCompare(String(b),'id',{numeric:true,sensitivity:'base'})}
+function sortRows(rows,tbl){
+  var s=SORT[tbl],fn=SKEY[s.k];
+  if(!s.k||!fn) return rows.filter(function(x){return x.mode==='CARRY'}).concat(rows.filter(function(x){return x.mode!=='CARRY'})); // bawaan: item SISA periode lalu di atas
+  return rows.slice().sort(function(a,b){var A=fn(a),B=fn(b),na=(A==null||A===''),nb=(B==null||B==='');if(na&&nb)return 0;if(na)return 1;if(nb)return -1;return cmpVal(A,B)*s.d});
+}
+function setSort(tbl,k){var s=SORT[tbl];if(s.k===k)s.d=-s.d;else{s.k=k;s.d=DEFDIR[k]||1}({isi:renderIsi,pick:renderPick,dg:renderDGRows})[tbl]()}
+function sth(tbl,k,label,cls){
+  var s=SORT[tbl],on=s.k===k,num=(DEFDIR[k]===-1),tip=num?'Klik: urut terbesar ↔ terkecil':'Klik: urut A–Z ↔ Z–A';
+  return '<th class="sortable'+(on?' on':'')+(cls?' '+cls:'')+'" title="'+tip+'" onclick="setSort(\''+tbl+'\',\''+k+'\')">'+label+' <span class="si">'+(on?(s.d>0?'↑':'↓'):'⇅')+'</span></th>';
+}
+function drawHeads(){
+  var h=function(id,html){var e=document.getElementById(id);if(e)e.innerHTML=html};
+  h('isiHead','<tr><th>No</th>'+sth('isi','item','Item','l')+sth('isi','desc','Deskripsi','l')+'<th>UM</th><th>Lokasi</th>'+sth('isi','sistem','Sistem','')+sth('isi','fisik','Fisik','')+sth('isi','selisih','Selisih','')+'</tr>');
+  h('bHead','<tr><th></th>'+sth('pick','item','Item','l')+sth('pick','desc','Deskripsi','l')+'<th>UM</th><th>Lokasi</th>'+sth('pick','sistem','Qty Sistem','')+'<th>Status</th></tr>');
+  h('dgHead','<tr><th>No</th>'+sth('dg','item','Item','l')+sth('dg','desc','Deskripsi','l')+'<th>UM</th><th>Lokasi</th>'+sth('dg','sistem','Sistem','')+sth('dg','fisik','Fisik','')+sth('dg','selisih','Selisih','')+'<th>Status</th><th class="l">Diisi</th></tr>');
+}
+function badgeMode(x){return x.mode==='CARRY'?' <span class="chip c-late2">SISA PERIODE LALU</span>':(x.mode==='HOLD'?' <span class="chip c-idle">🔒 TERKUNCI</span>':'')}
+function noteTB(x){return x.tidakBergerak?'<div class="tb">⏸ Barang tidak bergerak — qty sama dengan qty pada '+idDate(x.prevTgl)+'</div>':''}
 function statusChip(s){
   if(s==='ON PROGRESS'||s==='ON TRACK') return '<span class="chip c-prog"><i class="blink"></i>ON PROGRESS</span>';
   var c={'TERLAMBAT':'c-late','SELESAI':'c-done','SELESAI TERLAMBAT':'c-late2','BELUM MULAI':'c-idle'}[s]||'c-idle';return '<span class="chip '+c+'">'+s+'</span>'}
@@ -517,20 +545,26 @@ function checkGroup(){
   var g=document.getElementById('bGroup').value; if(!g) return toast('Pilih group dulu',true);
   Promise.all([api('soGetGroupItems',g),api('soGetLembarAktif',g)]).then(function(rs){
     var gi=rs[0],ak=rs[1];
-    S.valid=gi.items||{}; S.aktif=ak.lembar; S.exist=ak.items||{}; S.boleh=!!ak.bolehTambahItem; S.pick={};
+    S.sisa=(!ak.lembar&&ak.sisaSebelumnya)?ak.sisaSebelumnya:null; S.qtyT=ak.qtyTerakhir||{}; S.valid=gi.items||{}; S.aktif=ak.lembar; S.exist=ak.items||{}; S.boleh=!!ak.bolehTambahItem; S.pick={};
     var hasGrp=(S.qadAll||[]).some(function(x){return x.grp}), gU=g.toUpperCase().replace(/\s+/g,'');
     var inGrp=(S.qadAll||[]).filter(function(x){return !hasGrp||x.grp.replace(/\s+/g,'')===gU});
     var dropped=0;
     S.qad=inGrp.filter(function(x){var k=x.item.toUpperCase();x.inSheet=S.valid.hasOwnProperty(k);
       if(!(x.sistem>0)){dropped++;return false}   // QTY 0 / minus tidak ditarik
       var e=S.exist[k];x.state=!e?'new':(e.fisik!==null?'locked':'update');x.noadd=!!(S.aktif&&!e&&!S.boleh);return true});
+    var pend={},doneK={},carryDrop=0;
+    if(S.sisa){S.sisa.pending.forEach(function(p){pend[String(p.item).toUpperCase()]=1});S.sisa.done.forEach(function(k){doneK[k]=1})}
+    S.qad.forEach(function(x){var k=x.item.toUpperCase();
+      if(S.sisa){if(pend[k])x.state='carry';else if(doneK[k])x.hold=true}
+      var t=S.qtyT[k];x.same=!!(t&&t.sistem===x.sistem&&t.tgl&&t.tgl<(S.today||'9999'));x.sameTgl=t?t.tgl:''});
+    if(S.sisa)S.sisa.pending.forEach(function(p){var k=String(p.item).toUpperCase();if(!S.qad.some(function(x){return x.item.toUpperCase()===k}))carryDrop++});
     S.qad.forEach(function(x){S.pick[x.item.toUpperCase()]=x.state==='locked'?false:(S.aktif?(x.state==='update'||(x.state==='new'&&S.boleh)):true)}); // lembar ada: SKU master tetap ikut; item baru hanya I053 & Q055
-    var c={locked:0,update:0,new:0,out:0};S.qad.forEach(function(x){c[x.state]++;if(!x.inSheet)c.out++});
+    var c={locked:0,update:0,new:0,out:0,carry:0};S.qad.forEach(function(x){c[x.state]++;if(!x.inSheet)c.out++});
     var up={};S.qad.forEach(function(x){up[x.item.toUpperCase()]=1});var removed=0;Object.keys(S.exist).forEach(function(k){if(S.exist[k].fisik===null&&!up[k])removed++});
     document.getElementById('bPreview').style.display='block';
     document.getElementById('bGo').textContent=S.aktif?'Perbarui Lembar SO':'Buat Lembar SO';
     document.getElementById('bInfo').innerHTML='Group <b>'+esc(g)+'</b>: '+(gi.found?Object.keys(S.valid).length+' SKU di sheet group':'<span style="color:var(--amber)">sheet group tidak ditemukan — item ditarik dari data QAD</span>')+' · '+inGrp.length+' baris QAD ber-Group '+esc(g)+'.<br>'+
-      (S.aktif?'Lembar aktif <b>'+esc(S.aktif.id)+'</b> ('+esc(S.aktif.mulai)+' s/d '+esc(S.aktif.akhir)+') akan <b>digabung</b> — SKU upload pertama tetap jadi master: <b>'+c.locked+'</b> sudah di-SO (dikunci), <b>'+c.update+'</b> belum di-SO (qty diperbarui)'+(S.boleh?', <b>'+c.new+'</b> item baru ditambahkan (group ini boleh menambah item)':(c.new?'. <b>'+c.new+'</b> item baru di data QAD <b>tidak ditambahkan</b> (hanya group I053 &amp; Q055 yang boleh)':''))+(removed?'. <b>'+removed+'</b> SKU belum di-SO akan <b>dikeluarkan karena stok 0 / tidak ada di data QAD terbaru</b>':'')+'. ':'Belum ada lembar aktif — upload ini menjadi <b>master SKU</b> periode ('+c.new+' item dipilih). ')+
+      (S.aktif?'Lembar aktif <b>'+esc(S.aktif.id)+'</b> ('+esc(S.aktif.mulai)+' s/d '+esc(S.aktif.akhir)+') akan <b>digabung</b> — SKU upload pertama tetap jadi master: <b>'+c.locked+'</b> sudah di-SO (dikunci), <b>'+c.update+'</b> belum di-SO (qty diperbarui)'+(S.boleh?', <b>'+c.new+'</b> item baru ditambahkan (group ini boleh menambah item)':(c.new?'. <b>'+c.new+'</b> item baru di data QAD <b>tidak ditambahkan</b> (hanya group I053 &amp; Q055 yang boleh)':''))+(removed?'. <b>'+removed+'</b> SKU belum di-SO akan <b>dikeluarkan karena stok 0 / tidak ada di data QAD terbaru</b>':'')+'. ':'Belum ada lembar aktif — upload ini menjadi <b>master SKU</b> periode ('+(c.new+c.carry)+' item). '+(S.sisa?'<br>⚠ Periode sebelumnya belum selesai: <b>'+c.carry+'</b> item yang belum di-SO menjadi <b>SISA</b> (dikerjakan dulu), <b>'+S.qad.filter(function(x){return x.hold}).length+'</b> item yang sudah di-SO <b>terkunci sementara</b> dan terbuka otomatis setelah sisa selesai. Progres dicatat di periode ini.'+(carryDrop?' '+carryDrop+' item sisa tidak ikut karena stok 0 / tidak ada di data QAD.':''):''))+
       (c.out?c.out+' item di luar list sheet group ikut ditarik karena ada QTY. ':'')+(dropped?dropped+' item QTY 0 tidak ditarik.':'');
     renderPick();
   }).catch(function(e){
@@ -542,29 +576,33 @@ function checkGroup(){
 }
 document.addEventListener('change',function(e){if(e.target.id==='bGroup'&&S.qadAll&&document.getElementById('bFile').files.length)checkGroup()});
 function stateChip(x){var h='';
-  if(x.state==='locked') h='<span class="chip c-done">SUDAH DI-SO</span>';
+  if(x.state==='carry') h='<span class="chip c-late2">SISA PERIODE LALU · DIKERJAKAN DULU</span>';
+  else if(x.state==='locked') h='<span class="chip c-done">SUDAH DI-SO</span>';
   else if(x.state==='update') h='<span class="chip c-ok">'+(S.aktif?'MASTER · UPDATE QTY':'UPDATE QTY')+'</span>';
   else h=x.noadd?'<span class="chip c-idle">TIDAK DITAMBAH</span>':'<span class="chip c-idle">BARU</span>';
+  if(x.hold) h+=' <span class="chip c-idle">🔒 TERKUNCI SEMENTARA</span>';
+  if(x.same) h+=' <span class="chip" style="background:rgba(245,158,11,.15);color:#f6c667">⏸ TIDAK BERGERAK · sama dgn qty '+idDate(x.sameTgl)+'</span>';
   if(!x.inSheet) h+=' <span class="chip" style="background:rgba(245,158,11,.2);color:#f6c667">DI LUAR LIST</span>';
   return h}
 function renderPick(){
   var q=document.getElementById('bSearch').value.toUpperCase(),only=document.getElementById('bStock').checked;
   var rows=S.qad.filter(function(x){return (!only||x.sistem>0||x.state==='locked')&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1)});
-  document.getElementById('bBody').innerHTML=rows.slice(0,800).map(function(x){var k=x.item.toUpperCase(),lk=x.state==='locked'||(S.aktif&&(x.state==='update'||x.noadd));
+  rows=sortRows(rows,'pick');drawHeads();
+  document.getElementById('bBody').innerHTML=rows.slice(0,800).map(function(x){var k=x.item.toUpperCase(),lk=x.state==='locked'||x.state==='carry'||(S.aktif&&(x.state==='update'||x.noadd));
     return '<tr style="'+(lk?'opacity:.55':'')+'"><td><input type="checkbox" '+(lk?'disabled'+(S.pick[k]?' checked':''):(S.pick[k]?'checked':''))+' onchange="S.pick[\''+k.replace(/'/g,"\\'")+'\']=this.checked;cnt()"></td><td class="l mono">'+esc(x.item)+'</td><td class="l">'+esc(x.desc||S.valid[k]||'')+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td>'+stateChip(x)+'</td></tr>'}).join('')||'<tr><td colspan="7" class="empty">Tidak ada item</td></tr>';
   cnt();
 }
 function cnt(){document.getElementById('bCount').textContent=kirimItems().length+' item dikirim'+(S.aktif?' (SKU master tetap, tidak termasuk yang sudah di-SO)':' sebagai master SKU')}
-function kirimItems(){return S.qad.filter(function(x){if(x.state==='locked'||x.noadd)return false;return S.aktif?(x.state==='update'||(x.state==='new'&&S.boleh&&S.pick[x.item.toUpperCase()])):S.pick[x.item.toUpperCase()]})}
+function kirimItems(){return S.qad.filter(function(x){if(x.state==='carry')return true;if(x.state==='locked'||x.noadd)return false;return S.aktif?(x.state==='update'||(x.state==='new'&&S.boleh&&S.pick[x.item.toUpperCase()])):S.pick[x.item.toUpperCase()]})}
 function pickAll(v){var q=document.getElementById('bSearch').value.toUpperCase(),only=document.getElementById('bStock').checked;
-  S.qad.forEach(function(x){if(x.state!=='locked'&&!x.noadd&&!(S.aktif&&x.state==='update')&&(!only||x.sistem>0)&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1))S.pick[x.item.toUpperCase()]=v});renderPick()}
+  S.qad.forEach(function(x){if(x.state!=='locked'&&x.state!=='carry'&&!x.noadd&&!(S.aktif&&x.state==='update')&&(!only||x.sistem>0)&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1))S.pick[x.item.toUpperCase()]=v});renderPick()}
 function buatLembar(){
   var g=document.getElementById('bGroup').value,m=S.master.filter(function(x){return x.group===g})[0];
   var items=kirimItems();
   if(!items.length&&!S.aktif) return toast('Pilih minimal 1 item sebagai master SKU',true);
   var b=document.getElementById('bGo'); b.disabled=true;
-  api('soBuatLembar',{pic:m.pic,group:g,items:items.map(function(x){return {item:x.item,desc:x.desc,um:x.um,lokasi:x.lokasi,sistem:x.sistem}}),qadKeys:S.aktif?S.qad.map(function(x){return x.item}):undefined,user:NAMA}).then(function(r){
-    toast(r.digabung?('Lembar '+r.id+' diperbarui · target '+r.total+' item ('+r.diperbarui+' diupdate, '+r.baru+' baru, '+r.dihapus+' dikeluarkan (stok 0), '+r.dikunci+' sudah di-SO'+(r.ditolakBaru?', '+r.ditolakBaru+' item baru tidak ditambah':'')+')'):('Lembar '+r.id+' dibuat · target '+r.baru+' item'));
+  api('soBuatLembar',{pic:m.pic,group:g,items:items.map(function(x){return {item:x.item,desc:x.desc,um:x.um,lokasi:x.lokasi,sistem:x.sistem}}),qadKeys:S.qad.map(function(x){return x.item}),user:NAMA}).then(function(r){
+    toast(r.digabung?('Lembar '+r.id+' diperbarui · target '+r.total+' item ('+r.diperbarui+' diupdate, '+r.baru+' baru, '+r.dihapus+' dikeluarkan (stok 0), '+r.dikunci+' sudah di-SO'+(r.ditolakBaru?', '+r.ditolakBaru+' item baru tidak ditambah':'')+')'):('Lembar '+r.id+' dibuat · target '+r.baru+' item'+(r.carry?' · '+r.carry+' item SISA periode lalu dikerjakan dulu, '+r.hold+' item terkunci sementara':'')));
     if(r.lanjut) setTimeout(function(){toast('Semua item selesai — otomatis pindah ke periode berikutnya (mulai '+r.lanjut.mulai+')')},3400);
     S.qad=[];S.qadAll=[];document.getElementById('bPreview').style.display='none';document.getElementById('bFile').value='';
     loadAll(true);goTab('isi');
@@ -597,13 +635,16 @@ function renderIsi(){
   document.getElementById('revBanner').innerHTML=ro?'<div class="revb"><span class="dot"></span><div><b>Lembar ini DIBUKA untuk edit</b> oleh '+esc(ro.dibukaOleh)+' ('+esc(ro.tglBuka)+'). Alasan: '+esc(ro.alasanBuka)+'<br>Koreksi isian yang perlu diubah lalu klik <b>Simpan Pengisian</b>. Setelah selesai, klik <b>Selesai Edit</b> dan isi keterangannya.</div><button class="btn p" onclick="selesaiEditModal(\''+esc(S.cur.lembar.id)+'\',true)">✔ Selesai Edit</button></div>':'';document.getElementById('btnSimpanIsi').style.display=lk?'none':'';
   var f=document.getElementById('isiFilter').value,q=document.getElementById('isiSearch').value.toUpperCase(),all=S.cur.items;
   var rows=all.filter(function(x){return (f==='all'||(f==='todo'&&x.fisik===null)||(f==='sel'&&(x.selisih||S.recheck[x.row])))&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1)});
+  rows=sortRows(rows,'isi');drawHeads();
+  var cb=document.getElementById('carryBanner'),cBelum=all.filter(function(x){return x.mode==='CARRY'&&x.fisik===null}).length,nHold=all.filter(function(x){return x.mode==='HOLD'}).length;
+  cb.innerHTML=cBelum?'<div class="cbanner"><b>⚠ Kerjakan dulu '+cBelum+' item SISA periode lalu</b> (ditandai SISA PERIODE LALU, tampil paling atas).<br>'+nHold+' item yang sudah di-SO periode lalu <b>terkunci sementara</b> dan akan <b>terbuka otomatis</b> setelah semua item sisa selesai. Progres dihitung di periode ini.</div>':(nHold===0&&all.some(function(x){return x.mode==='CARRY'})?'<div class="cbanner ok">✓ Semua item sisa periode lalu sudah dikerjakan. Seluruh item kini terbuka.</div>':'');
   var done=all.filter(function(x){return x.fisik!==null}).length,pct=all.length?done/all.length*100:0;
   document.getElementById('isiBar').firstChild.style.width=pct+'%';
   document.getElementById('isiProg').innerHTML=done+' dari '+all.length+' item terisi ('+pct.toFixed(1).replace('.',',')+'%)'+(lk?' · <b style="color:#f6c667">Data periode ini terkunci karena periode berikutnya sudah dimulai — hanya dapat dilihat.</b>':'');
   document.getElementById('isiBody').innerHTML=rows.slice(0,600).map(function(x,i){
     var dv=S.draft[x.row]!==undefined?S.draft[x.row]:(x.fisik===null?'':x.fisik),sel=dv===''?null:Number(dv)-x.sistem;
-    return '<tr class="'+(x.selisih?'sel-row':'')+'"><td>'+(all.indexOf(x)+1)+'</td><td class="l mono">'+esc(x.item)+(S.recheck[x.row]?' <span class="chip c-late" style="background:rgba(245,158,11,.2);color:#f6c667">CEK ULANG</span>':'')+(x.konfirmasi?'<div class="muted" style="font-size:9.5px">'+esc(x.konfirmasi)+'</div>':'')+'</td><td class="l">'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td>'+
-    '<td><input class="fisik'+(S.recheck[x.row]?' recheck':'')+'" type="number" step="any" data-row="'+x.row+'" value="'+dv+'" oninput="liveSel(this,'+x.sistem+')"'+(lk?' disabled':'')+'></td><td class="mono" id="sl'+x.row+'" style="color:'+(sel?'var(--red)':'var(--green)')+'">'+(sel===null?'':fmt(sel))+'</td></tr>'}).join('')||'<tr><td colspan="8" class="empty">Tidak ada item</td></tr>';
+    return '<tr class="'+(x.selisih?'sel-row':'')+(x.mode==='HOLD'?' hold-row':'')+'"><td>'+(all.indexOf(x)+1)+'</td><td class="l mono">'+esc(x.item)+badgeMode(x)+(S.recheck[x.row]?' <span class="chip c-late" style="background:rgba(245,158,11,.2);color:#f6c667">CEK ULANG</span>':'')+(x.konfirmasi?'<div class="muted" style="font-size:9.5px">'+esc(x.konfirmasi)+'</div>':'')+noteTB(x)+'</td><td class="l">'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td>'+
+    '<td><input class="fisik'+(S.recheck[x.row]?' recheck':'')+'" type="number" step="any" data-row="'+x.row+'" value="'+dv+'" oninput="liveSel(this,'+x.sistem+')"'+((lk||x.mode==='HOLD')?' disabled':'')+'></td><td class="mono" id="sl'+x.row+'" style="color:'+(sel?'var(--red)':'var(--green)')+'">'+(sel===null?'':fmt(sel))+'</td></tr>'}).join('')||'<tr><td colspan="8" class="empty">Tidak ada item</td></tr>';
 }
 function liveSel(inp,sis){S.draft[inp.dataset.row]=inp.value;var c=document.getElementById('sl'+inp.dataset.row);if(inp.value===''){c.textContent='';return}var s=Number(inp.value)-sis;c.textContent=fmt(s);c.style.color=s?'var(--red)':'var(--green)'}
 function openModal(html,wide){var m=document.getElementById('mbox');m.className='mbox'+(wide?' wide':'');m.innerHTML=html;document.getElementById('modal').classList.add('show')}
@@ -649,7 +690,7 @@ function setAllDec(v){[].forEach.call(document.querySelectorAll('.seg input[valu
 function kirimIsi(rows){
   api('soSimpanIsi',{id:S.cur.lembar.id,user:NAMA,rows:rows}).then(function(r){
     rows.forEach(function(x){delete S.draft[x.row];delete S.recheck[x.row]});
-    toast(r.lanjut?('Semua item selesai ✓ Otomatis pindah ke periode berikutnya (mulai '+r.lanjut.mulai+', '+r.lanjut.jumlah+' item)'):(r.tersimpan+' item tersimpan'+(r.revisi?' · perubahan tercatat di riwayat revisi':'')+((r.ditahan&&r.ditahan.length)?' · '+r.ditahan.length+' ditahan (butuh konfirmasi)':'')));
+    toast(r.lanjut?('Semua item selesai ✓ Otomatis pindah ke periode berikutnya (mulai '+r.lanjut.mulai+', '+r.lanjut.jumlah+' item)'):(r.tersimpan+' item tersimpan'+(r.revisi?' · perubahan tercatat di riwayat revisi':'')+((r.ditahan&&r.ditahan.length)?' · '+r.ditahan.length+' ditahan (butuh konfirmasi)':'')+(r.terbuka?' · 🔓 item sisa selesai: '+r.terbuka+' item yang terkunci kini terbuka':'')+((r.ditahanKunci&&r.ditahanKunci.length)?' · '+r.ditahanKunci.length+' item terkunci tidak disimpan (selesaikan item sisa dulu)':'')));
     var id=S.cur.lembar.id;loadAll(true);bukaLembar(id);
   }).catch(function(e){toast(e.message,true)});
 }
@@ -777,7 +818,7 @@ function setDG(t){
   DG.tab=t;[].forEach.call(document.querySelectorAll('.dtab'),function(b){b.classList.toggle('on',b.dataset.t===t)});
   var el=document.getElementById('dgBody');if(!el||!DG.data) return;
   if(t==='isi'){
-    el.innerHTML='<div class="dtool"><input type="search" id="dgQ" placeholder="Cari item / deskripsi…" value="'+esc(DG.q)+'" oninput="DG.q=this.value;renderDGRows()" style="min-width:230px"><select id="dgF" onchange="DG.f=this.value;renderDGRows()"><option value="all">Semua item</option><option value="todo">Belum diisi</option><option value="sel">Ada selisih</option></select></div><div class="tw" style="max-height:48vh;border:1px solid var(--bd);border-radius:10px"><table><thead><tr><th>No</th><th class="l">Item</th><th class="l">Deskripsi</th><th>UM</th><th>Lokasi</th><th>Sistem</th><th>Fisik</th><th>Selisih</th><th>Status</th><th class="l">Diisi</th></tr></thead><tbody id="dgRows"></tbody></table></div><div class="muted" id="dgNote" style="margin-top:6px"></div>';
+    el.innerHTML='<div class="dtool"><input type="search" id="dgQ" placeholder="Cari item / deskripsi…" value="'+esc(DG.q)+'" oninput="DG.q=this.value;renderDGRows()" style="min-width:230px"><select id="dgF" onchange="DG.f=this.value;renderDGRows()"><option value="all">Semua item</option><option value="todo">Belum diisi</option><option value="sel">Ada selisih</option></select></div><div class="tw" style="max-height:48vh;border:1px solid var(--bd);border-radius:10px"><table><thead id="dgHead"></thead><tbody id="dgRows"></tbody></table></div><div class="muted" id="dgNote" style="margin-top:6px"></div>';
     document.getElementById('dgF').value=DG.f;renderDGRows();
   } else if(t==='sel'){
     el.innerHTML=selCards(DG.data.items);animateCounts(el);
@@ -788,8 +829,9 @@ function setDG(t){
 function renderDGRows(){
   var items=DG.data.items,q=(DG.q||'').toUpperCase(),f=DG.f;
   var rows=items.map(function(x,i){x._no=i+1;return x}).filter(function(x){return (f==='all'||(f==='todo'&&x.fisik===null)||(f==='sel'&&x.selisih))&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1)});
+  rows=sortRows(rows,'dg');drawHeads();
   document.getElementById('dgRows').innerHTML=rows.slice(0,800).map(function(x){
-    return '<tr class="'+(x.selisih?'sel-row':'')+'"><td>'+x._no+'</td><td class="l mono">'+esc(x.item)+'</td><td class="l">'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td class="mono">'+(x.fisik===null?'<span class="muted">—</span>':fmt(x.fisik))+'</td><td class="mono" style="color:'+(x.selisih?'var(--red)':'var(--txt2)')+'">'+(x.selisih===null?'':fmt(x.selisih))+'</td><td>'+selChip(x.statusSel)+'</td><td class="l" style="font-size:10.5px;color:var(--txt2)">'+(x.diisiOleh?esc(x.diisiOleh)+'<br>'+idDate(x.tglIsi):'—')+'</td></tr>'}).join('')||'<tr><td colspan="10" class="empty">Tidak ada item</td></tr>';
+    return '<tr class="'+(x.selisih?'sel-row':'')+'"><td>'+x._no+'</td><td class="l mono">'+esc(x.item)+badgeMode(x)+noteTB(x)+'</td><td class="l">'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td class="mono">'+(x.fisik===null?'<span class="muted">—</span>':fmt(x.fisik))+'</td><td class="mono" style="color:'+(x.selisih?'var(--red)':'var(--txt2)')+'">'+(x.selisih===null?'':fmt(x.selisih))+'</td><td>'+selChip(x.statusSel)+'</td><td class="l" style="font-size:10.5px;color:var(--txt2)">'+(x.diisiOleh?esc(x.diisiOleh)+'<br>'+idDate(x.tglIsi):'—')+'</td></tr>'}).join('')||'<tr><td colspan="10" class="empty">Tidak ada item</td></tr>';
   document.getElementById('dgNote').textContent='Menampilkan '+Math.min(800,rows.length)+' dari '+rows.length+' item'+(rows.length>800?' (persempit dengan pencarian, atau unduh XLSX untuk data lengkap)':'');
 }
 /* kartu item selisih: animasi lembut */

@@ -8776,7 +8776,8 @@ function diagNopolPengiriman(nopolAtauSpm, tanggalList) {
 var SO_MASTER_HDR = ['PIC', 'Group', 'Deskripsi', 'Target Durasi', 'Hari', 'Mode'];
 var SO_LEMBAR_HDR = ['ID', 'PIC', 'Group', 'Dibuat', 'Mulai', 'Akhir', 'Dibuat Oleh', 'Jumlah Item'];
 var SO_DETAIL_HDR = ['LembarID', 'Item', 'Deskripsi', 'UM', 'Lokasi', 'Sistem', 'Fisik', 'Selisih',
-                     'Tgl Isi', 'Diisi Oleh', 'Status Selisih', 'Keterangan', 'Tgl Close', 'Close Oleh', 'Alasan Close', 'Konfirmasi'];
+                     'Tgl Isi', 'Diisi Oleh', 'Status Selisih', 'Keterangan', 'Tgl Close', 'Close Oleh', 'Alasan Close', 'Konfirmasi',
+                     'Tgl Data', 'Mode'];  // Tgl Data = tanggal qty sistem diambil dari QAD; Mode = '' | 'CARRY' (sisa periode lalu) | 'HOLD' (terkunci sampai CARRY selesai)
 var SO_MASTER_SEED = [
   ['SAEPUL GANNI', 'I053', 'PIPA PPR RKG', '1 WEEK (1 MONTH)', 30, 'MINGGUAN'],
   ['DONI/IMAN', 'P010', 'FITTING PE-100', '3 MONTH', 90, 'BULANAN'],
@@ -8842,9 +8843,12 @@ function _soSheet(name, hdr, seed) {
   try { hOk = !!hc.get(hk); } catch (e) {}
   if (!hOk) {
     if (sh.getMaxColumns() < hdr.length) sh.insertColumnsAfter(sh.getMaxColumns(), hdr.length - sh.getMaxColumns());
-    if (sh.getRange(1, hdr.length).getValue() === '') { // sheet lama: tambahkan kolom baru
-      sh.getRange(1, hdr.length).setValue(hdr[hdr.length - 1]).setFontWeight('bold').setBackground('#cfe2f3');
-      sh.getRange(2, hdr.length, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@');
+    var hv = sh.getRange(1, 1, 1, hdr.length).getValues()[0]; // sheet lama: tambahkan SEMUA kolom baru yang headernya masih kosong
+    for (var hi = 0; hi < hdr.length; hi++) {
+      if (hv[hi] === '' || hv[hi] == null) {
+        sh.getRange(1, hi + 1).setValue(hdr[hi]).setFontWeight('bold').setBackground('#cfe2f3');
+        sh.getRange(2, hi + 1, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@');
+      }
     }
     try { hc.put(hk, '1', 21600); } catch (e) {}
   }
@@ -9000,8 +9004,64 @@ function soGetLembarAktif(group) {
   try {
     var l = _soLembarAktif(group), items = {};
     if (l) _soDetailRows().forEach(function (d) { if (d.lembar === l.id) items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem }; });
-    return { success: true, lembar: l, items: items, bolehTambahItem: _soBolehTambahItem(group) };
+    var sisa = null, info = l ? null : _soCarryoverInfo(group);
+    if (info && info.pending.length) sisa = { lembarId: info.lembar.id, mulai: info.lembar.mulai, akhir: info.lembar.akhir, pending: info.pending, done: Object.keys(info.done) };
+    // qty terakhir yang tercatat per item (utk keterangan "barang tidak bergerak" saat preview upload)
+    var qtyTerakhir = {}, byLm = {};
+    _soDetailRows().forEach(function (d) { (byLm[d.lembar] = byLm[d.lembar] || []).push(d); });
+    _soLembarList().filter(function (x) { return _soNorm(x.group) === _soNorm(group); }).forEach(function (x) {
+      (byLm[x.id] || []).forEach(function (d) { qtyTerakhir[_soNorm(d.item)] = { sistem: d.sistem, tgl: d.tglData || _soTgl(x.dibuat) }; });
+    });
+    return { success: true, lembar: l, items: items, bolehTambahItem: _soBolehTambahItem(group), carryover: _soCarryover(group), sisaSebelumnya: sisa, qtyTerakhir: qtyTerakhir };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// Satu baris SO_DETAIL (18 kolom). mode: '' | 'CARRY' | 'HOLD'
+function _soDetailRow(lid, item, desc, um, lokasi, sistem, tglData, mode) {
+  return [lid, String(item).trim(), desc || '', um || '', lokasi || '', Number(sistem) || 0, '', '', '', '', '', '', '', '', '', '', tglData || '', mode || ''];
+}
+// Tulis 'Tgl Data' (kolom 17) utk baris-baris yang qty-nya baru diperbarui dari QAD
+function _soTulisTglData(sd, rows, tgl) {
+  if (!rows.length) return;
+  rows = rows.slice().sort(function (a, b) { return a - b; });
+  var minR = rows[0], maxR = rows[rows.length - 1], rg = sd.getRange(minR, 17, maxR - minR + 1, 1), v = rg.getValues();
+  rows.forEach(function (rw) { v[rw - minR][0] = tgl; });
+  rg.setNumberFormat('@').setValues(v);
+}
+
+// ================================================================
+//  SISA PERIODE LALU (khusus I053 & Q055)
+//  Bila periode sebelumnya TIDAK selesai, lembar periode berikutnya dibuat dgn:
+//    CARRY = item yang belum di-SO di periode lalu -> dikerjakan DULU
+//    HOLD  = item yang sudah di-SO di periode lalu  -> TERKUNCI sementara; otomatis terbuka begitu semua CARRY selesai
+//  Progres tercatat di periode BERJALAN (lembar baru), periode lalu tetap apa adanya (tidak ikut berubah).
+// ================================================================
+var SO_GROUP_CARRYOVER = ['I053', 'Q055'];
+function _soCarryover(group) { return SO_GROUP_CARRYOVER.some(function (g) { return _soKey(g) === _soKey(group); }); }
+function _soCarryoverInfo(group) {
+  if (!_soCarryover(group)) return null;
+  var mine = _soLembarList().filter(function (l) { return _soNorm(l.group) === _soNorm(group); });
+  if (!mine.length) return null;
+  var lastL = mine[mine.length - 1], pending = [], done = {};
+  _soDetailRows().forEach(function (d) {
+    if (d.lembar !== lastL.id) return;
+    if (d.fisik === null) pending.push({ item: d.item, desc: d.desc, um: d.um, lokasi: d.lokasi, sistem: d.sistem, tglData: d.tglData });
+    else done[_soNorm(d.item)] = 1;
+  });
+  return { lembar: lastL, pending: pending, done: done };
+}
+// Buka kunci item HOLD bila semua item CARRY di lembar itu sudah di-SO. Mengembalikan jumlah item yang terbuka.
+function _soBukaHold(lid) {
+  var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), last = sd.getLastRow(); if (last < 2) return 0;
+  var v = sd.getRange(2, 1, last - 1, 18).getValues(), pend = 0, hold = [];
+  v.forEach(function (r, i) {
+    if (String(r[0]) !== lid) return;
+    var m = String(r[17]);
+    if (m === 'CARRY' && String(r[6]) === '') pend++; else if (m === 'HOLD') hold.push(i + 2);
+  });
+  if (pend > 0 || !hold.length) return 0;
+  hold.forEach(function (rw) { sd.getRange(rw, 18).setValue(''); });
+  return hold.length;
 }
 
 // Bila SEMUA item lembar sudah di-SO -> otomatis pindah ke periode berikutnya:
@@ -9016,7 +9076,7 @@ function _soCekSelesaiDanLanjut(id) {
   ls.forEach(function (r) { if (_soNorm(r[2]) === _soNorm(cur[2])) lastOfGroup = r; });
   if (!lastOfGroup || String(lastOfGroup[0]) !== id) return null; // hanya lembar terakhir group yg melanjutkan
   var last = sd.getLastRow(); if (last < 2) return null;
-  var det = sd.getRange(2, 1, last - 1, 7).getValues().filter(function (r) { return String(r[0]) === id; });
+  var det = sd.getRange(2, 1, last - 1, 18).getValues().filter(function (r) { return String(r[0]) === id; });
   if (!det.length || det.some(function (r) { return String(r[6]) === ''; })) return null;
   var master = soGetMaster().data.filter(function (m) { return _soNorm(m.group) === _soNorm(cur[2]); })[0];
   if (!master) return null;
@@ -9033,7 +9093,7 @@ function _soCekSelesaiDanLanjut(id) {
   }
   var nid = _soUniqueId('SO-' + _soNorm(cur[2]).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), ls.map(function (r) { return String(r[0]); }));
   sl.appendRow([nid, String(cur[1]), String(cur[2]), today, mulai, akhir, 'AUTO', det.length]);
-  var rows = det.map(function (r) { return [nid, r[1], r[2], r[3], r[4], Number(r[5]) || 0, '', '', '', '', '', '', '', '', '', '']; });
+  var rows = det.map(function (r) { return _soDetailRow(nid, r[1], r[2], r[3], r[4], r[5], _soTgl(r[16]), ''); }); // qty & tgl data diwarisi; belum disegarkan dari QAD
   sd.getRange(sd.getLastRow() + 1, 1, rows.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(rows);
   return { id: nid, mulai: mulai, akhir: akhir, jumlah: rows.length };
 }
@@ -9071,30 +9131,30 @@ function soBuatLembar(payload) {
       qadKeys = {}; payload.qadKeys.forEach(function (c) { var k = _soNorm(c); if (k) qadKeys[k] = 1; });
     }
     if (aktif && qadKeys && !Object.keys(qadKeys).length) return { success: false, error: 'Data QAD untuk group ini kosong -- tidak ada yang diperbarui (mencegah lembar terhapus karena file salah).' };
-    if (!keep.length && !(aktif && qadKeys)) return { success: false, error: 'Tidak ada item bernilai (QTY > 0) pada data upload.' };
+    if (!keep.length && !(aktif && qadKeys) && !(_soCarryoverInfo(payload.group) || { pending: [] }).pending.length) return { success: false, error: 'Tidak ada item bernilai (QTY > 0) pada data upload.' };
     lock.waitLock(25000);
     var sl = _soSheet('SO_LEMBAR', SO_LEMBAR_HDR), sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR);
 
     if (aktif) {
       var last = sd.getLastRow(), all = last >= 2 ? sd.getRange(1, 1, last, 7).getValues() : [[]], rowOf = {}, filled = {};
       for (var r = 1; r < all.length; r++) if (String(all[r][0]) === aktif.id) { var kk = _soNorm(all[r][1]); rowOf[kk] = r + 1; filled[kk] = String(all[r][6]) !== ''; }
-      var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0, hapus = [], ditolakBaru = 0, boleh = _soBolehTambahItem(payload.group);
+      var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0, hapus = [], ditolakBaru = 0, boleh = _soBolehTambahItem(payload.group), updRows = [], hariIni = _soToday();
       keep.forEach(function (it) {
         var k = _soNorm(it.item), row = rowOf[k];
         if (row) {
           if (filled[k]) { dikunci++; return; }
           var c = all[row - 1];
           c[2] = it.desc || c[2] || g.map[k] || ''; c[3] = it.um || c[3] || ''; c[4] = it.lokasi || c[4] || ''; c[5] = Number(it.sistem) || 0;
-          if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++;
+          if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++; updRows.push(row);
         } else if (boleh) {
-          baru.push([aktif.id, String(it.item).trim(), it.desc || g.map[k] || '', it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', '']);
+          baru.push(_soDetailRow(aktif.id, it.item, it.desc || g.map[k] || '', it.um, it.lokasi, it.sistem, hariIni, ''));
         } else {
           ditolakBaru++; // master SKU tetap: item baru tidak ditambahkan di group ini
         }
       });
       // Keluarkan HANYA SKU belum di-SO yang stok-nya 0 / tidak ada di data QAD terbaru. Tanpa qadKeys (klien lama) -> tidak ada yang dikeluarkan.
       if (qadKeys) Object.keys(rowOf).forEach(function (k) { if (!filled[k] && !qadKeys[k]) hapus.push(rowOf[k]); });
-      if (diperbarui) sd.getRange(minR, 3, maxR - minR + 1, 4).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(2, 6); }));
+      if (diperbarui) { sd.getRange(minR, 3, maxR - minR + 1, 4).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(2, 6); })); _soTulisTglData(sd, updRows, hariIni); }
       if (baru.length) sd.getRange(sd.getLastRow() + 1, 1, baru.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(baru);
       hapus.sort(function (a, b) { return b - a; });
       for (var h = 0; h < hapus.length;) { // hapus baris berurutan sekaligus (dari bawah)
@@ -9105,21 +9165,39 @@ function soBuatLembar(payload) {
       var total = Object.keys(rowOf).length - hapus.length + baru.length;
       var ls = sl.getRange(1, 1, sl.getLastRow(), 1).getValues();
       for (var i = 1; i < ls.length; i++) if (String(ls[i][0]) === aktif.id) { sl.getRange(i + 1, 8).setValue(total); break; }
+      var terbuka = _soBukaHold(aktif.id); // bila SKU sisa yg belum di-SO sudah tidak ada (mis. stok 0), item terkunci ikut terbuka
       var lanjut = _soCekSelesaiDanLanjut(aktif.id);
-      return { success: true, id: aktif.id, digabung: true, baru: baru.length, diperbarui: diperbarui, dikunci: dikunci, dihapus: hapus.length, ditolakBaru: ditolakBaru, total: total, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: aktif.mulai, akhir: aktif.akhir, lanjut: lanjut };
+      return { success: true, id: aktif.id, digabung: true, terbuka: terbuka, baru: baru.length, diperbarui: diperbarui, dikunci: dikunci, dihapus: hapus.length, ditolakBaru: ditolakBaru, total: total, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: aktif.mulai, akhir: aktif.akhir, lanjut: lanjut };
     }
 
     var today = _soToday();
     var mulai = master.mode === 'MINGGUAN' ? _soMonday(today) : today;
     var akhir = master.mode === 'MINGGUAN' ? _soAddDays(mulai, 6) : _soAddDays(today, master.hari);
     var id = _soUniqueId('SO-' + _soNorm(payload.group).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), _soLembarList().map(function (l) { return l.id; }));
-    sl.appendRow([id, master.pic, master.group, today, mulai, akhir, payload.user || '', keep.length]);
-    var rows = keep.map(function (it) {
-      var desc = it.desc || g.map[_soNorm(it.item)] || '';
-      return [id, String(it.item).trim(), desc, it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', ''];
+    // Sisa periode lalu (I053 & Q055): item yg belum di-SO -> CARRY (dikerjakan dulu); item yg sudah di-SO -> HOLD sampai CARRY selesai
+    var info = _soCarryoverInfo(payload.group), finalItems = [], carryN = 0, holdN = 0, keepMap = {};
+    keep.forEach(function (it) { keepMap[_soNorm(it.item)] = it; });
+    if (info && info.pending.length) {
+      var pendKeys = {};
+      info.pending.forEach(function (pd) {
+        var k = _soNorm(pd.item); pendKeys[k] = 1;
+        if (qadKeys && !qadKeys[k]) return;               // stok 0 / sudah tidak ada di data QAD -> tidak perlu di-SO
+        finalItems.push({ it: keepMap[k] || pd, mode: 'CARRY' }); carryN++;
+      });
+      keep.forEach(function (it) {
+        var k = _soNorm(it.item); if (pendKeys[k]) return;
+        var mode = (info.done[k] && carryN > 0) ? 'HOLD' : '';
+        if (mode === 'HOLD') holdN++;
+        finalItems.push({ it: it, mode: mode });
+      });
+    } else keep.forEach(function (it) { finalItems.push({ it: it, mode: '' }); });
+    sl.appendRow([id, master.pic, master.group, today, mulai, akhir, payload.user || '', finalItems.length]);
+    var rows = finalItems.map(function (o) {
+      var k = _soNorm(o.it.item);
+      return _soDetailRow(id, o.it.item, o.it.desc || g.map[k] || '', o.it.um, o.it.lokasi, o.it.sistem, today, o.mode);
     });
     sd.getRange(sd.getLastRow() + 1, 1, rows.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(rows);
-    return { success: true, id: id, digabung: false, baru: keep.length, diperbarui: 0, dikunci: 0, dihapus: 0, total: keep.length, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: mulai, akhir: akhir };
+    return { success: true, id: id, digabung: false, carry: carryN, hold: holdN, baru: finalItems.length, diperbarui: 0, dikunci: 0, dihapus: 0, total: finalItems.length, dibuang: dibuang, tambahan: tambahan, sheetAda: g.found, mulai: mulai, akhir: akhir };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
@@ -9132,11 +9210,12 @@ function _soLembarList() {
 }
 function _soDetailRows() {
   if (_SO_MEM.det) return _SO_MEM.det;
-  return _SO_MEM.det = _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 16).map(function (r, i) {
+  return _SO_MEM.det = _soRows(_soSheet('SO_DETAIL', SO_DETAIL_HDR), 18).map(function (r, i) {
     return { row: i + 2, lembar: String(r[0]), item: String(r[1]), desc: String(r[2]), um: String(r[3]), lokasi: String(r[4]),
       sistem: Number(r[5]) || 0, fisik: r[6] === '' ? null : Number(r[6]), selisih: r[7] === '' ? null : Number(r[7]),
       tglIsi: _soTgl(r[8]), diisiOleh: String(r[9]), statusSel: String(r[10]), ket: String(r[11]),
-      tglClose: _soTgl(r[12]), closeOleh: String(r[13]), alasanClose: String(r[14]), konfirmasi: String(r[15]) };
+      tglClose: _soTgl(r[12]), closeOleh: String(r[13]), alasanClose: String(r[14]), konfirmasi: String(r[15]),
+      tglData: _soTgl(r[16]), mode: String(r[17] || '') };
   });
 }
 
@@ -9169,7 +9248,21 @@ function soGetLembarDetail(id) {
     var lg = rv.length ? _soRevLogRows() : [];
     l.dibuka = rv.some(function (x) { return x.status === 'TERBUKA'; });
     rv.forEach(function (x) { x.perubahan = lg.filter(function (g) { return g.rev === x.id; }); });
-    return { success: true, lembar: l, items: _soDetailRows().filter(function (d) { return d.lembar === id; }), revisi: rv.reverse() };
+    // Barang tidak bergerak: qty sistem SAMA dengan qty pada pengambilan data sebelumnya (data baru dari QAD, bukan salinan otomatis)
+    var chain = _soLembarList().filter(function (x) { return _soNorm(x.group) === _soNorm(l.group); }), ci = 0;
+    chain.forEach(function (x, i) { if (x.id === id) ci = i; });
+    var detAll = _soDetailRows(), byL = {}, prevMap = {};
+    detAll.forEach(function (d) { (byL[d.lembar] = byL[d.lembar] || []).push(d); });
+    for (var pi = 0; pi < ci; pi++) (byL[chain[pi].id] || []).forEach(function (d) { prevMap[_soNorm(d.item)] = { sistem: d.sistem, tgl: d.tglData || _soTgl(chain[pi].dibuat) }; });
+    var items = (byL[id] || []).map(function (d) {
+      var pv = prevMap[_soNorm(d.item)], rowTgl = d.tglData || (String(l.oleh) === 'AUTO' ? '' : _soTgl(l.dibuat));
+      d.prevSistem = pv ? pv.sistem : null; d.prevTgl = pv ? pv.tgl : '';
+      d.tidakBergerak = !!(pv && pv.sistem === d.sistem && rowTgl && pv.tgl && rowTgl > pv.tgl);
+      return d;
+    });
+    var carryBelum = items.filter(function (d) { return d.mode === 'CARRY' && d.fisik === null; }).length;
+    l.carryBelum = carryBelum; l.adaHold = items.some(function (d) { return d.mode === 'HOLD'; });
+    return { success: true, lembar: l, items: items, revisi: rv.reverse() };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
@@ -9189,11 +9282,12 @@ function soSimpanIsi(payload) {
     lock.waitLock(25000);
     var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), today = _soToday(), n = 0, ditahan = [], revLog = [];
     var last = sd.getLastRow(); if (last < 2) return { success: true, tersimpan: 0, ditahan: [] };
-    var all = sd.getRange(1, 1, last, 16).getValues(), minR = 0, maxR = 0;
+    var all = sd.getRange(1, 1, last, 18).getValues(), minR = 0, maxR = 0, ditahanKunci = [];
     (payload.rows || []).forEach(function (r) {
       var row = Number(r.row); if (!row || row < 2 || row > last) return;
       var cur = all[row - 1];
       if (String(cur[0]) !== payload.id) return; // pengaman: baris harus milik lembar ini
+      if (String(cur[17]) === 'HOLD') { ditahanKunci.push(row); return; } // terkunci sampai item sisa periode lalu selesai
       if (r.fisik === '' || r.fisik === null || r.fisik === undefined) return;
       var fisik = Number(r.fisik), sistem = Number(cur[5]) || 0, sel = fisik - sistem, konf = String(cur[15]);
       if (sel !== 0 && !r.konfirmasi) { ditahan.push(row); return; }
@@ -9209,12 +9303,13 @@ function soSimpanIsi(payload) {
       if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; n++;
     });
     if (n) sd.getRange(minR, 7, maxR - minR + 1, 10).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(6, 16); }));
+    var terbuka = n ? _soBukaHold(payload.id) : 0; // semua item sisa selesai -> item terkunci terbuka otomatis
     if (revLog.length) {
       var sr = _soSheet('SO_REVISI_LOG', SO_REVLOG_HDR);
       sr.getRange(sr.getLastRow() + 1, 1, revLog.length, SO_REVLOG_HDR.length).setNumberFormat('@').setValues(revLog);
     }
     var lanjut = (n && !rev) ? _soCekSelesaiDanLanjut(payload.id) : null;
-    return { success: true, tersimpan: n, ditahan: ditahan, lanjut: lanjut, revisi: !!rev, diubah: revLog.length };
+    return { success: true, tersimpan: n, ditahan: ditahan, ditahanKunci: ditahanKunci, terbuka: terbuka, lanjut: lanjut, revisi: !!rev, diubah: revLog.length };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
@@ -9393,19 +9488,19 @@ function soLengkapiLembar(payload) {
       if (isFilled) filledPerLembar[lid] = (filledPerLembar[lid] || 0) + 1;
       if (lid === lm.id) { var kk = _soNorm(all[r][1]); rowOf[kk] = r + 1; filled[kk] = isFilled; }
     }
-    var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0;
+    var baru = [], diperbarui = 0, dikunci = 0, minR = 0, maxR = 0, updRows = [];
     items.forEach(function (it) {
       var k = _soNorm(it.item), row = rowOf[k];
       if (row) {
         if (filled[k]) { dikunci++; return; }                 // sudah di-SO -> TIDAK disentuh
         var c = all[row - 1];
         c[2] = it.desc || c[2] || g.map[k] || ''; c[3] = it.um || c[3] || ''; c[4] = it.lokasi || c[4] || ''; c[5] = Number(it.sistem) || 0;
-        if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++;
+        if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++; updRows.push(row);
       } else {
-        baru.push([lm.id, String(it.item).trim(), it.desc || g.map[k] || '', it.um || '', it.lokasi || '', Number(it.sistem) || 0, '', '', '', '', '', '', '', '', '', '']);
+        baru.push(_soDetailRow(lm.id, it.item, it.desc || g.map[k] || '', it.um, it.lokasi, it.sistem, _soToday(), ''));
       }
     });
-    if (diperbarui) sd.getRange(minR, 3, maxR - minR + 1, 4).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(2, 6); }));
+    if (diperbarui) { sd.getRange(minR, 3, maxR - minR + 1, 4).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(2, 6); })); _soTulisTglData(sd, updRows, _soToday()); }
     if (baru.length) sd.getRange(sd.getLastRow() + 1, 1, baru.length, SO_DETAIL_HDR.length).setNumberFormat('@').setValues(baru);
     var total = Object.keys(rowOf).length + baru.length;
     var ids = sl.getRange(1, 1, sl.getLastRow(), 1).getValues();
