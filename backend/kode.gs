@@ -6344,11 +6344,38 @@ function _tanpaIstirahat(nama, kode) {
   if (kode) return String(_jabatanMap()[String(kode)] || '').toUpperCase().indexOf('SERAH TERIMA') !== -1;
   return false;
 }
-// Jam lembur tersimpan: durasi mentah, dipotong 1 jam kalau > 4 jam KECUALI dikecualikan
+// POTONGAN ISTIRAHAT OTOMATIS DIMATIKAN. Jam lembur tersimpan = durasi AKTUAL (jam selesai - jam mulai),
+// mis. 07.00-12.00 tercatat 5 jam. Potongan istirahat utk lembur > 4 jam (khusus OS) dilakukan pihak HRD
+// pada penggajian, bukan di aplikasi. Ubah ke true bila aturan potong otomatis ingin dihidupkan lagi
+// (jangan lupa ubah juga LEMBUR_POTONG_ISTIRAHAT_OTOMATIS di input_lembur.html).
+var LEMBUR_POTONG_ISTIRAHAT_OTOMATIS = false;
 function _jamLemburBersih(durMin, nama, kode) {
   var durJam = durMin / 60;
-  if (durJam > 4 && !_tanpaIstirahat(nama, kode)) durJam -= 1;
+  if (LEMBUR_POTONG_ISTIRAHAT_OTOMATIS && durJam > 4 && !_tanpaIstirahat(nama, kode)) durJam -= 1;
   return Math.round(durJam * 100) / 100;
+}
+
+// Jalankan manual dari editor Apps Script utk MERAPIKAN lembur lama yang dulu terlanjur dipotong 1 jam
+// (jam tersimpan < durasi aktual). apply=false hanya melaporkan di Logger. dariTanggal ('YYYY-MM-DD', opsional)
+// membatasi perbaikan hanya utk lembur pada/setelah tanggal itu -- supaya laporan bulan lama tidak ikut berubah.
+function perbaikiLemburKeAktual(apply, dariTanggal) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(SH_LEMBUR_LOG);
+  var data = sh.getDataRange().getValues(), n = 0, tz = Session.getScriptTimeZone();
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i], tgl = toDate(r[1]);
+    if (dariTanggal && tgl && Utilities.formatDate(tgl, tz, 'yyyy-MM-dd') < dariTanggal) continue;
+    var m1 = _timeStrToMinutes(_fmtTime(r[4])), m2 = _timeStrToMinutes(_fmtTime(r[5]));
+    if (m1 == null || m2 == null) continue;
+    var durMin = m2 - m1; if (durMin <= 0) durMin += 24 * 60;
+    var baru = Math.round(durMin / 60 * 100) / 100, lama = Number(r[6]);
+    if (Math.abs(baru - lama) < 0.001) continue;
+    n++;
+    Logger.log('Baris ' + (i + 1) + ' | ' + r[3] + ' | ' + _fmtTime(r[4]) + '-' + _fmtTime(r[5]) + ' | ' + lama + ' -> ' + baru);
+    if (apply) sh.getRange(i + 1, 7).setValue(baru);
+  }
+  if (apply && n) _bumpDataCacheVersion();
+  Logger.log((apply ? 'Diperbaiki: ' : 'Perlu diperbaiki (belum diubah): ') + n + ' baris');
+  return n;
 }
 function _namaDariKodeKaryawan(kode) {
   try {

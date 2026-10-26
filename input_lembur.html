@@ -974,6 +974,8 @@ function exportLemburExcel(){
 // ================================================================
 function onKaryawanChange(){ updateDurasiPreview(); }
 
+// Potongan istirahat otomatis DIMATIKAN (harus sama dgn LEMBUR_POTONG_ISTIRAHAT_OTOMATIS di backend/kode.gs).
+var LEMBUR_POTONG_ISTIRAHAT_OTOMATIS = false;
 function updateDurasiPreview(){
   var m1 = document.getElementById('lm-mulai').value;
   var m2 = document.getElementById('lm-selesai').value;
@@ -989,7 +991,7 @@ function updateDurasiPreview(){
   // Petugas serah terima (tanpa istirahat): tidak ada potongan 1 jam. Daftar ini sama dengan LEMBUR_TANPA_ISTIRAHAT di backend.
   var _nm = String((window.WH_SESSION && window.WH_SESSION.nama) || '').toUpperCase();
   var tanpaIstirahat = /NGABIDIN|SLAMET\s+RIYADI|IBNU\s+ABDILLAH|\bLINDU\b/.test(_nm) || !!(window.WH_SESSION && window.WH_SESSION.isSerahTerima);
-  if(jam>4 && !tanpaIstirahat){ jam-=1; potongInfo=true; }
+  if(LEMBUR_POTONG_ISTIRAHAT_OTOMATIS && jam>4 && !tanpaIstirahat){ jam-=1; potongInfo=true; } // dimatikan: jam = aktual; potongan istirahat (OS) oleh HRD
   jam = Math.round(jam*100)/100;
 
   box.style.display='flex';
