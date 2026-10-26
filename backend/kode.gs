@@ -3791,8 +3791,39 @@ function syncStockOnly(workspaceKey) {
   put('kanban:harian:' + todayStr, function () { return getKanbanData('harian', { dari: todayStr, sampai: todayStr }); });
   put('kanban:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () { return getKanbanData('bulanan', { bulan: bulanIni, tahun: tahunIni }); });
 
+  // FIX KANBAN: upload stock bisa berisi tanggal selain hari ini (mis. upload
+  // susulan 01/10). Sebelumnya hanya snapshot hari ini yang di-refresh, jadi
+  // snapshot kanban tanggal upload tetap kosong. Refresh juga snapshot harian
+  // & bulanan untuk tanggal-tanggal terbaru yang ada di DASHBOARD_STOCK.
+  try {
+    _kanbanRecentDates(7).forEach(function (ds) {
+      if (ds === todayStr) return;
+      var pp = ds.split('-');
+      put('kanban:harian:' + ds, function () { return getKanbanData('harian', { dari: ds, sampai: ds }); });
+      var ym = pp[0] + '-' + pp[1];
+      if (ym !== tahunIni + '-' + _pad2(+bulanIni)) {
+        put('kanban:bulanan:' + ym, function () { return getKanbanData('bulanan', { bulan: String(+pp[1]), tahun: pp[0] }); });
+      }
+    });
+  } catch (err) { log.push('GAGAL refresh kanban tanggal terbaru: ' + err.message); }
+
   Logger.log(log.join('\n'));
   return log;
+}
+
+// Ambil maksimal n tanggal (YYYY-MM-DD) terbaru yang ada di kolom J (TANGGAL)
+// sheet DASHBOARD_STOCK. Dipakai untuk refresh snapshot kanban setelah upload.
+function _kanbanRecentDates(n) {
+  var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_STOCK);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var vals = sh.getRange(2, 10, sh.getLastRow() - 1, 1).getValues();
+  var set = {};
+  for (var i = 0; i < vals.length; i++) {
+    var d = toDate(vals[i][0]);
+    if (!d) continue;
+    set[d.getFullYear() + '-' + _pad2(d.getMonth() + 1) + '-' + _pad2(d.getDate())] = 1;
+  }
+  return Object.keys(set).sort().slice(-n);
 }
 
 // Upload OUTBOUND/INBOUND -> pengaruh ke: Kanban (yang juga menampilkan

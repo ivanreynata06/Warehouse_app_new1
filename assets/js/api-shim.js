@@ -249,7 +249,16 @@
               // jangan dipakai — payload {success:false} tetap "truthy" tapi
               // tidak punya data sungguhan. Perlakukan sama seperti snapshot
               // tidak ditemukan -> fallback ke Apps Script.
-              if (payload && payload.success !== false) {
+              // FIX KANBAN: snapshot harian/bulanan yang terbentuk SEBELUM data
+              // stock periode itu di-upload isinya sah (success:true) tapi kosong
+              // (pipa & fitting = []), dan tidak ikut di-refresh karena sync
+              // hanya menyentuh snapshot hari ini. Anggap snapshot kosong sebagai
+              // "tidak ketemu" -> hitung live dari Apps Script supaya data
+              // yang sudah di-upload langsung tampil.
+              var kanbanKosong = (prop === 'getKanbanData' && payload &&
+                !(payload.pipa && payload.pipa.length) &&
+                !(payload.fitting && payload.fitting.length));
+              if (payload && payload.success !== false && !kanbanKosong) {
                 writeCache(key, payload);
                 if (successCb) successCb(payload);
               } else {
