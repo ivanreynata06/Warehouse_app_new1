@@ -55,6 +55,7 @@
     'kanban'          : 'kanban.html',
     'fte_dashboard'   : 'fte_dashboard.html',
     'akurasi_scan'    : 'akurasi_scan.html',
+    'wms_qad'         : 'wms_qad.html',
     'rekap'           : 'rekap_muatan.html',
     'residance'       : 'residance_time.html',
     'input_lembur'    : 'input_lembur.html',
@@ -91,6 +92,13 @@
   // dapat -- 'akurasi_scan' memang tidak ada di MENU_KEYS_RESTRICTED_ROLE.
   if (fullAccess && isFittingRucika && menuKeys.indexOf('akurasi_scan') === -1) {
     menuKeys = menuKeys.concat(['akurasi_scan']);
+  }
+
+  // Akurasi QAD vs WMS: menu baru -- sama seperti Akurasi Scan Barcode, otomatis
+  // tersedia untuk TL/Admin Warehouse Fitting Import & Rucika tanpa login ulang.
+  // Departemen lain tetap mengikuti Kelola Menu (Panel Admin).
+  if (fullAccess && (isFittingImport || isFittingRucika) && menuKeys.indexOf('wms_qad') === -1) {
+    menuKeys = menuKeys.concat(['wms_qad']);
   }
 
   // Menu yg boleh dilihat role TERBATAS (Technician dkk) -- LAPISAN
@@ -274,6 +282,28 @@
             '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>';
         document.body.appendChild(bar);
       } catch (e) { /* jangan sampai userbar gagal bikin seluruh halaman error */ }
+    })();
+
+    // ---- Sisipkan menu "Akurasi QAD vs WMS" tepat di bawah "Akurasi Scan Barcode"
+    //      di sidebar SEMUA halaman (satu tempat, tidak perlu edit 13 file HTML).
+    //      Dilewati kalau halaman itu sudah punya menunya sendiri. ----
+    (function injectWmsQadMenu() {
+      try {
+        document.querySelectorAll('.mitem[onclick*="\'akurasi_scan\'"]').forEach(function (el) {
+          var par = el.parentNode;
+          if (!par || par.querySelector('.mitem[onclick*="\'wms_qad\'"]')) return;
+          var c = el.cloneNode(true);
+          c.classList.remove('active');
+          c.setAttribute('onclick', String(el.getAttribute('onclick')).replace(/akurasi_scan/g, 'wms_qad'));
+          var svg = c.querySelector('svg');
+          if (svg) svg.innerHTML = '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v5a3 3 0 0 0 3 3h6.5"/><path d="M13.5 13.5 16 16l-2.5 2.5"/><path d="M18 15.5v-5a3 3 0 0 0-3-3H8.5"/><path d="M10.5 10.5 8 8l2.5-2.5"/>';
+          var tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT, null), n;
+          while ((n = tw.nextNode())) {
+            if (n.nodeValue.indexOf('Akurasi Scan Barcode') !== -1) n.nodeValue = n.nodeValue.replace('Akurasi Scan Barcode', 'Akurasi QAD vs WMS');
+          }
+          par.insertBefore(c, el.nextSibling);
+        });
+      } catch (e) { /* menu tambahan tidak boleh merusak halaman */ }
     })();
 
     // ---- Sembunyikan menu sidebar yg TIDAK ada di menuKeys departemen

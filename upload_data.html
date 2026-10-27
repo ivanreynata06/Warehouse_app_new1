@@ -2,8 +2,8 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261003f"></script>
-<script src="./assets/js/config.js?v=20260722d"></script>
+<script src="./assets/js/auth-guard.js?v=20261027a"></script>
+<script src="./assets/js/config.js?v=20261027a"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
 <script src="./assets/js/api-shim.js?v=20261002a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
@@ -19,6 +19,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="./assets/js/akurasi-core.js?v=20261022b"></script>
 <script src="./assets/js/akurasi-store.js?v=20261022b"></script>
+<script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -290,6 +291,10 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M15 8v8M18 8v8"/></svg>
         Akurasi Scan
       </button>
+      <button class="tab-btn" id="tabbtn-wmsqad" onclick="switchTab('wmsqad')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v5a3 3 0 0 0 3 3h6.5"/><path d="M13.5 13.5 16 16l-2.5 2.5"/><path d="M18 15.5v-5a3 3 0 0 0-3-3H8.5"/><path d="M10.5 10.5 8 8l2.5-2.5"/></svg>
+        WMS &amp; QAD
+      </button>
     </div>
 
     <!-- ============== KATA KUNCI KATEGORI TAMBAHAN (Super Admin) ============== -->
@@ -336,6 +341,40 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         </div>
       </div>
       <input type="file" id="akurasi-file" style="display:none;">
+    </div>
+
+    <!-- ============== TAB: WMS & QAD ============== -->
+    <style>
+      .wq-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;}
+      .wq-chips{display:flex;flex-wrap:wrap;gap:5px;}
+      .wq-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--border2);color:var(--txt2);}
+      .wq-chip.keep{background:var(--green-bg);border-color:rgba(16,185,129,.35);color:#6ee7b7;}
+      .wq-stat{display:flex;gap:10px;flex-wrap:wrap;}
+      .wq-stat div{flex:1;min-width:92px;background:var(--bg-card2);border:1px solid var(--border2);border-radius:9px;padding:8px 10px;}
+      .wq-stat b{display:block;font-size:16px;font-family:'Outfit',sans-serif;}
+      .wq-stat span{font-size:10px;color:var(--txt3);}
+      .wq-res{font-size:11px;line-height:1.6;border-radius:8px;padding:8px 11px;border:1px solid var(--border2);background:var(--bg-card2);color:var(--txt2);}
+      .wq-res.ok{border-color:rgba(16,185,129,.4);color:#6ee7b7;} .wq-res.err{border-color:rgba(239,68,68,.45);color:#ff9d9d;}
+      .wq-rng{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--txt2);}
+      .wq-rng input[type=date]{background:var(--bg-card2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;color:var(--txt);font-size:11px;}
+      .btn-danger{background:transparent;color:#ff8f8f;border:1px solid rgba(239,68,68,.35);}
+    </style>
+    <div class="tab-panel" id="tab-wmsqad">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Upload Data Akurasi QAD vs WMS</div></div>
+        <div class="card-body">
+          <div class="col-ref">
+            Upload <b>Master WMS</b> dan <b>Data QAD</b>, hasilnya dibandingkan otomatis di menu <b>Monitoring &gt; Akurasi QAD vs WMS</b>.
+            <b>Hanya kolom yang dibutuhkan yang disimpan</b>, kolom lain dibuang saat upload (tidak tersimpan di spreadsheet maupun Supabase).
+            Hanya item dengan nama diawali <code>PIPE PPR RUCIKA KELEN G REEN DIA</code> atau <code>PIPE PPR KELEN DIA</code> yang disimpan, baris lain dibuang.
+            Upload ulang aman: tanggal yang sama diganti, tanggal lain dibiarkan.
+          </div>
+          <div class="status-msg" id="wq-conn"></div>
+          <div id="wq-prog" style="display:none;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);margin-bottom:5px;"><span id="wq-prog-label">Memproses...</span><b id="wq-prog-pct">0%</b></div><div style="height:8px;border-radius:8px;background:var(--bg2);overflow:hidden;border:1px solid var(--border);"><div id="wq-prog-bar" style="height:100%;width:0;background:linear-gradient(90deg,#10b981,#34d399);border-radius:8px;transition:width .25s ease;"></div></div></div>
+        </div>
+      </div>
+      <div class="wq-grid" id="wq-cards"></div>
+      <input type="file" id="wq-file" style="display:none;">
     </div>
 
     <!-- ============== TAB: STOCK ============== -->
@@ -534,7 +573,7 @@ var PAGE_MAP = {
   'residance'       : 'residance_time.html',
   'input_lembur'    : 'input_lembur.html',
   'fte_dashboard'   : 'fte_dashboard.html',
-  'akurasi_scan'    : 'akurasi_scan.html',
+  'akurasi_scan'    : 'akurasi_scan.html', 'wms_qad': 'wms_qad.html',
   'upload'          : 'upload_data.html',
   'stock_opname'    : 'stock_opname.html'
 };
@@ -604,11 +643,12 @@ function toggleSidebar(){
 })();
 
 function switchTab(name){
-  ['stock','outbound','inbound','akurasi'].forEach(function(t){
+  ['stock','outbound','inbound','akurasi','wmsqad'].forEach(function(t){
     document.getElementById('tab-'+t).classList.toggle('active', t===name);
     document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
   });
   if (name === 'akurasi' && window.AkurasiUpload) window.AkurasiUpload.init();
+  if (name === 'wmsqad' && window.WmsQadUpload) window.WmsQadUpload.init();
 }
 
 // ================================================================
@@ -1529,6 +1569,118 @@ window.AkurasiUpload = (function(){
   function init(){ if (!loaded) refresh(); }
   if (location.hash === '#akurasi') setTimeout(function(){ switchTab('akurasi'); }, 0);
   return { init: init, pick: pick, remove: remove, removeRange: removeRange, setRange: setRange, template: template, setDate: setDate };
+})();
+
+// ================================================================
+//  TAB WMS & QAD -- upload ke server (sheet WMSQAD_DATA)
+//  Hanya kolom yang dibutuhkan yang dikirim & disimpan.
+// ================================================================
+window.WmsQadUpload = (function(){
+  var C = window.WmsQadCore, loaded = false, busy = false, data = { wms: [], qad: [] }, msg = { wms: null, qad: null };
+  var SPEC = {
+    wms: { title: 'Master WMS', sub: 'Voucher Transfer QAD (.xls / .xlsx)', keep: ['No.Voucher', 'Item', 'Nama Item', 'Qty', 'Tgl Transfer (kunci tanggal)'] },
+    qad: { title: 'Data QAD', sub: 'Transactions by Item Browse (.xlsx, sheet Data)', keep: ['Item Number', 'Description', 'Loc Qty Change', 'Entered Date (kunci tanggal)'] }
+  };
+  function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function n(v){ return (Number(v) || 0).toLocaleString('id-ID'); }
+  function note(t, kind){ var el = document.getElementById('wq-conn'); el.textContent = t || ''; el.style.color = kind === 'err' ? '#ff8f8f' : (kind === 'warn' ? '#f3c46b' : 'var(--txt2)'); }
+  function call(fn, args){
+    return new Promise(function(res, rej){
+      if (!window.google || !google.script || !google.script.run) return rej(new Error('Backend belum siap'));
+      google.script.run
+        .withSuccessHandler(function(r){ if (r && r.success === false) rej(new Error(r.error || 'Server menolak permintaan')); else res(r); })
+        .withFailureHandler(function(e){ rej(e instanceof Error ? e : new Error(String(e && e.message || e))); })[fn].apply(null, args || []);
+    });
+  }
+  function friendly(e){
+    var m = String(e && e.message || e || '');
+    if (/tidak dikenali|tidak diizinkan/i.test(m)) return 'Backend belum di-deploy ulang (kode.gs terbaru belum aktif di Apps Script).';
+    return m || 'Server tidak bisa dihubungi.';
+  }
+  function range(k){
+    var d = {}; (data[k] || []).forEach(function(r){ d[r.t] = 1; });
+    var a = Object.keys(d).sort(); return { dates: a, dari: a[0] || '', sampai: a[a.length - 1] || '' };
+  }
+  function draw(){
+    var box = document.getElementById('wq-cards'); if (!box) return;
+    box.innerHTML = ['wms', 'qad'].map(function(k){
+      var sp = SPEC[k], rg = range(k), has = (data[k] || []).length > 0, m = msg[k];
+      return '<div class="card"><div class="card-header"><div class="card-title">' + esc(sp.title) + '<span style="font-weight:500;color:var(--txt3);font-size:10.5px;">' + esc(sp.sub) + '</span></div></div><div class="card-body">' +
+        '<div><div style="font-size:10px;color:var(--txt3);margin-bottom:5px;">Kolom yang disimpan</div><div class="wq-chips">' + sp.keep.map(function(c){ return '<span class="wq-chip keep">' + esc(c) + '</span>'; }).join('') + '<span class="wq-chip">kolom lain dibuang</span></div></div>' +
+        (k === 'qad' ? '<div class="wq-rng"><b>Tanggal QAD diambil dari</b><select id="wq-qaddate" style="background:var(--bg-card2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;color:var(--txt);font-size:11px;"><option value="entered">Entered Date (disarankan, sejajar dengan Tgl Transfer WMS)</option><option value="effective">Effective Date</option></select></div>' : '') +
+        '<div class="wq-stat"><div><b>' + n((data[k] || []).length) + '</b><span>baris tersimpan</span></div><div><b>' + n(rg.dates.length) + '</b><span>tanggal</span></div><div><b style="font-size:12px;">' + (has ? esc(C.fmtDate(rg.dari)) + ' – ' + esc(C.fmtDate(rg.sampai)) : '-') + '</b><span>rentang</span></div></div>' +
+        '<div class="btn-row"><button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="WmsQadUpload.pick(\'' + k + '\')">' + (has ? 'Ganti / tambah file' : 'Pilih file') + '</button></div>' +
+        (m ? '<div class="wq-res ' + m.cls + '">' + m.html + '</div>' : '') +
+        (has ? '<div class="wq-rng"><span>Hapus data tanggal</span><input type="date" id="wq-dari-' + k + '" value="' + esc(rg.dari) + '"><span>s/d</span><input type="date" id="wq-sampai-' + k + '" value="' + esc(rg.sampai) + '"><button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="WmsQadUpload.remove(\'' + k + '\')">Hapus rentang ini</button></div>' : '') +
+        '</div></div>';
+    }).join('');
+  }
+  function refresh(){
+    note('Memuat data dari server...');
+    return call('getWmsQadData', []).then(function(r){
+      data = { wms: r.wms || [], qad: r.qad || [] }; loaded = true; draw(); note('Tersambung ke server. Data di bawah sama untuk semua PC.');
+    }).catch(function(e){ note(friendly(e), 'err'); draw(); });
+  }
+  function startProg(){
+    var box = document.getElementById('wq-prog'), bar = document.getElementById('wq-prog-bar'), lab = document.getElementById('wq-prog-label'), pct = document.getElementById('wq-prog-pct');
+    var cur = 0, floor = 0, timer = null; box.style.display = 'block'; bar.style.background = 'linear-gradient(90deg,#10b981,#34d399)';
+    function paint(v, l){ cur = Math.max(cur, Math.min(100, v)); bar.style.width = cur + '%'; pct.textContent = Math.round(cur) + '%'; if (l) lab.textContent = l; }
+    paint(2, 'Memulai...');
+    timer = setInterval(function(){ if (cur < 92 && cur >= floor) paint(cur + Math.max(0.15, (92 - cur) * 0.04)); }, 250);
+    return { set: function(v, l){ floor = v; paint(v, l); }, stop: function(err){ clearInterval(timer); if (err) { bar.style.background = '#ef4444'; lab.textContent = 'Gagal'; } else setTimeout(function(){ box.style.display = 'none'; }, 1600); } };
+  }
+  function lock(on){ window._uploadInProgress = on; if (typeof setUploadLockUI === 'function') setUploadLockUI(on); }
+  function pick(k){
+    var inp = document.getElementById('wq-file'); inp.value = ''; inp.accept = '.xls,.xlsx,.csv';
+    inp.onchange = function(){ if (inp.files && inp.files[0]) run(k, inp.files[0]); };
+    inp.click();
+  }
+  function readRows(k, file, dateCol){
+    return new Promise(function(res, rej){
+      var fr = new FileReader();
+      fr.onerror = function(){ rej(new Error('File tidak bisa dibaca.')); };
+      fr.onload = function(){
+        try {
+          var wb = XLSX.read(new Uint8Array(fr.result), { type: 'array' }), names = wb.SheetNames.slice(), firstErr = null;
+          if (k === 'qad') names.sort(function(a, b){ return (b === 'Data') - (a === 'Data'); });
+          for (var i = 0; i < names.length; i++) {
+            var rows = XLSX.utils.sheet_to_json(wb.Sheets[names[i]], { header: 1, raw: true, defval: '' });
+            try { return res(k === 'wms' ? C.parseWms(rows) : C.parseQad(rows, dateCol)); } catch (e) { firstErr = firstErr || e; }
+          }
+          rej(firstErr || new Error('Sheet yang sesuai tidak ditemukan.'));
+        } catch (e) { rej(e); }
+      };
+      fr.readAsArrayBuffer(file);
+    });
+  }
+  function run(k, file){
+    var dateCol = (document.getElementById('wq-qaddate') || {}).value || 'entered';
+    busy = true; msg[k] = null; draw(); lock(true); note('Membaca ' + file.name + '...');
+    var pt = startProg(); pt.set(8, 'Membaca file...');
+    readRows(k, file, dateCol).then(function(p){
+      var st = p.stats;
+      pt.set(45, 'Menyaring kolom & deskripsi...');
+      if (!p.rows.length) throw new Error('Tidak ada baris yang lolos filter. ' + n(st.total) + ' baris dibaca, ' + n(st.dropped) + ' dibuang karena nama item tidak diawali PIPE PPR yang dimaksud' + (st.noDate ? ', ' + n(st.noDate) + ' tanpa tanggal valid' : '') + '.');
+      pt.set(60, 'Menyimpan ke server...');
+      return call('saveWmsQadData', [k, JSON.stringify(p.rows)]).then(function(r){
+        pt.set(100, 'Selesai'); pt.stop();
+        msg[k] = { cls: 'ok', html: '✅ ' + n(st.total) + ' baris dibaca → <b>' + n(st.kept) + ' disimpan</b>, ' + n(st.dropped) + ' dibuang (bukan PIPE PPR yang dimaksud)' + (st.noDate ? ', ' + n(st.noDate) + ' dibuang (tanggal tidak terbaca)' : '') + '.<br>Server: ' + n(r.ditambah) + ' baris masuk' + (r.diganti ? ', ' + n(r.diganti) + ' baris lama pada tanggal yang sama diganti' : '') + '. Tanggal: ' + esc(r.tanggal.map(C.fmtDate).join(', ')) + '.' };
+      });
+    }).then(function(){ busy = false; lock(false); return refresh(); })
+      .catch(function(e){ pt.stop(true); busy = false; lock(false); msg[k] = { cls: 'err', html: '❌ ' + esc(friendly(e)) }; draw(); note(friendly(e), 'err'); });
+  }
+  function remove(k){
+    var dari = (document.getElementById('wq-dari-' + k) || {}).value || '', sampai = (document.getElementById('wq-sampai-' + k) || {}).value || '';
+    var akan = (data[k] || []).filter(function(r){ return (!dari || r.t >= dari) && (!sampai || r.t <= sampai); }).length;
+    if (!akan) { msg[k] = { cls: 'err', html: 'Tidak ada data di rentang tanggal itu.' }; draw(); return; }
+    if (!confirm('Yakin hapus ' + n(akan) + ' baris ' + SPEC[k].title + ' dari ' + C.fmtDate(dari) + ' s/d ' + C.fmtDate(sampai) + '?\n\nData di server ikut terhapus dan menu Akurasi QAD vs WMS di semua PC ikut berubah. Tidak bisa dibatalkan.')) return;
+    busy = true; draw(); lock(true);
+    call('hapusWmsQadData', [k, dari, sampai]).then(function(r){
+      busy = false; lock(false); msg[k] = { cls: 'ok', html: '✅ ' + n(r.dihapus) + ' baris dihapus. Sisa data ' + SPEC[k].title + ': ' + n((data[k] || []).length - r.dihapus) + ' baris.' }; return refresh();
+    }).catch(function(e){ busy = false; lock(false); msg[k] = { cls: 'err', html: '❌ ' + esc(friendly(e)) }; draw(); });
+  }
+  function init(){ if (!loaded) refresh(); else draw(); }
+  return { init: init, pick: pick, remove: remove };
 })();
 </script>
 <script>

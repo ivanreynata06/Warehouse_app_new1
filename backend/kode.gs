@@ -142,6 +142,10 @@ var API_FUNCTIONS = {
   getAkurasiData          : getAkurasiData,
   saveAkurasiData         : saveAkurasiData,
   hapusAkurasiData        : hapusAkurasiData,
+  // Akurasi QAD vs WMS (hanya kolom No.Voucher, Item, Nama Item, Qty + tanggal)
+  getWmsQadData           : getWmsQadData,
+  saveWmsQadData          : saveWmsQadData,
+  hapusWmsQadData         : hapusWmsQadData,
   // Stock Opname
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
@@ -337,6 +341,7 @@ var MENU_CATALOG = [
   { key: 'kanban',           label: 'Monitoring Kanban', file: 'kanban.html' },
   { key: 'fte_dashboard',    label: 'Monitoring FTE', file: 'fte_dashboard.html' },
   { key: 'akurasi_scan',     label: 'Akurasi Scan Barcode', file: 'akurasi_scan.html' },
+  { key: 'wms_qad',          label: 'Akurasi QAD vs WMS', file: 'wms_qad.html' },
   { key: 'rekap',            label: 'Rekap PIC', file: 'rekap_muatan.html' },
   { key: 'residance',        label: 'Loading Time (Jadwal Pengiriman)', file: 'residance_time.html' },
   { key: 'input_lembur',     label: 'Input Lembur & Cuti', file: 'input_lembur.html' },
@@ -9754,7 +9759,7 @@ var SB_MENU_MAP = {
   fte: 'Monitoring FTE', ot_trend6: 'Monitoring FTE', kat_trend6: 'Monitoring FTE',
   group_list: 'Umum (daftar group)'
 };
-var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode'];
+var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode', 'Akurasi QAD vs WMS'];
 
 function _actorIsTlOrSuper(actorNik) {
   if (_isSuperAdmin(actorNik)) return true;
@@ -9973,4 +9978,132 @@ function auditProduktivitasFTE(actorNik, bulan, tahun) {
       hitung: { avgKg: asIs.avgKg, kgPerFTE: totalFTE > 0 ? Math.round(asIs.avgKg / totalFTE * 100) / 100 : 0, tonPerFTE: asIs.ton, target: _targetProduktivitasTonFTE() },
       skenario: skenario, temuan: temuan };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+
+// ================================================================
+//  AKURASI QAD vs WMS -- penyimpanan bersama (per workspace)
+//  Sheet WMSQAD_DATA: A=sumber (wms|qad), B=tanggal (yyyy-mm-dd),
+//                     C=voucher (khusus WMS), D=item, E=nama item, F=qty
+//  HANYA kolom di atas yang disimpan. Kolom lain dari file WMS/QAD
+//  dibuang di browser SEBELUM dikirim, dan disaring ulang di sini.
+//  Baris yang nama itemnya bukan PIPE PPR yang dimaksud juga dibuang.
+//  Data TIDAK dikirim ke Supabase (sama seperti Akurasi Scan Barcode).
+// ================================================================
+var SH_WMSQAD = 'WMSQAD_DATA';
+var WMSQAD_PREFIXES = ['PIPE PPR RUCIKA KELEN G REEN DIA', 'PIPE PPR KELEN DIA'];
+
+function _wqSquash(s) { return String(s == null ? '' : s).toUpperCase().replace(/\s+/g, ''); }
+function _wqLolos(nama) {
+  var s = _wqSquash(nama);
+  for (var i = 0; i < WMSQAD_PREFIXES.length; i++) {
+    if (s.indexOf(_wqSquash(WMSQAD_PREFIXES[i])) === 0) return true;
+  }
+  return false;
+}
+function _wqTgl(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
+    return v.getFullYear() + '-' + _pad2(v.getMonth() + 1) + '-' + _pad2(v.getDate());
+  }
+  return String(v == null ? '' : v).trim();
+}
+function _getOrCreateWmsQadSheet() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_WMSQAD);
+  if (!sh) {
+    sh = ss.insertSheet(SH_WMSQAD);
+    sh.getRange('A1:F1').setValues([['sumber', 'tanggal', 'voucher', 'item', 'nama', 'qty']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function _wqBaca(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, 6).getValues().map(function (r) {
+    return [String(r[0]).trim(), _wqTgl(r[1]), String(r[2] == null ? '' : r[2]).trim(),
+            String(r[3] == null ? '' : r[3]).trim(), String(r[4] == null ? '' : r[4]).trim(), Number(r[5]) || 0];
+  });
+}
+function _wqTulis(sh, rows) {
+  var last = sh.getLastRow();
+  if (last > 1) sh.getRange(2, 1, last - 1, 6).clearContent();
+  if (!rows.length) return;
+  rows.sort(function (a, b) { return (a[0] + a[1] + a[3]).localeCompare(b[0] + b[1] + b[3]); });
+  if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+  sh.getRange(2, 1, rows.length, 5).setNumberFormat('@');
+  sh.getRange(2, 1, rows.length, 6).setValues(rows);
+}
+
+function getWmsQadData() {
+  try {
+    var all = _wqBaca(_getOrCreateWmsQadSheet()), wms = [], qad = [];
+    all.forEach(function (r) {
+      if (r[0] === 'wms') wms.push({ t: r[1], v: r[2], i: r[3], n: r[4], q: r[5] });
+      else if (r[0] === 'qad') qad.push({ t: r[1], i: r[3], n: r[4], q: r[5] });
+    });
+    return { success: true, wms: wms, qad: qad };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  }
+}
+
+// kind: 'wms' | 'qad'. jsonStr: array baris. Tanggal yang ada di file diganti
+// seluruhnya (upload ulang file yang sama tidak membuat data dobel);
+// tanggal lain dibiarkan.
+function saveWmsQadData(kind, jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    kind = String(kind || '');
+    if (kind !== 'wms' && kind !== 'qad') return { success: false, error: 'Jenis data tidak dikenal: ' + kind };
+    var arr = JSON.parse(String(jsonStr || '[]'));
+    if (!arr || !arr.length) return { success: false, error: 'Tidak ada baris yang lolos filter untuk disimpan.' };
+    var baru = [], tgls = {}, dibuang = 0;
+    arr.forEach(function (r) {
+      var t = String(r.t || '').trim(), nama = String(r.n || '').replace(/\s+/g, ' ').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !_wqLolos(nama)) { dibuang++; return; }
+      tgls[t] = 1;
+      baru.push([kind, t, kind === 'wms' ? String(r.v || '').trim() : '', String(r.i || '').trim(), nama, Number(r.q) || 0]);
+    });
+    if (!baru.length) return { success: false, error: 'Semua baris ditolak server (tanggal / deskripsi tidak sesuai).' };
+    lock.waitLock(25000);
+    var sh = _getOrCreateWmsQadSheet();
+    var lama = _wqBaca(sh), diganti = 0;
+    var sisa = lama.filter(function (r) {
+      var hapus = (r[0] === kind && tgls[r[1]]);
+      if (hapus) diganti++;
+      return !hapus;
+    });
+    var semua = sisa.concat(baru);
+    _wqTulis(sh, semua);
+    return { success: true, ditambah: baru.length, diganti: diganti, dibuang: dibuang, tanggal: Object.keys(tgls).sort(), total: semua.length };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+// kind: 'wms' | 'qad' | 'semua'. dari/sampai: yyyy-mm-dd (kosong = tanpa batas).
+function hapusWmsQadData(kind, dari, sampai) {
+  var lock = LockService.getScriptLock();
+  try {
+    kind = String(kind || '');
+    if (kind !== 'wms' && kind !== 'qad' && kind !== 'semua') return { success: false, error: 'Jenis data tidak dikenal: ' + kind };
+    dari = String(dari || ''); sampai = String(sampai || '');
+    lock.waitLock(25000);
+    var sh = _getOrCreateWmsQadSheet();
+    var lama = _wqBaca(sh), dihapus = 0;
+    var sisa = lama.filter(function (r) {
+      var kena = (kind === 'semua' || r[0] === kind) && (!dari || r[1] >= dari) && (!sampai || r[1] <= sampai);
+      if (kena) dihapus++;
+      return !kena;
+    });
+    _wqTulis(sh, sisa);
+    return { success: true, dihapus: dihapus, sisa: sisa.length };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }
