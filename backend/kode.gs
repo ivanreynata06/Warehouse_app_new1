@@ -146,6 +146,10 @@ var API_FUNCTIONS = {
   getWmsQadData           : getWmsQadData,
   saveWmsQadData          : saveWmsQadData,
   hapusWmsQadData         : hapusWmsQadData,
+  // Kepatuhan PIC WMS (master Laporan Muat + jadwal SPM manual)
+  getPicWmsData           : getPicWmsData,
+  savePicWmsData          : savePicWmsData,
+  hapusPicWmsData         : hapusPicWmsData,
   // Stock Opname
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
@@ -342,6 +346,7 @@ var MENU_CATALOG = [
   { key: 'fte_dashboard',    label: 'Monitoring FTE', file: 'fte_dashboard.html' },
   { key: 'akurasi_scan',     label: 'Akurasi Scan Barcode', file: 'akurasi_scan.html' },
   { key: 'wms_qad',          label: 'Akurasi QAD vs WMS', file: 'wms_qad.html' },
+  { key: 'pic_wms',          label: 'Kepatuhan PIC WMS', file: 'pic_wms.html' },
   { key: 'rekap',            label: 'Rekap PIC', file: 'rekap_muatan.html' },
   { key: 'residance',        label: 'Loading Time (Jadwal Pengiriman)', file: 'residance_time.html' },
   { key: 'input_lembur',     label: 'Input Lembur & Cuti', file: 'input_lembur.html' },
@@ -9763,7 +9768,7 @@ var SB_MENU_MAP = {
   fte: 'Monitoring FTE', ot_trend6: 'Monitoring FTE', kat_trend6: 'Monitoring FTE',
   group_list: 'Umum (daftar group)'
 };
-var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode', 'Akurasi QAD vs WMS'];
+var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode', 'Akurasi QAD vs WMS', 'Kepatuhan PIC WMS'];
 
 function _actorIsTlOrSuper(actorNik) {
   if (_isSuperAdmin(actorNik)) return true;
@@ -10104,6 +10109,113 @@ function hapusWmsQadData(kind, dari, sampai) {
       return !kena;
     });
     _wqTulis(sh, sisa);
+    return { success: true, dihapus: dihapus, sisa: sisa.length };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+
+// ================================================================
+//  KEPATUHAN PIC WMS -- sheet PICWMS_DATA (per workspace)
+//  A=sumber (master|jadwal)  B=tanggal  C=no SPM  D=ship to  E=PIC muat
+//  master = dari Laporan Persiapan Muat WMS (hanya Ship To, Tgl Muat, No SPM,
+//           PIC Muat; kolom lain & item non-PIPE PPR dibuang di browser).
+//  jadwal = nomor SPM yang diinput manual.
+//  Data TIDAK dikirim ke Supabase.
+// ================================================================
+var SH_PICWMS = 'PICWMS_DATA';
+
+function _getOrCreatePicWmsSheet() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SH_PICWMS);
+  if (!sh) {
+    sh = ss.insertSheet(SH_PICWMS);
+    sh.getRange('A1:E1').setValues([['sumber', 'tanggal', 'spm', 'ship_to', 'pic_muat']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function _pwBaca(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, 5).getValues().map(function (r) {
+    return [String(r[0]).trim(), _wqTgl(r[1]), String(r[2]).trim(), String(r[3]).trim(), String(r[4]).trim()];
+  });
+}
+function _pwTulis(sh, rows) {
+  var last = sh.getLastRow();
+  if (last > 1) sh.getRange(2, 1, last - 1, 5).clearContent();
+  if (!rows.length) return;
+  rows.sort(function (a, b) { return (a[0] + a[1] + a[2]).localeCompare(b[0] + b[1] + b[2]); });
+  if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+  sh.getRange(2, 1, rows.length, 5).setNumberFormat('@');
+  sh.getRange(2, 1, rows.length, 5).setValues(rows);
+}
+
+function getPicWmsData() {
+  try {
+    var master = [], jadwal = [];
+    _pwBaca(_getOrCreatePicWmsSheet()).forEach(function (r) {
+      if (r[0] === 'master') master.push({ t: r[1], s: r[2], c: r[3], p: r[4] });
+      else if (r[0] === 'jadwal') jadwal.push({ t: r[1], s: r[2] });
+    });
+    return { success: true, master: master, jadwal: jadwal };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  }
+}
+
+// kind: 'master' | 'jadwal'. Tanggal yang ada di kiriman diganti seluruhnya.
+function savePicWmsData(kind, jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    kind = String(kind || '');
+    if (kind !== 'master' && kind !== 'jadwal') return { success: false, error: 'Jenis data tidak dikenal: ' + kind };
+    var arr = JSON.parse(String(jsonStr || '[]'));
+    if (!arr || !arr.length) return { success: false, error: 'Tidak ada baris untuk disimpan.' };
+    var baru = [], tgls = {};
+    arr.forEach(function (r) {
+      var t = String(r.t || '').trim(), s = String(r.s || '').replace(/\s+/g, '').toUpperCase();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !/^[A-Z0-9]{6,12}$/.test(s)) return;
+      tgls[t] = 1;
+      baru.push([kind, t, s, kind === 'master' ? String(r.c || '').replace(/\s+/g, ' ').trim() : '', kind === 'master' ? String(r.p || '').replace(/\s+/g, ' ').trim() : '']);
+    });
+    if (!baru.length) return { success: false, error: 'Semua baris ditolak server (tanggal / nomor SPM tidak valid).' };
+    lock.waitLock(25000);
+    var sh = _getOrCreatePicWmsSheet(), diganti = 0;
+    var sisa = _pwBaca(sh).filter(function (r) {
+      var hapus = (r[0] === kind && tgls[r[1]]);
+      if (hapus) diganti++;
+      return !hapus;
+    });
+    var semua = sisa.concat(baru);
+    _pwTulis(sh, semua);
+    return { success: true, ditambah: baru.length, diganti: diganti, tanggal: Object.keys(tgls).sort(), total: semua.length };
+  } catch (err) {
+    return { success: false, error: String(err && err.message || err) };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+// kind: 'master' | 'jadwal' | 'semua'
+function hapusPicWmsData(kind, dari, sampai) {
+  var lock = LockService.getScriptLock();
+  try {
+    kind = String(kind || '');
+    if (kind !== 'master' && kind !== 'jadwal' && kind !== 'semua') return { success: false, error: 'Jenis data tidak dikenal: ' + kind };
+    dari = String(dari || ''); sampai = String(sampai || '');
+    lock.waitLock(25000);
+    var sh = _getOrCreatePicWmsSheet(), dihapus = 0;
+    var sisa = _pwBaca(sh).filter(function (r) {
+      var kena = (kind === 'semua' || r[0] === kind) && (!dari || r[1] >= dari) && (!sampai || r[1] <= sampai);
+      if (kena) dihapus++;
+      return !kena;
+    });
+    _pwTulis(sh, sisa);
     return { success: true, dihapus: dihapus, sisa: sisa.length };
   } catch (err) {
     return { success: false, error: String(err && err.message || err) };

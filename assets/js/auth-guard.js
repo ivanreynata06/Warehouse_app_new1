@@ -56,6 +56,7 @@
     'fte_dashboard'   : 'fte_dashboard.html',
     'akurasi_scan'    : 'akurasi_scan.html',
     'wms_qad'         : 'wms_qad.html',
+    'pic_wms'         : 'pic_wms.html',
     'rekap'           : 'rekap_muatan.html',
     'residance'       : 'residance_time.html',
     'input_lembur'    : 'input_lembur.html',
@@ -97,8 +98,8 @@
   // Akurasi QAD vs WMS: menu baru -- sama seperti Akurasi Scan Barcode, otomatis
   // tersedia untuk TL/Admin Warehouse Fitting Import & Rucika tanpa login ulang.
   // Departemen lain tetap mengikuti Kelola Menu (Panel Admin).
-  if (fullAccess && (isFittingImport || isFittingRucika) && menuKeys.indexOf('wms_qad') === -1) {
-    menuKeys = menuKeys.concat(['wms_qad']);
+  if (fullAccess && (isFittingImport || isFittingRucika)) {
+    ['wms_qad', 'pic_wms'].forEach(function (k) { if (menuKeys.indexOf(k) === -1) menuKeys = menuKeys.concat([k]); });
   }
 
   // Menu yg boleh dilihat role TERBATAS (Technician dkk) -- LAPISAN
@@ -288,20 +289,27 @@
     //      di sidebar SEMUA halaman (satu tempat, tidak perlu edit 13 file HTML).
     //      Dilewati kalau halaman itu sudah punya menunya sendiri. ----
     (function injectWmsQadMenu() {
+      var DEFS = [
+        { key: 'wms_qad', label: 'Akurasi QAD vs WMS', svg: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v5a3 3 0 0 0 3 3h6.5"/><path d="M13.5 13.5 16 16l-2.5 2.5"/><path d="M18 15.5v-5a3 3 0 0 0-3-3H8.5"/><path d="M10.5 10.5 8 8l2.5-2.5"/>' },
+        { key: 'pic_wms', label: 'Kepatuhan PIC WMS', svg: '<path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3z"/><path d="m9 12 2 2 4-4"/>' }
+      ];
       try {
         document.querySelectorAll('.mitem[onclick*="\'akurasi_scan\'"]').forEach(function (el) {
-          var par = el.parentNode;
-          if (!par || par.querySelector('.mitem[onclick*="\'wms_qad\'"]')) return;
-          var c = el.cloneNode(true);
-          c.classList.remove('active');
-          c.setAttribute('onclick', String(el.getAttribute('onclick')).replace(/akurasi_scan/g, 'wms_qad'));
-          var svg = c.querySelector('svg');
-          if (svg) svg.innerHTML = '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v5a3 3 0 0 0 3 3h6.5"/><path d="M13.5 13.5 16 16l-2.5 2.5"/><path d="M18 15.5v-5a3 3 0 0 0-3-3H8.5"/><path d="M10.5 10.5 8 8l2.5-2.5"/>';
-          var tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT, null), n;
-          while ((n = tw.nextNode())) {
-            if (n.nodeValue.indexOf('Akurasi Scan Barcode') !== -1) n.nodeValue = n.nodeValue.replace('Akurasi Scan Barcode', 'Akurasi QAD vs WMS');
-          }
-          par.insertBefore(c, el.nextSibling);
+          var par = el.parentNode, anchor = el;
+          if (!par) return;
+          DEFS.forEach(function (d) {
+            var have = par.querySelector('.mitem[onclick*="\'' + d.key + '\'"]');
+            if (have) { anchor = have; return; }
+            var c = el.cloneNode(true);
+            c.classList.remove('active');
+            c.setAttribute('onclick', String(el.getAttribute('onclick')).replace(/akurasi_scan/g, d.key));
+            var svg = c.querySelector('svg'); if (svg) svg.innerHTML = d.svg;
+            var tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT, null), n;
+            while ((n = tw.nextNode())) {
+              if (n.nodeValue.indexOf('Akurasi Scan Barcode') !== -1) n.nodeValue = n.nodeValue.replace('Akurasi Scan Barcode', d.label);
+            }
+            par.insertBefore(c, anchor.nextSibling); anchor = c;
+          });
         });
       } catch (e) { /* menu tambahan tidak boleh merusak halaman */ }
     })();

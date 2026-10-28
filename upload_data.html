@@ -2,8 +2,8 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261027a"></script>
-<script src="./assets/js/config.js?v=20261027a"></script>
+<script src="./assets/js/auth-guard.js?v=20261028a"></script>
+<script src="./assets/js/config.js?v=20261028a"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
 <script src="./assets/js/api-shim.js?v=20261002a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
@@ -20,6 +20,7 @@
 <script src="./assets/js/akurasi-core.js?v=20261022b"></script>
 <script src="./assets/js/akurasi-store.js?v=20261022b"></script>
 <script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
+<script src="./assets/js/picwms-core.js?v=20261028a"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -295,6 +296,10 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v5a3 3 0 0 0 3 3h6.5"/><path d="M13.5 13.5 16 16l-2.5 2.5"/><path d="M18 15.5v-5a3 3 0 0 0-3-3H8.5"/><path d="M10.5 10.5 8 8l2.5-2.5"/></svg>
         WMS &amp; QAD
       </button>
+      <button class="tab-btn" id="tabbtn-picwms" onclick="switchTab('picwms')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>
+        PIC &amp; SPM
+      </button>
     </div>
 
     <!-- ============== KATA KUNCI KATEGORI TAMBAHAN (Super Admin) ============== -->
@@ -375,6 +380,39 @@ table.preview-table tr.row-valid td{color:var(--txt);}
       </div>
       <div class="wq-grid" id="wq-cards"></div>
       <input type="file" id="wq-file" style="display:none;">
+    </div>
+
+    <!-- ============== TAB: PIC & SPM ============== -->
+    <style>
+      #pw-toast{position:fixed;bottom:20px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:380px;}
+      .pw-t{padding:12px 15px;border-radius:12px;background:rgba(32,24,10,.96);border:1px solid rgba(255,203,138,.5);color:#ffdcae;font-size:12px;line-height:1.55;box-shadow:0 14px 34px -10px rgba(0,0,0,.7);animation:pwIn .45s cubic-bezier(.2,.8,.2,1);}
+      .pw-t.ok{background:rgba(8,30,24,.96);border-color:rgba(126,232,199,.5);color:#a8f0d9;}
+      @keyframes pwIn{from{opacity:0;transform:translateX(30px);}to{opacity:1;transform:none;}}
+      .pw-area{width:100%;min-height:120px;resize:vertical;background:var(--bg-card2);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--txt);font-family:'JetBrains Mono',monospace;font-size:12px;}
+      .pw-warn{border:1px solid rgba(255,203,138,.45);background:rgba(255,203,138,.07);border-radius:12px;padding:12px 14px;font-size:11.5px;line-height:1.6;color:#ffdcae;display:flex;flex-direction:column;gap:8px;}
+      .pw-warn .it{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.05);}
+      .pw-warn code{font-family:'JetBrains Mono',monospace;color:#fff;}
+      .pw-pick{cursor:pointer;border:1px solid rgba(126,232,199,.45);background:rgba(126,232,199,.1);color:#a8f0d9;border-radius:999px;padding:3px 10px;font-size:11px;font-family:'JetBrains Mono',monospace;}
+      .pw-pick:hover{background:rgba(126,232,199,.22);}
+      .pw-dates{display:flex;flex-wrap:wrap;gap:6px;}
+      .pw-dt{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border2);background:var(--bg-card2);border-radius:999px;padding:4px 6px 4px 11px;font-size:11px;color:var(--txt2);cursor:pointer;}
+      .pw-dt b{color:var(--txt);} .pw-dt i{font-style:normal;color:#ff8f8f;padding:0 5px;border-radius:50%;}
+    </style>
+    <div id="pw-toast" aria-live="polite"></div>
+    <div class="tab-panel" id="tab-picwms">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Master WMS &amp; Jadwal SPM</div></div>
+        <div class="card-body">
+          <div class="col-ref">
+            Upload <b>Laporan Persiapan Muat</b> dari WMS dan input <b>nomor SPM jadwal</b> secara manual. Hasilnya dicocokkan di menu <b>Kepatuhan PIC WMS</b>.
+            Hanya <b>Ship To, Tgl Muat, No SPM, PIC Muat</b> yang disimpan, kolom lain dan item selain PIPE PPR dibuang (tidak tersimpan di spreadsheet maupun Supabase).
+          </div>
+          <div class="status-msg" id="pw-conn"></div>
+          <div id="pw-prog" style="display:none;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);margin-bottom:5px;"><span id="pw-prog-label">Memproses...</span><b id="pw-prog-pct">0%</b></div><div style="height:8px;border-radius:8px;background:var(--bg2);overflow:hidden;border:1px solid var(--border);"><div id="pw-prog-bar" style="height:100%;width:0;background:linear-gradient(90deg,#10b981,#34d399);border-radius:8px;transition:width .25s ease;"></div></div></div>
+        </div>
+      </div>
+      <div class="wq-grid" id="pw-cards"></div>
+      <input type="file" id="pw-file" style="display:none;">
     </div>
 
     <!-- ============== TAB: STOCK ============== -->
@@ -573,7 +611,7 @@ var PAGE_MAP = {
   'residance'       : 'residance_time.html',
   'input_lembur'    : 'input_lembur.html',
   'fte_dashboard'   : 'fte_dashboard.html',
-  'akurasi_scan'    : 'akurasi_scan.html', 'wms_qad': 'wms_qad.html',
+  'akurasi_scan'    : 'akurasi_scan.html', 'wms_qad': 'wms_qad.html', 'pic_wms': 'pic_wms.html',
   'upload'          : 'upload_data.html',
   'stock_opname'    : 'stock_opname.html'
 };
@@ -643,12 +681,13 @@ function toggleSidebar(){
 })();
 
 function switchTab(name){
-  ['stock','outbound','inbound','akurasi','wmsqad'].forEach(function(t){
+  ['stock','outbound','inbound','akurasi','wmsqad','picwms'].forEach(function(t){
     document.getElementById('tab-'+t).classList.toggle('active', t===name);
     document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
   });
   if (name === 'akurasi' && window.AkurasiUpload) window.AkurasiUpload.init();
   if (name === 'wmsqad' && window.WmsQadUpload) window.WmsQadUpload.init();
+  if (name === 'picwms' && window.PicWmsUpload) window.PicWmsUpload.init();
 }
 
 // ================================================================
@@ -1681,6 +1720,178 @@ window.WmsQadUpload = (function(){
   }
   function init(){ if (!loaded) refresh(); else draw(); }
   return { init: init, pick: pick, remove: remove };
+})();
+
+// ================================================================
+//  TAB PIC & SPM -- master Laporan Muat + jadwal SPM manual
+// ================================================================
+window.PicWmsUpload = (function(){
+  var P = window.PicWmsCore, C = window.WmsQadCore, loaded = false, busy = false, data = { master: [], jadwal: [] };
+  var msg = null, pending = null, selDate = '';
+  function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function n(v){ return (Number(v) || 0).toLocaleString('id-ID'); }
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function note(t, kind){ var el = document.getElementById('pw-conn'); el.textContent = t || ''; el.style.color = kind === 'err' ? '#ff8f8f' : 'var(--txt2)'; }
+  function toast(html, cls, ms){
+    var box = document.getElementById('pw-toast'), d = document.createElement('div');
+    d.className = 'pw-t ' + (cls || ''); d.innerHTML = html; box.appendChild(d);
+    setTimeout(function(){ d.style.transition = 'opacity .4s'; d.style.opacity = '0'; setTimeout(function(){ d.remove(); }, 450); }, ms || 9000);
+  }
+  function call(fn, args){
+    return new Promise(function(res, rej){
+      if (!window.google || !google.script || !google.script.run) return rej(new Error('Backend belum siap'));
+      google.script.run
+        .withSuccessHandler(function(r){ if (r && r.success === false) rej(new Error(r.error || 'Server menolak permintaan')); else res(r); })
+        .withFailureHandler(function(e){ rej(e instanceof Error ? e : new Error(String(e && e.message || e))); })[fn].apply(null, args || []);
+    });
+  }
+  function friendly(e){
+    var m = String(e && e.message || e || '');
+    if (/tidak dikenali|tidak diizinkan/i.test(m)) return 'Backend belum di-deploy ulang (kode.gs terbaru belum aktif di Apps Script).';
+    return m || 'Server tidak bisa dihubungi.';
+  }
+  function dates(arr){ var d = {}; arr.forEach(function(r){ d[r.t] = 1; }); return Object.keys(d).sort(); }
+  function jadwalOf(t){ return data.jadwal.filter(function(r){ return r.t === t; }).map(function(r){ return r.s; }); }
+  function lock(on){ window._uploadInProgress = on; if (typeof setUploadLockUI === 'function') setUploadLockUI(on); }
+
+  function draw(){
+    var box = document.getElementById('pw-cards'); if (!box) return;
+    if (!selDate) selDate = today();
+    var ta = document.getElementById('pw-area'), keep = ta ? ta.value : null;
+    var md = dates(data.master), jd = dates(data.jadwal), has = data.master.length > 0;
+    var spmN = {}; data.master.forEach(function(r){ spmN[r.s] = 1; });
+    var card1 = '<div class="card"><div class="card-header"><div class="card-title">Master WMS<span style="font-weight:500;color:var(--txt3);font-size:10.5px;">Laporan Persiapan Muat (.xls / .xlsx)</span></div></div><div class="card-body">' +
+      '<div class="wq-chips">' + ['Ship To', 'Tgl Muat', 'No SPM', 'PIC Muat'].map(function(c){ return '<span class="wq-chip keep">' + c + '</span>'; }).join('') + '<span class="wq-chip">kolom lain dibuang</span></div>' +
+      '<div class="wq-stat"><div><b>' + n(Object.keys(spmN).length) + '</b><span>SPM tersimpan</span></div><div><b>' + n(md.length) + '</b><span>tanggal</span></div><div><b style="font-size:12px;">' + (has ? esc(C.fmtDate(md[0])) + ' – ' + esc(C.fmtDate(md[md.length - 1])) : '-') + '</b><span>rentang</span></div></div>' +
+      '<div class="btn-row"><button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="PicWmsUpload.pick()">' + (has ? 'Ganti / tambah file' : 'Pilih file') + '</button></div>' +
+      (msg ? '<div class="wq-res ' + msg.cls + '">' + msg.html + '</div>' : '') +
+      (has ? '<div class="wq-rng"><span>Hapus master tanggal</span><input type="date" id="pw-dari" value="' + md[0] + '"><span>s/d</span><input type="date" id="pw-sampai" value="' + md[md.length - 1] + '"><button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="PicWmsUpload.removeMaster()">Hapus rentang ini</button></div>' : '') +
+      '</div></div>';
+    var card2 = '<div class="card"><div class="card-header"><div class="card-title">Jadwal SPM<span style="font-weight:500;color:var(--txt3);font-size:10.5px;">input manual</span></div></div><div class="card-body">' +
+      '<div class="wq-rng"><b>Tanggal muat</b><input type="date" id="pw-date" value="' + selDate + '" onchange="PicWmsUpload.setDate(this.value)"><span style="color:var(--txt3)">' + n(jadwalOf(selDate).length) + ' SPM tersimpan di tanggal ini</span></div>' +
+      '<textarea class="pw-area" id="pw-area" placeholder="Tempel nomor SPM, satu per baris atau dipisah koma&#10;contoh:&#10;26102250&#10;26102318"></textarea>' +
+      '<div id="pw-warn"></div>' +
+      '<div class="btn-row"><button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="PicWmsUpload.check()">Periksa &amp; simpan jadwal</button></div>' +
+      (jd.length ? '<div><div style="font-size:10px;color:var(--txt3);margin-bottom:5px;">Jadwal tersimpan (klik untuk membuka, × untuk menghapus)</div><div class="pw-dates">' + jd.map(function(d){ return '<span class="pw-dt" onclick="PicWmsUpload.setDate(\'' + d + '\',true)"><b>' + esc(C.fmtDate(d)) + '</b>' + jadwalOf(d).length + ' SPM<i title="Hapus jadwal tanggal ini" onclick="event.stopPropagation();PicWmsUpload.removeJadwal(\'' + d + '\')">×</i></span>'; }).join('') + '</div></div>' : '') +
+      '</div></div>';
+    box.innerHTML = card1 + card2;
+    var t2 = document.getElementById('pw-area');
+    t2.value = keep != null ? keep : jadwalOf(selDate).join('\n');
+    if (pending) renderWarn();
+  }
+  function refresh(){
+    note('Memuat data dari server...');
+    return call('getPicWmsData', []).then(function(r){
+      data = { master: r.master || [], jadwal: r.jadwal || [] }; loaded = true; draw(); note('Tersambung ke server. Data sama untuk semua PC.');
+    }).catch(function(e){ note(friendly(e), 'err'); draw(); });
+  }
+  function setDate(d, force){ if (!d) return; selDate = d; pending = null; var ta = document.getElementById('pw-area'); if (ta) ta.value = jadwalOf(d).join('\n'); document.getElementById('pw-date').value = d; var w = document.getElementById('pw-warn'); if (w) w.innerHTML = ''; draw(); }
+  function startProg(){
+    var box = document.getElementById('pw-prog'), bar = document.getElementById('pw-prog-bar'), lab = document.getElementById('pw-prog-label'), pct = document.getElementById('pw-prog-pct');
+    var cur = 0, floor = 0, timer; box.style.display = 'block'; bar.style.background = 'linear-gradient(90deg,#10b981,#34d399)';
+    function paint(v, l){ cur = Math.max(cur, Math.min(100, v)); bar.style.width = cur + '%'; pct.textContent = Math.round(cur) + '%'; if (l) lab.textContent = l; }
+    paint(2, 'Memulai...');
+    timer = setInterval(function(){ if (cur < 92 && cur >= floor) paint(cur + Math.max(0.15, (92 - cur) * 0.04)); }, 250);
+    return { set: function(v, l){ floor = v; paint(v, l); }, stop: function(err){ clearInterval(timer); if (err) { bar.style.background = '#ef4444'; lab.textContent = 'Gagal'; } else setTimeout(function(){ box.style.display = 'none'; }, 1500); } };
+  }
+
+  // ---- master ----
+  function pick(){
+    var inp = document.getElementById('pw-file'); inp.value = ''; inp.accept = '.xls,.xlsx';
+    inp.onchange = function(){ if (inp.files && inp.files[0]) runMaster(inp.files[0]); };
+    inp.click();
+  }
+  function readRows(file){
+    return new Promise(function(res, rej){
+      var fr = new FileReader();
+      fr.onerror = function(){ rej(new Error('File tidak bisa dibaca.')); };
+      fr.onload = function(){
+        try {
+          var wb = XLSX.read(new Uint8Array(fr.result), { type: 'array' }), err = null;
+          for (var i = 0; i < wb.SheetNames.length; i++) {
+            var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[i]], { header: 1, raw: true, defval: '' });
+            try { return res(P.parseMaster(rows)); } catch (e) { err = err || e; }
+          }
+          rej(err || new Error('Sheet yang sesuai tidak ditemukan.'));
+        } catch (e) { rej(e); }
+      };
+      fr.readAsArrayBuffer(file);
+    });
+  }
+  function runMaster(file){
+    busy = true; msg = null; draw(); lock(true); note('Membaca ' + file.name + '...');
+    var pt = startProg(); pt.set(8, 'Membaca file...');
+    readRows(file).then(function(p){
+      var st = p.stats; pt.set(45, 'Menyaring kolom & item...');
+      if (!p.rows.length) throw new Error('Tidak ada baris yang lolos filter. ' + n(st.total) + ' baris dibaca, ' + n(st.dropped) + ' dibuang karena item bukan PIPE PPR yang dimaksud.');
+      pt.set(60, 'Menyimpan ke server...');
+      return call('savePicWmsData', ['master', JSON.stringify(p.rows)]).then(function(r){
+        pt.set(100, 'Selesai'); pt.stop();
+        var adm = p.rows.filter(function(x){ return P.isBanned(x.p); }).length;
+        msg = { cls: 'ok', html: '✅ ' + n(st.total) + ' baris dibaca → <b>' + n(st.spm) + ' SPM disimpan</b>, ' + n(st.dropped) + ' baris dibuang (item bukan PIPE PPR yang dimaksud).' + (r.diganti ? '<br>' + n(r.diganti) + ' baris lama pada tanggal yang sama diganti.' : '') + (adm ? '<br>⚠️ <b>' + adm + ' data memakai akun administrator.</b>' : '') };
+        if (adm) toast('⚠️ Ada PIC Muat yang memakai akun <b>administrator_wdj</b> pada master ini.');
+      });
+    }).then(function(){ busy = false; lock(false); return refresh(); })
+      .catch(function(e){ pt.stop(true); busy = false; lock(false); msg = { cls: 'err', html: '❌ ' + esc(friendly(e)) }; draw(); note(friendly(e), 'err'); });
+  }
+  function removeMaster(){
+    var dari = (document.getElementById('pw-dari') || {}).value || '', sampai = (document.getElementById('pw-sampai') || {}).value || '';
+    var akan = data.master.filter(function(r){ return (!dari || r.t >= dari) && (!sampai || r.t <= sampai); }).length;
+    if (!akan) { msg = { cls: 'err', html: 'Tidak ada data di rentang tanggal itu.' }; draw(); return; }
+    if (!confirm('Hapus ' + n(akan) + ' baris master WMS dari ' + C.fmtDate(dari) + ' s/d ' + C.fmtDate(sampai) + '?\n\nTidak bisa dibatalkan.')) return;
+    busy = true; draw(); lock(true);
+    call('hapusPicWmsData', ['master', dari, sampai]).then(function(r){ busy = false; lock(false); msg = { cls: 'ok', html: '✅ ' + n(r.dihapus) + ' baris dihapus.' }; return refresh(); })
+      .catch(function(e){ busy = false; lock(false); msg = { cls: 'err', html: '❌ ' + esc(friendly(e)) }; draw(); });
+  }
+
+  // ---- jadwal manual + peringatan typo ----
+  function renderWarn(){
+    var w = document.getElementById('pw-warn'); if (!w) return;
+    if (!pending) { w.innerHTML = ''; return; }
+    var rows = pending.unmatched.map(function(u){
+      return '<div class="it"><code>' + esc(u.s) + '</code><span>tidak ada di master WMS.</span>' +
+        (u.sug.length ? '<span>Mungkin maksud Anda:</span>' + u.sug.map(function(x){ return '<button class="pw-pick" onclick="PicWmsUpload.useSug(\'' + u.s + '\',\'' + x.s + '\')" title="' + esc(x.c) + ' · ' + esc(C.fmtDate(x.t)) + '">' + esc(x.s) + '</button>'; }).join('') : '<span>Tidak ada SPM yang mirip di master.</span>') + '</div>';
+    }).join('');
+    w.innerHTML = '<div class="pw-warn"><b>⚠️ ' + pending.unmatched.length + ' dari ' + pending.ok.length + ' SPM tidak ditemukan di master WMS' + (data.master.length ? '' : ' (master belum diupload)') + '</b>' +
+      (data.master.length ? '<span>Jika bukan typo, artinya team persiapan tidak menjalankan WMS. Klik nomor saran untuk memperbaiki.</span>' : '') + rows +
+      '<div class="btn-row"><button class="btn btn-primary" onclick="PicWmsUpload.save(true)">Simpan apa adanya</button><button class="btn" onclick="PicWmsUpload.cancel()">Kembali perbaiki</button></div></div>';
+  }
+  function check(){
+    var ta = document.getElementById('pw-area'), r = P.parseSpmList(ta.value);
+    if (!r.ok.length) { toast('Isi dulu minimal satu nomor SPM yang valid.'); return; }
+    if (r.bad.length) toast('Diabaikan (format tidak valid): <b>' + esc(r.bad.join(', ')) + '</b>');
+    var set = {}; data.master.forEach(function(x){ set[x.s] = 1; });
+    var cands = {}; data.master.forEach(function(x){ cands[x.s] = { s: x.s, t: x.t, c: x.c }; });
+    var cl = Object.keys(cands).map(function(k){ return cands[k]; }), used = {}; r.ok.forEach(function(s){ used[s] = 1; });
+    var un = r.ok.filter(function(s){ return !set[s]; }).map(function(s){ return { s: s, sug: P.similar(s, cl, used) }; });
+    pending = { ok: r.ok, unmatched: un };
+    if (!un.length) return save(false);
+    renderWarn();
+    var sg = un.filter(function(u){ return u.sug.length; });
+    toast('⚠️ <b>' + un.length + ' SPM tidak cocok dengan master.</b>' + (sg.length ? '<br>Kemungkinan typo: ' + sg.map(function(u){ return '<code>' + esc(u.s) + '</code> → <code>' + esc(u.sug[0].s) + '</code>'; }).join(', ') : ''));
+  }
+  function useSug(a, b){ var ta = document.getElementById('pw-area'); ta.value = ta.value.replace(new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), b); pending = null; renderWarn(); check(); }
+  function cancel(){ pending = null; renderWarn(); }
+  function save(force){
+    if (!pending) return;
+    var rows = pending.ok.map(function(s){ return { t: selDate, s: s }; }), un = pending.unmatched.length;
+    busy = true; draw(); lock(true);
+    call('savePicWmsData', ['jadwal', JSON.stringify(rows)]).then(function(r){
+      busy = false; lock(false); pending = null;
+      toast('✅ <b>' + n(r.ditambah) + ' SPM</b> jadwal ' + esc(C.fmtDate(selDate)) + ' tersimpan' + (un ? ' (' + un + ' belum ada di master)' : '') + '.', 'ok', 6000);
+      return refresh();
+    }).catch(function(e){ busy = false; lock(false); draw(); toast('❌ ' + esc(friendly(e))); });
+  }
+  function removeJadwal(d){
+    if (!confirm('Hapus semua jadwal SPM tanggal ' + C.fmtDate(d) + '?')) return;
+    busy = true; draw(); lock(true);
+    call('hapusPicWmsData', ['jadwal', d, d]).then(function(r){ busy = false; lock(false); if (selDate === d) { var ta = document.getElementById('pw-area'); if (ta) ta.value = ''; } toast('✅ ' + n(r.dihapus) + ' SPM jadwal dihapus.', 'ok', 5000); return refresh(); })
+      .catch(function(e){ busy = false; lock(false); draw(); toast('❌ ' + esc(friendly(e))); });
+  }
+  function init(){ if (!loaded) refresh(); else draw(); }
+  var h = (location.hash || '').replace('#', '');
+  if (h === 'picwms' || h === 'wmsqad') setTimeout(function(){ if (typeof switchTab === 'function') switchTab(h); }, 500);
+  return { init: init, pick: pick, removeMaster: removeMaster, check: check, save: save, cancel: cancel, useSug: useSug, setDate: setDate, removeJadwal: removeJadwal };
 })();
 </script>
 <script>

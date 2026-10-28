@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<script src="./assets/js/auth-guard.js?v=20261027a"></script>
-<script src="./assets/js/config.js?v=20261027a"></script>
+<script src="./assets/js/auth-guard.js?v=20261028a"></script>
+<script src="./assets/js/config.js?v=20261028a"></script>
 <script src="./assets/js/api-shim.js?v=20260722d"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="./assets/js/so-loader.js?v=20261017f"></script>
@@ -339,7 +339,7 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
 <div class="toast" id="toast"></div>
 
 <script>
-var PAGE_MAP={'':'index.html','index':'monitoring_stock.html','kanban':'kanban.html','rekap':'rekap_muatan.html','wh_control_tower':'index.html','residance':'residance_time.html','input_lembur':'input_lembur.html','fte_dashboard':'fte_dashboard.html','akurasi_scan':'akurasi_scan.html', 'wms_qad': 'wms_qad.html','upload':'upload_data.html','stock_opname':'stock_opname.html'};
+var PAGE_MAP={'':'index.html','index':'monitoring_stock.html','kanban':'kanban.html','rekap':'rekap_muatan.html','wh_control_tower':'index.html','residance':'residance_time.html','input_lembur':'input_lembur.html','fte_dashboard':'fte_dashboard.html','akurasi_scan':'akurasi_scan.html', 'wms_qad': 'wms_qad.html', 'pic_wms': 'pic_wms.html','upload':'upload_data.html','stock_opname':'stock_opname.html'};
 function navTo(pg){var t=(PAGE_MAP[pg||'']||'index.html')+'?v='+(window.SITE_VERSION||Date.now());window.location.href=t;}
 
 var NAMA=(sessionStorage.getItem('wh_nama')||'').trim(), ROLE=(sessionStorage.getItem('wh_role')||'').toUpperCase();
