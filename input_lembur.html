@@ -974,8 +974,9 @@ function exportLemburExcel(){
 // ================================================================
 function onKaryawanChange(){ updateDurasiPreview(); }
 
-// Potongan istirahat otomatis DIMATIKAN (harus sama dgn LEMBUR_POTONG_ISTIRAHAT_OTOMATIS di backend/kode.gs).
-var LEMBUR_POTONG_ISTIRAHAT_OTOMATIS = false;
+// Aturan potongan istirahat (harus sama dgn backend/kode.gs): Internal (NIK angka) lembur >4 jam dipotong 1 jam;
+// OS (NIK diawali huruf) TIDAK dipotong -- jam = aktual, potongan istirahat oleh HRD.
+var LEMBUR_POTONG_ISTIRAHAT_INTERNAL = true;
 function updateDurasiPreview(){
   var m1 = document.getElementById('lm-mulai').value;
   var m2 = document.getElementById('lm-selesai').value;
@@ -991,7 +992,9 @@ function updateDurasiPreview(){
   // Petugas serah terima (tanpa istirahat): tidak ada potongan 1 jam. Daftar ini sama dengan LEMBUR_TANPA_ISTIRAHAT di backend.
   var _nm = String((window.WH_SESSION && window.WH_SESSION.nama) || '').toUpperCase();
   var tanpaIstirahat = /NGABIDIN|SLAMET\s+RIYADI|IBNU\s+ABDILLAH|\bLINDU\b/.test(_nm) || !!(window.WH_SESSION && window.WH_SESSION.isSerahTerima);
-  if(LEMBUR_POTONG_ISTIRAHAT_OTOMATIS && jam>4 && !tanpaIstirahat){ jam-=1; potongInfo=true; } // dimatikan: jam = aktual; potongan istirahat (OS) oleh HRD
+  var _nikLm = String((window.WH_SESSION && window.WH_SESSION.nik) || '').trim();
+  var isOS = /^[A-Za-z]/.test(_nikLm); // NIK diawali huruf = OS
+  if(LEMBUR_POTONG_ISTIRAHAT_INTERNAL && !isOS && jam>4 && !tanpaIstirahat){ jam-=1; potongInfo=true; }
   jam = Math.round(jam*100)/100;
 
   box.style.display='flex';
@@ -1014,6 +1017,9 @@ function updateDurasiPreview(){
   } else if(potongInfo){
     note.style.display='flex'; note.className='durasi-note';
     note.querySelector('span').textContent = 'Lembur >4 jam, otomatis dipotong 1 jam istirahat.';
+  } else if(isOS && jam>4){
+    note.style.display='flex'; note.className='durasi-note';
+    note.querySelector('span').textContent = 'Jam dicatat sesuai input aktual. Potongan istirahat lembur >4 jam dilakukan pihak HRD.';
   } else {
     note.style.display='none';
   }

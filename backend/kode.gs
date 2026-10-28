@@ -6349,25 +6349,29 @@ function _tanpaIstirahat(nama, kode) {
   if (kode) return String(_jabatanMap()[String(kode)] || '').toUpperCase().indexOf('SERAH TERIMA') !== -1;
   return false;
 }
-// POTONGAN ISTIRAHAT OTOMATIS DIMATIKAN. Jam lembur tersimpan = durasi AKTUAL (jam selesai - jam mulai),
-// mis. 07.00-12.00 tercatat 5 jam. Potongan istirahat utk lembur > 4 jam (khusus OS) dilakukan pihak HRD
-// pada penggajian, bukan di aplikasi. Ubah ke true bila aturan potong otomatis ingin dihidupkan lagi
-// (jangan lupa ubah juga LEMBUR_POTONG_ISTIRAHAT_OTOMATIS di input_lembur.html).
-var LEMBUR_POTONG_ISTIRAHAT_OTOMATIS = false;
+// ATURAN POTONGAN ISTIRAHAT
+//  - Karyawan INTERNAL (NIK diawali angka): lembur lebih dari 4 jam otomatis dipotong 1 jam istirahat
+//    (kecuali petugas serah terima, lihat LEMBUR_TANPA_ISTIRAHAT).
+//  - Karyawan OS (NIK diawali huruf, mis. PEG...): TIDAK dipotong di aplikasi. Jam tersimpan = durasi AKTUAL
+//    (mis. 07.00-12.00 = 5 jam); potongan istirahat lembur > 4 jam untuk OS dilakukan pihak HRD.
+//  Frontend (input_lembur.html) memakai aturan yang sama -- ubah keduanya bersamaan.
+var LEMBUR_POTONG_ISTIRAHAT_INTERNAL = true;
 function _jamLemburBersih(durMin, nama, kode) {
   var durJam = durMin / 60;
-  if (LEMBUR_POTONG_ISTIRAHAT_OTOMATIS && durJam > 4 && !_tanpaIstirahat(nama, kode)) durJam -= 1;
+  if (LEMBUR_POTONG_ISTIRAHAT_INTERNAL && durJam > 4 && _kategoriDariNIK(kode) === 'Internal' && !_tanpaIstirahat(nama, kode)) durJam -= 1;
   return Math.round(durJam * 100) / 100;
 }
 
-// Jalankan manual dari editor Apps Script utk MERAPIKAN lembur lama yang dulu terlanjur dipotong 1 jam
-// (jam tersimpan < durasi aktual). apply=false hanya melaporkan di Logger. dariTanggal ('YYYY-MM-DD', opsional)
-// membatasi perbaikan hanya utk lembur pada/setelah tanggal itu -- supaya laporan bulan lama tidak ikut berubah.
+// Jalankan manual dari editor Apps Script utk MERAPIKAN lembur lama milik karyawan OS yang dulu terlanjur dipotong
+// 1 jam (jam tersimpan < durasi aktual). Karyawan Internal TIDAK disentuh. apply=false hanya melaporkan di Logger.
+// dariTanggal ('YYYY-MM-DD', opsional) membatasi perbaikan hanya utk lembur pada/setelah tanggal itu.
 function perbaikiLemburKeAktual(apply, dariTanggal) {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(SH_LEMBUR_LOG);
   var data = sh.getDataRange().getValues(), n = 0, tz = Session.getScriptTimeZone();
   for (var i = 1; i < data.length; i++) {
-    var r = data[i], tgl = toDate(r[1]);
+    var r = data[i];
+    if (_kategoriDariNIK(r[2]) !== 'OS') continue;
+    var tgl = toDate(r[1]);
     if (dariTanggal && tgl && Utilities.formatDate(tgl, tz, 'yyyy-MM-dd') < dariTanggal) continue;
     var m1 = _timeStrToMinutes(_fmtTime(r[4])), m2 = _timeStrToMinutes(_fmtTime(r[5]));
     if (m1 == null || m2 == null) continue;
