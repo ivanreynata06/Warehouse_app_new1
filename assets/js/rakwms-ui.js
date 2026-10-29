@@ -12,7 +12,15 @@
 
   /* ---------- penyimpanan lokal (BUKAN Supabase / Spreadsheet) ---------- */
   function load() { try { var j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.wms) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; return j; } } catch (e) {} return K.blank(); }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Penyimpanan browser penuh / diblokir - data hanya bertahan selama halaman terbuka.', true); } }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Penyimpanan browser penuh / diblokir - data hanya bertahan selama halaman terbuka. Gunakan Simpan Cadangan.', true); }
+    idbSet(JSON.stringify(S));
+  }
+  /* IndexedDB = salinan kedua (tetap ada walau localStorage terhapus sebagian). Clear data situs tetap menghapus keduanya -> pakai file cadangan. */
+  function idb(cb) { try { var r = indexedDB.open('rakwms', 1); r.onupgradeneeded = function () { r.result.createObjectStore('kv'); }; r.onsuccess = function () { cb(r.result); }; r.onerror = function () { cb(null); }; } catch (e) { cb(null); } }
+  function idbSet(v) { idb(function (db) { if (!db) return; try { db.transaction('kv', 'readwrite').objectStore('kv').put(v, KEY); } catch (e) {} }); }
+  function idbGet(cb) { idb(function (db) { if (!db) return cb(null); try { var q = db.transaction('kv').objectStore('kv').get(KEY); q.onsuccess = function () { cb(q.result || null); }; q.onerror = function () { cb(null); }; } catch (e) { cb(null); } }); }
+  function adopt(j) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; S = j; }
   function toast(m, err) { if (typeof window.toast === 'function') window.toast(m, err); else alert(m); }
   function recalc() { ui.items = K.items(S, ui.allowed); ui.plan = K.plan(S, ui.items); ui.sum = K.summary(S, ui.items, ui.plan); }
   function tone(p) { return p == null ? 'none' : (p >= 98 ? 'good' : (p >= 90 ? 'warn' : 'bad')); }
@@ -75,7 +83,9 @@
         '<span><b>' + fmt(S.qad.length) + '</b>item QAD</span>') +
       dz('wms', '&#127970;', 'Informasi Rak WMS', 'Klik atau seret file Informasi Rak (.xlsx / .xls) - hanya lokasi ' + K.LOC, ['Lokasi', 'Area', 'Rak', 'Kode Item', 'Nama Item', 'Onhand'], S.wms.length, (S.meta.wmsFile || '') + ' - ' + (S.meta.wmsAt || ''),
         '<span><b>' + fmt(nr) + '</b>rak</span><span><b>' + fmt(S.wms.length) + '</b>baris item-rak</span>') +
-      '</div><input type="file" id="rk-file" accept=".xls,.xlsx,.csv" style="display:none"></div>';
+      '</div><div class="rk-tools" style="margin-top:14px"><button class="btn2" onclick="RakUI.backup()">&#128190; Simpan Cadangan (.json)</button><button class="btn2" onclick="RakUI.restore()">&#128194; Pulihkan Cadangan</button>' +
+      '<span class="sub">Data tersimpan di browser. Jika <b>clear cache / hapus data situs</b>, data ikut hilang - simpan cadangan dulu lalu pulihkan setelahnya (file cadangan tidak dikirim ke server mana pun).' + (S.meta.backupAt ? ' Cadangan terakhir: ' + esc(S.meta.backupAt) + '.' : '') + '</span></div>' +
+      '<input type="file" id="rk-file" accept=".xls,.xlsx,.csv" style="display:none"><input type="file" id="rk-rest" accept=".json" style="display:none"></div>';
   }
 
   /* ---------- chart 3D ---------- */
@@ -112,15 +122,16 @@
   function renderTbl() {
     var a = filtered(), lim = 400;
     $('rk-tbl').innerHTML = '<div class="gh"><h3>Daftar Item &amp; Rak <em>klik baris untuk input aktual</em></h3><div class="rk-tools">' +
+      '<button class="btn2 pri" onclick="RakUI.print()">&#128424; Cetak Laporan</button>' +
       '<input type="text" id="rk-q" placeholder="Cari kode / nama item..." value="' + esc(ui.q) + '" style="width:220px" oninput="RakUI.search(this.value)">' +
       (ui.allowed.length > 1 ? '<div class="rk-seg">' + [['all', 'Semua group'], ['I053', 'I053 Pipa'], ['Q055', 'Q055 Fitting']].map(function (x) { return '<button class="' + (ui.g === x[0] ? 'on' : '') + '" onclick="RakUI.grp(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' : '') + '<div class="rk-seg">' + [['all', 'Semua'], ['sel', 'Selisih'], ['ok', 'Sesuai'], ['todo', 'Belum diinput'], ['done', 'Sudah diinput']].map(function (x) { return '<button class="' + (ui.f === x[0] ? 'on' : '') + '" onclick="RakUI.filter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div></div>' +
-      '<div class="gb"><div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Group</th><th>Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
+      '<div class="gb"><div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Group</th><th class="l">Nama Rak</th><th>Jml Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
       (a.length ? a.slice(0, lim).map(function (i) {
         var c = soCount(i), pc = c.t ? c.n / c.t * 100 : 0;
-        return '<tr class="it" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
+        return '<tr class="it" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td class="l" title="' + esc(i.racks.map(function (r) { return r.rak; }).join(', ')) + '"><div class="cd" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)">' + (i.racks.length ? esc(i.racks.slice(0, 2).map(function (r) { return r.rak; }).join(', ')) + (i.racks.length > 2 ? ' +' + (i.racks.length - 2) : '') : '-') + '</div></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
           '<td><span class="chip2 ' + (i.sel === 0 ? 'ok' : 'bd') + '">' + (i.sel === 0 ? 'SESUAI' : 'SELISIH') + '</span></td>' +
           '<td style="min-width:120px"><div class="prg"><i style="width:' + pc + '%"></i></div><div class="cd" style="text-align:right;margin-top:3px">' + c.n + '/' + c.t + ' rak</div></td></tr>';
-      }).join('') : '<tr><td colspan="8" class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS di atas.') + '</td></tr>') +
+      }).join('') : '<tr><td colspan="10" class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS di atas.') + '</td></tr>') +
       '</tbody></table></div>' + (a.length > lim ? '<div class="sub" style="margin-top:8px">Menampilkan ' + lim + ' dari ' + fmt(a.length) + ' item - gunakan pencarian.</div>' : '') + '</div>';
     var q = $('rk-q'); if (q && ui._focusQ) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); ui._focusQ = false; }
   }
@@ -257,6 +268,30 @@
     rd.readAsArrayBuffer(f);
   }
 
+  /* ---------- cetak laporan akurasi QAD vs WMS (lengkap dengan nama rak) ---------- */
+  function printReport() {
+    var a = filtered(); if (!a.length) return toast('Tidak ada data untuk dicetak. Upload data dulu atau ubah filter.', true);
+    var m = ui.sum, now = new Date().toLocaleString('id-ID'), nm = sessionStorage.getItem('wh_nama') || '';
+    var rowsItem = a.map(function (i, n) {
+      return '<tr><td>' + (n + 1) + '</td><td class="m">' + esc(i.kode) + '</td><td>' + esc(i.nama) + '</td><td class="c">' + esc(i.grp) + '</td><td class="m">' + esc(i.racks.map(function (r) { return r.rak; }).join(', ') || '-') + '</td><td class="r">' + fmt(i.qadv) + '</td><td class="r">' + fmt(i.wms) + '</td><td class="r ' + (i.sel ? 'bd' : '') + '">' + fmt(i.sel) + '</td><td class="c">' + (i.sel === 0 ? 'SESUAI' : 'SELISIH') + '</td></tr>';
+    }).join('');
+    var rowsRak = '';
+    a.forEach(function (i) {
+      K.lines(S, i, ui.plan).forEach(function (l) {
+        var d = l.aktual === null ? '' : l.aktual - l.exist;
+        rowsRak += '<tr><td class="m">' + esc(l.rak) + '</td><td>' + esc(l.area || '') + '</td><td class="m">' + esc(i.kode) + '</td><td>' + esc(i.nama) + '</td><td class="r">' + fmt(l.exist) + '</td><td class="r">' + (l.aktual === null ? '' : fmt(l.aktual)) + '</td><td class="r ' + (d ? 'bd' : '') + '">' + (d === '' ? '' : fmt(d)) + '</td></tr>';
+      });
+    });
+    var css = '@page{size:A4 landscape;margin:10mm}body{font:11px Arial,sans-serif;color:#111;margin:0}h1{font-size:17px;margin:0}h2{font-size:13px;margin:18px 0 6px}.sub{color:#555;font-size:10px;margin:3px 0 10px}.k{display:flex;gap:10px;margin:8px 0}.k div{border:1px solid #bbb;border-radius:6px;padding:6px 12px;min-width:120px}.k b{display:block;font-size:17px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:3px 5px;vertical-align:top}th{background:#e8ecf2;font-size:10px}.r{text-align:right}.c{text-align:center}.m{font-family:Consolas,monospace;font-size:10px}.bd{color:#b00020;font-weight:700}tr{page-break-inside:avoid}thead{display:table-header-group}';
+    var h = '<!doctype html><html><head><meta charset="utf-8"><title>Akurasi Rak WMS ' + esc(S.cfg.tgl) + '</title><style>' + css + '</style></head><body>' +
+      '<h1>Laporan Akurasi Stok Rak - QAD vs WMS (' + K.LOC + ')</h1><div class="sub">Group: ' + esc(ui.allowed.join(', ')) + (ui.g !== 'all' ? ' (filter ' + esc(ui.g) + ')' : '') + ' | Dicetak ' + esc(now) + (nm ? ' oleh ' + esc(nm) : '') + ' | Data WMS: ' + esc(S.meta.wmsAt || '-') + ' | Data QAD: ' + esc(S.meta.qadAt || '-') + '</div>' +
+      '<div class="k"><div>Akurasi Item<b>' + pct(m.accItem) + '%</b></div><div>Akurasi Qty<b>' + pct(m.accQty) + '%</b></div><div>Akurasi Rak (SO)<b>' + (m.accRak == null ? '-' : pct(m.accRak) + '%') + '</b></div><div>Item sesuai<b>' + fmt(m.ok) + ' / ' + fmt(m.n) + '</b></div><div>Saldo QAD / WMS<b>' + fmt(m.qad) + ' / ' + fmt(m.wms) + '</b></div></div>' +
+      '<h2>A. Perbandingan per item</h2><table><thead><tr><th>No</th><th>Kode Item</th><th>Nama Item</th><th>Group</th><th>Nama Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th></tr></thead><tbody>' + rowsItem + '</tbody></table>' +
+      '<h2>B. Detail per rak</h2><table><thead><tr><th>Rak</th><th>Area</th><th>Kode Item</th><th>Nama Item</th><th>Saldo WMS</th><th>Aktual</th><th>Adjustment</th></tr></thead><tbody>' + rowsRak + '</tbody></table></body></html>';
+    var w = window.open('', '_blank'); if (!w) return toast('Pop-up diblokir browser. Izinkan pop-up untuk mencetak.', true);
+    w.document.open(); w.document.write(h); w.document.close(); w.focus(); setTimeout(function () { w.print(); }, 400);
+  }
+
   /* ---------- aksi publik ---------- */
   var API = {
     pick: function (kind) { var i = $('rk-file'); i.value = ''; i.onchange = function () { if (i.files[0]) readFile(kind, i.files[0]); }; i.click(); },
@@ -281,6 +316,24 @@
     },
     delManual: function (i) { var it = itemOf(ui.open); S.manual[it.kode].splice(i, 1); save(); recalc(); renderDrawer(); },
     cfg: function (k, v) { S.cfg[k] = v; save(); },
+    backup: function () {
+      if (!S.wms.length && !S.qad.length) return toast('Belum ada data untuk dicadangkan.', true);
+      S.meta.backupAt = new Date().toLocaleString('id-ID'); save();
+      var blob = new Blob([JSON.stringify({ app: 'rakwms', v: 1, user: USER, S: S })], { type: 'application/json' }), a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'CADANGAN_AKURASI_RAK_' + S.cfg.tgl.replace(/-/g, '') + '.json'; document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); renderUp(); toast('Cadangan diunduh.');
+    },
+    restore: function () {
+      var i = $('rk-rest'); i.value = '';
+      i.onchange = function () {
+        var f = i.files[0]; if (!f) return; var rd = new FileReader();
+        rd.onload = function (e) {
+          try { var j = JSON.parse(e.target.result); if (!j || j.app !== 'rakwms' || !j.S || !j.S.wms) throw new Error('Bukan file cadangan Akurasi Rak WMS.'); adopt(j.S); save(); render(); toast('Data dipulihkan: ' + fmt(S.wms.length) + ' baris rak, ' + fmt(S.qad.length) + ' item QAD.'); }
+          catch (x) { toast(x.message || 'File cadangan tidak valid.', true); }
+        }; rd.readAsText(f);
+      }; i.click();
+    },
+    print: function () { printReport(); },
     ack: function (on) { S.step1 = on ? sig1(ui.plan) : ''; save(); renderAdj(); },
     dl: function (n) {
       var rows = n === 1 ? ui.plan.step1 : ui.plan.step2; if (!rows.length) return;
@@ -290,7 +343,13 @@
   };
   window.RakUI = API;
 
-  function render() { recalc(); renderHero(); renderUp(); renderChart(); renderTbl(); renderAdj(); animate(); }
+  function render() {
+    if (!ui.allowed.length) {
+      $('rk-hero').innerHTML = '<div class="glass"><div class="gb empty">Akurasi Rak WMS saat ini hanya untuk PIC / TL group <b>I053</b> (Pipa PPR) dan <b>Q055</b> (Fitting).<br><span class="sub">Jika Anda PIC salah satu group tersebut, tunggu data group selesai dimuat lalu buka ulang tab ini.</span></div></div>';
+      ['rk-up', 'rk-chart', 'rk-tbl', 'rk-adj'].forEach(function (id) { $(id).innerHTML = ''; });
+      return;
+    }
+    recalc(); renderHero(); renderUp(); renderChart(); renderTbl(); renderAdj(); animate(); }
   /* ---------- akses: SEMENTARA hanya group I053 & Q055 ---------- */
   function applyAccess() {
     var P = window.S || {}, m = P.master || [];
@@ -299,7 +358,9 @@
     ui.allowed = K.GROUPS.filter(function (g) { return mine.indexOf(g) >= 0; });
     var tab = document.querySelector('.tab[data-t="rak"]');
     if (tab) tab.style.display = ui.allowed.length ? '' : 'none';
-    if (!ui.allowed.length && tab && tab.classList.contains('active')) { var d = document.querySelector('.tab[data-t="dash"]'); if (d) d.click(); }
+    var emb = /[?&]embed=1\b/.test(location.search);
+    if (!ui.allowed.length && tab && tab.classList.contains('active') && !emb) { var d = document.querySelector('.tab[data-t="dash"]'); if (d) d.click(); }
+    else if (tab && tab.classList.contains('active')) render();
     return true;
   }
   function init() {
@@ -307,6 +368,9 @@
     var tb = document.querySelector('.tab[data-t="rak"]'); if (tb) tb.style.display = 'none';   // tersembunyi sampai akses dipastikan
     var tries = 0, iv = setInterval(function () { if (applyAccess() || ++tries > 120) clearInterval(iv); }, 500);
     shell(); tilt();
+    if (/[?&]embed=1\b/.test(location.search) && location.hash === '#rak') { var tbs = $('tabs'); if (tbs) tbs.style.display = 'none'; }   // dibuka dari tab Monitoring WMS: baris tab Stock Opname disembunyikan
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+    if (!S.wms.length && !S.qad.length) idbGet(function (v) { if (!v) return; try { var j = JSON.parse(v); if (j && (j.wms || []).length) { adopt(j); try { localStorage.setItem(KEY, v); } catch (e) {} render(); } } catch (e) {} });
     document.getElementById('tabs').addEventListener('click', function (e) {
       var t = e.target.closest('.tab'); if (!t) return;
       var on = t.dataset.t === 'rak';

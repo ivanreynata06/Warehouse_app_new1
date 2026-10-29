@@ -8,6 +8,15 @@
  * api-shim.js, dst), supaya redirect terjadi secepat mungkin.
  */
 (function () {
+  // Mode embed: halaman dibuka di dalam iframe tab "Monitoring WMS" -> sidebar/userbar milik shell, jadi disembunyikan di sini.
+  try {
+    if (/[?&]embed=1\b/.test(window.location.search) && window.top !== window.self) {
+      document.documentElement.classList.add('wh-embed');
+      var _st = document.createElement('style');
+      _st.textContent = 'html.wh-embed .sidebar,html.wh-embed .toggle-sidebar-btn,html.wh-embed #wh-userbar{display:none!important}html.wh-embed .shell{width:100%!important}';
+      (document.head || document.documentElement).appendChild(_st);
+    }
+  } catch (e) {}
   var workspace = null, nik = null;
   try {
     workspace = sessionStorage.getItem('wh_workspace');
@@ -62,7 +71,8 @@
     'residance'       : 'residance_time.html',
     'input_lembur'    : 'input_lembur.html',
     'upload'          : 'upload_data.html',
-    'stock_opname'    : 'stock_opname.html'
+    'stock_opname'    : 'stock_opname.html',
+    'monitoring_wms'  : 'monitoring_wms.html'   // menu sintetis: gabungan 4 menu WMS (tidak disimpan di Kelola Menu)
   };
   var isFittingImport = workspace === 'cibitung_fitting_import';
   var isFittingRucika = workspace === 'cibitung_fitting_rucika';
@@ -102,6 +112,11 @@
   if (fullAccess && (isFittingImport || isFittingRucika)) {
     ['wms_qad', 'pic_wms', 'susun_wms'].forEach(function (k) { if (menuKeys.indexOf(k) === -1) menuKeys = menuKeys.concat([k]); });
   }
+  // Monitoring WMS (satu menu bertab) muncul bila departemen boleh salah satu dari 4 menu WMS
+  var WMS_FAMILY = ['stock_opname', 'wms_qad', 'pic_wms', 'susun_wms'];
+  if (WMS_FAMILY.some(function (k) { return menuKeys.indexOf(k) !== -1; }) && menuKeys.indexOf('monitoring_wms') === -1) {
+    menuKeys = menuKeys.concat(['monitoring_wms']);
+  }
 
   // Menu yg boleh dilihat role TERBATAS (Technician dkk) -- LAPISAN
   // KEDUA, diirisikan dgn menuKeys departemen di atas: sebuah menu
@@ -110,7 +125,7 @@
   // & "kanban" SENGAJA tidak dimasukkan -- role terbatas tidak pernah
   // lihat itu di departemen manapun. "upload" diatur terpisah lewat
   // canUploadData (selalu fullAccess-only, di semua departemen).
-  var MENU_KEYS_RESTRICTED_ROLE = ['wh_control_tower', 'input_lembur', 'residance', 'fte_dashboard', 'rekap', 'stock_opname'];
+  var MENU_KEYS_RESTRICTED_ROLE = ['wh_control_tower', 'input_lembur', 'residance', 'fte_dashboard', 'rekap', 'stock_opname', 'monitoring_wms'];
   var HIDDEN_NAV_KEYS_RESTRICTED = ['kanban', 'index'];
   if (isSerahTerima) {
     MENU_KEYS_RESTRICTED_ROLE.push('akurasi_scan');
@@ -290,27 +305,27 @@
     //      di sidebar SEMUA halaman (satu tempat, tidak perlu edit 13 file HTML).
     //      Dilewati kalau halaman itu sudah punya menunya sendiri. ----
     (function injectWmsQadMenu() {
-      var DEFS = [
-        { key: 'wms_qad', label: 'Akurasi QAD vs WMS', svg: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v5a3 3 0 0 0 3 3h6.5"/><path d="M13.5 13.5 16 16l-2.5 2.5"/><path d="M18 15.5v-5a3 3 0 0 0-3-3H8.5"/><path d="M10.5 10.5 8 8l2.5-2.5"/>' },
-        { key: 'pic_wms', label: 'Kepatuhan PIC WMS', svg: '<path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3z"/><path d="m9 12 2 2 4-4"/>' },
-        { key: 'susun_wms', label: 'Monitoring Susun WMS', svg: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14v7"/>' }
-      ];
+      // Satu menu "Monitoring WMS" (bertab) menggantikan: Monitoring Stock Opname, Akurasi QAD vs WMS,
+      // Kepatuhan PIC WMS, Monitoring Susun WMS. Pindah halaman WMS cukup ganti tab.
+      var DEF = { label: 'Monitoring WMS', svg: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14v7"/>' };
+      var OLD = ['stock_opname', 'wms_qad', 'pic_wms', 'susun_wms'];
       try {
+        var here = (window.location.pathname.split('/').pop() || '').toLowerCase();
         document.querySelectorAll('.mitem[onclick*="\'akurasi_scan\'"]').forEach(function (el) {
-          var par = el.parentNode, anchor = el;
-          if (!par) return;
-          DEFS.forEach(function (d) {
-            var have = par.querySelector('.mitem[onclick*="\'' + d.key + '\'"]');
-            if (have) { anchor = have; return; }
-            var c = el.cloneNode(true);
-            c.classList.remove('active');
-            c.setAttribute('onclick', String(el.getAttribute('onclick')).replace(/akurasi_scan/g, d.key));
-            var svg = c.querySelector('svg'); if (svg) svg.innerHTML = d.svg;
-            var tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT, null), n;
-            while ((n = tw.nextNode())) {
-              if (n.nodeValue.indexOf('Akurasi Scan Barcode') !== -1) n.nodeValue = n.nodeValue.replace('Akurasi Scan Barcode', d.label);
-            }
-            par.insertBefore(c, anchor.nextSibling); anchor = c;
+          var par = el.parentNode; if (!par) return;
+          OLD.forEach(function (k) { document.querySelectorAll('.mitem[onclick*="\'' + k + '\'"]').forEach(function (o) { o.style.display = 'none'; o.setAttribute('data-wms-old', '1'); }); });
+          if (par.querySelector('.mitem[data-wms-menu]')) return;
+          var c = el.cloneNode(true);
+          c.setAttribute('data-wms-menu', '1'); c.style.display = '';
+          c.classList.toggle('active', here === 'monitoring_wms.html' || document.documentElement.classList.contains('wh-embed'));
+          c.setAttribute('onclick', "window.location.href='./monitoring_wms.html?v='+(window.SITE_VERSION||Date.now())");
+          var svg = c.querySelector('svg'); if (svg) svg.innerHTML = DEF.svg;
+          var tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT, null), n;
+          while ((n = tw.nextNode())) { if (n.nodeValue.indexOf('Akurasi Scan Barcode') !== -1) n.nodeValue = n.nodeValue.replace('Akurasi Scan Barcode', DEF.label); }
+          if (menuKeys.indexOf('monitoring_wms') === -1) c.style.display = 'none';
+          par.insertBefore(c, el.nextSibling);
+          document.querySelectorAll('.mitem:not([data-wms-menu])').forEach(function (o) {
+            if (o.textContent.trim() === 'Monitoring Stock Opname') o.style.display = 'none';
           });
         });
       } catch (e) { /* menu tambahan tidak boleh merusak halaman */ }
@@ -436,27 +451,33 @@
     //              Cuti terpisah karena halamannya sudah punya 2 tab.
     //  - Role lain (Admin dkk): dibiarkan default (Input Lembur + Pengajuan
     //              Cuti terpisah, nama asli).
+    // Sidebar sebagian halaman (mis. Monitoring Stock Opname) berupa teks polos TANPA <span>: ganti label lewat text node
+    function setMenuLabel(el, txt) {
+      if (!el) return;
+      var sp = el.querySelector('span');
+      if (sp) { sp.textContent = txt; return; }
+      var tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), n;
+      while ((n = tw.nextNode())) { if (n.nodeValue.trim()) { n.nodeValue = txt; return; } }
+    }
     var lemburMenuEl = document.querySelector('[onclick*="\'input_lembur\'"]');
     if (lemburMenuEl) {
       var roleUp = (window.WH_SESSION.role || '').trim().toUpperCase();
       var labelEl = lemburMenuEl.querySelector('span');
 
       if (roleUp === 'TL') {
-        if (labelEl) labelEl.textContent = 'Inputan Karyawan';
+        setMenuLabel(lemburMenuEl, 'Inputan Karyawan');
         var cutiMenuEl = lemburMenuEl.cloneNode(true);
         cutiMenuEl.setAttribute('onclick', "location.href='./input_lembur.html?tab=cuti'");
-        var cutiLabelEl = cutiMenuEl.querySelector('span');
-        if (cutiLabelEl) cutiLabelEl.textContent = 'Pengajuan Cuti';
+        setMenuLabel(cutiMenuEl, 'Pengajuan Cuti');
         lemburMenuEl.insertAdjacentElement('afterend', cutiMenuEl);
       } else if (!window.WH_SESSION.fullAccess) {
-        if (labelEl) labelEl.textContent = 'Input Lemburan, Cuti DLL';
+        setMenuLabel(lemburMenuEl, 'Input Lemburan, Cuti DLL');
         // Technician: tidak perlu menu Pengajuan Cuti terpisah, 1 menu ini
         // sudah membuka halaman yang sama dengan 2 tab (Lembur & Cuti).
       } else {
         var cutiMenuEl2 = lemburMenuEl.cloneNode(true);
         cutiMenuEl2.setAttribute('onclick', "location.href='./input_lembur.html?tab=cuti'");
-        var cutiLabelEl2 = cutiMenuEl2.querySelector('span');
-        if (cutiLabelEl2) cutiLabelEl2.textContent = 'Pengajuan Cuti';
+        setMenuLabel(cutiMenuEl2, 'Pengajuan Cuti');
         lemburMenuEl.insertAdjacentElement('afterend', cutiMenuEl2);
       }
     }

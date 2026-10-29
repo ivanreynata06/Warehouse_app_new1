@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<script src="./assets/js/auth-guard.js?v=20261029e"></script>
-<script src="./assets/js/config.js?v=20261029e"></script>
-<script src="./assets/js/api-shim.js?v=20261029e"></script>
+<script src="./assets/js/auth-guard.js?v=20261029f"></script>
+<script src="./assets/js/config.js?v=20261029f"></script>
+<script src="./assets/js/api-shim.js?v=20261029f"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="./assets/js/so-loader.js?v=20261017f"></script>
 <link rel="preconnect" href="https://script.google.com">
@@ -12,7 +12,7 @@
 <title>Monitoring Stock Opname</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261029d">
+<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261029f">
 <style>
 :root{--bg:#0d0d1a;--bg2:#12121f;--card:#18182a;--card2:#1e1e30;--bd:#252538;--bd2:#2e2e48;
 --txt:#e8eaf0;--txt2:#9da3b8;--txt3:#6b7280;--green:#10b981;--blue:#3b82f6;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--mono:'JetBrains Mono',monospace;--sw:200px}
@@ -452,21 +452,21 @@ function renderWarn(id,list){
   el.innerHTML=list.map(function(x){
     if(x.level!=='danger') return '<div class="wc w"><div class="ic">!</div><div><b>'+esc(x.group)+' · '+esc(x.pic)+'</b><div>'+esc(x.msg)+'</div></div></div>';
     var own=ownPic(x.pic),info=x.total?'Progres '+fmt(x.isi)+' / '+fmt(x.total)+' item ('+String(x.progress).replace('.',',')+'%). ':'';
-    return '<div class="wc"><div class="ic">⚠</div><div><b>SO TERLAMBAT — '+esc(x.pic)+' · Group '+esc(x.group)+(x.minggu?' · Minggu ke-'+x.minggu:'')+'</b>'+
+    return '<div class="wc"><div class="ic">⚠</div><div><b>SO TERLAMBAT — '+esc(x.pic)+' · Group '+esc(x.group)+(x.minggu?' · Periode ke-'+x.minggu:'')+'</b>'+
       '<div>'+(x.periode?'Periode '+esc(x.periode)+'. ':'')+'Terlambat SO sejak <b>'+idDate(x.sejak)+'</b>. '+info+'</div>'+
       '<div class="wc-act">'+(own?'Pengingat untuk Anda: segera selesaikan dan input datanya pada sistem.':(IS_TL?'Mohon TL menindaklanjuti: PIC perlu segera menyelesaikan dan menginput datanya pada sistem.':'Segera selesaikan dan input datanya pada sistem.'))+'</div></div></div>'}).join('');
 }
-// SO mingguan (I053): status tiap minggu, minggu yang belum selesai, sisa minggu bulan ini
+// SO 2 mingguan (I053 & Q055): status tiap periode 2 minggu, periode yang belum selesai, sisa periode bulan ini
 function renderWeekly(id,filter){
   var el=document.getElementById(id); if(!el) return;
   el.innerHTML=(S.mingguan||[]).filter(filter).map(function(m){
     var late=m.weeks.filter(function(w){return w.status==='TERLAMBAT'});
-    var lt=late.length?'<span style="color:#ff8a8a"><b>Minggu belum selesai:</b> '+late.map(function(w){return 'Minggu ke-'+w.minggu+' '+esc(w.bulan)+' ('+rng(w)+') — '+String(w.progress).replace('.',',')+'%'}).join(' · ')+'</span>':'<span style="color:#4fd9a8">Tidak ada minggu yang terlambat.</span>';
-    var bl=(m.bulanan||[]).length?'<div class="card-b" style="padding-top:0"><div style="font:700 11.5px Outfit;margin-bottom:6px">Progress per bulan <span class="hint">· berapa item yang berhasil di-SO PIC dalam sebulan</span></div><div class="tw" style="max-height:none"><table><thead><tr><th>Bulan</th><th>Minggu selesai</th><th>Target item</th><th>Item ter-SO</th><th>Item unik</th><th>Rata-rata / minggu</th><th>Progress</th></tr></thead><tbody>'+m.bulanan.map(function(b){return '<tr><td><b>'+esc(b.label)+'</b></td><td class="mono">'+b.mingguSelesai+' / '+b.minggu+'</td><td class="mono">'+fmt(b.itemTarget)+'</td><td class="mono"><b>'+fmt(b.itemSelesai)+'</b></td><td class="mono">'+fmt(b.itemUnik)+'</td><td class="mono">'+String(b.rataPerMinggu).replace('.',',')+'</td><td style="min-width:130px"><div class="bar '+(b.progress<50?'mid':'')+'"><i style="width:'+Math.min(100,b.progress)+'%"></i></div><span class="mono">'+String(b.progress).replace('.',',')+'%</span></td></tr>'}).join('')+'</tbody></table></div></div>':'';
-    return '<div class="card"><div class="card-h"><h3>SO Mingguan — '+esc(m.group)+' · '+esc(m.desc)+' · '+esc(m.pic)+'</h3><span class="muted">Sisa minggu bulan ini: <b>'+m.sisaMinggu+'</b></span></div>'+
-    '<div class="card-b muted">Target selesai <b>tiap minggu</b>. Perhitungan dimulai '+idDate(m.mulaiHitung)+' — minggu sebelumnya tidak dianggap terlambat karena aplikasi baru berjalan. Data minggu lalu terkunci setelah minggu berikutnya dimulai.<br>'+lt+'</div>'+bl+
-    '<div class="tw" style="max-height:none"><table><thead><tr><th>Minggu ke</th><th>Periode</th><th>Item</th><th>Terisi</th><th>Progress</th><th>Status</th><th>Selesai pada</th><th>Aksi</th></tr></thead><tbody>'+
-    m.weeks.slice().reverse().map(function(w){return '<tr><td><b>Minggu ke-'+w.minggu+'</b><div class="muted" style="font-size:9.5px">'+esc(w.bulan)+'</div></td><td class="mono" style="font-size:10.5px">'+rng(w)+'</td><td class="mono">'+fmt(w.jumlah)+'</td><td class="mono">'+fmt(w.isi)+'</td>'+
+    var lt=late.length?'<span style="color:#ff8a8a"><b>Periode belum selesai:</b> '+late.map(function(w){return 'Periode ke-'+w.minggu+' '+esc(w.bulan)+' ('+rng(w)+') — '+String(w.progress).replace('.',',')+'%'}).join(' · ')+'</span>':'<span style="color:#4fd9a8">Tidak ada minggu yang terlambat.</span>';
+    var bl=(m.bulanan||[]).length?'<div class="card-b" style="padding-top:0"><div style="font:700 11.5px Outfit;margin-bottom:6px">Progress per bulan <span class="hint">· berapa item yang berhasil di-SO PIC dalam sebulan</span></div><div class="tw" style="max-height:none"><table><thead><tr><th>Bulan</th><th>Periode selesai</th><th>Target item</th><th>Item ter-SO</th><th>Item unik</th><th>Rata-rata / Periode</th><th>Progress</th></tr></thead><tbody>'+m.bulanan.map(function(b){return '<tr><td><b>'+esc(b.label)+'</b></td><td class="mono">'+b.mingguSelesai+' / '+b.minggu+'</td><td class="mono">'+fmt(b.itemTarget)+'</td><td class="mono"><b>'+fmt(b.itemSelesai)+'</b></td><td class="mono">'+fmt(b.itemUnik)+'</td><td class="mono">'+String(b.rataPerMinggu).replace('.',',')+'</td><td style="min-width:130px"><div class="bar '+(b.progress<50?'mid':'')+'"><i style="width:'+Math.min(100,b.progress)+'%"></i></div><span class="mono">'+String(b.progress).replace('.',',')+'%</span></td></tr>'}).join('')+'</tbody></table></div></div>':'';
+    return '<div class="card"><div class="card-h"><h3>SO 2 Mingguan — '+esc(m.group)+' · '+esc(m.desc)+' · '+esc(m.pic)+'</h3><span class="muted">Sisa periode bulan ini: <b>'+m.sisaMinggu+'</b></span></div>'+
+    '<div class="card-b muted">Target selesai <b>tiap 2 minggu</b> (2x sebulan). Perhitungan dimulai '+idDate(m.mulaiHitung)+' — periode sebelumnya tidak dianggap terlambat karena aplikasi baru berjalan. Data periode lalu terkunci setelah periode berikutnya dimulai.<br>'+lt+'</div>'+bl+
+    '<div class="tw" style="max-height:none"><table><thead><tr><th>Periode ke</th><th>Periode</th><th>Item</th><th>Terisi</th><th>Progress</th><th>Status</th><th>Selesai pada</th><th>Aksi</th></tr></thead><tbody>'+
+    m.weeks.slice().reverse().map(function(w){return '<tr><td><b>Periode ke-'+w.minggu+'</b><div class="muted" style="font-size:9.5px">'+esc(w.bulan)+'</div></td><td class="mono" style="font-size:10.5px">'+rng(w)+'</td><td class="mono">'+fmt(w.jumlah)+'</td><td class="mono">'+fmt(w.isi)+'</td>'+
       '<td style="min-width:130px"><div class="bar '+(w.status==='TERLAMBAT'?'late':'')+'"><i style="width:'+Math.min(100,w.progress)+'%"></i></div><span class="mono">'+String(w.progress).replace('.',',')+'%</span></td><td>'+statusChip(w.status)+'</td><td class="mono" style="font-size:10.5px">'+(w.tglSelesai?idDate(w.tglSelesai):'—')+'</td>'+
       '<td>'+(w.lembarId?'<button class="btn" onclick="lihatRiw(\''+esc(w.lembarId)+'\')">Lihat</button>':'<span class="muted">—</span>')+'</td></tr>'}).join('')+'</tbody></table></div></div>';
   }).join('');
@@ -959,7 +959,7 @@ function lengkapiModal(id){
 loadPrintCfg();
 loadAll();
 </script>
-<script src="./assets/js/rakwms.js?v=20261029d"></script>
-<script src="./assets/js/rakwms-ui.js?v=20261029d"></script>
+<script src="./assets/js/rakwms.js?v=20261029f"></script>
+<script src="./assets/js/rakwms-ui.js?v=20261029f"></script>
 </body>
 </html>
