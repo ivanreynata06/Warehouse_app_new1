@@ -12,6 +12,7 @@
 <title>Monitoring Stock Opname</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261029a">
 <style>
 :root{--bg:#0d0d1a;--bg2:#12121f;--card:#18182a;--card2:#1e1e30;--bd:#252538;--bd2:#2e2e48;
 --txt:#e8eaf0;--txt2:#9da3b8;--txt3:#6b7280;--green:#10b981;--blue:#3b82f6;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--mono:'JetBrains Mono',monospace;--sw:200px}
@@ -238,6 +239,7 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
     <div class="tab" data-t="riw">Riwayat SO</div>
     <div class="tab" data-t="sel">Selisih</div>
     <div class="tab" data-t="print">Print</div>
+    <div class="tab" data-t="rak">Akurasi Rak WMS</div>
   </div>
   <div class="content">
 
@@ -265,6 +267,7 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
   </div>
 
   <!-- BUAT LEMBAR -->
+  <div class="pane" id="p-rak"></div>
   <div class="pane" id="p-buat">
     <div class="card"><div class="card-h"><h3>1. Pilih group &amp; upload data QAD</h3></div>
       <div class="card-b row">
@@ -956,5 +959,7 @@ function lengkapiModal(id){
 loadPrintCfg();
 loadAll();
 </script>
+<script src="./assets/js/rakwms.js?v=20261029a"></script>
+<script src="./assets/js/rakwms-ui.js?v=20261029a"></script>
 </body>
 </html>
