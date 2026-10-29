@@ -7,14 +7,14 @@
   var K = window.RakWmsCore, esc = K.esc, fmt = K.fmt;
   var USER = (sessionStorage.getItem('wh_nama') || 'anon').trim().toLowerCase();
   var KEY = 'rakwms_v1::' + USER;
-  var S = load(), ui = { q: '', f: 'all', open: null, items: [], plan: null, sum: null };
+  var S = load(), ui = { allowed: [], g: 'all', q: '', f: 'all', open: null, items: [], plan: null, sum: null };
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- penyimpanan lokal (BUKAN Supabase / Spreadsheet) ---------- */
   function load() { try { var j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.wms) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; return j; } } catch (e) {} return K.blank(); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Penyimpanan browser penuh / diblokir - data hanya bertahan selama halaman terbuka.', true); } }
   function toast(m, err) { if (typeof window.toast === 'function') window.toast(m, err); else alert(m); }
-  function recalc() { ui.items = K.items(S); ui.plan = K.plan(S, ui.items); ui.sum = K.summary(S, ui.items, ui.plan); }
+  function recalc() { ui.items = K.items(S, ui.allowed); ui.plan = K.plan(S, ui.items); ui.sum = K.summary(S, ui.items, ui.plan); }
   function tone(p) { return p == null ? 'none' : (p >= 98 ? 'good' : (p >= 90 ? 'warn' : 'bad')); }
   function short(n) { return String(n || '').replace(/^PIPE PPR RUCIKA KELEN GREEN DIA\s*/i, '').replace(/^PIPE PPR\s*/i, '') || n; }
   function pct(p) { return p == null ? '-' : (Math.round(p * 10) / 10).toLocaleString('id-ID', { minimumFractionDigits: p >= 100 ? 0 : 1, maximumFractionDigits: 1 }); }
@@ -100,6 +100,7 @@
     var q = ui.q.toUpperCase();
     return ui.items.filter(function (i) {
       if (q && (i.nama + ' ' + i.kode).toUpperCase().indexOf(q) < 0) return false;
+      if (ui.g !== 'all' && i.grp !== ui.g) return false;
       var c = soCount(i);
       if (ui.f === 'sel') return i.sel !== 0;
       if (ui.f === 'ok') return i.sel === 0;
@@ -112,14 +113,14 @@
     var a = filtered(), lim = 400;
     $('rk-tbl').innerHTML = '<div class="gh"><h3>Daftar Item &amp; Rak <em>klik baris untuk input aktual</em></h3><div class="rk-tools">' +
       '<input type="text" id="rk-q" placeholder="Cari kode / nama item..." value="' + esc(ui.q) + '" style="width:220px" oninput="RakUI.search(this.value)">' +
-      '<div class="rk-seg">' + [['all', 'Semua'], ['sel', 'Selisih'], ['ok', 'Sesuai'], ['todo', 'Belum diinput'], ['done', 'Sudah diinput']].map(function (x) { return '<button class="' + (ui.f === x[0] ? 'on' : '') + '" onclick="RakUI.filter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div></div>' +
-      '<div class="gb"><div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
+      (ui.allowed.length > 1 ? '<div class="rk-seg">' + [['all', 'Semua group'], ['I053', 'I053 Pipa'], ['Q055', 'Q055 Fitting']].map(function (x) { return '<button class="' + (ui.g === x[0] ? 'on' : '') + '" onclick="RakUI.grp(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' : '') + '<div class="rk-seg">' + [['all', 'Semua'], ['sel', 'Selisih'], ['ok', 'Sesuai'], ['todo', 'Belum diinput'], ['done', 'Sudah diinput']].map(function (x) { return '<button class="' + (ui.f === x[0] ? 'on' : '') + '" onclick="RakUI.filter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div></div>' +
+      '<div class="gb"><div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Group</th><th>Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
       (a.length ? a.slice(0, lim).map(function (i) {
         var c = soCount(i), pc = c.t ? c.n / c.t * 100 : 0;
-        return '<tr class="it" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
+        return '<tr class="it" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
           '<td><span class="chip2 ' + (i.sel === 0 ? 'ok' : 'bd') + '">' + (i.sel === 0 ? 'SESUAI' : 'SELISIH') + '</span></td>' +
           '<td style="min-width:120px"><div class="prg"><i style="width:' + pc + '%"></i></div><div class="cd" style="text-align:right;margin-top:3px">' + c.n + '/' + c.t + ' rak</div></td></tr>';
-      }).join('') : '<tr><td colspan="7" class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS di atas.') + '</td></tr>') +
+      }).join('') : '<tr><td colspan="8" class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS di atas.') + '</td></tr>') +
       '</tbody></table></div>' + (a.length > lim ? '<div class="sub" style="margin-top:8px">Menampilkan ' + lim + ' dari ' + fmt(a.length) + ' item - gunakan pencarian.</div>' : '') + '</div>';
     var q = $('rk-q'); if (q && ui._focusQ) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); ui._focusQ = false; }
   }
@@ -245,8 +246,8 @@
           toast('Informasi Rak: ' + fmt(res.rows.length) + ' baris dipakai, ' + fmt(res.stats.otherLoc) + ' lokasi lain & ' + fmt(res.stats.noItem) + ' rak kosong dibuang. Kolom lain dihapus.');
         } else {
           if (!res.rows.length) throw new Error('File QAD tidak berisi item.');
-          S.qad = res.rows; S.meta.qadAt = now; S.meta.qadFile = f.name;
-          toast('Saldo QAD: ' + fmt(res.rows.length) + ' item dibaca. Kolom lain dihapus.');
+          S.qad = res.rows; S.qadSkip = res.stats.skip || []; S.meta.qadAt = now; S.meta.qadFile = f.name;
+          toast('Saldo QAD: ' + fmt(res.rows.length) + ' item dibaca' + (res.stats.otherGroup ? ', ' + fmt(res.stats.otherGroup) + ' baris group selain I053/Q055 dibuang' : '') + '. Kolom lain dihapus.');
         }
         S.step1 = ''; save(); render();
       } catch (x) { toast(x.message || String(x), true); }
@@ -257,8 +258,9 @@
   /* ---------- aksi publik ---------- */
   var API = {
     pick: function (kind) { var i = $('rk-file'); i.value = ''; i.onchange = function () { if (i.files[0]) readFile(kind, i.files[0]); }; i.click(); },
-    clear: function (kind) { if (!confirm('Hapus data ' + (kind === 'wms' ? 'Informasi Rak WMS' : 'Saldo QAD') + ' dari browser ini?')) return; if (kind === 'wms') { S.wms = []; S.meta.wmsFile = ''; S.meta.wmsAt = ''; } else { S.qad = []; S.meta.qadFile = ''; S.meta.qadAt = ''; } S.step1 = ''; save(); render(); },
+    clear: function (kind) { if (!confirm('Hapus data ' + (kind === 'wms' ? 'Informasi Rak WMS' : 'Saldo QAD') + ' dari browser ini?')) return; if (kind === 'wms') { S.wms = []; S.meta.wmsFile = ''; S.meta.wmsAt = ''; } else { S.qad = []; S.qadSkip = []; S.meta.qadFile = ''; S.meta.qadAt = ''; } S.step1 = ''; save(); render(); },
     search: function (v) { ui.q = v; ui._focusQ = true; renderTbl(); },
+    grp: function (g) { ui.g = g; renderTbl(); },
     filter: function (f) { ui.f = f; renderTbl(); },
     open: function (kode) { ui.open = kode; renderDrawer(); $('rk-ov').classList.add('on'); $('rk-dr').classList.add('on'); },
     close: function () { ui.open = null; $('rk-ov').classList.remove('on'); $('rk-dr').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
@@ -287,8 +289,21 @@
   window.RakUI = API;
 
   function render() { recalc(); renderHero(); renderUp(); renderChart(); renderTbl(); renderAdj(); animate(); }
+  /* ---------- akses: SEMENTARA hanya group I053 & Q055 ---------- */
+  function applyAccess() {
+    var P = window.S || {}, m = P.master || [];
+    if (!m.length) return false;
+    var mine = (window.IS_TL ? m : m.filter(function (x) { return window.ownPic && window.ownPic(x.pic); })).map(function (x) { return String(x.group || '').toUpperCase(); });
+    ui.allowed = K.GROUPS.filter(function (g) { return mine.indexOf(g) >= 0; });
+    var tab = document.querySelector('.tab[data-t="rak"]');
+    if (tab) tab.style.display = ui.allowed.length ? '' : 'none';
+    if (!ui.allowed.length && tab && tab.classList.contains('active')) { var d = document.querySelector('.tab[data-t="dash"]'); if (d) d.click(); }
+    return true;
+  }
   function init() {
     if (!$('p-rak')) return;
+    var tb = document.querySelector('.tab[data-t="rak"]'); if (tb) tb.style.display = 'none';   // tersembunyi sampai akses dipastikan
+    var tries = 0, iv = setInterval(function () { if (applyAccess() || ++tries > 120) clearInterval(iv); }, 500);
     shell(); tilt();
     document.getElementById('tabs').addEventListener('click', function (e) {
       var t = e.target.closest('.tab'); if (!t) return;
