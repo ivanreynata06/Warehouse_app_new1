@@ -2,10 +2,10 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261028a"></script>
-<script src="./assets/js/config.js?v=20261028a"></script>
+<script src="./assets/js/auth-guard.js?v=20261029e"></script>
+<script src="./assets/js/config.js?v=20261029e"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261029a"></script>
+<script src="./assets/js/api-shim.js?v=20261029e"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -21,6 +21,7 @@
 <script src="./assets/js/akurasi-store.js?v=20261022b"></script>
 <script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
 <script src="./assets/js/picwms-core.js?v=20261028a"></script>
+<script src="./assets/js/susun-core.js?v=20261029a"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -300,6 +301,10 @@ table.preview-table tr.row-valid td{color:var(--txt);}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>
         PIC &amp; SPM
       </button>
+      <button class="tab-btn" id="tabbtn-susun" onclick="switchTab('susun')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14v7"/></svg>
+        Susun &amp; Rak
+      </button>
     </div>
 
     <!-- ============== KATA KUNCI KATEGORI TAMBAHAN (Super Admin) ============== -->
@@ -413,6 +418,46 @@ table.preview-table tr.row-valid td{color:var(--txt);}
       </div>
       <div class="wq-grid" id="pw-cards"></div>
       <input type="file" id="pw-file" style="display:none;">
+    </div>
+
+    <!-- ============== TAB: SUSUN & RAK ============== -->
+    <style>
+      .su-form{display:grid;grid-template-columns:1.1fr 1.6fr .8fr 1.1fr auto;gap:10px;align-items:end;}
+      .su-form label{display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--txt3);font-weight:600;letter-spacing:.4px;text-transform:uppercase;}
+      .su-form input,.su-form select,.su-sel{background:var(--bg-card2);border:1px solid var(--border2);border-radius:9px;padding:9px 11px;color:var(--txt);font-size:12px;font-family:inherit;width:100%;}
+      .su-form input:focus,.su-form select:focus{outline:2px solid rgba(52,211,153,.5);}
+      @media (max-width:900px){.su-form{grid-template-columns:1fr 1fr;}}
+      .su-chips{display:flex;gap:8px;flex-wrap:wrap;}
+      .su-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid;animation:suPop .45s cubic-bezier(.2,.8,.2,1) both;}
+      .su-chip.ok{color:#6ee7b7;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.4);}
+      .su-chip.bad{color:#ff9d9d;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.45);}
+      .su-chip.na{color:var(--txt3);background:var(--bg-card2);border-color:var(--border2);}
+      @keyframes suPop{from{opacity:0;transform:scale(.6);}to{opacity:1;transform:none;}}
+      .su-res{border-radius:12px;padding:12px 14px;border:1px solid var(--border2);background:var(--bg-card2);font-size:12px;line-height:1.6;display:flex;flex-direction:column;gap:9px;}
+      .su-res.ok{border-color:rgba(16,185,129,.45);} .su-res.bad{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.06);}
+      .su-tbl{width:100%;border-collapse:collapse;font-size:11.5px;}
+      .su-tbl th{text-align:left;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--txt3);padding:8px 10px;border-bottom:1px solid var(--border2);position:sticky;top:0;background:var(--bg-card);}
+      .su-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);}
+      .su-tbl tbody tr{cursor:pointer;} .su-tbl tbody tr:hover{background:rgba(255,255,255,.05);}
+      .su-st{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:999px;border:1px solid;}
+      .su-st.belum{color:var(--txt2);border-color:var(--border2);} .su-st.sesuai,.su-st.selesai{color:#6ee7b7;border-color:rgba(16,185,129,.4);} .su-st.tidak{color:#ff9d9d;border-color:rgba(239,68,68,.45);}
+    </style>
+    <div class="tab-panel" id="tab-susun">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Master Susun &amp; Pengisian Rak</div></div>
+        <div class="card-body">
+          <div class="col-ref">
+            Upload <b>Laporan Susun Voucher</b> dari WMS, lalu cocokkan <b>kertas juru lokasi</b> di bagian Pengisian Rak.
+            Hanya <b>No. Voucher / SJT, Tanggal Susun, Nama Item, Rak, Qty, PIC Susun</b> yang disimpan; kolom lain dibuang (tidak tersimpan di spreadsheet maupun Supabase).
+            Item PIPE PPR Kelen saja. Rak yang dipakai: <code>I-xx-01</code> dan <code>J-xx-01</code>; rak bernama item = <b>area transit</b>. Data dobel dibuang otomatis.
+          </div>
+          <div class="status-msg" id="su-conn"></div>
+          <div id="su-prog" style="display:none;"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);margin-bottom:5px;"><span id="su-prog-label">Memproses...</span><b id="su-prog-pct">0%</b></div><div style="height:8px;border-radius:8px;background:var(--bg2);overflow:hidden;border:1px solid var(--border);"><div id="su-prog-bar" style="height:100%;width:0;background:linear-gradient(90deg,#10b981,#34d399);border-radius:8px;transition:width .25s ease;"></div></div></div>
+        </div>
+      </div>
+      <div class="wq-grid" id="su-cards"></div>
+      <div id="su-entry"></div>
+      <input type="file" id="su-file" style="display:none;">
     </div>
 
     <!-- ============== TAB: STOCK ============== -->
@@ -611,7 +656,7 @@ var PAGE_MAP = {
   'residance'       : 'residance_time.html',
   'input_lembur'    : 'input_lembur.html',
   'fte_dashboard'   : 'fte_dashboard.html',
-  'akurasi_scan'    : 'akurasi_scan.html', 'wms_qad': 'wms_qad.html', 'pic_wms': 'pic_wms.html',
+  'akurasi_scan'    : 'akurasi_scan.html', 'wms_qad': 'wms_qad.html', 'pic_wms': 'pic_wms.html', 'susun_wms': 'susun_wms.html',
   'upload'          : 'upload_data.html',
   'stock_opname'    : 'stock_opname.html'
 };
@@ -681,13 +726,14 @@ function toggleSidebar(){
 })();
 
 function switchTab(name){
-  ['stock','outbound','inbound','akurasi','wmsqad','picwms'].forEach(function(t){
+  ['stock','outbound','inbound','akurasi','wmsqad','picwms','susun'].forEach(function(t){
     document.getElementById('tab-'+t).classList.toggle('active', t===name);
     document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
   });
   if (name === 'akurasi' && window.AkurasiUpload) window.AkurasiUpload.init();
   if (name === 'wmsqad' && window.WmsQadUpload) window.WmsQadUpload.init();
   if (name === 'picwms' && window.PicWmsUpload) window.PicWmsUpload.init();
+  if (name === 'susun' && window.SusunUpload) window.SusunUpload.init();
 }
 
 // ================================================================
@@ -1899,6 +1945,174 @@ window.PicWmsUpload = (function(){
   var h = (location.hash || '').replace('#', '');
   if (h === 'picwms' || h === 'wmsqad') setTimeout(function(){ if (typeof switchTab === 'function') switchTab(h); }, 500);
   return { init: init, pick: pick, removeMaster: removeMaster, check: check, save: save, cancel: cancel, useSug: useSug, setDate: setDate, removeJadwal: removeJadwal };
+})();
+
+// ================================================================
+//  TAB SUSUN & RAK -- upload master susun + pengisian rak dari kertas
+// ================================================================
+window.SusunUpload = (function(){
+  var S = window.SusunCore, C = window.WmsQadCore, loaded = false, busy = false, data = { master: [], cek: [] };
+  var msg = null, selDate = '', onlyPending = true, last = null;
+  function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function n(v){ return (Number(v) || 0).toLocaleString('id-ID'); }
+  function note(t, kind){ var el = document.getElementById('su-conn'); el.textContent = t || ''; el.style.color = kind === 'err' ? '#ff8f8f' : 'var(--txt2)'; }
+  function toast(html, cls, ms){
+    var box = document.getElementById('pw-toast'); if (!box) return;
+    var d = document.createElement('div'); d.className = 'pw-t ' + (cls || ''); d.innerHTML = html; box.appendChild(d);
+    setTimeout(function(){ d.style.transition = 'opacity .4s'; d.style.opacity = '0'; setTimeout(function(){ d.remove(); }, 450); }, ms || 8000);
+  }
+  function call(fn, args){
+    return new Promise(function(res, rej){
+      if (!window.google || !google.script || !google.script.run) return rej(new Error('Backend belum siap'));
+      google.script.run
+        .withSuccessHandler(function(r){ if (r && r.success === false) rej(new Error(r.error || 'Server menolak permintaan')); else res(r); })
+        .withFailureHandler(function(e){ rej(e instanceof Error ? e : new Error(String(e && e.message || e))); })[fn].apply(null, args || []);
+    });
+  }
+  function friendly(e){ var m = String(e && e.message || e || ''); if (/tidak dikenali|tidak diizinkan/i.test(m)) return 'Backend belum di-deploy ulang (kode.gs terbaru belum aktif di Apps Script).'; return m || 'Server tidak bisa dihubungi.'; }
+  function lock(on){ window._uploadInProgress = on; if (typeof setUploadLockUI === 'function') setUploadLockUI(on); }
+  function dates(a){ var d = {}; a.forEach(function(r){ d[r.t] = 1; }); return Object.keys(d).sort(); }
+  function susunRows(){ return data.master.filter(function(x){ return S.kategori(x.r) === 'susun'; }); }
+
+  function draw(){
+    var box = document.getElementById('su-cards'); if (!box) return;
+    var md = dates(data.master), has = data.master.length > 0, vs = {}, ns = 0, nt = 0;
+    data.master.forEach(function(x){ vs[x.v] = 1; if (S.kategori(x.r) === 'transit') nt++; else ns++; });
+    box.innerHTML = '<div class="card" style="grid-column:1/-1"><div class="card-header"><div class="card-title">Master Susun<span style="font-weight:500;color:var(--txt3);font-size:10.5px;">Laporan Susun Voucher (.xlsx)</span></div></div><div class="card-body">' +
+      '<div class="wq-chips">' + ['No. Voucher / SJT', 'Tanggal Susun', 'Nama Item', 'Rak', 'Qty', 'PIC Susun'].map(function(c){ return '<span class="wq-chip keep">' + c + '</span>'; }).join('') + '<span class="wq-chip">kolom lain dibuang</span></div>' +
+      '<div class="wq-stat"><div><b>' + n(data.master.length) + '</b><span>baris tersimpan</span></div><div><b>' + n(ns) + '</b><span>rak I/J</span></div><div><b>' + n(nt) + '</b><span>area transit</span></div><div><b>' + n(Object.keys(vs).length) + '</b><span>voucher</span></div><div><b style="font-size:12px;">' + (has ? esc(C.fmtDate(md[0])) + ' – ' + esc(C.fmtDate(md[md.length - 1])) : '-') + '</b><span>rentang</span></div></div>' +
+      '<div class="btn-row"><button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="SusunUpload.pick()">' + (has ? 'Tambah file susun' : 'Pilih file') + '</button></div>' +
+      (msg ? '<div class="wq-res ' + msg.cls + '">' + msg.html + '</div>' : '') +
+      (has ? '<div class="wq-rng"><span>Hapus master tanggal</span><input type="date" id="su-dari" value="' + md[0] + '"><span>s/d</span><input type="date" id="su-sampai" value="' + md[md.length - 1] + '"><button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="SusunUpload.remove()">Hapus rentang ini</button></div>' : '') +
+      '</div></div>';
+    drawEntry();
+  }
+
+  function drawEntry(){
+    var box = document.getElementById('su-entry'); if (!box) return;
+    var rows = susunRows();
+    if (!rows.length) { box.innerHTML = ''; return; }
+    var keep = {}; ['su-v', 'su-i', 'su-q', 'su-r'].forEach(function(id){ var e = document.getElementById(id); if (e) keep[id] = e.value; });
+    var ds = dates(rows); if (!selDate || ds.indexOf(selDate) === -1) selDate = ds[ds.length - 1];
+    var items = {}; rows.forEach(function(x){ items[x.i] = 1; });
+    var A = S.analyzeSusun(data.master, data.cek), list = A.list.filter(function(x){ return x.t === selDate && (!onlyPending || x.st === 'belum'); });
+    var todo = A.list.filter(function(x){ return x.st === 'belum'; }).length, done = A.list.length - todo;
+    var res = '';
+    if (last) {
+      if (last.code !== 'ok') res = '<div class="su-res bad"><b>❌ ' + (last.code === 'novoucher' ? 'Voucher ' + esc(last.v) + ' tidak ada di data susun.' : last.code === 'transit' ? 'Voucher ' + esc(last.v) + ' ada di area transit, bukan di rak I/J.' : 'Isi nomor voucher.') + '</b></div>';
+      else {
+        var f = last.flags, c = last.rec;
+        res = '<div class="su-res ' + (last.st === 'sesuai' ? 'ok' : 'bad') + '"><div class="su-chips"><span class="su-chip ok">✓ Voucher</span><span class="su-chip ' + (c.ik ? (f.item ? 'ok' : 'bad') : 'na') + '" style="animation-delay:.08s">' + (c.ik ? (f.item ? '✓' : '✗') : '–') + ' Item</span><span class="su-chip ' + (c.qk === '' ? 'na' : (f.qty ? 'ok' : 'bad')) + '" style="animation-delay:.16s">' + (c.qk === '' ? '–' : (f.qty ? '✓' : '✗')) + ' Qty</span><span class="su-chip ' + (f.rak ? 'ok' : 'bad') + '" style="animation-delay:.24s">' + (f.rak ? '✓' : '✗') + ' Rak</span></div>' +
+          '<div>' + (last.st === 'sesuai' ? '✅ <b>Sesuai.</b> Kertas dan WMS sama.' : '❌ <b>' + esc(S.note(c)) + '</b>') + '</div><div style="color:var(--txt3);font-size:11px">Voucher ' + esc(c.v) + ' · WMS: rak <b>' + esc(c.rw) + '</b>, qty <b>' + n(c.qw) + '</b>, ' + esc(C.shortName(last.row.i)) + (last.st === 'tidak' ? '<br>Hasil tersimpan. Tandai selesai &amp; adjustment dilakukan di menu Monitoring Susun WMS.' : '') + '</div></div>';
+      }
+    }
+    box.innerHTML = '<div class="card" style="margin-top:14px"><div class="card-header"><div class="card-title">Pengisian Rak dari Kertas<span style="font-weight:500;color:var(--txt3);font-size:10.5px;">' + n(done) + ' dicocokkan · ' + n(todo) + ' belum</span></div></div><div class="card-body">' +
+      '<div class="col-ref">Lihat kertas juru lokasi, isi <b>voucher, item, qty, dan rak</b> yang tertulis. Sistem membandingkan dengan data WMS dan memberi keterangan otomatis jika tidak sesuai.</div>' +
+      '<div class="su-form"><label>Voucher<input id="su-v" inputmode="numeric" placeholder="1032578" autocomplete="off"></label>' +
+      '<label>Item di kertas<select id="su-i"><option value="">(tidak dicek)</option>' + Object.keys(items).sort().map(function(i){ return '<option value="' + esc(i) + '">' + esc(C.shortName(i)) + '</option>'; }).join('') + '</select></label>' +
+      '<label>Qty<input id="su-q" inputmode="numeric" placeholder="625" autocomplete="off"></label>' +
+      '<label>Rak di kertas<input id="su-r" placeholder="J-15-01-G" autocomplete="off" style="text-transform:uppercase"></label>' +
+      '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="SusunUpload.submit()">Cocokkan</button></div>' + res +
+      '<div class="wq-rng"><b>Daftar voucher</b><select class="su-sel" style="width:auto" onchange="SusunUpload.setDate(this.value)">' + ds.map(function(d){ return '<option value="' + d + '"' + (d === selDate ? ' selected' : '') + '>' + esc(C.fmtDate(d)) + '</option>'; }).join('') + '</select><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" ' + (onlyPending ? 'checked' : '') + ' onchange="SusunUpload.togglePending(this.checked)"> belum dicocokkan saja</label><span style="color:var(--txt3)">klik baris untuk mengisi voucher</span></div>' +
+      '<div style="max-height:300px;overflow:auto;border:1px solid var(--border2);border-radius:10px"><table class="su-tbl"><thead><tr><th>Voucher</th><th>Item</th><th>Qty</th><th>Status</th></tr></thead><tbody>' +
+      (list.slice(0, 80).map(function(x){ return '<tr onclick="SusunUpload.fill(\'' + x.v + '\')"><td style="font-family:\'JetBrains Mono\',monospace">' + esc(x.v) + '</td><td>' + esc(C.shortName(x.i)) + '</td><td>' + n(x.q) + '</td><td><span class="su-st ' + x.st + '">' + (x.st === 'belum' ? 'Belum' : x.st === 'sesuai' ? 'Sesuai' : x.st === 'tidak' ? 'Tidak sesuai' : 'Selesai') + '</span></td></tr>'; }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--txt3);padding:18px">' + (onlyPending ? 'Semua voucher tanggal ini sudah dicocokkan 🎉' : 'Tidak ada data.') + '</td></tr>') + '</tbody></table></div>' +
+      '</div></div>';
+    Object.keys(keep).forEach(function(id){ var e = document.getElementById(id); if (e && keep[id]) e.value = keep[id]; });
+    ['su-v', 'su-q', 'su-r'].forEach(function(id){ var e = document.getElementById(id); if (e) e.onkeydown = function(ev){ if (ev.key === 'Enter') submit(); }; });
+  }
+
+  function refresh(){
+    note('Memuat data dari server...');
+    return call('getSusunData', []).then(function(r){
+      data = { master: r.master || [], cek: r.cek || [] }; loaded = true; draw(); note('Tersambung ke server. Data sama untuk semua PC.');
+    }).catch(function(e){ note(friendly(e), 'err'); draw(); });
+  }
+  function startProg(){
+    var box = document.getElementById('su-prog'), bar = document.getElementById('su-prog-bar'), lab = document.getElementById('su-prog-label'), pct = document.getElementById('su-prog-pct');
+    var cur = 0, floor = 0, timer; box.style.display = 'block'; bar.style.background = 'linear-gradient(90deg,#10b981,#34d399)';
+    function paint(v, l){ cur = Math.max(cur, Math.min(100, v)); bar.style.width = cur + '%'; pct.textContent = Math.round(cur) + '%'; if (l) lab.textContent = l; }
+    paint(2, 'Memulai...');
+    timer = setInterval(function(){ if (cur < 92 && cur >= floor) paint(cur + Math.max(0.15, (92 - cur) * 0.04)); }, 250);
+    return { set: function(v, l){ floor = v; paint(v, l); }, stop: function(err){ clearInterval(timer); if (err) { bar.style.background = '#ef4444'; lab.textContent = 'Gagal'; } else setTimeout(function(){ box.style.display = 'none'; }, 1500); } };
+  }
+
+  // ---- upload master ----
+  function pick(){
+    var inp = document.getElementById('su-file'); inp.value = ''; inp.accept = '.xls,.xlsx';
+    inp.onchange = function(){ if (inp.files && inp.files[0]) run(inp.files[0]); };
+    inp.click();
+  }
+  function readRows(file){
+    return new Promise(function(res, rej){
+      var fr = new FileReader();
+      fr.onerror = function(){ rej(new Error('File tidak bisa dibaca.')); };
+      fr.onload = function(){
+        try {
+          var wb = XLSX.read(new Uint8Array(fr.result), { type: 'array' }), err = null;
+          for (var i = 0; i < wb.SheetNames.length; i++) {
+            var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[i]], { header: 1, raw: true, defval: '' });
+            try { return res(S.parseMaster(rows)); } catch (e) { err = err || e; }
+          }
+          rej(err || new Error('Sheet yang sesuai tidak ditemukan.'));
+        } catch (e) { rej(e); }
+      };
+      fr.readAsArrayBuffer(file);
+    });
+  }
+  function run(file){
+    busy = true; msg = null; draw(); lock(true); note('Membaca ' + file.name + '...');
+    var pt = startProg(); pt.set(8, 'Membaca file...');
+    readRows(file).then(function(p){
+      var st = p.stats; pt.set(40, 'Menyaring kolom, item & rak...');
+      if (!p.rows.length) throw new Error('Tidak ada baris yang lolos filter. ' + n(st.total) + ' baris dibaca, ' + n(st.dropped) + ' dibuang karena item bukan PIPE PPR Kelen' + (st.dropRak ? ', ' + n(st.dropRak) + ' karena rak di luar I-01/J-01/transit' : '') + '.');
+      var d = S.dedupe(p.rows, data.master); pt.set(55, 'Membuang data dobel...');
+      if (!d.add.length) { pt.set(100, 'Selesai'); pt.stop(); msg = { cls: 'ok', html: 'ℹ️ Semua ' + n(p.rows.length) + ' baris sudah pernah diupload, tidak ada yang ditambahkan (dobel dibuang otomatis).' }; return null; }
+      pt.set(65, 'Menyimpan ke server...');
+      return call('saveSusunMaster', [JSON.stringify(d.add)]).then(function(r){
+        pt.set(100, 'Selesai'); pt.stop();
+        var dobel = st.dupFile + d.dup;
+        msg = { cls: 'ok', html: '✅ ' + n(st.total) + ' baris dibaca → <b>' + n(r.ditambah) + ' baris baru disimpan</b> (' + n(st.susun) + ' rak I/J · ' + n(st.transit) + ' area transit di file).<br>' + n(st.dropped) + ' baris dibuang (bukan PIPE PPR Kelen)' + (st.dropRak ? ', ' + n(st.dropRak) + ' di luar rak yang dipakai' : '') + '. <b>' + n(dobel + (r.dobel || 0) - 0) + ' data dobel dibuang otomatis.</b>' };
+        if (r.tanggal && r.tanggal.length) selDate = r.tanggal[r.tanggal.length - 1];
+        return true;
+      });
+    }).then(function(newData){ busy = false; lock(false); return refresh().then(function(){ if (newData) { toast('📝 Master tersimpan. Silakan <b>cocokkan rak dengan kertas</b> di bagian Pengisian Rak.', 'ok', 7000); var e = document.getElementById('su-entry'); if (e && e.scrollIntoView) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }); })
+      .catch(function(e){ pt.stop(true); busy = false; lock(false); msg = { cls: 'err', html: '❌ ' + esc(friendly(e)) }; draw(); note(friendly(e), 'err'); });
+  }
+  function remove(){
+    var dari = (document.getElementById('su-dari') || {}).value || '', sampai = (document.getElementById('su-sampai') || {}).value || '';
+    var akan = data.master.filter(function(r){ return (!dari || r.t >= dari) && (!sampai || r.t <= sampai); }).length;
+    if (!akan) { msg = { cls: 'err', html: 'Tidak ada data di rentang tanggal itu.' }; draw(); return; }
+    if (!confirm('Hapus ' + n(akan) + ' baris master susun dari ' + C.fmtDate(dari) + ' s/d ' + C.fmtDate(sampai) + '?\n\nHasil pencocokan kertas untuk baris itu ikut terhapus. Tidak bisa dibatalkan.')) return;
+    busy = true; draw(); lock(true);
+    call('hapusSusunData', ['master', dari, sampai]).then(function(r){ busy = false; lock(false); msg = { cls: 'ok', html: '✅ ' + n(r.dihapus) + ' baris dihapus.' }; return refresh(); })
+      .catch(function(e){ busy = false; lock(false); msg = { cls: 'err', html: '❌ ' + esc(friendly(e)) }; draw(); });
+  }
+
+  // ---- pengisian rak ----
+  function submit(){
+    var v = (document.getElementById('su-v').value || '').trim(), i = document.getElementById('su-i').value, q = (document.getElementById('su-q').value || '').replace(/\./g, '').trim(), r = (document.getElementById('su-r').value || '').trim();
+    if (!v) { toast('Isi nomor voucher dari kertas.'); return; }
+    if (!r) { toast('Isi rak yang tertulis di kertas.'); return; }
+    var res = S.matchEntry(data.master, { v: v, i: i, q: q === '' ? '' : Number(q), r: r });
+    last = res;
+    if (res.code !== 'ok') { drawEntry(); toast('❌ ' + (res.code === 'novoucher' ? 'Voucher <b>' + esc(v) + '</b> tidak ada di data susun.' : res.code === 'transit' ? 'Voucher <b>' + esc(v) + '</b> ada di area transit, bukan rak I/J.' : 'Voucher kosong.')); return; }
+    busy = true; drawEntry();
+    call('saveSusunCek', [JSON.stringify([res.rec])]).then(function(){
+      busy = false; data.cek = data.cek.filter(function(c){ return c.k !== res.rec.k; }).concat([res.rec]);
+      ['su-v', 'su-i', 'su-q', 'su-r'].forEach(function(id){ var e = document.getElementById(id); if (e) e.value = ''; });
+      draw();
+      if (res.st === 'tidak') toast('⚠️ <b>' + esc(S.note(res.rec)) + '</b>');
+      else toast('✅ Voucher ' + esc(v) + ' sesuai.', 'ok', 3500);
+      var vi = document.getElementById('su-v'); if (vi) vi.focus();
+    }).catch(function(e){ busy = false; last = null; drawEntry(); toast('❌ ' + esc(friendly(e))); });
+  }
+  function fill(v){ var e = document.getElementById('su-v'); if (e) { e.value = v; var r = document.getElementById('su-r'); if (r) r.focus(); } }
+  function setDate(d){ selDate = d; drawEntry(); }
+  function togglePending(b){ onlyPending = b; drawEntry(); }
+  function init(){ if (!loaded) refresh(); else draw(); }
+  var h = (location.hash || '').replace('#', '');
+  if (h === 'susun') setTimeout(function(){ if (typeof switchTab === 'function') switchTab('susun'); }, 500);
+  return { init: init, pick: pick, remove: remove, submit: submit, fill: fill, setDate: setDate, togglePending: togglePending };
 })();
 </script>
 <script>

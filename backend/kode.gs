@@ -150,6 +150,11 @@ var API_FUNCTIONS = {
   getPicWmsData           : getPicWmsData,
   savePicWmsData          : savePicWmsData,
   hapusPicWmsData         : hapusPicWmsData,
+  // Monitoring Susun WMS (master susun + pencocokan kertas juru lokasi)
+  getSusunData            : getSusunData,
+  saveSusunMaster         : saveSusunMaster,
+  saveSusunCek            : saveSusunCek,
+  hapusSusunData          : hapusSusunData,
   // Stock Opname
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
@@ -347,6 +352,7 @@ var MENU_CATALOG = [
   { key: 'akurasi_scan',     label: 'Akurasi Scan Barcode', file: 'akurasi_scan.html' },
   { key: 'wms_qad',          label: 'Akurasi QAD vs WMS', file: 'wms_qad.html' },
   { key: 'pic_wms',          label: 'Kepatuhan PIC WMS', file: 'pic_wms.html' },
+  { key: 'susun_wms',        label: 'Monitoring Susun WMS', file: 'susun_wms.html' },
   { key: 'rekap',            label: 'Rekap PIC', file: 'rekap_muatan.html' },
   { key: 'residance',        label: 'Loading Time (Jadwal Pengiriman)', file: 'residance_time.html' },
   { key: 'input_lembur',     label: 'Input Lembur & Cuti', file: 'input_lembur.html' },
@@ -9768,7 +9774,7 @@ var SB_MENU_MAP = {
   fte: 'Monitoring FTE', ot_trend6: 'Monitoring FTE', kat_trend6: 'Monitoring FTE',
   group_list: 'Umum (daftar group)'
 };
-var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode', 'Akurasi QAD vs WMS', 'Kepatuhan PIC WMS'];
+var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode', 'Akurasi QAD vs WMS', 'Kepatuhan PIC WMS', 'Monitoring Susun WMS'];
 
 function _actorIsTlOrSuper(actorNik) {
   if (_isSuperAdmin(actorNik)) return true;
@@ -10222,4 +10228,136 @@ function hapusPicWmsData(kind, dari, sampai) {
   } finally {
     try { lock.releaseLock(); } catch (e) {}
   }
+}
+
+
+// ================================================================
+//  MONITORING SUSUN WMS
+//  SUSUN_DATA: A=tanggal B=voucher C=nama item D=rak E=qty F=PIC susun
+//     (hanya 6 kolom ini; kolom lain & item non PIPE PPR Kelen dibuang,
+//      rak hanya I-xx-01-x / J-xx-01-x atau rak bernama item = area transit.
+//      Data dobel (voucher+tanggal+rak+qty) otomatis dibuang.)
+//  SUSUN_CEK : hasil pencocokan kertas juru lokasi oleh admin
+//     k, voucher, rak_wms, qty_wms, rak_kertas, qty_kertas, item_kertas, status, alasan, selesai, adjustment, waktu
+//  Tidak dikirim ke Supabase.
+// ================================================================
+var SH_SUSUN = 'SUSUN_DATA';
+var SH_SUSUN_CEK = 'SUSUN_CEK';
+var SUSUN_RACK_RE = /^[IJ]-\d{1,2}-01(?:-|$)/;
+
+function _suRakOk(rak) { return _wqLolos(rak) || SUSUN_RACK_RE.test(String(rak).toUpperCase().replace(/\s+/g, '')); }
+function _suKey(r) { return r[1] + '|' + r[0] + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]; }
+
+function _suSheet(name, head) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1, 1, head.length).setValues([head]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function _suMaster() { return _suSheet(SH_SUSUN, ['tanggal', 'voucher', 'item', 'rak', 'qty', 'pic_susun']); }
+function _suCek() { return _suSheet(SH_SUSUN_CEK, ['k', 'voucher', 'rak_wms', 'qty_wms', 'rak_kertas', 'qty_kertas', 'item_kertas', 'status', 'alasan', 'selesai', 'adjustment', 'waktu']); }
+function _suRead(sh, ncol) {
+  var last = sh.getLastRow();
+  return last < 2 ? [] : sh.getRange(2, 1, last - 1, ncol).getValues();
+}
+function _suWrite(sh, ncol, rows, textCols) {
+  var last = sh.getLastRow();
+  if (last > 1) sh.getRange(2, 1, last - 1, ncol).clearContent();
+  if (!rows.length) return;
+  if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+  textCols.forEach(function (c) { sh.getRange(2, c, rows.length, 1).setNumberFormat('@'); });
+  sh.getRange(2, 1, rows.length, ncol).setValues(rows);
+}
+function _suMasterRows() {
+  return _suRead(_suMaster(), 6).map(function (r) {
+    return [_wqTgl(r[0]), String(r[1]).trim(), String(r[2]).trim(), String(r[3]).trim(), Number(r[4]) || 0, String(r[5]).trim()];
+  });
+}
+
+function getSusunData() {
+  try {
+    var master = _suMasterRows().map(function (r) { return { t: r[0], v: r[1], i: r[2], r: r[3], q: r[4], p: r[5] }; });
+    var cek = _suRead(_suCek(), 12).map(function (r) {
+      return { k: String(r[0]), v: String(r[1]), rw: String(r[2]), qw: Number(r[3]) || 0, rk: String(r[4]), qk: r[5] === '' ? '' : Number(r[5]),
+               ik: String(r[6]), st: String(r[7]), rs: String(r[8]), sl: Number(r[9]) ? 1 : 0, adj: String(r[10]), ts: String(r[11]) };
+    });
+    return { success: true, master: master, cek: cek };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+}
+
+// Tambah master susun. Baris yang sudah ada (voucher+tanggal+rak+qty) dibuang otomatis.
+function saveSusunMaster(jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    var arr = JSON.parse(String(jsonStr || '[]'));
+    if (!arr || !arr.length) return { success: false, error: 'Tidak ada baris untuk disimpan.' };
+    lock.waitLock(25000);
+    var sh = _suMaster(), lama = _suMasterRows(), have = {};
+    lama.forEach(function (r) { have[_suKey(r)] = 1; });
+    var baru = [], dobel = 0, dibuang = 0, tgls = {};
+    arr.forEach(function (x) {
+      var t = String(x.t || '').trim(), v = String(x.v || '').replace(/\s+/g, ''), i = String(x.i || '').replace(/\s+/g, ' ').trim(), rak = String(x.r || '').replace(/\s+/g, ' ').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !v || !_wqLolos(i) || !_suRakOk(rak)) { dibuang++; return; }
+      var row = [t, v, i, rak, Number(x.q) || 0, String(x.p || '').replace(/\s+/g, ' ').trim()], k = _suKey(row);
+      if (have[k]) { dobel++; return; }
+      have[k] = 1; baru.push(row); tgls[t] = 1;
+    });
+    var semua = lama.concat(baru).sort(function (a, b) { return (a[0] + a[1] + a[3]).localeCompare(b[0] + b[1] + b[3]); });
+    if (baru.length) _suWrite(sh, 6, semua, [1, 2, 3, 4, 6]);
+    return { success: true, ditambah: baru.length, dobel: dobel, dibuang: dibuang, tanggal: Object.keys(tgls).sort(), total: semua.length };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+// Simpan / perbarui hasil pencocokan kertas (kunci k).
+function saveSusunCek(jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    var arr = JSON.parse(String(jsonStr || '[]'));
+    if (!arr || !arr.length) return { success: false, error: 'Tidak ada data pencocokan.' };
+    lock.waitLock(25000);
+    var sh = _suCek(), cur = _suRead(sh, 12), map = {}, order = [];
+    cur.forEach(function (r) { map[String(r[0])] = r; order.push(String(r[0])); });
+    var now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm'), n = 0;
+    arr.forEach(function (c) {
+      var k = String(c.k || '').trim(); if (!k) return;
+      var st = c.st === 'sesuai' ? 'sesuai' : 'tidak', adj = (c.adj === 'ya' || c.adj === 'belum') ? c.adj : '';
+      var row = [k, String(c.v || ''), String(c.rw || ''), Number(c.qw) || 0, String(c.rk || '').trim(), c.qk === '' || c.qk == null ? '' : Number(c.qk),
+                 String(c.ik || '').trim(), st, String(c.rs || ''), c.sl ? 1 : 0, adj, now];
+      if (!map[k]) order.push(k);
+      map[k] = row; n++;
+    });
+    _suWrite(sh, 12, order.map(function (k) { return map[k]; }), [1, 2, 3, 5, 7, 8, 9, 11, 12]);
+    return { success: true, disimpan: n, total: order.length };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+// kind: 'master' | 'cek' | 'semua'
+function hapusSusunData(kind, dari, sampai) {
+  var lock = LockService.getScriptLock();
+  try {
+    kind = String(kind || '');
+    if (kind !== 'master' && kind !== 'cek' && kind !== 'semua') return { success: false, error: 'Jenis data tidak dikenal: ' + kind };
+    dari = String(dari || ''); sampai = String(sampai || '');
+    lock.waitLock(25000);
+    var dihapus = 0, sisaM = null;
+    if (kind === 'master' || kind === 'semua') {
+      var lama = _suMasterRows();
+      sisaM = lama.filter(function (r) { var kena = (!dari || r[0] >= dari) && (!sampai || r[0] <= sampai); if (kena) dihapus++; return !kena; });
+      _suWrite(_suMaster(), 6, sisaM, [1, 2, 3, 4, 6]);
+    }
+    var cs = _suCek(), cur = _suRead(cs, 12), keep;
+    if (kind === 'cek') keep = []; else {
+      var ada = {}; (sisaM || _suMasterRows()).forEach(function (r) { ada[r[1] + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]] = 1; });
+      keep = cur.filter(function (r) { return ada[String(r[0])]; });          // cek yatim ikut dibuang
+    }
+    if (kind === 'cek') dihapus = cur.length;
+    _suWrite(cs, 12, keep, [1, 2, 3, 5, 7, 8, 9, 11, 12]);
+    return { success: true, dihapus: dihapus };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
 }

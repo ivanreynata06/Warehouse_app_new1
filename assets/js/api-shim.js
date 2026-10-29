@@ -124,7 +124,9 @@
   var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1, uploadTlSignature: 1, adminUploadSplSignature: 1, soBuatLembar: 1, soSimpanIsi: 1, soGetRiwayatItems: 1, soLengkapiLembar: 1, soSimpanKeterangan: 1, soCloseSelisih: 1,
     // Akurasi QAD vs WMS & Kepatuhan PIC WMS: payload JSON ribuan baris -> WAJIB POST
     // (lewat GET query string melebihi batas panjang URL -> "Failed to fetch")
-    saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1 };
+    saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1,
+    // Monitoring Susun WMS
+    saveSusunMaster: 1, saveSusunCek: 1, hapusSusunData: 1 };
 
   // Bungkus r.json() supaya kalau Apps Script Web App ternyata
   // mengembalikan HALAMAN HTML (bukan JSON) -- ini SELALU terjadi kalau

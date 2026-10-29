@@ -57,6 +57,7 @@
     'akurasi_scan'    : 'akurasi_scan.html',
     'wms_qad'         : 'wms_qad.html',
     'pic_wms'         : 'pic_wms.html',
+    'susun_wms'       : 'susun_wms.html',
     'rekap'           : 'rekap_muatan.html',
     'residance'       : 'residance_time.html',
     'input_lembur'    : 'input_lembur.html',
@@ -99,7 +100,7 @@
   // tersedia untuk TL/Admin Warehouse Fitting Import & Rucika tanpa login ulang.
   // Departemen lain tetap mengikuti Kelola Menu (Panel Admin).
   if (fullAccess && (isFittingImport || isFittingRucika)) {
-    ['wms_qad', 'pic_wms'].forEach(function (k) { if (menuKeys.indexOf(k) === -1) menuKeys = menuKeys.concat([k]); });
+    ['wms_qad', 'pic_wms', 'susun_wms'].forEach(function (k) { if (menuKeys.indexOf(k) === -1) menuKeys = menuKeys.concat([k]); });
   }
 
   // Menu yg boleh dilihat role TERBATAS (Technician dkk) -- LAPISAN
@@ -291,7 +292,8 @@
     (function injectWmsQadMenu() {
       var DEFS = [
         { key: 'wms_qad', label: 'Akurasi QAD vs WMS', svg: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v5a3 3 0 0 0 3 3h6.5"/><path d="M13.5 13.5 16 16l-2.5 2.5"/><path d="M18 15.5v-5a3 3 0 0 0-3-3H8.5"/><path d="M10.5 10.5 8 8l2.5-2.5"/>' },
-        { key: 'pic_wms', label: 'Kepatuhan PIC WMS', svg: '<path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3z"/><path d="m9 12 2 2 4-4"/>' }
+        { key: 'pic_wms', label: 'Kepatuhan PIC WMS', svg: '<path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3z"/><path d="m9 12 2 2 4-4"/>' },
+        { key: 'susun_wms', label: 'Monitoring Susun WMS', svg: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14v7"/>' }
       ];
       try {
         document.querySelectorAll('.mitem[onclick*="\'akurasi_scan\'"]').forEach(function (el) {

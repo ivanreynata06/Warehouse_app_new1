@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<script src="./assets/js/auth-guard.js?v=20261028a"></script>
-<script src="./assets/js/config.js?v=20261028a"></script>
-<script src="./assets/js/api-shim.js?v=20261029a"></script>
+<script src="./assets/js/auth-guard.js?v=20261029e"></script>
+<script src="./assets/js/config.js?v=20261029e"></script>
+<script src="./assets/js/api-shim.js?v=20261029e"></script>
 <script src="./assets/js/sw-register.js?v=20261002a"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -565,7 +565,7 @@ window.toggleSidebar = function(){
   icon.innerHTML = col ? '<path d="M9 18l6-6-6-6"/>' : '<path d="M15 18l-6-6 6-6"/>';
 };
 if (window.innerWidth <= 860) { $('sidebar').classList.add('collapsed'); $('toggle-btn').classList.add('collapsed'); $('toggle-btn').style.left = '0px'; }
-var PAGE_MAP = { '': 'index.html', 'index': 'monitoring_stock.html', 'kanban': 'kanban.html', 'rekap': 'rekap_muatan.html', 'wh_control_tower': 'index.html', 'residance': 'residance_time.html', 'input_lembur': 'input_lembur.html', 'fte_dashboard': 'fte_dashboard.html', 'upload': 'upload_data.html', 'akurasi_scan': 'akurasi_scan.html', 'wms_qad': 'wms_qad.html', 'pic_wms': 'pic_wms.html', 'stock_opname': 'stock_opname.html' };
+var PAGE_MAP = { '': 'index.html', 'index': 'monitoring_stock.html', 'kanban': 'kanban.html', 'rekap': 'rekap_muatan.html', 'wh_control_tower': 'index.html', 'residance': 'residance_time.html', 'input_lembur': 'input_lembur.html', 'fte_dashboard': 'fte_dashboard.html', 'upload': 'upload_data.html', 'akurasi_scan': 'akurasi_scan.html', 'wms_qad': 'wms_qad.html', 'pic_wms': 'pic_wms.html', 'susun_wms': 'susun_wms.html', 'stock_opname': 'stock_opname.html' };
 function go(t){ t += (t.indexOf('?') < 0 ? '?v=' : '&v=') + (window.SITE_VERSION || Date.now()); if (window.top !== window.self) window.top.location.href = t; else window.location.href = t; }
 window.navTo = function(pg){ go(PAGE_MAP[pg || ''] || 'index.html'); };
 window.goUpload = function(){ var t = 'upload_data.html?v=' + (window.SITE_VERSION || Date.now()) + '#picwms'; if (window.top !== window.self) window.top.location.href = t; else window.location.href = t; };
