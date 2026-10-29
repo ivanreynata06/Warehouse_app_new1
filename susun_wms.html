@@ -564,7 +564,7 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
 <div id="tip"></div><div id="toasts" aria-live="polite"></div>
 
 <script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
-<script src="./assets/js/susun-core.js?v=20261029a"></script>
+<script src="./assets/js/susun-core.js?v=20261029f"></script>
 <script>
 (function(){
 'use strict';
@@ -766,7 +766,7 @@ function issuesA(){
     var act = '';
     if (x.st === 'tidak') act = S.asking === x.k ? '<div class="act"><div class="q">Apakah sudah di-adjustment pada rak tersebut?</div><button class="mini go" onclick="markDone(' + kk + ',\'ya\')">Sudah</button><button class="mini warn" onclick="markDone(' + kk + ',\'belum\')">Belum</button><button class="mini" onclick="askDone(\'\')">Batal</button></div>' : '<div class="act"><button class="mini go" onclick="askDone(' + kk + ')">Tandai selesai</button></div>';
     else if (x.st === 'selesai') act = '<div class="act"><span class="adjtag ' + (x.adj === 'ya' ? 'ya' : 'belum') + '">' + (x.adj === 'ya' ? 'Sudah di-adjustment' : 'Belum di-adjustment') + '</span>' + (x.adj !== 'ya' ? '<button class="mini go" onclick="setAdj(' + kk + ',\'ya\')">Sudah di-adjustment</button>' : '') + '<button class="mini" onclick="reopen(' + kk + ')">Buka lagi</button></div>';
-    return '<div class="ic" style="--c:' + col + ';--i:' + i + '"><div class="h" style="color:' + col + '">' + ICON_BAD + (x.st === 'belum' ? 'Belum dicocokkan dengan kertas' : x.st === 'selesai' ? 'Ketidaksesuaian selesai' : 'Tidak sesuai rak') + '</div><p>' + esc(x.note || 'Voucher ' + x.v + ' belum dicocokkan dengan kertas juru lokasi.') + '</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">Voucher <b>' + esc(x.v) + '</b></span><span class="tag">Rak WMS <b>' + esc(x.r) + '</b></span><span class="tag">Qty <b>' + fmt(x.q) + '</b></span><span class="tag">' + esc(C.shortName(x.i)) + '</span></div>' + act + '</div>';
+    return '<div class="ic" style="--c:' + col + ';--i:' + i + '"><div class="h" style="color:' + col + '">' + ICON_BAD + (x.st === 'belum' ? 'Belum dicocokkan dengan kertas' : x.st === 'selesai' ? 'Ketidaksesuaian selesai' : 'Tidak sesuai rak') + '</div><p>' + esc(x.note || 'Voucher ' + x.v + ' belum dicocokkan dengan kertas juru lokasi.') + '</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">Voucher <b>' + esc(x.v) + '</b></span><span class="tag">Rak WMS <b>' + esc(x.r) + '</b></span><span class="tag">Qty <b>' + fmt(x.q) + '</b></span><span class="tag">' + esc(K.fullName(x.i)) + '</span></div>' + act + '</div>';
   }).join('') + '</div>' + (sel.length > shown.length ? '<div style="text-align:center"><button class="btn more" onclick="moreIssues()">Tampilkan lebih banyak (sisa ' + (sel.length - shown.length) + ')</button></div>' : '');
 }
 window.setIssueF = function(f){ S.issueF = f; S.showI = 12; S.asking = ''; issuesA(); };
@@ -786,7 +786,7 @@ function tableA(){
   var list = filteredA(), shown = list.slice(0, S.showA);
   $('tblA-title').textContent = 'Rincian voucher · ' + periodLabel(S.dayA); $('rack-f').textContent = S.rack ? 'Filter rak: ' + S.rack : ''; $('rack-clear').hidden = !S.rack;
   $('tblA').innerHTML = '<thead><tr><th>Tanggal</th><th>Voucher</th><th>Item</th><th>Rak WMS</th><th>Rak kertas</th><th class="num">Qty</th><th>PIC susun</th><th>Status</th><th>Keterangan</th></tr></thead><tbody>' + (shown.map(function(x){
-    return '<tr><td>' + esc(C.fmtDate(x.t)) + '</td><td class="mono">' + esc(x.v) + '</td><td class="wrap">' + esc(C.shortName(x.i)) + '</td><td class="mono">' + esc(x.r) + '</td><td class="mono">' + esc(x.cek ? x.cek.rk : '–') + '</td><td class="num">' + fmt(x.q) + '</td><td class="mono">' + esc(x.p || '–') + '</td><td><span class="bdg ' + x.st + '"><i></i>' + STL[x.st] + '</span>' + (x.st === 'selesai' ? ' <span class="adjtag ' + (x.adj === 'ya' ? 'ya' : 'belum') + '">' + (x.adj === 'ya' ? 'adjusted' : 'belum adj.') + '</span>' : '') + '</td><td class="wrap" style="color:var(--txt2)">' + esc(x.note || '') + '</td></tr>';
+    return '<tr><td>' + esc(C.fmtDate(x.t)) + '</td><td class="mono">' + esc(x.v) + '</td><td class="wrap">' + esc(K.fullName(x.i)) + '</td><td class="mono">' + esc(x.r) + '</td><td class="mono">' + esc(x.cek ? x.cek.rk : '–') + '</td><td class="num">' + fmt(x.q) + '</td><td class="mono">' + esc(x.p || '–') + '</td><td><span class="bdg ' + x.st + '"><i></i>' + STL[x.st] + '</span>' + (x.st === 'selesai' ? ' <span class="adjtag ' + (x.adj === 'ya' ? 'ya' : 'belum') + '">' + (x.adj === 'ya' ? 'adjusted' : 'belum adj.') + '</span>' : '') + '</td><td class="wrap" style="color:var(--txt2)">' + esc(x.note || '') + '</td></tr>';
   }).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--txt3);padding:26px">Tidak ada voucher yang cocok dengan filter.</td></tr>') + '</tbody>';
   var m = $('moreA'); m.hidden = list.length <= shown.length; m.textContent = 'Tampilkan lebih banyak (sisa ' + (list.length - shown.length) + ')';
 }
@@ -831,13 +831,13 @@ function itemBars(){
   var m = {}, ord = [];
   scopeO().forEach(function(x){ var o = m[x.i]; if (!o) { o = m[x.i] = { n: x.i, t: 0, r: 0, b: 0, T: 0 }; ord.push(x.i); } o.T++; if (x.st === 'transit') o.t++; else if (x.st === 'rak') o.r++; else o.b++; });
   $('ibars').innerHTML = ord.sort().map(function(k, i){
-    var o = m[k]; return '<div class="ibar" style="--i:' + i + '"><div class="nm">' + esc(C.shortName(k)) + '</div><div class="stk"><i style="width:' + o.t / o.T * 100 + '%;background:linear-gradient(90deg,#3fcf9f,#7ee8c7)"></i><i style="width:' + o.r / o.T * 100 + '%;background:linear-gradient(90deg,#6f8dff,#9db6ff)"></i><i style="width:' + o.b / o.T * 100 + '%;background:linear-gradient(90deg,#ff7d99,#ff93a8)"></i></div><div class="pc">' + pct((o.t + o.r) / o.T * 100) + '</div></div>';
+    var o = m[k]; return '<div class="ibar" style="--i:' + i + '"><div class="nm">' + esc(K.fullName(k)) + '</div><div class="stk"><i style="width:' + o.t / o.T * 100 + '%;background:linear-gradient(90deg,#3fcf9f,#7ee8c7)"></i><i style="width:' + o.r / o.T * 100 + '%;background:linear-gradient(90deg,#6f8dff,#9db6ff)"></i><i style="width:' + o.b / o.T * 100 + '%;background:linear-gradient(90deg,#ff7d99,#ff93a8)"></i></div><div class="pc">' + pct((o.t + o.r) / o.T * 100) + '</div></div>';
   }).join('') || '<div style="color:var(--txt3);font-size:12px">Tidak ada data.</div>';
 }
 function issuesO(){
   var bad = scopeO().filter(function(x){ return x.st === 'belum'; });
   if (!bad.length) { $('icardsO').innerHTML = '<div class="allgood"><svg width="84" height="84" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle class="ring" cx="32" cy="32" r="25" stroke="#7ee8c7" stroke-width="3" style="filter:drop-shadow(0 0 8px #7ee8c7)"/><path class="tick" d="M21 33l8 8 15-17" stroke="#7ee8c7" stroke-width="4"/></svg><b>Semua voucher sudah diinput</b><span>Operator produksi telah menginput seluruh voucher di WMS.</span></div>'; return; }
-  $('icardsO').innerHTML = '<div class="icards">' + bad.slice(0, 24).map(function(x, i){ return '<div class="ic" style="--c:#ff93a8;--i:' + i + '"><div class="h" style="color:#ff93a8">' + ICON_BAD + 'Belum diinput di WMS</div><p>' + esc(x.note) + '.</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">Voucher <b>' + esc(x.v) + '</b></span><span class="tag">' + esc(C.shortName(x.i)) + '</span><span class="tag">Qty <b>' + fmt(x.q) + '</b></span></div></div>'; }).join('') + '</div>' + (bad.length > 24 ? '<div style="text-align:center;color:var(--txt3);font-size:11px;margin-top:10px">+' + (bad.length - 24) + ' lainnya, lihat tabel di bawah</div>' : '');
+  $('icardsO').innerHTML = '<div class="icards">' + bad.slice(0, 24).map(function(x, i){ return '<div class="ic" style="--c:#ff93a8;--i:' + i + '"><div class="h" style="color:#ff93a8">' + ICON_BAD + 'Belum diinput di WMS</div><p>' + esc(x.note) + '.</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">Voucher <b>' + esc(x.v) + '</b></span><span class="tag">' + esc(K.fullName(x.i)) + '</span><span class="tag">Qty <b>' + fmt(x.q) + '</b></span></div></div>'; }).join('') + '</div>' + (bad.length > 24 ? '<div style="text-align:center;color:var(--txt3);font-size:11px;margin-top:10px">+' + (bad.length - 24) + ' lainnya, lihat tabel di bawah</div>' : '');
 }
 var STO = { transit: 'Transit selesai', rak: 'Sudah di rak', belum: 'Belum diinput' };
 function filteredO(){
@@ -848,7 +848,7 @@ function tableO(){
   var list = filteredO(), shown = list.slice(0, S.showO);
   $('tblO-title').textContent = 'Rincian voucher · ' + periodLabel(S.dayO);
   $('tblO').innerHTML = '<thead><tr><th>Tanggal</th><th>Voucher</th><th>Item</th><th class="num">Qty</th><th>Rak</th><th>PIC input</th><th>Status</th><th>Keterangan</th></tr></thead><tbody>' + (shown.map(function(x){
-    return '<tr><td>' + esc(C.fmtDate(x.t)) + '</td><td class="mono">' + esc(x.v) + '</td><td class="wrap">' + esc(C.shortName(x.i)) + '</td><td class="num">' + fmt(x.q) + '</td><td class="mono">' + esc(x.r || '–') + '</td><td class="mono">' + esc(x.p || '–') + '</td><td><span class="bdg ' + x.st + '"><i></i>' + STO[x.st] + '</span></td><td class="wrap" style="color:var(--txt2)">' + esc(x.note) + '</td></tr>';
+    return '<tr><td>' + esc(C.fmtDate(x.t)) + '</td><td class="mono">' + esc(x.v) + '</td><td class="wrap">' + esc(K.fullName(x.i)) + '</td><td class="num">' + fmt(x.q) + '</td><td class="mono">' + esc(x.r || '–') + '</td><td class="mono">' + esc(x.p || '–') + '</td><td><span class="bdg ' + x.st + '"><i></i>' + STO[x.st] + '</span></td><td class="wrap" style="color:var(--txt2)">' + esc(x.note) + '</td></tr>';
   }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--txt3);padding:26px">Tidak ada voucher yang cocok dengan filter.</td></tr>') + '</tbody>';
   var m = $('moreO'); m.hidden = list.length <= shown.length; m.textContent = 'Tampilkan lebih banyak (sisa ' + (list.length - shown.length) + ')';
 }

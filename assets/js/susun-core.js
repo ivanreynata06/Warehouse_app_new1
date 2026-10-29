@@ -16,6 +16,8 @@
 
   function norm(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
   function normHead(v) { return String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  // nama item lengkap untuk ditampilkan (rapikan 'G REEN' -> 'GREEN')
+  function fullName(n) { return norm(n).replace(/\bG\s+REEN\b/i, 'GREEN'); }
   function rakKey(r) { return String(r == null ? '' : r).toUpperCase().replace(/\s+/g, ''); }
   function vKey(v) { return typeof v === 'number' ? v.toFixed(0) : String(v == null ? '' : v).replace(/\s+/g, ''); }
   function idx(heads, names) { for (var i = 0; i < names.length; i++) { var x = heads.indexOf(names[i]); if (x !== -1) return x; } return -1; }
@@ -143,7 +145,7 @@
   }
   function uniq(a) { var s = {}; a.forEach(function (x) { if (x) s[x] = 1; }); return Object.keys(s).sort(); }
 
-  var api = { kategori: kategori, parseMaster: parseMaster, dedupe: dedupe, dupKey: dupKey, cekKey: cekKey, matchEntry: matchEntry, note: note,
+  var api = { fullName: fullName, kategori: kategori, parseMaster: parseMaster, dedupe: dedupe, dupKey: dupKey, cekKey: cekKey, matchEntry: matchEntry, note: note,
     analyzeSusun: analyzeSusun, sumSusun: sumSusun, analyzeOperator: analyzeOperator, sumOperator: sumOperator, rakKey: rakKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.SusunCore = api;
