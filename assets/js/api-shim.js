@@ -121,7 +121,10 @@
   // URL), gampang melebihi batas panjang URL browser (~8000 karakter)
   // dan request langsung gagal total ("Failed to fetch") sebelum sempat
   // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
-  var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1, uploadTlSignature: 1, adminUploadSplSignature: 1, soBuatLembar: 1, soSimpanIsi: 1, soGetRiwayatItems: 1, soLengkapiLembar: 1, soSimpanKeterangan: 1, soCloseSelisih: 1 };
+  var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1, uploadTlSignature: 1, adminUploadSplSignature: 1, soBuatLembar: 1, soSimpanIsi: 1, soGetRiwayatItems: 1, soLengkapiLembar: 1, soSimpanKeterangan: 1, soCloseSelisih: 1,
+    // Akurasi QAD vs WMS & Kepatuhan PIC WMS: payload JSON ribuan baris -> WAJIB POST
+    // (lewat GET query string melebihi batas panjang URL -> "Failed to fetch")
+    saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1 };
 
   // Bungkus r.json() supaya kalau Apps Script Web App ternyata
   // mengembalikan HALAMAN HTML (bukan JSON) -- ini SELALU terjadi kalau
@@ -162,7 +165,8 @@
       // timeout wajar saja. manualSyncNow beda: itu menghitung ulang
       // dashboard, jadi tetap dikasih waktu panjang.
       var LONG_TIMEOUT_FUNCTIONS = { manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1 };
-      var timeoutMs = LONG_TIMEOUT_FUNCTIONS[fnName] ? 270000 : 60000;
+      var MID_TIMEOUT_FUNCTIONS = { saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1 }; // baca+tulis ulang seluruh sheet
+      var timeoutMs = LONG_TIMEOUT_FUNCTIONS[fnName] ? 270000 : (MID_TIMEOUT_FUNCTIONS[fnName] ? 150000 : 60000);
       return fetchWithTimeout(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
