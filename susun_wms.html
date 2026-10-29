@@ -564,7 +564,7 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
 <div id="tip"></div><div id="toasts" aria-live="polite"></div>
 
 <script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
-<script src="./assets/js/susun-core.js?v=20261029f"></script>
+<script src="./assets/js/susun-core.js?v=20261029g"></script>
 <script>
 (function(){
 'use strict';
@@ -578,7 +578,7 @@ function pct(v){ return v == null ? '–' : fmt(v, v % 1 ? 1 : 0) + '%'; }
 function ease(t){ return 1 - Math.pow(1 - t, 3); }
 var WD = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 function wd(t){ var p = t.split('-'); return WD[new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay()]; }
-function rackGroup(r){ return String(r).toUpperCase().split('-').slice(0, 3).join('-'); }
+function rackGroup(r){ return K.kategori(r) === 'transit' ? 'TRANSIT' : String(r).toUpperCase().split('-').slice(0, 3).join('-'); }
 
 /* ───── sidebar & navigasi ───── */
 window.toggleSidebar = function(){
@@ -766,7 +766,7 @@ function issuesA(){
     var act = '';
     if (x.st === 'tidak') act = S.asking === x.k ? '<div class="act"><div class="q">Apakah sudah di-adjustment pada rak tersebut?</div><button class="mini go" onclick="markDone(' + kk + ',\'ya\')">Sudah</button><button class="mini warn" onclick="markDone(' + kk + ',\'belum\')">Belum</button><button class="mini" onclick="askDone(\'\')">Batal</button></div>' : '<div class="act"><button class="mini go" onclick="askDone(' + kk + ')">Tandai selesai</button></div>';
     else if (x.st === 'selesai') act = '<div class="act"><span class="adjtag ' + (x.adj === 'ya' ? 'ya' : 'belum') + '">' + (x.adj === 'ya' ? 'Sudah di-adjustment' : 'Belum di-adjustment') + '</span>' + (x.adj !== 'ya' ? '<button class="mini go" onclick="setAdj(' + kk + ',\'ya\')">Sudah di-adjustment</button>' : '') + '<button class="mini" onclick="reopen(' + kk + ')">Buka lagi</button></div>';
-    return '<div class="ic" style="--c:' + col + ';--i:' + i + '"><div class="h" style="color:' + col + '">' + ICON_BAD + (x.st === 'belum' ? 'Belum dicocokkan dengan kertas' : x.st === 'selesai' ? 'Ketidaksesuaian selesai' : 'Tidak sesuai rak') + '</div><p>' + esc(x.note || 'Voucher ' + x.v + ' belum dicocokkan dengan kertas juru lokasi.') + '</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">Voucher <b>' + esc(x.v) + '</b></span><span class="tag">Rak WMS <b>' + esc(x.r) + '</b></span><span class="tag">Qty <b>' + fmt(x.q) + '</b></span><span class="tag">' + esc(K.fullName(x.i)) + '</span></div>' + act + '</div>';
+    return '<div class="ic" style="--c:' + col + ';--i:' + i + '"><div class="h" style="color:' + col + '">' + ICON_BAD + (x.st === 'belum' ? 'Belum dicocokkan dengan kertas' : x.st === 'selesai' ? 'Ketidaksesuaian selesai' : 'Tidak sesuai rak') + '</div><p>' + esc(x.note || 'Voucher ' + x.v + ' belum dicocokkan dengan kertas juru lokasi.') + '</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">Voucher <b>' + esc(x.v) + '</b></span><span class="tag">Rak WMS <b>' + esc(x.rl) + '</b></span><span class="tag">Qty <b>' + fmt(x.q) + '</b></span><span class="tag">' + esc(K.fullName(x.i)) + '</span></div>' + act + '</div>';
   }).join('') + '</div>' + (sel.length > shown.length ? '<div style="text-align:center"><button class="btn more" onclick="moreIssues()">Tampilkan lebih banyak (sisa ' + (sel.length - shown.length) + ')</button></div>' : '');
 }
 window.setIssueF = function(f){ S.issueF = f; S.showI = 12; S.asking = ''; issuesA(); };
@@ -786,7 +786,7 @@ function tableA(){
   var list = filteredA(), shown = list.slice(0, S.showA);
   $('tblA-title').textContent = 'Rincian voucher · ' + periodLabel(S.dayA); $('rack-f').textContent = S.rack ? 'Filter rak: ' + S.rack : ''; $('rack-clear').hidden = !S.rack;
   $('tblA').innerHTML = '<thead><tr><th>Tanggal</th><th>Voucher</th><th>Item</th><th>Rak WMS</th><th>Rak kertas</th><th class="num">Qty</th><th>PIC susun</th><th>Status</th><th>Keterangan</th></tr></thead><tbody>' + (shown.map(function(x){
-    return '<tr><td>' + esc(C.fmtDate(x.t)) + '</td><td class="mono">' + esc(x.v) + '</td><td class="wrap">' + esc(K.fullName(x.i)) + '</td><td class="mono">' + esc(x.r) + '</td><td class="mono">' + esc(x.cek ? x.cek.rk : '–') + '</td><td class="num">' + fmt(x.q) + '</td><td class="mono">' + esc(x.p || '–') + '</td><td><span class="bdg ' + x.st + '"><i></i>' + STL[x.st] + '</span>' + (x.st === 'selesai' ? ' <span class="adjtag ' + (x.adj === 'ya' ? 'ya' : 'belum') + '">' + (x.adj === 'ya' ? 'adjusted' : 'belum adj.') + '</span>' : '') + '</td><td class="wrap" style="color:var(--txt2)">' + esc(x.note || '') + '</td></tr>';
+    return '<tr><td>' + esc(C.fmtDate(x.t)) + '</td><td class="mono">' + esc(x.v) + '</td><td class="wrap">' + esc(K.fullName(x.i)) + '</td><td class="mono">' + esc(x.rl) + '</td><td class="mono">' + esc(x.cek ? x.cek.rk : '–') + '</td><td class="num">' + fmt(x.q) + '</td><td class="mono">' + esc(x.p || '–') + '</td><td><span class="bdg ' + x.st + '"><i></i>' + STL[x.st] + '</span>' + (x.st === 'selesai' ? ' <span class="adjtag ' + (x.adj === 'ya' ? 'ya' : 'belum') + '">' + (x.adj === 'ya' ? 'adjusted' : 'belum adj.') + '</span>' : '') + '</td><td class="wrap" style="color:var(--txt2)">' + esc(x.note || '') + '</td></tr>';
   }).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--txt3);padding:26px">Tidak ada voucher yang cocok dengan filter.</td></tr>') + '</tbody>';
   var m = $('moreA'); m.hidden = list.length <= shown.length; m.textContent = 'Tampilkan lebih banyak (sisa ' + (list.length - shown.length) + ')';
 }
@@ -860,7 +860,7 @@ window.moreRowsO = function(){ S.showO += 100; tableO(); };
 window.exportXlsx = function(){
   if (!S.A || !window.XLSX) return;
   var wb = XLSX.utils.book_new(), a = [['Tanggal', 'Voucher', 'Item', 'Rak WMS', 'Rak kertas', 'Qty', 'PIC susun', 'Status', 'Adjustment', 'Keterangan']];
-  filteredA().forEach(function(x){ a.push([C.fmtDate(x.t), x.v, x.i, x.r, x.cek ? x.cek.rk : '', x.q, x.p, STL[x.st], x.st === 'selesai' ? (x.adj === 'ya' ? 'Sudah' : 'Belum') : '', x.note]); });
+  filteredA().forEach(function(x){ a.push([C.fmtDate(x.t), x.v, x.i, x.rl, x.cek ? x.cek.rk : '', x.q, x.p, STL[x.st], x.st === 'selesai' ? (x.adj === 'ya' ? 'Sudah' : 'Belum') : '', x.note]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), 'Juru Susun');
   var o = [['Tanggal', 'Voucher', 'Item', 'Qty', 'Rak', 'PIC input', 'Status', 'Keterangan']];
   filteredO().forEach(function(x){ o.push([C.fmtDate(x.t), x.v, x.i, x.q, x.r, x.p, STO[x.st], x.note]); });

@@ -21,7 +21,7 @@
 <script src="./assets/js/akurasi-store.js?v=20261022b"></script>
 <script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
 <script src="./assets/js/picwms-core.js?v=20261028a"></script>
-<script src="./assets/js/susun-core.js?v=20261029f"></script>
+<script src="./assets/js/susun-core.js?v=20261029g"></script>
 <style>
 :root{
   --bg:#0d0d1a;--bg2:#12121f;--bg-card:#18182a;--bg-card2:#1e1e30;
@@ -1972,7 +1972,7 @@ window.SusunUpload = (function(){
   function friendly(e){ var m = String(e && e.message || e || ''); if (/tidak dikenali|tidak diizinkan/i.test(m)) return 'Backend belum di-deploy ulang (kode.gs terbaru belum aktif di Apps Script).'; return m || 'Server tidak bisa dihubungi.'; }
   function lock(on){ window._uploadInProgress = on; if (typeof setUploadLockUI === 'function') setUploadLockUI(on); }
   function dates(a){ var d = {}; a.forEach(function(r){ d[r.t] = 1; }); return Object.keys(d).sort(); }
-  function susunRows(){ return data.master.filter(function(x){ return S.kategori(x.r) === 'susun'; }); }
+  function susunRows(){ return data.master.slice(); }   // rak I/J + area transit: semua bisa dicocokkan dengan kertas
 
   function draw(){
     var box = document.getElementById('su-cards'); if (!box) return;
@@ -2022,7 +2022,7 @@ window.SusunUpload = (function(){
     var keep = {}; ['su-v', 'su-i', 'su-q', 'su-r'].forEach(function(id){ var e = document.getElementById(id); if (e) keep[id] = e.value; });
     var ds = dates(rows); if (!selDate || ds.indexOf(selDate) === -1) selDate = ds[ds.length - 1];
     var items = {}; rows.forEach(function(x){ items[x.i] = 1; });
-    var A = S.analyzeSusun(data.master, data.cek), list = A.list.filter(function(x){ return x.t === selDate && (!onlyPending || x.st === 'belum'); });
+    var A = S.analyzeSusun(data.master, data.cek, { all: true }), list = A.list.filter(function(x){ return x.t === selDate && (!onlyPending || x.st === 'belum'); });
     var todo = A.list.filter(function(x){ return x.st === 'belum'; }).length, done = A.list.length - todo;
     var res = '';
     if (last) {
@@ -2030,7 +2030,7 @@ window.SusunUpload = (function(){
       else {
         var f = last.flags, c = last.rec;
         res = '<div class="su-res ' + (last.st === 'sesuai' ? 'ok' : 'bad') + '"><div class="su-chips"><span class="su-chip ok">✓ Voucher</span><span class="su-chip ' + (c.ik ? (f.item ? 'ok' : 'bad') : 'na') + '" style="animation-delay:.08s">' + (c.ik ? (f.item ? '✓' : '✗') : '–') + ' Item</span><span class="su-chip ' + (c.qk === '' ? 'na' : (f.qty ? 'ok' : 'bad')) + '" style="animation-delay:.16s">' + (c.qk === '' ? '–' : (f.qty ? '✓' : '✗')) + ' Qty</span><span class="su-chip ' + (f.rak ? 'ok' : 'bad') + '" style="animation-delay:.24s">' + (f.rak ? '✓' : '✗') + ' Rak</span></div>' +
-          '<div>' + (last.st === 'sesuai' ? '✅ <b>Sesuai.</b> Kertas dan WMS sama.' : '❌ <b>' + esc(S.note(c)) + '</b>') + '</div><div style="color:var(--txt3);font-size:11px">Voucher ' + esc(c.v) + ' · WMS: rak <b>' + esc(c.rw) + '</b>, qty <b>' + n(c.qw) + '</b>, ' + esc(S.fullName(last.row.i)) + (last.st === 'tidak' ? '<br>Hasil tersimpan. Tandai selesai &amp; adjustment dilakukan di menu Monitoring Susun WMS.' : '') + '</div></div>';
+          '<div>' + (last.st === 'sesuai' ? '✅ <b>Sesuai.</b> Kertas dan WMS sama.' : '❌ <b>' + esc(S.note(c)) + '</b>') + '</div><div style="color:var(--txt3);font-size:11px">Voucher ' + esc(c.v) + ' · WMS: rak <b>' + esc(S.rakLabel(c.rw)) + '</b>, qty <b>' + n(c.qw) + '</b>, ' + esc(S.fullName(last.row.i)) + (last.st === 'tidak' ? '<br>Hasil tersimpan. Tandai selesai &amp; adjustment dilakukan di menu Monitoring Susun WMS.' : '') + '</div></div>';
       }
     }
     box.innerHTML = '<div class="card" style="margin-top:14px"><div class="card-header"><div class="card-title">Pengisian Rak dari Kertas<span style="font-weight:500;color:var(--txt3);font-size:10.5px;">' + n(done) + ' dicocokkan · ' + n(todo) + ' belum</span></div></div><div class="card-body">' +
@@ -2042,7 +2042,7 @@ window.SusunUpload = (function(){
       '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="SusunUpload.submit()">Cocokkan</button></div>' + res +
       '<div class="wq-rng"><b>Daftar voucher</b><select class="su-sel" style="width:auto" onchange="SusunUpload.setDate(this.value)">' + ds.map(function(d){ return '<option value="' + d + '"' + (d === selDate ? ' selected' : '') + '>' + esc(C.fmtDate(d)) + '</option>'; }).join('') + '</select><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" ' + (onlyPending ? 'checked' : '') + ' onchange="SusunUpload.togglePending(this.checked)"> belum dicocokkan saja</label><span style="color:var(--txt3)">klik baris untuk memilih item &amp; voucher</span></div>' +
       '<div style="max-height:300px;overflow:auto;border:1px solid var(--border2);border-radius:10px"><table class="su-tbl"><thead><tr><th>Voucher</th><th>Item</th><th>Qty</th><th>Status</th></tr></thead><tbody>' +
-      (list.slice(0, 80).map(function(x){ return '<tr onclick="SusunUpload.fill(\'' + x.v + '\',this.dataset.i)" data-i="' + esc(x.i) + '"><td style="font-family:\'JetBrains Mono\',monospace">' + esc(x.v) + '</td><td>' + esc(S.fullName(x.i)) + '</td><td>' + n(x.q) + '</td><td><span class="su-st ' + x.st + '">' + (x.st === 'belum' ? 'Belum' : x.st === 'sesuai' ? 'Sesuai' : x.st === 'tidak' ? 'Tidak sesuai' : 'Selesai') + '</span></td></tr>'; }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--txt3);padding:18px">' + (onlyPending ? 'Semua voucher tanggal ini sudah dicocokkan 🎉' : 'Tidak ada data.') + '</td></tr>') + '</tbody></table></div>' +
+      (list.slice(0, 80).map(function(x){ return '<tr onclick="SusunUpload.fill(\'' + x.v + '\',this.dataset.i)" data-i="' + esc(x.i) + '"><td style="font-family:\'JetBrains Mono\',monospace">' + esc(x.v) + '</td><td>' + esc(S.fullName(x.i)) + '</td><td>' + n(x.q) + '</td><td><span class="su-st ' + x.st + '">' + (x.st === 'belum' ? 'Belum' : x.st === 'sesuai' ? 'Sesuai' : x.st === 'tidak' ? 'Tidak sesuai' : 'Selesai') + '</span>' + (x.transit ? ' <span class="su-st belum">Transit</span>' : '') + '</td></tr>'; }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--txt3);padding:18px">' + (onlyPending ? 'Semua voucher tanggal ini sudah dicocokkan 🎉' : 'Tidak ada data.') + '</td></tr>') + '</tbody></table></div>' +
       '</div></div>';
     ['su-i', 'su-q', 'su-r'].forEach(function(id){ var e = document.getElementById(id); if (e && keep[id]) e.value = keep[id]; });
     refreshVoucher(keep['su-v']);

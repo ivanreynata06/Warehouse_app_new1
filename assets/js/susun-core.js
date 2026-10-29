@@ -26,6 +26,7 @@
     if (RACK_SUSUN.test(rakKey(rak))) return 'susun';
     return '';
   }
+  function rakLabel(r) { return kategori(r) === 'transit' ? 'Area transit' : r; }
   function dupKey(r) { return r.v + '|' + r.t + '|' + rakKey(r.r) + '|' + r.q; }
 
   // ---------- master susun ----------
@@ -71,16 +72,14 @@
   function sameItem(a, b) { return rakKey(a) === rakKey(b); }
   // entry: {v, i, q, r}  (dari kertas juru lokasi)
   function matchEntry(master, entry) {
-    var v = vKey(entry.v), rows = (master || []).filter(function (x) { return x.v === v && kategori(x.r) === 'susun'; });
+    var v = vKey(entry.v), rows = (master || []).filter(function (x) { return x.v === v; });
     if (!v) return { code: 'kosong' };
-    if (!rows.length) {
-      var tr = (master || []).filter(function (x) { return x.v === v; });
-      return { code: tr.length ? 'transit' : 'novoucher', v: v };
-    }
+    if (!rows.length) return { code: 'novoucher', v: v };
     var rk = rakKey(entry.r), q = entry.q === '' || entry.q == null ? null : Number(entry.q);
-    var hit = rows.filter(function (x) { return rakKey(x.r) === rk; });
+    function sameRak(x) { return rakKey(x.r) === rk || (kategori(x.r) === 'transit' && /TRANSIT/.test(rk)); }
+    var hit = rows.filter(sameRak);
     var row = (hit.length ? hit : rows).slice().sort(function (a, b) { return (q != null && b.q === q) - (q != null && a.q === q); })[0];
-    var f = { rak: rakKey(row.r) === rk, qty: q == null ? true : row.q === q, item: !entry.i || sameItem(row.i, entry.i) };
+    var f = { rak: sameRak(row), qty: q == null ? true : row.q === q, item: !entry.i || sameItem(row.i, entry.i) };
     var reasons = []; if (!f.rak) reasons.push('rak'); if (!f.qty) reasons.push('qty'); if (!f.item) reasons.push('item');
     return { code: 'ok', row: row, flags: f, reasons: reasons, st: reasons.length ? 'tidak' : 'sesuai',
       rec: { k: cekKey(row), v: row.v, rw: row.r, qw: row.q, rk: norm(entry.r).toUpperCase(), qk: q == null ? '' : q, ik: entry.i || '', st: reasons.length ? 'tidak' : 'sesuai', rs: reasons.join(','), sl: 0, adj: '' } };
@@ -89,19 +88,22 @@
     if (!c) return '';
     if (c.st === 'sesuai') return 'Rak, qty, dan item sesuai dengan kertas';
     var p = [], f = (c.rs || '').split(',');
-    if (f.indexOf('rak') !== -1) p.push('Tidak sesuai rak: kertas ' + (c.rk || '-') + ', WMS ' + c.rw);
+    if (f.indexOf('rak') !== -1) p.push('Tidak sesuai rak: kertas ' + (c.rk || '-') + ', ' + (kategori(c.rw) === 'transit' ? 'WMS masih di area transit' : 'WMS ' + c.rw));
     if (f.indexOf('qty') !== -1) p.push('qty kertas ' + c.qk + ', WMS ' + c.qw);
     if (f.indexOf('item') !== -1) p.push('item kertas berbeda dengan WMS');
     return p.join(' · ');
   }
 
   // ---------- analisis juru susun (rak I/J) ----------
-  function analyzeSusun(master, cek) {
+  // opts.all = true -> sertakan juga voucher area transit (untuk form pengisian).
+  // Default: rak I/J, ditambah voucher transit yang SUDAH dicocokkan dengan kertas.
+  function analyzeSusun(master, cek, opts) {
     var C = {}; (cek || []).forEach(function (c) { C[c.k] = c; });
-    var list = (master || []).filter(function (x) { return kategori(x.r) === 'susun'; }).map(function (x) {
+    var all = !!(opts && opts.all);
+    var list = (master || []).filter(function (x) { var k = kategori(x.r); return k === 'susun' || (k === 'transit' && (all || C[cekKey(x)])); }).map(function (x) {
       var k = cekKey(x), c = C[k], st = 'belum';
       if (c) st = c.st === 'sesuai' ? 'sesuai' : (c.sl ? 'selesai' : 'tidak');
-      return { k: k, t: x.t, v: x.v, i: x.i, r: x.r, q: x.q, p: x.p, cek: c || null, st: st, adj: c ? c.adj : '', note: note(c, x) };
+      return { k: k, t: x.t, v: x.v, i: x.i, r: x.r, rl: rakLabel(x.r), transit: kategori(x.r) === 'transit', q: x.q, p: x.p, cek: c || null, st: st, adj: c ? c.adj : '', note: note(c, x) };
     }).sort(function (a, b) { return a.t < b.t ? -1 : a.t > b.t ? 1 : a.v < b.v ? -1 : 1; });
     return { list: list, dates: uniq(list.map(function (x) { return x.t; })), months: uniq(list.map(function (x) { return x.t.slice(0, 7); })) };
   }
@@ -145,7 +147,7 @@
   }
   function uniq(a) { var s = {}; a.forEach(function (x) { if (x) s[x] = 1; }); return Object.keys(s).sort(); }
 
-  var api = { fullName: fullName, kategori: kategori, parseMaster: parseMaster, dedupe: dedupe, dupKey: dupKey, cekKey: cekKey, matchEntry: matchEntry, note: note,
+  var api = { rakLabel: rakLabel, fullName: fullName, kategori: kategori, parseMaster: parseMaster, dedupe: dedupe, dupKey: dupKey, cekKey: cekKey, matchEntry: matchEntry, note: note,
     analyzeSusun: analyzeSusun, sumSusun: sumSusun, analyzeOperator: analyzeOperator, sumOperator: sumOperator, rakKey: rakKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.SusunCore = api;
