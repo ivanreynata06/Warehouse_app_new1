@@ -37,7 +37,7 @@
 
   /* ---------- kerangka ---------- */
   function shell() {
-    $('p-rak').innerHTML = '<div class="rk" id="rk"><div class="rk-bg"><i></i><i></i><i></i></div>' +
+    $('p-rak').innerHTML = '<div class="rk" id="rk"><div class="rk-bg"></div>' +
       '<svg width="0" height="0" style="position:absolute"><defs>' +
       '<linearGradient id="rk-g-good" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>' +
       '<linearGradient id="rk-g-warn" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#fb923c"/></linearGradient>' +
@@ -216,6 +216,8 @@
   function tilt() {
     var root = $('rk');
     root.addEventListener('mousemove', function (e) {
+      var g = e.target.closest && e.target.closest('.glass, .rk-step');
+      if (g) { var gr = g.getBoundingClientRect(); g.style.setProperty('--mx', (e.clientX - gr.left) + 'px'); g.style.setProperty('--my', (e.clientY - gr.top) + 'px'); }
       var t = e.target.closest && e.target.closest('.tilt'); if (!t) return;
       var r = t.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
       t.style.setProperty('--ry', (x * 14) + 'deg'); t.style.setProperty('--rx', (-y * 10) + 'deg');

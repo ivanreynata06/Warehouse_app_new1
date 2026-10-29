@@ -8,23 +8,18 @@
 .rk *{box-sizing:border-box}
 /* ---------- latar bergerak ---------- */
 .rk-bg{position:absolute;inset:-14px;z-index:-1;border-radius:22px;overflow:hidden;
-  background:radial-gradient(1200px 600px at 10% -10%,rgba(16,185,129,.16),transparent 60%),
-             radial-gradient(900px 500px at 100% 0,rgba(139,92,246,.18),transparent 60%),#0a0a16}
-.rk-bg i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.55;animation:rkFloat 14s ease-in-out infinite}
-.rk-bg i:nth-child(1){width:340px;height:340px;background:#10b981;left:-60px;top:80px}
-.rk-bg i:nth-child(2){width:300px;height:300px;background:#8b5cf6;right:5%;top:-40px;animation-delay:-5s}
-.rk-bg i:nth-child(3){width:260px;height:260px;background:#22d3ee;right:30%;bottom:-60px;animation-delay:-9s}
+  background:linear-gradient(180deg,#0c0c1a,#0a0a16)}
 .rk-bg::after{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:38px 38px;mask-image:radial-gradient(circle at 50% 30%,#000,transparent 75%)}
-@keyframes rkFloat{0%,100%{transform:translate3d(0,0,0) scale(1)}33%{transform:translate3d(40px,-30px,0) scale(1.15)}66%{transform:translate3d(-30px,30px,0) scale(.92)}}
 /* ---------- kaca ---------- */
 .rk .glass{position:relative;border-radius:18px;overflow:hidden;
   background:linear-gradient(135deg,rgba(255,255,255,.10),rgba(255,255,255,.025));
   -webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
   border:1px solid rgba(255,255,255,.13);
   box-shadow:0 24px 60px -18px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.28),inset 0 -1px 0 rgba(255,255,255,.04)}
-.rk .glass::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;pointer-events:none;
-  background:linear-gradient(100deg,transparent,rgba(255,255,255,.10),transparent);transform:skewX(-18deg);animation:rkSheen 9s ease-in-out infinite}
-@keyframes rkSheen{0%,55%{left:-60%}100%{left:160%}}
+/* spotlight kursor (seperti menu Kepatuhan PIC) */
+.rk .glass::before,.rk .rk-step::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;border-radius:inherit;
+  background:radial-gradient(460px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.10),transparent 60%);opacity:0;transition:opacity .4s}
+.rk .glass:hover::before,.rk .rk-step:hover::before{opacity:1}
 .rk .gh{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:14px 18px 0}
 .rk .gh h3{font-family:'Outfit',sans-serif;font-size:14px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
 .rk .gh h3 em{font-style:normal;font-size:10px;font-weight:600;color:var(--txt2);padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1)}
