@@ -1756,7 +1756,11 @@ window.PicWmsUpload = (function(){
 
   function draw(){
     var box = document.getElementById('pw-cards'); if (!box) return;
-    if (!selDate) selDate = today();
+    // tanggal muat = tanggal yang ada di data master (plus tanggal jadwal yang sudah tersimpan)
+    var opt = {}; dates(data.master).forEach(function(d){ opt[d] = 1; }); dates(data.jadwal).forEach(function(d){ opt[d] = 1; });
+    var optDates = Object.keys(opt).sort();
+    if (optDates.length && optDates.indexOf(selDate) === -1) selDate = optDates[optDates.length - 1];
+    if (!optDates.length && !selDate) selDate = today();
     var ta = document.getElementById('pw-area'), keep = ta ? ta.value : null;
     var md = dates(data.master), jd = dates(data.jadwal), has = data.master.length > 0;
     var spmN = {}; data.master.forEach(function(r){ spmN[r.s] = 1; });
@@ -1768,8 +1772,11 @@ window.PicWmsUpload = (function(){
       (has ? '<div class="wq-rng"><span>Hapus master tanggal</span><input type="date" id="pw-dari" value="' + md[0] + '"><span>s/d</span><input type="date" id="pw-sampai" value="' + md[md.length - 1] + '"><button class="btn btn-danger" ' + (busy ? 'disabled' : '') + ' onclick="PicWmsUpload.removeMaster()">Hapus rentang ini</button></div>' : '') +
       '</div></div>';
     var card2 = '<div class="card"><div class="card-header"><div class="card-title">Jadwal SPM<span style="font-weight:500;color:var(--txt3);font-size:10.5px;">input manual</span></div></div><div class="card-body">' +
-      '<div class="wq-rng"><b>Tanggal muat</b><input type="date" id="pw-date" value="' + selDate + '" onchange="PicWmsUpload.setDate(this.value)"><span style="color:var(--txt3)">' + n(jadwalOf(selDate).length) + ' SPM tersimpan di tanggal ini</span></div>' +
-      '<textarea class="pw-area" id="pw-area" placeholder="Tempel nomor SPM, satu per baris atau dipisah koma&#10;contoh:&#10;26102250&#10;26102318"></textarea>' +
+      '<div class="wq-rng"><b>Tanggal muat</b>' + (optDates.length
+        ? '<select id="pw-date" onchange="PicWmsUpload.setDate(this.value)" style="background:var(--bg-card2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;color:var(--txt);font-size:11px;">' + optDates.map(function(d){ var mc = {}; data.master.forEach(function(r){ if (r.t === d) mc[r.s] = 1; }); return '<option value="' + d + '"' + (d === selDate ? ' selected' : '') + '>' + esc(C.fmtDate(d)) + ' · ' + Object.keys(mc).length + ' SPM di master · ' + jadwalOf(d).length + ' di jadwal</option>'; }).join('') + '</select>'
+        : '<input type="date" id="pw-date" value="' + selDate + '" onchange="PicWmsUpload.setDate(this.value)"><span style="color:var(--txt3)">Upload master WMS dulu agar tanggal muncul otomatis</span>') + '</div>' +
+      '<textarea class="pw-area" id="pw-area" placeholder="Tempel nomor SPM. Pemisah bisa spasi, Enter, koma, atau titik koma&#10;contoh:&#10;26102250 26102318 26102320"></textarea>' +
+      '<div style="font-size:10.5px;color:var(--txt3)">Pemisah: <b>spasi</b>, <b>Enter</b>, <b>koma</b>, atau <b>titik koma</b> (boleh dicampur). Nomor ganda otomatis digabung.</div>' +
       '<div id="pw-warn"></div>' +
       '<div class="btn-row"><button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="PicWmsUpload.check()">Periksa &amp; simpan jadwal</button></div>' +
       (jd.length ? '<div><div style="font-size:10px;color:var(--txt3);margin-bottom:5px;">Jadwal tersimpan (klik untuk membuka, × untuk menghapus)</div><div class="pw-dates">' + jd.map(function(d){ return '<span class="pw-dt" onclick="PicWmsUpload.setDate(\'' + d + '\',true)"><b>' + esc(C.fmtDate(d)) + '</b>' + jadwalOf(d).length + ' SPM<i title="Hapus jadwal tanggal ini" onclick="event.stopPropagation();PicWmsUpload.removeJadwal(\'' + d + '\')">×</i></span>'; }).join('') + '</div></div>' : '') +
