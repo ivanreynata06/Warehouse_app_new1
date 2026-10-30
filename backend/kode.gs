@@ -8447,7 +8447,9 @@ function _buildSPLDocument(kode, bulan, tahun) {
     if (lastChild.getType() === DocumentApp.ElementType.PARAGRAPH) lastChild.asParagraph().appendPageBreak();
     else body.appendPageBreak();
     for (var pi = 0; pi < polos.length; pi++) {
-      var el = polos[pi], added = null, T = DocumentApp.ElementType;
+      // WAJIB .copy() baru tiap halaman: append*() memakai elemen itu sendiri, jadi elemen yang sudah menempel di dokumen tidak boleh dipakai lagi
+      // (halaman ke-3 dst. sebelumnya error "Elemen harus dilepas / Element must be detached" -> print & download SPL gagal utk karyawan berlembur banyak).
+      var el = polos[pi].copy(), added = null, T = DocumentApp.ElementType;
       switch (el.getType()) {
         case T.PARAGRAPH: added = body.appendParagraph(el.asParagraph()); break;
         case T.TABLE: added = body.appendTable(el.asTable()); break;
