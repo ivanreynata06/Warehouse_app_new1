@@ -24,6 +24,7 @@
   function kategori(rak) {
     if (W.lolosNama(rak)) return 'transit';
     if (RACK_SUSUN.test(rakKey(rak))) return 'susun';
+    if (/^C-?FITLK[2L]/.test(rakKey(rak))) return 'lokasi';      // lokasi khusus: C-FITLK2 / C-FITLKL
     return '';
   }
   function rakLabel(r) { return kategori(r) === 'transit' ? 'Area transit' : r; }
@@ -40,7 +41,7 @@
     var cV = idx(h.heads, ['novouchersjt', 'novoucher']), cT = h.heads.indexOf('tanggalsusun'), cN = idx(h.heads, ['namaitem']),
         cR = idx(h.heads, ['rak']), cQ = idx(h.heads, ['qty']), cP = idx(h.heads, ['picsusun']);
     if (cN === -1 || cR === -1 || cQ === -1) throw new Error('Kolom "Nama Item", "Rak", atau "Qty" tidak ditemukan.');
-    var out = [], seen = {}, st = { total: 0, kept: 0, dropped: 0, dropRak: 0, noDate: 0, dupFile: 0, susun: 0, transit: 0 };
+    var out = [], seen = {}, st = { total: 0, kept: 0, dropped: 0, dropRak: 0, noDate: 0, dupFile: 0, susun: 0, transit: 0, lokasi: 0 };
     for (var i = h.row + 1; i < rows.length; i++) {
       var row = rows[i] || [], v = vKey(row[cV]);
       if (!v) continue;
@@ -100,7 +101,7 @@
   function analyzeSusun(master, cek, opts) {
     var C = {}; (cek || []).forEach(function (c) { C[c.k] = c; });
     var all = !!(opts && opts.all);
-    var list = (master || []).filter(function (x) { var k = kategori(x.r); return k === 'susun' || (k === 'transit' && (all || C[cekKey(x)])); }).map(function (x) {
+    var list = (master || []).filter(function (x) { var k = kategori(x.r); return k === 'susun' || k === 'lokasi' || (k === 'transit' && (all || C[cekKey(x)])); }).map(function (x) {
       var k = cekKey(x), c = C[k], st = 'belum';
       if (c) st = c.st === 'sesuai' ? 'sesuai' : (c.sl ? 'selesai' : 'tidak');
       return { k: k, t: x.t, v: x.v, i: x.i, r: x.r, rl: rakLabel(x.r), transit: kategori(x.r) === 'transit', q: x.q, p: x.p, cek: c || null, st: st, adj: c ? c.adj : '', note: note(c, x) };
@@ -117,22 +118,45 @@
     return o;
   }
 
+  // ---------- relokasi: transit -> rak ----------
+  // Otomatis: voucher yang sama punya baris transit LALU baris rak I/J = sudah direlokasi.
+  // Lokasi khusus C-FITLK2 / C-FITLKL: terdeteksi sebagai KANDIDAT relokasi dan perlu dikonfirmasi admin.
+  function relocCandidates(master, cek) {
+    var T = [], L = [], auto = {}, ans = {};
+    (master || []).forEach(function (x) { var k = kategori(x.r); if (k === 'transit') T.push(x); else if (k === 'lokasi') L.push(x); });
+    var hasRak = {}; (master || []).forEach(function (x) { if (kategori(x.r) === 'susun') hasRak[x.v] = 1; });
+    (cek || []).forEach(function (c) { if (String(c.k).indexOf('RELOK|') === 0) ans[c.v] = c; });
+    T.forEach(function (t) { if (hasRak[t.v]) auto[t.v] = 1; });
+    var used = {}, out = [];
+    L.slice().sort(function (a, b) { return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; }).forEach(function (l) {
+      var c = T.filter(function (t) { return !used[t.v] && !auto[t.v] && (t.v === l.v || (t.i === l.i && t.q === l.q)) && t.t <= l.t; })
+        .sort(function (a, b) { return ((b.v === l.v) - (a.v === l.v)) || (a.t < b.t ? -1 : a.t > b.t ? 1 : 0) || (a.v < b.v ? -1 : 1); })[0];
+      if (!c) return;
+      used[c.v] = 1; var r = ans[c.v];
+      out.push({ k: 'RELOK|' + c.v, tv: c.v, tt: c.t, ti: c.i, tq: c.q, tp: c.p, lv: l.v, lt: l.t, rack: l.r, ans: r ? (r.sl ? 'ya' : 'belum') : '' });
+    });
+    return out;
+  }
+
   // ---------- kepatuhan operator produksi (area transit) ----------
-  // wmsRows: baris master WMS (Akurasi QAD vs WMS) {t,v,i,n,q}
-  function analyzeOperator(wmsRows, master) {
-    var tr = {}, rk = {};
-    (master || []).forEach(function (x) { var k = kategori(x.r); if (k === 'transit') (tr[x.v] = tr[x.v] || []).push(x); else if (k === 'susun') (rk[x.v] = rk[x.v] || []).push(x); });
+  // wmsRows: baris master WMS (Akurasi QAD vs WMS) {t,v,i,n,q};  cek: untuk jawaban relokasi
+  function analyzeOperator(wmsRows, master, cek) {
+    var tr = {}, rk = {}, lk = {}, relokYa = {};
+    (master || []).forEach(function (x) { var k = kategori(x.r); if (k === 'transit') (tr[x.v] = tr[x.v] || []).push(x); else if (k === 'susun') (rk[x.v] = rk[x.v] || []).push(x); else if (k === 'lokasi') (lk[x.v] = lk[x.v] || []).push(x); });
+    (cek || []).forEach(function (c) { if (String(c.k).indexOf('RELOK|') === 0 && c.sl) relokYa[c.v] = c; });
     var V = {};
     (wmsRows || []).forEach(function (w) {
       var o = V[w.v] = V[w.v] || { v: w.v, t: w.t, i: w.n, q: 0 };
       o.q += Number(w.q) || 0; if (w.t < o.t) o.t = w.t;
     });
     var list = Object.keys(V).map(function (k) {
-      var o = V[k], a = tr[k], b = rk[k];
-      o.st = a ? 'transit' : (b ? 'rak' : 'belum');
-      o.p = a ? a[0].p : (b ? b[0].p : '');
-      o.r = a ? 'Area transit' : (b ? b.map(function (x) { return x.r; }).join(', ') : '');
-      o.note = o.st === 'transit' ? 'Operator produksi telah menyelesaikan inputan area transit'
+      var o = V[k], a = tr[k], b = rk[k], l = lk[k], y = relokYa[k];
+      o.st = (a && b) || (a && y) ? 'reloc' : (a ? 'transit' : ((b || l) ? 'rak' : 'belum'));
+      var any = a ? a[0] : (b ? b[0] : (l ? l[0] : null));
+      o.p = any ? any.p : '';
+      o.r = o.st === 'reloc' ? (b ? b.map(function (x) { return x.r; }).join(', ') : y.rw) : (a ? 'Area transit' : ((b || l) ? (b || l).map(function (x) { return x.r; }).join(', ') : ''));
+      o.note = o.st === 'reloc' ? 'Sudah direlokasi dari area transit ke rak ' + o.r
+        : o.st === 'transit' ? 'Operator produksi telah menyelesaikan inputan area transit'
         : o.st === 'rak' ? 'Voucher sudah disusun ke rak ' + o.r + ' (data juru susun)'
         : 'Operator belum menginput voucher tersebut di WMS';
       return o;
@@ -140,15 +164,15 @@
     return { list: list, dates: uniq(list.map(function (x) { return x.t; })), months: uniq(list.map(function (x) { return x.t.slice(0, 7); })) };
   }
   function sumOperator(list) {
-    var o = { total: list.length, transit: 0, rak: 0, belum: 0, pct: null };
+    var o = { total: list.length, transit: 0, rak: 0, reloc: 0, belum: 0, pct: null };
     list.forEach(function (x) { o[x.st]++; });
-    o.pct = o.total ? (o.transit + o.rak) / o.total * 100 : null;
+    o.pct = o.total ? (o.transit + o.rak + o.reloc) / o.total * 100 : null;
     return o;
   }
   function uniq(a) { var s = {}; a.forEach(function (x) { if (x) s[x] = 1; }); return Object.keys(s).sort(); }
 
   var api = { rakLabel: rakLabel, fullName: fullName, kategori: kategori, parseMaster: parseMaster, dedupe: dedupe, dupKey: dupKey, cekKey: cekKey, matchEntry: matchEntry, note: note,
-    analyzeSusun: analyzeSusun, sumSusun: sumSusun, analyzeOperator: analyzeOperator, sumOperator: sumOperator, rakKey: rakKey };
+    analyzeSusun: analyzeSusun, sumSusun: sumSusun, analyzeOperator: analyzeOperator, sumOperator: sumOperator, relocCandidates: relocCandidates, rakKey: rakKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.SusunCore = api;
 })(typeof window !== 'undefined' ? window : this);

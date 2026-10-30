@@ -374,6 +374,14 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
 .bdg.tidak{color:var(--rose);background:rgba(255,147,168,.1);border-color:rgba(255,147,168,.3);}
 .bdg.selesai{color:var(--orange);background:rgba(255,180,84,.1);border-color:rgba(255,180,84,.35);}
 .bdg.transit{color:var(--mint);background:rgba(126,232,199,.1);border-color:rgba(126,232,199,.3);}
+.bdg.reloc{color:#5eead4;background:rgba(94,234,212,.1);border-color:rgba(94,234,212,.35);}
+.tbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-left:8px;padding:0 6px;border-radius:999px;background:#ff7d99;color:#fff;font-size:10px;font-weight:700;animation:pulseb 2s ease-in-out infinite;}
+.rl{display:flex;flex-direction:column;gap:12px;margin-top:12px;}
+.rl .it{position:relative;padding:16px 18px;border-radius:18px;background:rgba(94,234,212,.05);border:1px solid rgba(94,234,212,.3);display:flex;flex-direction:column;gap:10px;opacity:0;animation:rise .6s var(--ease) forwards;animation-delay:calc(var(--i) * 80ms);overflow:hidden;}
+.rl .it::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#5eead4;box-shadow:0 0 16px #5eead4;}
+.rl .it.done{border-color:rgba(126,232,199,.45);background:rgba(126,232,199,.06);}
+.rl .q{font-size:12.5px;font-weight:600;color:#bff5ea;line-height:1.55;}
+.rl .q code{font-family:var(--mono);color:#fff;background:rgba(255,255,255,.1);padding:2px 8px;border-radius:8px;}
 .bdg.rak{color:var(--blue);background:rgba(122,162,255,.1);border-color:rgba(122,162,255,.3);}
 #toasts{position:fixed;top:70px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:380px;}
 .toast{padding:13px 16px;border-radius:14px;background:rgba(32,24,10,.96);border:1px solid rgba(255,203,138,.5);color:#ffdcae;font-size:12px;line-height:1.55;box-shadow:0 16px 38px -10px rgba(0,0,0,.75);animation:tin .5s var(--ease);}
@@ -533,12 +541,12 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
             <div class="waffle" id="waffle"></div>
             <div class="wf-num"><span id="o-num">0</span><small>%</small></div>
             <div class="g-state none" id="o-state" style="margin-top:12px"><i></i><span>Menunggu data</span></div>
-            <div class="legend" style="justify-content:center;margin-top:12px"><span><i style="background:#7ee8c7"></i>Transit selesai</span><span><i style="background:#7aa2ff"></i>Sudah di rak</span><span><i style="background:#ff7d99"></i>Belum diinput</span></div>
+            <div class="legend" style="justify-content:center;margin-top:12px"><span><i style="background:#7ee8c7"></i>Transit selesai</span><span><i style="background:#7aa2ff"></i>Sudah di rak / relokasi</span><span><i style="background:#ff7d99"></i>Belum diinput</span></div>
           </div>
           <div class="kpis">
             <div class="glass kpi t-all rise" style="--d:3"><div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div><div class="k-l">Voucher dari WMS</div><div class="k-n" id="o-total">0</div><div class="k-s" id="o-total-s"></div><div class="k-bar"><i style="width:100%;background:linear-gradient(90deg,#6f8dff,#9db6ff)"></i></div></div>
             <div class="glass kpi t-ok rise" style="--d:4"><div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div><div class="k-l">Transit selesai</div><div class="k-n" id="o-tr" style="color:var(--mint)">0</div><div class="k-s">Operator produksi sudah input</div><div class="k-bar"><i id="ob-tr" style="width:0;background:linear-gradient(90deg,#3fcf9f,#7ee8c7)"></i></div></div>
-            <div class="glass kpi t-all rise" style="--d:5"><div class="ico" style="color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div><div class="k-l">Sudah di rak</div><div class="k-n" id="o-rk" style="color:var(--blue)">0</div><div class="k-s">Langsung disusun juru susun</div><div class="k-bar"><i id="ob-rk" style="width:0;background:linear-gradient(90deg,#6f8dff,#9db6ff)"></i></div></div>
+            <div class="glass kpi t-all rise" style="--d:5"><div class="ico" style="color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div><div class="k-l">Sudah di rak / relokasi</div><div class="k-n" id="o-rk" style="color:var(--blue)">0</div><div class="k-s" id="o-rk-s">Langsung disusun juru susun</div><div class="k-bar"><i id="ob-rk" style="width:0;background:linear-gradient(90deg,#6f8dff,#9db6ff)"></i></div></div>
             <div class="glass kpi t-bad rise" style="--d:6"><div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg></div><div class="k-l">Belum diinput</div><div class="k-n" id="o-bl" style="color:var(--rose)">0</div><div class="k-s" id="o-bl-s"></div><div class="k-bar"><i id="ob-bl" style="width:0;background:linear-gradient(90deg,#ff93a8,#c8a8ff)"></i></div></div>
           </div>
         </div>
@@ -546,9 +554,10 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
           <div class="glass pad rise" style="--d:3"><div class="sect-t"><span>Kepatuhan per tanggal</span><small>Klik titik untuk membuka tanggal</small></div><div class="chartbox" id="lolli"></div></div>
           <div class="glass pad rise" style="--d:4"><div class="sect-t"><span>Kepatuhan per item</span></div><div id="ibars" style="margin-top:10px"></div></div>
         </div>
+        <div class="glass pad rise" id="relocCard" style="--d:4" hidden><div class="sect-t"><span>Konfirmasi relokasi</span><small>Barang dari area transit yang masuk lokasi C-FITLK2 / C-FITLKL</small></div><div class="rl" id="relocList"></div></div>
         <div class="glass pad rise" style="--d:5"><div class="sect-t"><span>Voucher belum diinput</span><small>Operator produksi belum menginput di WMS</small></div><div id="icardsO" style="margin-top:12px"></div></div>
         <div class="glass pad rise" style="--d:6"><div class="sect-t"><span id="tblO-title">Rincian voucher</span></div>
-          <div class="tbl-tools" style="margin-top:10px"><select class="sel" id="tfO" onchange="onTfO(this.value)"><option value="all">Semua status</option><option value="transit">Transit selesai</option><option value="rak">Sudah di rak</option><option value="belum">Belum diinput</option></select><input class="inp" id="qO" type="search" placeholder="Cari voucher, item, PIC" oninput="onSearchO(this.value)"></div>
+          <div class="tbl-tools" style="margin-top:10px"><select class="sel" id="tfO" onchange="onTfO(this.value)"><option value="all">Semua status</option><option value="transit">Transit selesai</option><option value="rak">Sudah di rak</option><option value="reloc">Sudah direlokasi</option><option value="belum">Belum diinput</option></select><input class="inp" id="qO" type="search" placeholder="Cari voucher, item, PIC" oninput="onSearchO(this.value)"></div>
           <div class="tbl-wrap"><table id="tblO"></table></div><div style="text-align:center"><button class="btn more" id="moreO" onclick="moreRowsO()" hidden>Tampilkan lebih banyak</button></div></div>
       </div>
 
@@ -556,6 +565,7 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
         <li><b>Rak yang dipakai</b>: <code>I-xx-01</code> dan <code>J-xx-01</code>. Rak yang berisi nama item = <b>area transit</b>. Hanya item PIPE PPR Kelen.</li>
         <li><b>Juru susun</b>: admin mencocokkan kertas juru lokasi (voucher, item, qty, rak) dengan data WMS. Beda rak, qty, atau item = <b>tidak sesuai</b> (keterangan otomatis). Setelah dikoreksi, tandai <b>selesai</b> dan jawab apakah sudah di-adjustment.</li>
         <li><b>Operator produksi</b>: voucher dari master WMS (Akurasi QAD vs WMS) yang sudah ada di data susun dengan rak transit = telah menyelesaikan inputan area transit. Tidak ada di data susun = belum menginput di WMS.</li>
+        <li><b>Relokasi</b>: voucher yang sebelumnya di area transit lalu masuk rak I/J otomatis berstatus <b>Sudah direlokasi</b>. Untuk lokasi <code>C-FITLK2</code> / <code>C-FITLKL</code>, sistem menanyakan konfirmasi relokasi lebih dulu.</li>
         <li>Upload dobel (voucher + tanggal + rak + qty sama) dibuang otomatis.</li></ul></details>
     </div>
   </div>
@@ -564,7 +574,7 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
 <div id="tip"></div><div id="toasts" aria-live="polite"></div>
 
 <script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
-<script src="./assets/js/susun-core.js?v=20261029g"></script>
+<script src="./assets/js/susun-core.js?v=20261030a"></script>
 <script>
 (function(){
 'use strict';
@@ -634,11 +644,13 @@ function load(){
     if (!S.months.length) { show('empty', true); fillMonths(); return; }
     if (!S.month || S.months.indexOf(S.month) === -1) S.month = S.months[S.months.length - 1];
     show('app', true); fillMonths(); positionInd(); renderAll();
+    var pr = relPending().length; if (pr) toast('🔁 <b>' + pr + ' barang</b> yang sebelumnya di area transit masuk ke lokasi C-FITLK2 / C-FITLKL.<br>Konfirmasi relokasi di tab <b>Operator Produksi</b>.', '', 12000);
   }).catch(function(e){ fail(friendly(e)); });
 }
 function compute(){
   S.A = K.analyzeSusun(S.susun.master, S.susun.cek);
-  S.O = K.analyzeOperator(S.wms, S.susun.master);
+  S.O = K.analyzeOperator(S.wms, S.susun.master, S.susun.cek);
+  S.R = K.relocCandidates(S.susun.master, S.susun.cek);
   var m = {}; S.A.months.concat(S.O.months).forEach(function(x){ m[x] = 1; }); S.months = Object.keys(m).sort();
 }
 function fail(m){ $('btn-reload').disabled = false; show('loader', false); show('app', false); var b = $('errbox'); b.textContent = m; b.hidden = false; }
@@ -669,7 +681,8 @@ function periodLabel(day){ return day === 'all' ? C.monLabel(S.month) + ' · sem
 
 function renderAll(){
   if (S.tab === 'susun') { headA(); railA(); heroA(); funnel(); diverging(); rackMap(); issuesA(); tableA(); }
-  else { headO(); railO(); heroO(); lollipop(); itemBars(); issuesO(); tableO(); }
+  else { headO(); railO(); heroO(); lollipop(); itemBars(); relocCard(); issuesO(); tableO(); }
+  tabBadge();
 }
 
 /* ───── rail ───── */
@@ -798,20 +811,20 @@ window.moreRowsA = function(){ S.showA += 100; tableA(); };
 function headO(){
   var s = K.sumOperator(scopeO());
   $('hd-title').textContent = !s.total ? (S.wmsErr ? 'Data master WMS tidak tersedia' : 'Belum ada voucher dari WMS') : s.belum ? fmt(s.belum) + ' voucher belum diinput operator' : 'Operator produksi patuh menginput di WMS';
-  $('hd-sub').textContent = !s.total ? (S.wmsErr || 'Upload master WMS di menu Akurasi QAD vs WMS agar voucher bisa dibandingkan dengan data susun.') : 'Dari ' + fmt(s.total) + ' voucher WMS pada ' + periodLabel(S.dayO).toLowerCase() + ': ' + fmt(s.transit) + ' sudah diinput di area transit, ' + fmt(s.rak) + ' sudah disusun ke rak, ' + fmt(s.belum) + ' belum diinput.';
+  $('hd-sub').textContent = !s.total ? (S.wmsErr || 'Upload master WMS di menu Akurasi QAD vs WMS agar voucher bisa dibandingkan dengan data susun.') : 'Dari ' + fmt(s.total) + ' voucher WMS pada ' + periodLabel(S.dayO).toLowerCase() + ': ' + fmt(s.transit) + ' sudah diinput di area transit, ' + fmt(s.rak + s.reloc) + ' sudah di rak/relokasi, ' + fmt(s.belum) + ' belum diinput.';
   $('hd-pill').innerHTML = '<span class="dot" style="background:' + (s.belum ? '#ff93a8' : '#7ee8c7') + ';box-shadow:0 0 10px ' + (s.belum ? '#ff93a8' : '#7ee8c7') + '"></span>Periode <b>' + esc(periodLabel(S.dayO)) + '</b>';
 }
 function heroO(){
   var s = K.sumOperator(scopeO()), T = s.total;
-  var cells = [], per = Math.max(1, Math.ceil(T / 400)), a = Math.round(s.transit / per), b = Math.round(s.rak / per), c = Math.max(0, Math.ceil(T / per) - a - b);
+  var cells = [], per = Math.max(1, Math.ceil(T / 400)), a = Math.round(s.transit / per), b = Math.round((s.rak + s.reloc) / per), c = Math.max(0, Math.ceil(T / per) - a - b);
   for (var i = 0; i < a; i++) cells.push('t'); for (i = 0; i < b; i++) cells.push('r'); for (i = 0; i < c; i++) cells.push('b');
   $('waffle').innerHTML = cells.map(function(k, i){ return '<i class="' + k + '" style="--i:' + Math.min(i, 120) + '"></i>'; }).join('') || '<div style="grid-column:1/-1;color:var(--txt3);font-size:12px;padding:20px">Belum ada data</div>';
   countTo($('o-num'), s.pct || 0, s.pct != null && s.pct % 1 ? 1 : 0);
   var st = $('o-state'), p = s.pct; st.className = 'g-state ' + (p == null ? 'none' : p >= 95 ? 'good' : p >= 85 ? 'mid' : 'bad'); st.querySelector('span').textContent = p == null ? 'Menunggu data' : p >= 99.95 ? 'Sempurna' : p >= 95 ? 'Sangat baik' : p >= 85 ? 'Perlu perhatian' : 'Kritis';
-  countTo($('o-total'), T); countTo($('o-tr'), s.transit); countTo($('o-rk'), s.rak); countTo($('o-bl'), s.belum);
+  countTo($('o-total'), T); countTo($('o-tr'), s.transit); countTo($('o-rk'), s.rak + s.reloc); $('o-rk-s').textContent = s.reloc ? fmt(s.reloc) + ' sudah direlokasi · ' + fmt(s.rak) + ' langsung di rak' : 'Langsung disusun juru susun'; countTo($('o-bl'), s.belum);
   $('o-total-s').textContent = T ? 'Master WMS (Akurasi QAD vs WMS)' : '';
   $('o-bl-s').textContent = s.belum ? 'Operator belum menginput di WMS' : 'Semua voucher sudah diinput';
-  setBar('ob-tr', T ? s.transit / T * 100 : 0); setBar('ob-rk', T ? s.rak / T * 100 : 0); setBar('ob-bl', T ? s.belum / T * 100 : 0);
+  setBar('ob-tr', T ? s.transit / T * 100 : 0); setBar('ob-rk', T ? (s.rak + s.reloc) / T * 100 : 0); setBar('ob-bl', T ? s.belum / T * 100 : 0);
 }
 function lollipop(){
   var ml = monO(), ds = S.O.dates.filter(function(d){ return d.slice(0, 7) === S.month; });
@@ -829,7 +842,7 @@ function lollipop(){
 }
 function itemBars(){
   var m = {}, ord = [];
-  scopeO().forEach(function(x){ var o = m[x.i]; if (!o) { o = m[x.i] = { n: x.i, t: 0, r: 0, b: 0, T: 0 }; ord.push(x.i); } o.T++; if (x.st === 'transit') o.t++; else if (x.st === 'rak') o.r++; else o.b++; });
+  scopeO().forEach(function(x){ var o = m[x.i]; if (!o) { o = m[x.i] = { n: x.i, t: 0, r: 0, b: 0, T: 0 }; ord.push(x.i); } o.T++; if (x.st === 'transit') o.t++; else if (x.st === 'rak' || x.st === 'reloc') o.r++; else o.b++; });
   $('ibars').innerHTML = ord.sort().map(function(k, i){
     var o = m[k]; return '<div class="ibar" style="--i:' + i + '"><div class="nm">' + esc(K.fullName(k)) + '</div><div class="stk"><i style="width:' + o.t / o.T * 100 + '%;background:linear-gradient(90deg,#3fcf9f,#7ee8c7)"></i><i style="width:' + o.r / o.T * 100 + '%;background:linear-gradient(90deg,#6f8dff,#9db6ff)"></i><i style="width:' + o.b / o.T * 100 + '%;background:linear-gradient(90deg,#ff7d99,#ff93a8)"></i></div><div class="pc">' + pct((o.t + o.r) / o.T * 100) + '</div></div>';
   }).join('') || '<div style="color:var(--txt3);font-size:12px">Tidak ada data.</div>';
@@ -839,7 +852,7 @@ function issuesO(){
   if (!bad.length) { $('icardsO').innerHTML = '<div class="allgood"><svg width="84" height="84" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle class="ring" cx="32" cy="32" r="25" stroke="#7ee8c7" stroke-width="3" style="filter:drop-shadow(0 0 8px #7ee8c7)"/><path class="tick" d="M21 33l8 8 15-17" stroke="#7ee8c7" stroke-width="4"/></svg><b>Semua voucher sudah diinput</b><span>Operator produksi telah menginput seluruh voucher di WMS.</span></div>'; return; }
   $('icardsO').innerHTML = '<div class="icards">' + bad.slice(0, 24).map(function(x, i){ return '<div class="ic" style="--c:#ff93a8;--i:' + i + '"><div class="h" style="color:#ff93a8">' + ICON_BAD + 'Belum diinput di WMS</div><p>' + esc(x.note) + '.</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">Voucher <b>' + esc(x.v) + '</b></span><span class="tag">' + esc(K.fullName(x.i)) + '</span><span class="tag">Qty <b>' + fmt(x.q) + '</b></span></div></div>'; }).join('') + '</div>' + (bad.length > 24 ? '<div style="text-align:center;color:var(--txt3);font-size:11px;margin-top:10px">+' + (bad.length - 24) + ' lainnya, lihat tabel di bawah</div>' : '');
 }
-var STO = { transit: 'Transit selesai', rak: 'Sudah di rak', belum: 'Belum diinput' };
+var STO = { transit: 'Transit selesai', rak: 'Sudah di rak', reloc: 'Sudah direlokasi', belum: 'Belum diinput' };
 function filteredO(){
   var q = S.qO.trim().toLowerCase();
   return scopeO().filter(function(x){ if (S.tfO !== 'all' && x.st !== S.tfO) return false; if (q && (x.v + ' ' + x.i + ' ' + x.p).toLowerCase().indexOf(q) === -1) return false; return true; });
@@ -855,6 +868,32 @@ function tableO(){
 window.onTfO = function(v){ S.tfO = v; S.showO = 80; tableO(); };
 window.onSearchO = function(v){ S.qO = v; S.showO = 80; tableO(); };
 window.moreRowsO = function(){ S.showO += 100; tableO(); };
+
+/* ───── konfirmasi relokasi (transit -> lokasi C-FITLK2 / C-FITLKL) ───── */
+function relPending(){ return (S.R || []).filter(function(x){ return x.ans !== 'ya'; }); }
+function tabBadge(){
+  var b = document.querySelector('#tabs button[data-t="op"]'); if (!b) return;
+  var n = relPending().length; b.innerHTML = 'Operator Produksi · Area Transit' + (n ? '<span class="tbadge">' + n + '</span>' : ''); positionInd();
+}
+function relocCard(){
+  var list = (S.R || []).filter(function(x){ return x.lt.slice(0, 7) === S.month; }).sort(function(a, b){ return ((a.ans === 'ya') - (b.ans === 'ya')) || (a.lt < b.lt ? -1 : 1); });
+  show('relocCard', list.length > 0); if (!list.length) return;
+  $('relocList').innerHTML = list.map(function(x, i){
+    var kk = esc(JSON.stringify(x.tv)).replace(/&quot;/g, '&quot;');
+    return '<div class="it' + (x.ans === 'ya' ? ' done' : '') + '" style="--i:' + i + '"><div class="q">Barang ini sebelumnya di area transit, apakah telah diproses ke relokasi ke rak <code>' + esc(x.rack) + '</code>?</div>' +
+      '<div class="m" style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag">Voucher transit <b>' + esc(x.tv) + '</b> · ' + esc(C.fmtDate(x.tt)) + '</span><span class="tag">' + esc(K.fullName(x.ti)) + '</span><span class="tag">Qty <b>' + fmt(x.tq) + '</b></span><span class="tag">Masuk ' + esc(x.rack) + ' · voucher <b>' + esc(x.lv) + '</b> · ' + esc(C.fmtDate(x.lt)) + '</span></div>' +
+      '<div class="act">' + (x.ans === 'ya' ? '<span class="adjtag ya">Sudah direlokasi (status operator produksi sudah diganti)</span><button class="mini" onclick="answerReloc(' + kk + ',\'belum\')">Batalkan</button>' :
+        '<button class="mini go" onclick="answerReloc(' + kk + ',\'ya\')">Ya, sudah direlokasi</button><button class="mini warn" onclick="answerReloc(' + kk + ',\'belum\')">Belum</button>' + (x.ans === 'belum' ? '<span class="adjtag belum">Belum direlokasi</span>' : '')) + '</div></div>';
+  }).join('');
+}
+window.answerReloc = function(tv, ans){
+  var x = (S.R || []).filter(function(r){ return r.tv === tv; })[0]; if (!x) return;
+  var rec = { k: x.k, v: x.tv, rw: x.rack, qw: x.tq, rk: x.rack, qk: '', ik: '', st: 'relok', rs: '', sl: ans === 'ya' ? 1 : 0, adj: '' };
+  gs2('saveSusunCek', [JSON.stringify([rec])]).then(function(){
+    S.susun.cek = S.susun.cek.filter(function(c){ return c.k !== rec.k; }).concat([rec]); compute(); renderAll();
+    toast(ans === 'ya' ? '✅ Voucher ' + esc(tv) + ' ditandai <b>sudah direlokasi</b>. Status di Operator Produksi diganti otomatis.' : 'Dicatat: voucher ' + esc(tv) + ' belum direlokasi.', ans === 'ya' ? 'ok' : '', 5000);
+  }).catch(function(e){ toast('❌ ' + esc(friendly(e))); });
+};
 
 /* ───── unduh ───── */
 window.exportXlsx = function(){

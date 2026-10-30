@@ -10445,7 +10445,7 @@ var SH_SUSUN = 'SUSUN_DATA';
 var SH_SUSUN_CEK = 'SUSUN_CEK';
 var SUSUN_RACK_RE = /^[IJ]-\d{1,2}-01(?:-|$)/;
 
-function _suRakOk(rak) { return _wqLolos(rak) || SUSUN_RACK_RE.test(String(rak).toUpperCase().replace(/\s+/g, '')); }
+function _suRakOk(rak) { var k = String(rak).toUpperCase().replace(/\s+/g, ''); return _wqLolos(rak) || SUSUN_RACK_RE.test(k) || /^C-?FITLK[2L]/.test(k); }
 function _suKey(r) { return r[1] + '|' + r[0] + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]; }
 
 function _suSheet(name, head) {
@@ -10524,7 +10524,7 @@ function saveSusunCek(jsonStr) {
     var now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm'), n = 0;
     arr.forEach(function (c) {
       var k = String(c.k || '').trim(); if (!k) return;
-      var st = c.st === 'sesuai' ? 'sesuai' : 'tidak', adj = (c.adj === 'ya' || c.adj === 'belum') ? c.adj : '';
+      var st = (c.st === 'sesuai' || c.st === 'relok') ? c.st : 'tidak', adj = (c.adj === 'ya' || c.adj === 'belum') ? c.adj : '';
       var row = [k, String(c.v || ''), String(c.rw || ''), Number(c.qw) || 0, String(c.rk || '').trim(), c.qk === '' || c.qk == null ? '' : Number(c.qk),
                  String(c.ik || '').trim(), st, String(c.rs || ''), c.sl ? 1 : 0, adj, now];
       if (!map[k]) order.push(k);
@@ -10553,7 +10553,8 @@ function hapusSusunData(kind, dari, sampai) {
     var cs = _suCek(), cur = _suRead(cs, 12), keep;
     if (kind === 'cek') keep = []; else {
       var ada = {}; (sisaM || _suMasterRows()).forEach(function (r) { ada[r[1] + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]] = 1; });
-      keep = cur.filter(function (r) { return ada[String(r[0])]; });          // cek yatim ikut dibuang
+      var vAda = {}; (sisaM || _suMasterRows()).forEach(function (r) { vAda[r[1]] = 1; });
+      keep = cur.filter(function (r) { var k = String(r[0]); return k.indexOf('RELOK|') === 0 ? vAda[String(r[1])] : ada[k]; });   // cek yatim ikut dibuang
     }
     if (kind === 'cek') dihapus = cur.length;
     _suWrite(cs, 12, keep, [1, 2, 3, 5, 7, 8, 9, 11, 12]);
