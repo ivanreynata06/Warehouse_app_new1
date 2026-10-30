@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20261002a"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -548,7 +548,7 @@ function compute(){
   // Peta kunci alasan -> departemen pemilik data (alasan ditulis ke spreadsheet departemennya)
   var dk2 = {};
   allV.concat(allB).forEach(function(r){ dk2['in:' + r.voucher] = r.dept; dk2['bfl:' + r.voucher] = r.dept; });
-  allT.forEach(function(r){ dk2['out:' + (r.key || (r.spm + '|' + r.item + '|' + r.group))] = r.dept; dk2['outspm:' + r.spm] = r.dept; });
+  allT.forEach(function(r){ dk2['out:' + (r.key || (r.spm + '|' + whEsc(r.item)+ '|' + r.group))] = r.dept; dk2['outspm:' + r.spm] = r.dept; });
   S.deptKey = dk2;
   S.resRaw = {
     in:  (vr.length && hasStd) ? C.summarizeIn(vr, stdMap, { tol: S.opts.tol }) : null,
@@ -819,7 +819,7 @@ function renderLane(){
   var items = v.items.filter(function(i){
     if (S.day !== 'all' && i.date !== S.day) return false;
     if (!q) return true;
-    var x = i.v; return (x.item + ' ' + (x.desc || '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
+    var x = i.v; return (x.item + ' ' + whEsc(x.desc|| '') + ' ' + (x.voucher || x.spm || '') + ' ' + (x.group || '')).toLowerCase().indexOf(q) !== -1;
   });
   S._items = items; S._allItems = v.items;
   var okKey = { 'in': 'sesuai', bfl: 'bfl', out: 'full' }[S.lane];
@@ -1271,7 +1271,7 @@ function banner(){
   var el = document.getElementById('src-note'), parts = [];
   var any = S.data.voucher || S.data.bfl || S.data.ter;
   var LBL = { cibitung_fitting_import: 'Import', cibitung_fitting_rucika: 'Rucika' };
-  if (S.me) parts.push('<b>Tampilan petugas serah terima: ' + esc(S.me.pic) + ' (Grup ' + S.me.group + ')</b>. Role: ' + esc((window.WH_SESSION && (window.WH_SESSION.roleLabel || window.WH_SESSION.role)) || '-') + '. Hanya masalah pada shift terkait Anda yang ditampilkan.');
+  if (S.me) parts.push('<b>Tampilan petugas serah terima: ' + esc(S.me.pic) + ' (Grup ' + whEsc(S.me.group)+ ')</b>. Role: ' + esc((window.WH_SESSION && (window.WH_SESSION.roleLabel || window.WH_SESSION.role)) || '-') + '. Hanya masalah pada shift terkait Anda yang ditampilkan.');
   else parts.push('Data gabungan <b>Fitting Import + Fitting Rucika</b>' + (S.deptSel ? ', difilter: ' + esc(LBL[S.deptSel]) : '') + '. Upload tetap terpisah per departemen.');
   if (S.warn) parts.push('<b>Data dari cache perangkat ini.</b> ' + esc(S.warn) + ' Data di PC lain bisa berbeda sampai backend aktif.');
   if (any) {

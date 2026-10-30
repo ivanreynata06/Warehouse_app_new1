@@ -2,10 +2,10 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="./assets/js/so-loader.js?v=20261017f"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
@@ -604,7 +604,7 @@ function diagnosaFitting(){
       if (dilewati.length){
         teks += 'BARIS YANG DILEWATI (tidak ikut dihitung):\n';
         teks += dilewati.map(function(r){
-          return '  Baris '+r.baris+' | Tanggal: '+r.tanggalKebaca+' | PIC mentah: "'+r.picMentah+'" | PIC dipakai: "'+r.picDipakai+'" | Tonase: '+r.tonase+' | Alasan: '+r.alasanLewat;
+          return '  Baris '+r.baris+' | Tanggal: '+r.tanggalKebaca+' | PIC mentah: "'+whEsc(r.picMentah)+'" | PIC dipakai: "'+whEsc(r.picDipakai)+'" | Tonase: '+r.tonase+' | Alasan: '+r.alasanLewat;
         }).join('\n');
       } else {
         teks += 'Semua baris ikut terhitung -- tidak ada yang dilewati.';

@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
@@ -3522,12 +3522,12 @@ function renderAnomaliTable(list){
     var warna = a.tipe==='lebih_lama' ? 'var(--accent-red)' : 'var(--accent-orange)';
     return '<tr>'+
       '<td>'+a.tanggal+'</td>'+
-      '<td>'+a.nopol+'</td>'+
-      '<td>'+a.jenisKendaraan+'</td>'+
+      '<td>'+whEsc(a.nopol)+'</td>'+
+      '<td>'+whEsc(a.jenisKendaraan)+'</td>'+
       '<td>'+a.waktuMulai+'</td>'+
       '<td>'+a.waktuSelesai+'</td>'+
       '<td style="color:'+warna+';font-weight:700;">'+a.durasiMenit+' mnt</td>'+
-      '<td style="font-size:9.5px;color:var(--text-muted);">'+a.keterangan+'</td>'+
+      '<td style="font-size:9.5px;color:var(--text-muted);">'+whEsc(a.keterangan)+'</td>'+
     '</tr>';
   }).join('');
 }
@@ -3542,8 +3542,8 @@ function renderPotensiLemburTable(list){
     var selisihTxt = (jam>0? jam+'j ':'') + mnt+'mnt setelah jam 16:00';
     return '<tr>'+
       '<td>'+p.tanggal+'</td>'+
-      '<td>'+p.nopol+'</td>'+
-      '<td>'+p.jenisKendaraan+'</td>'+
+      '<td>'+whEsc(p.nopol)+'</td>'+
+      '<td>'+whEsc(p.jenisKendaraan)+'</td>'+
       '<td style="color:var(--accent-red);font-weight:700;">'+p.waktuMulai+'</td>'+
       '<td style="font-size:9.5px;color:var(--text-muted);">'+selisihTxt+'</td>'+
     '</tr>';
@@ -3754,7 +3754,7 @@ function syncJadwalHariIni(){
       // muat Fitting sendiri (numpang di kendaraan Pipa).
       if (res.ikutPipa && res.ikutPipa.length){
         setTimeout(function(){
-          var daftar = res.ikutPipa.map(function(x){ return x.spm+(x.nama?' ('+x.nama+')':''); }).join(', ');
+          var daftar = res.ikutPipa.map(function(x){ return x.spm+(x.nama?' ('+whEsc(x.nama)+')':''); }).join(', ');
           showToast('⚠️ '+res.ikutPipa.length+' SPM Fitting "IKUT PIPA" -- TIDAK perlu muat terpisah: '+daftar,'warning',7000);
         }, 900);
       }

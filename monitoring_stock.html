@@ -2,10 +2,10 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
@@ -1480,7 +1480,7 @@ function renderLine(svgId,lpId,apId,lfId,afId,datesId,trend) {
     document.getElementById(lpId).setAttribute('d',`M 0 ${H/2} L ${W} ${H/2}`);
     document.getElementById(lfId).setAttribute('d',`M 0 ${H*.7} L ${W} ${H*.7}`);
     [apId,afId].forEach(clr);
-    document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${p.label}</span>`).join('');
+    document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${whEsc(p.label)}</span>`).join('');
     return;
   }
   const maxP=Math.max(...pts.map(p=>p.pipa||0),1);
@@ -1494,7 +1494,7 @@ function renderLine(svgId,lpId,apId,lfId,afId,datesId,trend) {
   document.getElementById(apId).setAttribute('d',mkArea(yP));
   document.getElementById(lfId).setAttribute('d',mkLine(yF));
   document.getElementById(afId).setAttribute('d',mkArea(yF));
-  document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${p.label}</span>`).join('');
+  document.getElementById(datesId).innerHTML=pts.map(p=>`<span>${whEsc(p.label)}</span>`).join('');
 }
 
 // ================================================================
@@ -1527,8 +1527,8 @@ function renderFM(jenis) {
             <i data-lucide="${icon}" style="width:11px;color:${clr}"></i>
           </div>
           <div style="min-width:0;">
-            <div class="prod-name" title="${String(descDisplay).replace(/"/g, '&quot;')}">${descDisplay}</div>
-            <div class="prod-code" style="font-family:monospace;">${r.kode}</div>
+            <div class="prod-name" title="${whEsc(descDisplay)}">${whEsc(descDisplay)}</div>
+            <div class="prod-code" style="font-family:monospace;">${whEsc(r.kode)}</div>
           </div>
         </div>
       </td>

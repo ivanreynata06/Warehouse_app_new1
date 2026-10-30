@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="./assets/js/so-loader.js?v=20261017f"></script>
 <link rel="preconnect" href="https://script.google.com">
@@ -12,7 +12,7 @@
 <title>Monitoring Stock Opname</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261029f">
+<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261029g">
 <style>
 :root{--bg:#0d0d1a;--bg2:#12121f;--card:#18182a;--card2:#1e1e30;--bd:#252538;--bd2:#2e2e48;
 --txt:#e8eaf0;--txt2:#9da3b8;--txt3:#6b7280;--green:#10b981;--blue:#3b82f6;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--mono:'JetBrains Mono',monospace;--sw:200px}
@@ -627,7 +627,7 @@ function bukaLembar(id){
   api('soGetLembarDetail',id).then(function(r){
     if(S.curId!==id){S.draft={};S.recheck={};S.curId=id}
     S.cur=r;document.getElementById('isiCard').style.display='block';
-    document.getElementById('isiTitle').innerHTML=esc(r.lembar.group+' · '+r.lembar.pic+' · '+r.lembar.mulai+' s/d '+r.lembar.akhir)+(r.lembar.dibuka?' <span class="dlock o">🔓 DIBUKA UNTUK EDIT</span>':(r.lembar.terkunci?' <span class="chip c-idle">🔒 TERKUNCI</span>':''));renderIsi();
+    document.getElementById('isiTitle').innerHTML=esc(r.lembar.group+' · '+whEsc(r.lembar.pic)+' · '+r.lembar.mulai+' s/d '+r.lembar.akhir)+(r.lembar.dibuka?' <span class="dlock o">🔓 DIBUKA UNTUK EDIT</span>':(r.lembar.terkunci?' <span class="chip c-idle">🔒 TERKUNCI</span>':''));renderIsi();
     document.getElementById('isiCard').scrollIntoView({behavior:'smooth'})}).catch(function(e){toast(e.message,true)});
 }
 S.draft={};S.recheck={};
@@ -670,7 +670,7 @@ function tampilSelisih(changed,bad,hist){
     var p=hist[String(c.x.item).toUpperCase()],hc,ht;
     if(!p){hc='none';ht='Belum ada hasil SO sebelumnya untuk item ini.'}
     else if(p.selisih===0){hc='good';ht='<b>SO sebelumnya ('+esc(p.tgl)+') tidak ada masalah</b> — sistem '+fmt(p.sistem)+' = fisik '+fmt(p.fisik)+'. Disarankan hitung ulang sebelum konfirmasi.'}
-    else{hc='';ht='SO sebelumnya ('+esc(p.tgl)+') juga selisih '+fmt(p.selisih)+' (sistem '+fmt(p.sistem)+', fisik '+fmt(p.fisik)+') — status '+(p.status||'-')+'.'}
+    else{hc='';ht='SO sebelumnya ('+esc(p.tgl)+') juga selisih '+fmt(p.selisih)+' (sistem '+fmt(p.sistem)+', fisik '+fmt(p.fisik)+') — status '+whEsc(p.status||'-')+'.'}
     var def=(p&&p.selisih===0)?'cek':'';
     h+='<div class="sc"><div class="sc-top"><b>'+esc(c.x.item)+'</b><span class="muted">'+esc(c.x.desc)+'</span></div>'+
     '<div class="sc-nums"><span>Sistem <b>'+fmt(c.x.sistem)+'</b></span><span>Fisik <b>'+fmt(Number(c.fisik))+'</b></span><span>Selisih <b style="color:var(--red)">'+fmt(c.sel)+'</b></span></div>'+
@@ -933,7 +933,7 @@ function lengkapiModal(id){
       try{
         var rows=qadParseBuffer(e.target.result),hasGrp=rows.some(function(x){return x.grp}),gU=String(l.group).toUpperCase().replace(/\s+/g,'');
         LG.items=rows.filter(function(x){return (!hasGrp||x.grp.replace(/\s+/g,'')===gU)&&x.sistem>0}).map(function(x){return {item:x.item,desc:x.desc,um:x.um,lokasi:x.lokasi,sistem:x.sistem}});
-        if(!LG.items.length) throw new Error('Tidak ada item ber-QTY untuk group '+l.group+' di file ini.');
+        if(!LG.items.length) throw new Error('Tidak ada item ber-QTY untuk group '+whEsc(l.group)+' di file ini.');
         info.textContent='Membaca lembar…';
         api('soGetLembarDetail',id).then(function(r){
           var ex={};r.items.forEach(function(x){ex[String(x.item).toUpperCase()]=x});
@@ -959,7 +959,7 @@ function lengkapiModal(id){
 loadPrintCfg();
 loadAll();
 </script>
-<script src="./assets/js/rakwms.js?v=20261029f"></script>
-<script src="./assets/js/rakwms-ui.js?v=20261029f"></script>
+<script src="./assets/js/rakwms.js?v=20261029g"></script>
+<script src="./assets/js/rakwms-ui.js?v=20261029g"></script>
 </body>
 </html>

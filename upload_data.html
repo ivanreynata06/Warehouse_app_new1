@@ -2,10 +2,10 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
@@ -887,7 +887,7 @@ function tampilkanWarningTakTerkategori(tab, items){
   if (!items || !items.length){ el.style.display = 'none'; return; }
   var totalBerat = items.reduce(function(a,it){ return a+it.totalBerat; }, 0);
   var listHtml = items.slice(0, 10).map(function(it){
-    return '<li>'+it.desc+' — '+it.jumlahBaris+' baris, '+it.totalBerat.toLocaleString('id-ID',{maximumFractionDigits:2})+' kg</li>';
+    return '<li>'+whEsc(it.desc)+' — '+it.jumlahBaris+' baris, '+it.totalBerat.toLocaleString('id-ID',{maximumFractionDigits:2})+' kg</li>';
   }).join('');
   var lebih = items.length > 10 ? '<li>...dan '+(items.length-10)+' item lain</li>' : '';
   el.innerHTML = '⚠️ <b>'+items.length+' item tidak masuk kategori Pipa PPR / Fitting PPR</b> (total '+
@@ -1543,7 +1543,7 @@ window.AkurasiUpload = (function(){
                    '<br><span style="color:var(--txt3);">' + esc(m.at || '') + (m.by ? ' oleh ' + esc(m.by) : '') + '</span>'
                  : '<span style="color:var(--txt3);">Belum ada data</span>';
       return '<div class="card"><div class="card-header"><div class="card-title">' + S.TITLES[sp.k] + '</div></div><div class="card-body">' +
-        '<div class="col-ref">' + sp.desc + '</div><div class="col-ref" style="margin-top:6px;">' + st + '</div>' +
+        '<div class="col-ref">' + whEsc(sp.desc)+ '</div><div class="col-ref" style="margin-top:6px;">' + st + '</div>' +
         (sp.k === 'ter' ? '<div class="col-ref" style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b>Tanggal kirim</b> <input type="date" id="akurasi-date" value="' + esc(dateVal()) + '" onchange="AkurasiUpload.setDate(this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--txt);font-size:11.5px;"> <span style="color:var(--txt3);">berlaku untuk semua baris di file yang diupload</span></div>' : '') +
         '<div class="btn-row" style="margin-top:10px;">' +
         (sp.k === 'std' && d && !(d.desc && Object.keys(d.desc).length) ? '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="AkurasiUpload.pick(\'std\')">Lengkapi deskripsi item</button><span style="font-size:11px;color:var(--txt3);">Standar lama tetap, hanya deskripsi (kolom DESC) yang ditambahkan.</span>'

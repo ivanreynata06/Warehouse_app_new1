@@ -121,7 +121,7 @@
   // URL), gampang melebihi batas panjang URL browser (~8000 karakter)
   // dan request langsung gagal total ("Failed to fetch") sebelum sempat
   // sampai ke server. Fungsi-fungsi ini SELALU dikirim lewat POST body.
-  var LARGE_PAYLOAD_FUNCTIONS = { saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1, uploadTlSignature: 1, adminUploadSplSignature: 1, soBuatLembar: 1, soSimpanIsi: 1, soGetRiwayatItems: 1, soLengkapiLembar: 1, soSimpanKeterangan: 1, soCloseSelisih: 1,
+  var LARGE_PAYLOAD_FUNCTIONS = { saveRakWmsData: 1, saveAkurasiData: 1, simpanAkurasiAlasan: 1, savePhoto: 1, appendStockData: 1, appendOutboundData: 1, appendInboundData: 1, manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1, uploadTlSignature: 1, adminUploadSplSignature: 1, soBuatLembar: 1, soSimpanIsi: 1, soGetRiwayatItems: 1, soLengkapiLembar: 1, soSimpanKeterangan: 1, soCloseSelisih: 1,
     // Akurasi QAD vs WMS & Kepatuhan PIC WMS: payload JSON ribuan baris -> WAJIB POST
     // (lewat GET query string melebihi batas panjang URL -> "Failed to fetch")
     saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1,
@@ -149,8 +149,20 @@
     });
   }
 
+  function getToken() { try { return sessionStorage.getItem('wh_token') || ''; } catch (e) { return ''; } }
+  var _authRedirecting = false;
+  // Backend (mode enforce) menolak token kosong/kedaluwarsa -> kembali ke halaman login (sekali saja)
+  function cekAuth(res) {
+    if (res && res.authError === true && !_authRedirecting) {
+      _authRedirecting = true;
+      try { sessionStorage.clear(); } catch (e) {}
+      try { alert('Sesi login habis / tidak valid. Silakan login ulang.'); } catch (e) {}
+      try { (window.top || window).location.href = './login.html'; } catch (e) { window.location.href = './login.html'; }
+    }
+    return res;
+  }
   function callBackend(fnName, args) {
-    var payload = { action: fnName, params: args || [], workspace: getWorkspace() };
+    var payload = { action: fnName, params: args || [], workspace: getWorkspace(), token: getToken() };
 
     // Content-Type "text/plain" sengaja dipakai supaya browser menganggap
     // ini "simple request" dan TIDAK mengirim preflight OPTIONS (Apps
@@ -167,22 +179,23 @@
       // timeout wajar saja. manualSyncNow beda: itu menghitung ulang
       // dashboard, jadi tetap dikasih waktu panjang.
       var LONG_TIMEOUT_FUNCTIONS = { manualSyncNow: 1, clearStockDataForDate: 1, hapusDataUploadByTanggal: 1 };
-      var MID_TIMEOUT_FUNCTIONS = { saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1 }; // baca+tulis ulang seluruh sheet
+      var MID_TIMEOUT_FUNCTIONS = { saveRakWmsData: 1, saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1 }; // baca+tulis ulang seluruh sheet
       var timeoutMs = LONG_TIMEOUT_FUNCTIONS[fnName] ? 270000 : (MID_TIMEOUT_FUNCTIONS[fnName] ? 150000 : 60000);
       return fetchWithTimeout(BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }, timeoutMs).then(parseJsonSafe);
+      }, timeoutMs).then(parseJsonSafe).then(cekAuth);
     }
 
     var sep = BASE_URL.indexOf('?') === -1 ? '?' : '&';
     var url = BASE_URL + sep +
       'action=' + encodeURIComponent(fnName) +
       '&params=' + encodeURIComponent(JSON.stringify(args || [])) +
-      '&workspace=' + encodeURIComponent(getWorkspace());
+      '&workspace=' + encodeURIComponent(getWorkspace()) +
+      '&token=' + encodeURIComponent(getToken());
 
-    return fetchWithTimeout(url, { method: 'GET' }, 45000).then(parseJsonSafe);
+    return fetchWithTimeout(url, { method: 'GET' }, 45000).then(parseJsonSafe).then(cekAuth);
   }
 
   function makeRunner() {

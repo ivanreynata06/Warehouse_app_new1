@@ -18,7 +18,11 @@
 // keamanan supaya orang tidak bisa memanggil fungsi internal
 // sembarangan lewat URL.
 // ============================================================
+var SH_RAKWMS = 'RAKWMS_DATA';
 var API_FUNCTIONS = {
+  getRakWmsData           : getRakWmsData,
+  saveRakWmsData          : saveRakWmsData,
+  hapusRakWmsData         : hapusRakWmsData,
   getGroupList          : getGroupList,
   getDashboardData       : getDashboardData,
   getOutboundData         : getOutboundData,
@@ -189,6 +193,82 @@ var CACHE_TTL_OVERRIDE = {
 };
 var CACHE_TTL_DEFAULT = 90;
 
+// ================================================================
+//  AUTENTIKASI SESI (token HMAC)  --  menutup celah "siapa pun yang tahu URL /exec bisa memanggil fungsi"
+// ----------------------------------------------------------------
+//  - loginUser() sukses -> mengembalikan `token` (ditandatangani HMAC-SHA256, berlaku 12 jam, terikat workspace + NIK + role).
+//  - Frontend (api-shim.js) menyertakan token di tiap request. Backend memverifikasi sebelum menjalankan fungsi.
+//  - Fungsi yang parameter pertamanya `actorNik` WAJIB cocok dengan NIK di token (tidak bisa memalsukan Super Admin).
+//  - Mode (Script Properties > AUTH_MODE):  'log' (default, hanya mencatat pelanggaran, TIDAK memblokir)
+//                                           'enforce' (blokir)   |   'off'
+//    Jalankan aktifkanAuthEnforce() dari editor Apps Script setelah memastikan login & semua menu normal.
+//    Darurat: matikanAuth() (kembali ke 'off').
+// ================================================================
+var AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+var AUTH_PUBLIC_ACTIONS = { loginUser: 1, getAvailablePlantsForLogin: 1 };
+var AUTH_ACTOR_BOUND = {
+  auditProduktivitasFTE: 1, getSupabaseStorageStats: 1, setSupabaseDbLimitMB: 1, bersihkanPengajuanDitolakLama: 1, getAkunList: 1,
+  adminTambahUser: 1, adminResetPassword: 1, adminSetAktif: 1, adminEditUser: 1, adminHapusUser: 1, adminSetFonnteToken: 1, adminGetFonnteStatus: 1,
+  adminSetFonnteApproverWa: 1, adminSetFonnteTokenUmum: 1, adminGetKaryawanMaster: 1, adminSimpanKaryawan: 1, adminImporKaryawanDariAkun: 1,
+  adminTesKirimFonnte: 1, adminGetKeywordKategoriTambahan: 1, adminSetKeywordKategoriTambahan: 1, adminGetTargetProduktivitas: 1, adminSetTargetProduktivitas: 1,
+  getWorkspaceListForAdmin: 1, adminProvisionNewDepartment: 1, adminRepairWorkspaceSheets: 1, adminHapusDepartemen: 1, adminHapusPlant: 1, adminGetMenuConfig: 1,
+  adminSetMenuConfig: 1, adminGetCrossWorkspaceTL: 1, adminSetCrossWorkspaceTL: 1, getPendingApprovals: 1, adminGetSplSignatures: 1, adminUploadSplSignature: 1,
+  adminGetSplJobBagian: 1, adminSetSplJobBagian: 1, adminHapusSplSignature: 1, adminSetSplTtdCutoff: 1, adminSetSplTtdUkuran: 1,
+  adminSetJadwalPengirimanSumber: 1, adminGetJadwalPengirimanSumberStatus: 1
+};
+var CURRENT_AUTH = null;   // diisi handleApiRequest: { w, n, r } bila token valid
+
+function _b64u(bytes) { return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, ''); }
+function _authSecret() {
+  var props = PropertiesService.getScriptProperties(), k = props.getProperty('SESSION_SECRET');
+  if (!k || k.length < 32) { k = Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid(); props.setProperty('SESSION_SECRET', k); }
+  return k;
+}
+function _authSign(str) { return _b64u(Utilities.computeHmacSha256Signature(str, _authSecret())); }
+function _authIssue(workspace, nik, role) {
+  var payload = JSON.stringify({ w: String(workspace), n: String(nik).trim().toUpperCase(), r: String(role || ''), e: Date.now() + AUTH_TOKEN_TTL_MS });
+  var p = _b64u(Utilities.newBlob(payload).getBytes());
+  return 'v1.' + p + '.' + _authSign('v1.' + p);
+}
+function _authVerify(token) {
+  try {
+    var t = String(token || ''), parts = t.split('.');
+    if (parts.length !== 3 || parts[0] !== 'v1') return null;
+    var exp = _authSign('v1.' + parts[1]), got = parts[2];
+    if (exp.length !== got.length) return null;
+    var diff = 0; for (var i = 0; i < exp.length; i++) diff |= exp.charCodeAt(i) ^ got.charCodeAt(i);
+    if (diff !== 0) return null;
+    var pl = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString());
+    if (!pl || !pl.e || pl.e < Date.now()) return null;
+    return pl;
+  } catch (e) { return null; }
+}
+function _authMode() {
+  var m = String(PropertiesService.getScriptProperties().getProperty('AUTH_MODE') || 'log').toLowerCase();
+  return (m === 'enforce' || m === 'off') ? m : 'log';
+}
+// -> { ok:boolean, why:string, who:{w,n,r}|null }
+function _authCheck(action, args, workspaceKey, token) {
+  if (AUTH_PUBLIC_ACTIONS[action]) return { ok: true, why: 'public', who: null };
+  var who = _authVerify(token);
+  if (!who) return { ok: false, why: 'token tidak ada / tidak valid / kedaluwarsa', who: null };
+  if (who.w !== workspaceKey) return { ok: false, why: 'workspace token (' + who.w + ') != workspace request (' + workspaceKey + ')', who: who };
+  if (AUTH_ACTOR_BOUND[action]) {
+    var a = String((args && args[0]) || '').trim().toUpperCase();
+    if (a !== who.n) return { ok: false, why: 'actorNik (' + a + ') != NIK token (' + who.n + ')', who: who };
+  }
+  return { ok: true, why: 'ok', who: who };
+}
+function aktifkanAuthEnforce() { PropertiesService.getScriptProperties().setProperty('AUTH_MODE', 'enforce'); return 'AUTH_MODE = enforce'; }
+function matikanAuth()         { PropertiesService.getScriptProperties().setProperty('AUTH_MODE', 'off');     return 'AUTH_MODE = off'; }
+function modeLogAuth()         { PropertiesService.getScriptProperties().setProperty('AUTH_MODE', 'log');    return 'AUTH_MODE = log'; }
+
+// Batasi tebak-tebakan password: 8x salah per NIK -> kunci 10 menit
+function _loginGagalKey(workspaceKey, nik) { return 'lf_' + workspaceKey + '_' + String(nik).trim().toUpperCase(); }
+function _loginTerkunci(workspaceKey, nik) { try { return Number(CacheService.getScriptCache().get(_loginGagalKey(workspaceKey, nik)) || 0) >= 8; } catch (e) { return false; } }
+function _loginCatatGagal(workspaceKey, nik) { try { var c = CacheService.getScriptCache(), k = _loginGagalKey(workspaceKey, nik); c.put(k, String(Number(c.get(k) || 0) + 1), 600); } catch (e) {} }
+function _loginResetGagal(workspaceKey, nik) { try { CacheService.getScriptCache().remove(_loginGagalKey(workspaceKey, nik)); } catch (e) {} }
+
 function doGet(e) {
   return handleApiRequest(e);
 }
@@ -204,6 +284,7 @@ function handleApiRequest(e) {
     var action = params.action;
     var args   = [];
     var workspace = params.workspace || '';
+    var token = params.token || '';
 
     // Body POST (dipakai savePhoto) dikirim sebagai text/plain berisi
     // JSON {action, params} supaya browser tidak mengirim preflight CORS.
@@ -213,6 +294,7 @@ function handleApiRequest(e) {
         action = body.action || action;
         args   = body.params || [];
         workspace = body.workspace || workspace;
+        token = body.token || token;
       } catch (parseErr) {
         // bukan JSON valid -> abaikan, tetap coba pakai query param di bawah
       }
@@ -230,10 +312,23 @@ function handleApiRequest(e) {
     ACTIVE_WORKSPACE = resolveWorkspaceKey(workspace);
     SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(ACTIVE_WORKSPACE);
 
+    var authBlock = null;
+    CURRENT_AUTH = null;
+    if (action && API_FUNCTIONS.hasOwnProperty(action)) {
+      var ac = _authCheck(action, args, ACTIVE_WORKSPACE, token), mode = _authMode();
+      if (ac.who) CURRENT_AUTH = ac.who;
+      if (!ac.ok) {
+        try { console.warn('[AUTH ' + mode + '] ' + action + ' ditolak: ' + ac.why); } catch (le) {}
+        if (mode === 'enforce') authBlock = { success: false, authError: true, error: 'Sesi tidak valid atau sudah habis. Silakan login ulang.' };
+      }
+    }
+
     if (!action) {
       result = { success: false, error: 'Parameter "action" wajib diisi.' };
     } else if (!API_FUNCTIONS.hasOwnProperty(action)) {
       result = { success: false, error: 'Aksi "' + action + '" tidak dikenali / tidak diizinkan.' };
+    } else if (authBlock) {
+      result = authBlock;
     } else if (CACHEABLE_ACTIONS[action]) {
       result = callWithServerCache(action, args);
     } else {
@@ -5112,12 +5207,15 @@ function loginUser(plant, dept, nik, password) {
     var data = sh.getDataRange().getValues();
     var hash = _hashPassword(password);
     var nikInput = String(nik).trim().toUpperCase();
+    if (_loginTerkunci(workspaceKey, nikInput)) return { success: false, error: 'Terlalu banyak percobaan login gagal. Coba lagi dalam 10 menit.' };
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       if (String(row[0]).trim().toUpperCase() === nikInput && row[4] !== false) {
         if (String(row[3]) === hash) {
-          return { success: true, workspace: workspaceKey, nik: row[0], nama: row[1], role: row[2], menuKeys: _resolveMenuKeysForWorkspace(workspaceKey) };
+          _loginResetGagal(workspaceKey, nikInput);
+          return { success: true, workspace: workspaceKey, nik: row[0], nama: row[1], role: row[2], menuKeys: _resolveMenuKeysForWorkspace(workspaceKey), token: _authIssue(workspaceKey, row[0], row[2]) };
         }
+        _loginCatatGagal(workspaceKey, nikInput);
         return { success: false, error: 'NIK atau kata sandi salah.' };
       }
     }
@@ -10044,6 +10142,86 @@ function _wqTgl(v) {
   }
   return String(v == null ? '' : v).trim();
 }
+
+// ================================================================
+//  AKURASI RAK WMS -- penyimpanan snapshot per user (HANYA kolom terpilih)
+//  WMS: lok, area, rak, kode, nama, onhand | QAD: kode, nama, qty, grp | + input aktual PIC (inputs/manual/cfg)
+//  Kolom lain TIDAK diterima: payload disaring ulang di sini walau klien mengirim lebih.
+// ================================================================
+function _rakSanitize(o) {
+  function t(v, n) { return String(v == null ? '' : v).slice(0, n || 200); }
+  o = o || {};
+  var out = { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: {}, cfg: {}, step1: t(o.step1, 20000) };
+  (o.wms || []).slice(0, 40000).forEach(function (r) { out.wms.push({ lok: t(r.lok, 20), area: t(r.area, 60), rak: t(r.rak, 60), kode: t(r.kode, 40), nama: t(r.nama, 200), onhand: Number(r.onhand) || 0 }); });
+  (o.qad || []).slice(0, 40000).forEach(function (r) { out.qad.push({ kode: t(r.kode, 40), nama: t(r.nama, 200), qty: Number(r.qty) || 0, grp: t(r.grp, 10) }); });
+  (o.qadSkip || []).slice(0, 40000).forEach(function (k) { out.qadSkip.push(t(k, 40)); });
+  var n = 0;
+  Object.keys(o.inputs || {}).forEach(function (k) {
+    var src = o.inputs[k] || {}, dst = {};
+    Object.keys(src).forEach(function (rk) { if (n++ < 60000) dst[t(rk, 60)] = t(src[rk], 30); });
+    out.inputs[t(k, 40)] = dst;
+  });
+  Object.keys(o.manual || {}).forEach(function (k) {
+    out.manual[t(k, 40)] = (o.manual[k] || []).slice(0, 200).map(function (m) { return { rak: t(m.rak, 60), aktual: t(m.aktual, 30) }; });
+  });
+  ['wmsAt', 'qadAt', 'wmsFile', 'qadFile', 'backupAt'].forEach(function (k) { if (o.meta && o.meta[k] != null) out.meta[k] = t(o.meta[k], 120); });
+  var c = o.cfg || {}; out.cfg = { tgl: t(c.tgl, 10), site: Number(c.site) || 10021, ket: t(c.ket, 100), kat: Number(c.kat) || 1 };
+  return out;
+}
+function _rakKey(key) {
+  key = String(key || '').trim().toUpperCase().replace(/[^A-Z0-9_.-]/g, '').slice(0, 60);
+  if (CURRENT_AUTH && _authMode() === 'enforce') key = CURRENT_AUTH.n;   // user hanya boleh menyentuh datanya sendiri
+  return key;
+}
+function _getOrCreateRakSheet() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(SH_RAKWMS);
+  if (!sh) { sh = ss.insertSheet(SH_RAKWMS); sh.getRange('A1:D1').setValues([['key', 'idx', 'updatedAt', 'data']]); sh.setFrozenRows(1); }
+  return sh;
+}
+function saveRakWmsData(key, jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    key = _rakKey(key); if (!key) return { success: false, error: 'Key user kosong.' };
+    var raw = String(jsonStr || ''); if (raw.length > 4000000) return { success: false, error: 'Data terlalu besar (>4 MB).' };
+    var clean = JSON.stringify(_rakSanitize(JSON.parse(raw))), CH = 40000, chunks = [];
+    for (var i = 0; i < clean.length; i += CH) chunks.push(clean.substr(i, CH));
+    var now = new Date().toISOString();
+    lock.waitLock(25000);
+    var sh = _getOrCreateRakSheet(), last = sh.getLastRow(), keep = [];
+    if (last > 1) keep = sh.getRange(2, 1, last - 1, 4).getValues().filter(function (r) { return String(r[0]) !== key; });
+    chunks.forEach(function (c, idx) { keep.push([key, idx, now, c]); });
+    if (last > 1) sh.getRange(2, 1, last - 1, 4).clearContent();
+    sh.getRange(2, 1, keep.length, 4).setNumberFormat('@').setValues(keep.map(function (r) { return [String(r[0]), String(r[1]), String(r[2]), String(r[3])]; }));
+    return { success: true, updatedAt: now, bytes: clean.length, wms: JSON.parse(clean).wms.length };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
+}
+function getRakWmsData(key) {
+  try {
+    key = _rakKey(key); if (!key) return { success: false, error: 'Key user kosong.' };
+    var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_RAKWMS);
+    if (!sh || sh.getLastRow() < 2) return { success: true, found: false };
+    var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues().filter(function (r) { return String(r[0]) === key; });
+    if (!rows.length) return { success: true, found: false };
+    rows.sort(function (a, b) { return Number(a[1]) - Number(b[1]); });
+    return { success: true, found: true, updatedAt: String(rows[0][2]), data: rows.map(function (r) { return String(r[3]); }).join('') };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+}
+function hapusRakWmsData(key) {
+  var lock = LockService.getScriptLock();
+  try {
+    key = _rakKey(key); if (!key) return { success: false, error: 'Key user kosong.' };
+    lock.waitLock(25000);
+    var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_RAKWMS);
+    if (!sh || sh.getLastRow() < 2) return { success: true, dihapus: 0 };
+    var all = sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues(), keep = all.filter(function (r) { return String(r[0]) !== key; });
+    sh.getRange(2, 1, all.length, 4).clearContent();
+    if (keep.length) sh.getRange(2, 1, keep.length, 4).setNumberFormat('@').setValues(keep.map(function (r) { return [String(r[0]), String(r[1]), String(r[2]), String(r[3])]; }));
+    return { success: true, dihapus: all.length - keep.length };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
 function _getOrCreateWmsQadSheet() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sh = ss.getSheetByName(SH_WMSQAD);

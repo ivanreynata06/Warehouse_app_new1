@@ -2,10 +2,10 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
@@ -652,8 +652,8 @@ function diagnosaTtd(kode){
     .withSuccessHandler(function(r){
       if (!r || !r.success){ alert('Diagnosa TTD gagal: '+(r&&r.error?r.error:'')); return; }
       var t = 'DIAGNOSA TANDA TANGAN SPL\nDepartemen: '+r.workspace+'\nBatas SPL lama: '+r.batasSplLama+'\n\nTANDA TANGAN TERSIMPAN:\n'+
-        r.tandaTangan.map(function(x){ return '  '+x.jabatan+': '+(x.tercatat?(x.gambarBisaDibuka?'ADA':'tercatat tapi gambar tidak bisa dibuka'):'BELUM diupload')+(x.nama?' ('+x.nama+')':''); }).join('\n')+
-        '\n\nBARIS LEMBUR:\n'+r.baris.map(function(b){ return '  '+b.tanggal+' | '+b.status+' | '+(b.bertandaTangan?'AKAN bertanda tangan':'tanpa tanda tangan'); }).join('\n')+
+        r.tandaTangan.map(function(x){ return '  '+whEsc(x.jabatan)+': '+(x.tercatat?(x.gambarBisaDibuka?'ADA':'tercatat tapi gambar tidak bisa dibuka'):'BELUM diupload')+(x.nama?' ('+whEsc(x.nama)+')':''); }).join('\n')+
+        '\n\nBARIS LEMBUR:\n'+r.baris.map(function(b){ return '  '+b.tanggal+' | '+whEsc(b.status)+' | '+(b.bertandaTangan?'AKAN bertanda tangan':'tanpa tanda tangan'); }).join('\n')+
         '\n\nKESIMPULAN: '+r.kesimpulan;
       alert(t); console.log('Diagnosa TTD:', r);
     })
@@ -726,7 +726,7 @@ function syncSemua(){
           resultEl.style.color = 'var(--accent-green)';
           if (r1.adaGagal){ msg += ' ⚠️ Sebagian snapshot FTE gagal disimpan (lihat log).'; resultEl.style.color = '#f2b705'; }
           if (res.tidakCocok && res.tidakCocok.length){
-            msg += ' ⚠️ Diagnosa — tidak masuk rekap: ' + res.tidakCocok.map(function(t){ return t.nama+' ('+t.kode+', '+t.jam+'j, '+t.alasan+')'; }).join('; ') + '. Perbaiki di Kelola User > Data Karyawan.';
+            msg += ' ⚠️ Diagnosa — tidak masuk rekap: ' + res.tidakCocok.map(function(t){ return t.nama+' ('+t.kode+', '+t.jam+'j, '+whEsc(t.alasan)+')'; }).join('; ') + '. Perbaiki di Kelola User > Data Karyawan.';
             resultEl.style.color = '#f2b705';
           }
           resultEl.textContent = msg;
@@ -826,7 +826,7 @@ function loadApprovalPanel(){
           if (a.aksi === 'delete'){
             detail = 'Minta HAPUS catatan: '+a.jamMulaiLama+'–'+a.jamSelesaiLama+' ('+a.totalJamLama+' jam) — '+(a.keteranganLama||'-');
           } else {
-            detail = 'Ubah dari <s>'+a.jamMulaiLama+'–'+a.jamSelesaiLama+', '+(a.keteranganLama||'-')+'</s> menjadi <b>'+a.jamMulaiBaru+'–'+a.jamSelesaiBaru+' ('+a.totalJamBaru+' jam), '+(a.keteranganBaru||'-')+'</b>';
+            detail = 'Ubah dari <s>'+a.jamMulaiLama+'–'+a.jamSelesaiLama+', '+whEsc(a.keteranganLama||'-')+'</s> menjadi <b>'+a.jamMulaiBaru+'–'+a.jamSelesaiBaru+' ('+a.totalJamBaru+' jam), '+whEsc(a.keteranganBaru||'-')+'</b>';
           }
           badge = '<span class="card-badge badge-blue">'+(a.aksi==='delete'?'Hapus Lembur':'Edit Lembur')+'</span>';
         } else if (a.tipe==='lembur'){
@@ -1159,7 +1159,7 @@ function renderTabelInternal(){
     var ok = pct<=6;
     var barColor = ok ? 'var(--accent-green)' : 'var(--accent-red)';
     return '<tr>'+
-      '<td><div class="name-cell"><div class="avatar-mini">'+initials(p.nama)+'</div><div>'+p.nama+(p.jabatan==='Team Leader'?' <span style="color:var(--accent-gold2);font-size:8.5px;">(TL)</span>':'')+'</div></div></td>'+
+      '<td><div class="name-cell"><div class="avatar-mini">'+whEsc(initials(p.nama))+'</div><div>'+p.nama+(p.jabatan==='Team Leader'?' <span style="color:var(--accent-gold2);font-size:8.5px;">(TL)</span>':'')+'</div></div></td>'+
       '<td style="font-weight:600;">'+p.totalJamLembur+'j</td>'+
       '<td style="font-family:var(--font-mono);">'+p.fteLembur+'</td>'+
       '<td><div>'+pct.toLocaleString('id-ID',{maximumFractionDigits:2})+'%</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:'+Math.min(pct/12*100,100)+'%;background:'+barColor+';"></div></div></td>'+
@@ -1177,12 +1177,12 @@ function renderTabelOS(){
     var pct = p.overtimePct || 0;
     var barColor = pct<=6 ? 'var(--accent-green)' : 'var(--accent-red)';
     return '<tr>'+
-      '<td><div class="name-cell"><div class="avatar-mini os">'+initials(p.nama)+'</div><div>'+p.nama+'</div></div></td>'+
+      '<td><div class="name-cell"><div class="avatar-mini os">'+whEsc(initials(p.nama))+'</div><div>'+whEsc(p.nama)+'</div></div></td>'+
       '<td style="font-weight:600;">'+p.totalJamLembur+'j</td>'+
       '<td><div>'+pct.toLocaleString('id-ID',{maximumFractionDigits:2})+'%</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:'+Math.min(pct/12*100,100)+'%;background:'+barColor+';"></div></div></td>'+
       '<td><div class="btn-export-group">'+
-        '<button class="btn-preview" onclick="previewSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Preview & Print"><i data-lucide="printer" style="width:11px;"></i>Print</button>'+
-        '<button class="btn-export" onclick="exportSPL(\''+p.kode+'\',\''+p.nama+'\')" title="Export ke Formulir SPL"><i data-lucide="file-down" style="width:11px;"></i>SPL</button>'+
+        '<button class="btn-preview" onclick="previewSPL(\''+p.kode+'\',\''+whEsc(p.nama)+'\')" title="Preview & Print"><i data-lucide="printer" style="width:11px;"></i>Print</button>'+
+        '<button class="btn-export" onclick="exportSPL(\''+p.kode+'\',\''+whEsc(p.nama)+'\')" title="Export ke Formulir SPL"><i data-lucide="file-down" style="width:11px;"></i>SPL</button>'+
       '</div></td>'+
     '</tr>';
   }).join('');
@@ -1196,7 +1196,7 @@ function renderHoliday(){
   document.getElementById('empty-holiday').style.display='none';
   strip.innerHTML = list.map(function(h){
     var p = h.tanggal.split('-');
-    return '<div class="holiday-chip"><i data-lucide="calendar" style="width:10px;color:var(--accent-red);"></i><span class="date">'+p[2]+'/'+p[1]+'</span><span>'+h.keterangan+'</span></div>';
+    return '<div class="holiday-chip"><i data-lucide="calendar" style="width:10px;color:var(--accent-red);"></i><span class="date">'+p[2]+'/'+p[1]+'</span><span>'+whEsc(h.keterangan)+'</span></div>';
   }).join('');
   if(typeof lucide!=='undefined') lucide.createIcons();
 }

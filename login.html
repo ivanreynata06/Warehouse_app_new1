@@ -334,9 +334,10 @@
     </div>
   </div>
 
-  <script src="./assets/js/config.js?v=20261029f"></script>
-  <script src="./assets/js/api-shim.js?v=20261029f"></script>
-  <script>
+  <script src="./assets/js/config.js?v=20261029g"></script>
+  <script src="./assets/js/api-shim.js?v=20261029g"></script>
+  <script>function escL(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}</script>
+<script>
     // ============================================================
     // 1) ANIMASI "GANTUNGAN KARTU" — drag/spring meniru versi React
     // ============================================================
@@ -425,7 +426,7 @@
           });
           plantSel.innerHTML = '<option value="" disabled selected>— Pilih Plant —</option>' +
             plantLabelsUnik.map(function (lbl) {
-              return '<option value="' + lbl.replace(/"/g, '&quot;') + '">Plant ' + lbl + '</option>';
+              return '<option value="' + escL(lbl) + '">Plant ' + escL(lbl) + '</option>';
             }).join('');
         })
         .withFailureHandler(function (err) {
@@ -452,7 +453,7 @@
       }
       deptSel.innerHTML = '<option value="" disabled selected>— Pilih Departemen —</option>' +
         currentDeptOptions.map(function (x, idx) {
-          return '<option value="' + idx + '">' + x.deptLabel.replace(/</g, '&lt;') + '</option>';
+          return '<option value="' + idx + '">' + escL(x.deptLabel) + '</option>';
         }).join('');
       deptField.style.display = 'block';
       deptSel.required = true;
@@ -549,6 +550,7 @@
             sessionStorage.setItem('wh_nik', res.nik);
             sessionStorage.setItem('wh_nama', res.nama);
             sessionStorage.setItem('wh_role', res.role);
+            sessionStorage.setItem('wh_token', res.token || '');   // token sesi (HMAC) - dikirim ke backend di tiap request
             // Daftar menu yang boleh tampil utk departemen ini (diatur Super
             // Admin lewat Kelola Menu) -- disimpan sekali di sini saat login
             // supaya auth-guard.js bisa baca tanpa panggilan API tambahan di

@@ -2,10 +2,10 @@
 <html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
@@ -1193,7 +1193,7 @@ function renderNotifs(){
   }
   if(!notifs.length) notifs.push({type:'blue',icon:'✅',title:'Data berhasil dimuat',msg:'Semua modul aktif dan sinkron'});
   strip.innerHTML=notifs.map(function(n){
-    return '<div class="notif-item '+n.type+'"><span class="notif-icon">'+n.icon+'</span><div class="notif-text"><strong>'+n.title+'</strong>'+n.msg+'</div></div>';
+    return '<div class="notif-item '+n.type+'"><span class="notif-icon">'+n.icon+'</span><div class="notif-text"><strong>'+whEsc(n.title)+'</strong>'+whEsc(n.msg)+'</div></div>';
   }).join('');
 }
 

@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="./assets/js/sb-storage-card.js?v=20261021a"></script>
@@ -1494,7 +1494,7 @@ function simpanSplJob(i){
   var job = document.getElementById('spl-job-'+i).value.trim();
   var bag = document.getElementById('spl-bagian-'+i).value.trim();
   if (!job && !bag){ showToast('Isi Job/Bagian, atau pakai tombol Bawaan untuk mengembalikan.','error'); return; }
-  _kirimSplJob(it.kode, job, bag, 'Job & Bagian SPL '+it.nama+' disimpan');
+  _kirimSplJob(it.kode, job, bag, 'Job & Bagian SPL '+whEsc(it.nama)+' disimpan');
 }
 function resetSplJob(i){ _kirimSplJob(splJobCache[i].kode, '', '', 'Dikembalikan ke nilai bawaan'); }
 
@@ -1552,11 +1552,11 @@ function renderSplSignatures(){
       + '<div style="font-size:11px;font-weight:700;">'+escHtml(it.label)+'</div>'
       + '<div style="background:#fff;border-radius:6px;min-height:80px;display:flex;align-items:center;justify-content:center;padding:4px;">'+prev+'</div>'
       + (info?'<div style="font-size:9px;color:var(--text-muted);">'+info+'</div>':'')
-      + '<input type="text" class="form-input" id="spl-ttd-nama-'+it.jabatan+'" placeholder="Nama penandatangan" value="'+escHtml(it.nama||'')+'">'
-      + '<input type="file" id="spl-ttd-file-'+it.jabatan+'" accept="image/png,image/jpeg" style="font-size:10px;color:var(--text-muted);">'
+      + '<input type="text" class="form-input" id="spl-ttd-nama-'+whEsc(it.jabatan)+'" placeholder="Nama penandatangan" value="'+escHtml(it.nama||'')+'">'
+      + '<input type="file" id="spl-ttd-file-'+whEsc(it.jabatan)+'" accept="image/png,image/jpeg" style="font-size:10px;color:var(--text-muted);">'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;">'
-      + '<button class="btn-flat btn-flat-accent" onclick="uploadSplSignature(\''+it.jabatan+'\')">'+(it.ada?'Ganti':'Upload')+'</button>'
-      + (it.ada?'<button class="btn-flat btn-flat-danger" onclick="hapusSplSignature(\''+it.jabatan+'\')">Hapus</button>':'')
+      + '<button class="btn-flat btn-flat-accent" onclick="uploadSplSignature(\''+whEsc(it.jabatan)+'\')">'+(it.ada?'Ganti':'Upload')+'</button>'
+      + (it.ada?'<button class="btn-flat btn-flat-danger" onclick="hapusSplSignature(\''+whEsc(it.jabatan)+'\')">Hapus</button>':'')
       + '</div></div>';
   }).join('');
 }
@@ -1813,7 +1813,7 @@ function tesKirimFonnte(){
       var d = res.detail || {};
       if (res.terkirim){
         box.style.color = '#16a34a';
-        box.textContent = '✅ ' + (d.pesan || 'Terkirim') + '\nTujuan: ' + (d.to || '-') + '  |  Pengirim: ' + (d.sumber || '-');
+        box.textContent = '✅ ' + d.pesan|| 'Terkirim' + '\nTujuan: ' + (d.to || '-') + '  |  Pengirim: ' + (d.sumber || '-');
         showToast('Tes masuk antrean Fonnte','success');
       } else {
         box.style.color = '#ef4444';

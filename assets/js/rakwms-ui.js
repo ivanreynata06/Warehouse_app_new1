@@ -12,9 +12,44 @@
 
   /* ---------- penyimpanan lokal (BUKAN Supabase / Spreadsheet) ---------- */
   function load() { try { var j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.wms) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; return j; } } catch (e) {} return K.blank(); }
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Penyimpanan browser penuh / diblokir - data hanya bertahan selama halaman terbuka. Gunakan Simpan Cadangan.', true); }
+  var NIK = (sessionStorage.getItem('wh_nik') || '').trim(), syncTimer = null, syncState = ['idle', ''];
+  function saveLocal() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Penyimpanan browser penuh / diblokir. Data tetap disalin ke server; gunakan juga Simpan Cadangan.', true); }
     idbSet(JSON.stringify(S));
+  }
+  function save() { S.meta.dirty = true; saveLocal(); scheduleSync(); }
+  /* ---------- sinkron ke server (hanya kolom terpilih; sisa kolom file sudah dibuang saat upload & disaring lagi di server) ---------- */
+  function gs(fn, args) {
+    return new Promise(function (res, rej) {
+      if (!window.google || !google.script || !google.script.run) return rej(new Error('Backend belum siap'));
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn].apply(null, args);
+    });
+  }
+  function setSync(st, msg) {
+    syncState = [st, msg || '']; var el = $('rk-sync'); if (!el) return;
+    var map = { idle: ['', 'x'], pending: ['Menunggu simpan ke server...', 'x'], saving: ['Menyimpan ke server...', 'x'], ok: ['Tersimpan di server', ''], err: ['Gagal simpan ke server', 'x'] };
+    var m = map[st] || map.idle; el.className = 'rk-chip ' + m[1]; el.textContent = (st === 'ok' ? '\u2601 ' : '') + (msg || m[0]);
+    el.style.borderColor = st === 'err' ? 'rgba(244,63,94,.5)' : ''; el.style.color = st === 'err' ? '#fda4af' : '';
+  }
+  function scheduleSync() { if (!NIK) return; clearTimeout(syncTimer); setSync('pending'); syncTimer = setTimeout(syncNow, 2500); }
+  function syncNow() {
+    if (!NIK) return Promise.resolve(); clearTimeout(syncTimer); setSync('saving');
+    return gs('saveRakWmsData', [NIK, JSON.stringify(S)]).then(function (r) {
+      if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
+      S.meta.syncAt = r.updatedAt; S.meta.dirty = false; saveLocal(); setSync('ok', 'Tersimpan di server ' + new Date().toLocaleTimeString('id-ID'));
+    }).catch(function (e) { setSync('err', 'Gagal simpan ke server: ' + (e && e.message || e) + ' (data aman di browser, akan dicoba lagi)'); clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, 30000); });
+  }
+  function pullServer() {
+    if (!NIK) return;
+    gs('getRakWmsData', [NIK]).then(function (r) {
+      if (!r || r.success === false) throw new Error((r && r.error) || 'gagal');
+      var local = (S.wms.length || S.qad.length);
+      if (!r.found) { if (local) syncNow(); else setSync('idle', 'Belum ada data di server'); return; }
+      if (local && S.meta.syncAt === r.updatedAt) { if (S.meta.dirty) syncNow(); else setSync('ok', 'Tersimpan di server'); return; }
+      var j = JSON.parse(r.data);
+      if (local && S.meta.dirty && !confirm('Ada perubahan di browser ini yang belum tersimpan, sementara data di server lebih baru (dari perangkat/browser lain).\n\nOK = pakai data SERVER\nBatal = pertahankan data browser ini dan timpa server')) { syncNow(); return; }
+      adopt(j); S.meta.syncAt = r.updatedAt; S.meta.dirty = false; saveLocal(); render(); setSync('ok', 'Data dipulihkan dari server');
+    }).catch(function (e) { setSync('err', 'Server tidak terjangkau: ' + (e && e.message || e)); });
   }
   /* IndexedDB = salinan kedua (tetap ada walau localStorage terhapus sebagian). Clear data situs tetap menghapus keduanya -> pakai file cadangan. */
   function idb(cb) { try { var r = indexedDB.open('rakwms', 1); r.onupgradeneeded = function () { r.result.createObjectStore('kv'); }; r.onsuccess = function () { cb(r.result); }; r.onerror = function () { cb(null); }; } catch (e) { cb(null); } }
@@ -77,14 +112,15 @@
       (has ? '<div class="sub" style="margin-top:6px">' + esc(meta) + '</div><div style="margin-top:8px"><button class="btn2 dng sm" onclick="RakUI.clear(\'' + kind + '\')">Hapus data ini</button></div>' : '') + '</div>';
   }
   function renderUp() {
+    setTimeout(function () { setSync(syncState[0], syncState[1]); }, 0);
     var nr = new Set(S.wms.map(function (r) { return r.rak; })).size;
-    $('rk-up').innerHTML = '<div class="gh"><h3>Upload Data <em>tersimpan hanya di browser ini</em></h3><span class="sub">Tidak dikirim ke Supabase / Spreadsheet</span></div><div class="gb"><div class="rk-up">' +
+    $('rk-up').innerHTML = '<div class="gh"><h3>Upload Data <em>hanya kolom terpilih yang disimpan</em></h3><span id="rk-sync" class="rk-chip x">...</span></div><div class="gb"><div class="rk-up">' +
       dz('qad', '&#128230;', 'Saldo Item QAD', 'Klik atau seret file stock QAD (.xlsx / .xls)', ['Item', 'Deskripsi', 'Qty'], S.qad.length, (S.meta.qadFile || '') + ' - ' + (S.meta.qadAt || ''),
         '<span><b>' + fmt(S.qad.length) + '</b>item QAD</span>') +
       dz('wms', '&#127970;', 'Informasi Rak WMS', 'Klik atau seret file Informasi Rak (.xlsx / .xls) - hanya lokasi ' + K.LOC, ['Lokasi', 'Area', 'Rak', 'Kode Item', 'Nama Item', 'Onhand'], S.wms.length, (S.meta.wmsFile || '') + ' - ' + (S.meta.wmsAt || ''),
         '<span><b>' + fmt(nr) + '</b>rak</span><span><b>' + fmt(S.wms.length) + '</b>baris item-rak</span>') +
       '</div><div class="rk-tools" style="margin-top:14px"><button class="btn2" onclick="RakUI.backup()">&#128190; Simpan Cadangan (.json)</button><button class="btn2" onclick="RakUI.restore()">&#128194; Pulihkan Cadangan</button>' +
-      '<span class="sub">Data tersimpan di browser. Jika <b>clear cache / hapus data situs</b>, data ikut hilang - simpan cadangan dulu lalu pulihkan setelahnya (file cadangan tidak dikirim ke server mana pun).' + (S.meta.backupAt ? ' Cadangan terakhir: ' + esc(S.meta.backupAt) + '.' : '') + '</span></div>' +
+      '<span class="sub">Data otomatis disalin ke server (hanya kolom terpilih), jadi <b>aman walau cache dibersihkan</b> - setelah login data kembali sendiri. File cadangan tetap tersedia sebagai arsip pribadi.' + (S.meta.backupAt ? ' Cadangan terakhir: ' + esc(S.meta.backupAt) + '.' : '') + '</span></div>' +
       '<input type="file" id="rk-file" accept=".xls,.xlsx,.csv" style="display:none"><input type="file" id="rk-rest" accept=".json" style="display:none"></div>';
   }
 
@@ -368,6 +404,7 @@
     var tb = document.querySelector('.tab[data-t="rak"]'); if (tb) tb.style.display = 'none';   // tersembunyi sampai akses dipastikan
     var tries = 0, iv = setInterval(function () { if (applyAccess() || ++tries > 120) clearInterval(iv); }, 500);
     shell(); tilt();
+    setTimeout(pullServer, 700);
     if (/[?&]embed=1\b/.test(location.search) && location.hash === '#rak') { var tbs = $('tabs'); if (tbs) tbs.style.display = 'none'; }   // dibuka dari tab Monitoring WMS: baris tab Stock Opname disembunyikan
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     if (!S.wms.length && !S.qad.length) idbGet(function (v) { if (!v) return; try { var j = JSON.parse(v); if (j && (j.wms || []).length) { adopt(j); try { localStorage.setItem(KEY, v); } catch (e) {} render(); } } catch (e) {} });

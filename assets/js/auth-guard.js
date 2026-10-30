@@ -7,6 +7,8 @@
  * HARUS di-load PALING AWAL di <head>, sebelum script lain (config.js,
  * api-shim.js, dst), supaya redirect terjadi secepat mungkin.
  */
+// Escape HTML untuk semua halaman (data dari sheet/user TIDAK BOLEH disisipkan mentah ke innerHTML -> XSS)
+window.whEsc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 (function () {
   // Mode embed: halaman dibuka di dalam iframe tab "Monitoring WMS" -> sidebar/userbar milik shell, jadi disembunyikan di sini.
   try {

@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261029f"></script>
-<script src="./assets/js/config.js?v=20261029f"></script>
-<script src="./assets/js/api-shim.js?v=20261029f"></script>
+<script src="./assets/js/auth-guard.js?v=20261029g"></script>
+<script src="./assets/js/config.js?v=20261029g"></script>
+<script src="./assets/js/api-shim.js?v=20261029g"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- SheetJS: dipakai untuk fitur Export Excel rekap lembur -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -874,7 +874,7 @@ function renderTabelLembur(){
   tb.innerHTML = lemburList.map(function(l){
     var kat = (karyawanList.find(function(k){return k.kode===l.kode;})||{}).kategori || '';
     var chip = kat==='Internal' ? '<span class="chip chip-internal">Internal</span>' : '<span class="chip chip-os">OS</span>';
-    var liburTag = l.isHariLibur ? ' <span class="chip chip-libur" title="'+(l.hariLiburLabel||'')+'">Tgl Merah</span>' : '';
+    var liburTag = l.isHariLibur ? ' <span class="chip chip-libur" title="'+whEsc(l.hariLiburLabel||'')+'">Tgl Merah</span>' : '';
 
     var isOwner = myNik && l.kode === myNik;
     var isPendingReq = l.editReqStatus === 'Pending';
@@ -893,10 +893,10 @@ function renderTabelLembur(){
 
     return '<tr>'+
       '<td>'+fmtTglShort(l.tanggal)+'</td>'+
-      '<td>'+l.nama+' '+chip+liburTag+pendingTag+'</td>'+
+      '<td>'+whEsc(l.nama)+' '+chip+liburTag+pendingTag+'</td>'+
       '<td style="font-family:var(--font-mono);font-size:9.5px;">'+l.jamMulai+'\u2013'+l.jamSelesai+'</td>'+
       '<td style="font-weight:700;color:var(--accent-gold2);">'+l.totalJam+'j</td>'+
-      '<td style="color:var(--text-muted);font-size:9.5px;">'+(l.keterangan||'\u2014')+'</td>'+
+      '<td style="color:var(--text-muted);font-size:9.5px;">'+whEsc(l.keterangan||'\u2014')+'</td>'+
       '<td>'+actions+'</td>'+
     '</tr>';
   }).join('');
@@ -913,9 +913,9 @@ function renderTabelAbsensi(){
   tb.innerHTML = absensiList.map(function(a){
     return '<tr>'+
       '<td>'+fmtTglShort(a.tanggal)+'</td>'+
-      '<td>'+a.nama+'</td>'+
-      '<td><span class="chip '+(statusChip[a.status]||'')+'">'+(statusLabel[a.status]||a.status)+'</span></td>'+
-      '<td style="color:var(--text-muted);font-size:9.5px;">'+(a.keterangan||'\u2014')+'</td>'+
+      '<td>'+whEsc(a.nama)+'</td>'+
+      '<td><span class="chip '+(statusChip[a.status]||'')+'">'+whEsc(statusLabel[a.status]||a.status)+'</span></td>'+
+      '<td style="color:var(--text-muted);font-size:9.5px;">'+whEsc(a.keterangan||'\u2014')+'</td>'+
       '<td><button class="btn-del" onclick="hapusAbsensi('+a.rowIndex+')" title="Hapus"><i data-lucide="trash-2" style="width:12px;"></i></button></td>'+
     '</tr>';
   }).join('');
