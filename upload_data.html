@@ -1749,7 +1749,13 @@ window.WmsQadUpload = (function(){
       pt.set(60, 'Menyimpan ke server...');
       return call('saveWmsQadData', [k, JSON.stringify(p.rows)]).then(function(r){
         pt.set(100, 'Selesai'); pt.stop();
-        msg[k] = { cls: 'ok', html: '✅ ' + n(st.total) + ' baris dibaca → <b>' + n(st.kept) + ' disimpan</b>, ' + n(st.dropped) + ' dibuang (bukan PIPE PPR yang dimaksud)' + (st.noDate ? ', ' + n(st.noDate) + ' dibuang (tanggal tidak terbaca)' : '') + '.<br>Server: ' + n(r.ditambah) + ' baris masuk' + (r.diganti ? ', ' + n(r.diganti) + ' baris lama pada tanggal yang sama diganti' : '') + '. Tanggal: ' + esc(r.tanggal.map(C.fmtDate).join(', ')) + '.' };
+        var vinfo = '';
+        if (k === 'qad') {
+          if (!st.withV) vinfo = '<br>⚠️ <b>Nomor voucher tidak terbaca di file QAD ini</b> (0 dari ' + n(st.kept) + ' baris). Tanpa nomor voucher, pencocokan memakai qty saja. Kolom yang terbaca: ' + esc((st.cols || []).join(', ')) + '. Beri tahu kolom mana yang berisi nomor voucher.';
+          else if (r.bervoucher === undefined) vinfo = '<br>⚠️ ' + n(st.withV) + ' baris QAD punya nomor voucher, <b>tetapi server belum menyimpannya: deploy ulang Apps Script (kode.gs)</b> lalu upload ulang file ini.';
+          else vinfo = '<br>🔎 Nomor voucher terbaca di <b>' + n(st.withV) + '</b> dari ' + n(st.kept) + ' baris QAD' + (st.refCol ? ' (kolom ' + esc(st.refCol) + ')' : ' (dicari dari pola voucher)') + '.';
+        }
+        msg[k] = { cls: 'ok', html: '✅ ' + n(st.total) + ' baris dibaca → <b>' + n(st.kept) + ' disimpan</b>, ' + n(st.dropped) + ' dibuang (bukan PIPE PPR yang dimaksud)' + (st.noDate ? ', ' + n(st.noDate) + ' dibuang (tanggal tidak terbaca)' : '') + '.' + vinfo + '<br>Server: ' + n(r.ditambah) + ' baris masuk' + (r.diganti ? ', ' + n(r.diganti) + ' baris lama pada tanggal yang sama diganti' : '') + '. Tanggal: ' + esc(r.tanggal.map(C.fmtDate).join(', ')) + '.' };
       });
     }).then(function(){ busy = false; lock(false); return refresh(); })
       .catch(function(e){ pt.stop(true); busy = false; lock(false); msg[k] = { cls: 'err', html: '❌ ' + esc(friendly(e)) }; draw(); note(friendly(e), 'err'); });

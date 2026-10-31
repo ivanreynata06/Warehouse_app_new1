@@ -141,7 +141,7 @@
     }
     var cT = (dateCol === 'effective') ? (cEff !== -1 ? cEff : cEnt) : (cEnt !== -1 ? cEnt : cEff);
     if (cT === -1) throw new Error('Kolom tanggal ("Entered Date" / "Effective Date") tidak ditemukan di file QAD.');
-    var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0 };
+    var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0, withV: 0, refCol: cRef === -1 ? '' : String((rows[h.row] || [])[cRef] || ''), cols: (rows[h.row] || []).map(cleanText).filter(Boolean).slice(0, 30) };
     for (var r = h.row + 1; r < rows.length; r++) {
       var row = rows[r] || [];
       var item = parseItem(row[cI]);
@@ -151,8 +151,9 @@
       if (!lolosNama(nama)) { st.dropped++; continue; }
       var t = parseDate(row[cT]);
       if (!t) { st.noDate++; continue; }
-      out.push({ t: t, i: item, n: nama, q: parseQty(row[cQ]), v: voucherOf(row) });
-      st.kept++;
+      var vv = voucherOf(row);
+      out.push({ t: t, i: item, n: nama, q: parseQty(row[cQ]), v: vv });
+      st.kept++; if (vv) st.withV = (st.withV || 0) + 1;
     }
     return { rows: out, stats: st };
   }

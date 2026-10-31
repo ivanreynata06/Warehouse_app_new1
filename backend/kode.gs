@@ -10316,7 +10316,7 @@ function saveWmsQadData(kind, jsonStr) {
     });
     var semua = sisa.concat(baru);
     _wqTulis(sh, semua);
-    return { success: true, ditambah: baru.length, diganti: diganti, dibuang: dibuang, tanggal: Object.keys(tgls).sort(), total: semua.length };
+    return { success: true, ditambah: baru.length, diganti: diganti, dibuang: dibuang, tanggal: Object.keys(tgls).sort(), total: semua.length, bervoucher: baru.filter(function (b) { return b[2]; }).length };
   } catch (err) {
     return { success: false, error: String(err && err.message || err) };
   } finally {
