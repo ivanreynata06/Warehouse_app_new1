@@ -126,7 +126,19 @@
     if (!cDesc.length) throw new Error('Kolom "Description" tidak ditemukan di file QAD.');
     var cEnt = idxOf(h.heads, ['entereddate']), cEff = idxOf(h.heads, ['effectivedate']);
     // nomor referensi/voucher QAD (opsional) -- dipakai untuk menelusuri input QAD yang tidak punya voucher WMS
-    var cRef = idxOf(h.heads, ['reference', 'ref', 'referensi', 'nbr', 'ordernbr', 'order', 'trnbr', 'transactionnbr', 'novoucher', 'voucher', 'nomorreferensi']);
+    var cRef = idxOf(h.heads, ['reference', 'ref', 'referensi', 'nbr', 'ordernbr', 'order', 'trnbr', 'transactionnbr', 'novoucher', 'voucher', 'nomorreferensi', 'lotserial', 'lotref']);
+    var VRE = /(?:^|\D)(10\d{5})(?!\d)/;   // pola nomor voucher WMS (mis. 1033248)
+    function voucherOf(row) {
+      var c, m;
+      if (cRef !== -1) { c = String(row[cRef] == null ? '' : row[cRef]).trim(); m = c.match(VRE); if (m) return m[1]; if (c) return c; }
+      for (var k = 0; k < row.length; k++) {            // tidak ada kolom referensi dikenal -> cari pola voucher di sel teks lain
+        if (k === cI || k === cQ || k === cT || cDesc.indexOf(k) !== -1) continue;
+        c = String(row[k] == null ? '' : row[k]).trim();
+        if (c.length > 40) continue;
+        m = c.match(VRE); if (m) return m[1];
+      }
+      return '';
+    }
     var cT = (dateCol === 'effective') ? (cEff !== -1 ? cEff : cEnt) : (cEnt !== -1 ? cEnt : cEff);
     if (cT === -1) throw new Error('Kolom tanggal ("Entered Date" / "Effective Date") tidak ditemukan di file QAD.');
     var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0 };
@@ -139,7 +151,7 @@
       if (!lolosNama(nama)) { st.dropped++; continue; }
       var t = parseDate(row[cT]);
       if (!t) { st.noDate++; continue; }
-      out.push({ t: t, i: item, n: nama, q: parseQty(row[cQ]), v: cRef === -1 ? '' : cleanText(row[cRef]) });
+      out.push({ t: t, i: item, n: nama, q: parseQty(row[cQ]), v: voucherOf(row) });
       st.kept++;
     }
     return { rows: out, stats: st };
@@ -172,13 +184,25 @@
       if (n && !groups[k].n) groups[k].n = n;
       return groups[k];
     }
-    wms.forEach(function (r) { g(r.t, r.i, r.n).W.push(r); });
+    // Voucher QAD dicocokkan ke voucher WMS (item yang sama) di tanggal mana pun.
+    var wmsByV = {}, qadV = {};
+    wms.forEach(function (r) { if (r.v) wmsByV[r.v + '|' + r.i] = r; });
+    qad.forEach(function (r) { if (r.v) qadV[r.v + '|' + r.i] = 1; });
+    wms.forEach(function (r) { var G = g(r.t, r.i, r.n); if (!(r.v && qadV[r.v + '|' + r.i])) G.W.push(r); });   // yang vouchernya ada di QAD diurus lewat baris QAD
     qad.forEach(function (r) { g(r.t, r.i, r.n).Q.push(r); });
 
     var tx = [], items = [], seq = 0;
     keys.sort().forEach(function (k) {
       var G = groups[k], usedQ = {}, leftW = [], pairs = [];
-      // 1. qty sama persis
+      // 0. QAD yang punya nomor voucher: ada di WMS -> cocok (qty sama = sesuai); tidak ada -> TIDAK SESUAI (voucher QAD tak ada di WMS)
+      G.Q.forEach(function (q, j) {
+        if (!q.v) return;
+        var w = wmsByV[q.v + '|' + q.i];
+        usedQ[j] = 1;
+        if (w) pairs.push({ w: w, q: q, st: w.q === q.q ? 'ok' : 'qty', byV: true });
+        else pairs.push({ w: null, q: q, st: 'nowms', byV: true });
+      });
+      // 1. (data QAD tanpa nomor voucher) qty sama persis
       G.W.forEach(function (w) {
         var hit = -1;
         for (var j = 0; j < G.Q.length; j++) if (!usedQ[j] && G.Q[j].q === w.q) { hit = j; break; }
@@ -204,10 +228,8 @@
       pairs.forEach(function (p) {
         var wq = p.w ? p.w.q : null, qq = p.q ? p.q.q : null;
         tx.push({
-          id: ++seq, t: G.t, i: G.i, n: G.n, v: p.w ? p.w.v : '', qv: p.q ? (p.q.v || '') : '',
-          wq: wq, qq: qq, diff: (qq == null ? 0 : qq) - (wq == null ? 0 : wq), st: p.st,
-          // untuk input QAD tanpa voucher WMS: voucher WMS lain pada item & tanggal yang sama (bahan telusur)
-          near: p.st === 'nowms' ? G.W.map(function (w) { return { v: w.v, q: w.q }; }) : undefined
+          id: ++seq, t: G.t, i: G.i, n: G.n, v: p.w ? p.w.v : '', qv: p.q ? (p.q.v || '') : '', byV: !!p.byV,
+          wq: wq, qq: qq, diff: (qq == null ? 0 : qq) - (wq == null ? 0 : wq), st: p.st
         });
         it[p.st]++;
         it.wQty += wq || 0; it.qQty += qq || 0;
@@ -242,9 +264,10 @@
   function explain(x) {
     var nm = shortName(x.n), f = function (n) { return (Number(n) || 0).toLocaleString('id-ID'); };
     if (x.st === 'noqad') return 'Voucher ' + (x.v || '-') + ' (' + f(x.wq) + ') sudah ada di WMS, tetapi belum ada input di QAD.';
-    if (x.st === 'nowms') return 'Ada input QAD ' + (x.qv ? 'No. ' + x.qv + ' ' : '') + f(x.qq) + ' yang tidak punya voucher di WMS.' +
-      (x.near && x.near.length ? ' Voucher WMS lain pada item & tanggal ini: ' + x.near.map(function (w) { return (w.v || '-') + ' (' + f(w.q) + ')'; }).join(', ') + '.' : ' Tidak ada voucher WMS sama sekali untuk item ini pada tanggal tersebut.');
-    if (x.st === 'qty') return 'Voucher ' + (x.v || '-') + ': WMS ' + f(x.wq) + ', QAD ' + f(x.qq) + ' (' + (x.diff > 0 ? 'lebih ' : 'kurang ') + f(Math.abs(x.diff)) + ').';
+    if (x.st === 'nowms') return x.qv
+      ? 'Voucher QAD ' + x.qv + ' (' + f(x.qq) + ') TIDAK ditemukan di WMS. Nomor voucher ini tercatat di QAD, tetapi belum ada transfernya di WMS.'
+      : 'Ada input QAD ' + f(x.qq) + ' yang tidak punya nomor voucher, dan tidak ada voucher WMS dengan qty yang sama.';
+    if (x.st === 'qty') return 'Voucher ' + (x.v || x.qv || '-') + (x.byV ? ' ada di QAD dan WMS' : '') + ': WMS ' + f(x.wq) + ', QAD ' + f(x.qq) + ' (' + (x.diff > 0 ? 'lebih ' : 'kurang ') + f(Math.abs(x.diff)) + ').';
     return 'Sesuai';
   }
 
