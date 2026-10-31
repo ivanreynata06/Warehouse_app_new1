@@ -309,8 +309,13 @@
      PIC melihat rak & saldo WMS tiap item, mengisi aktual di lapangan, dan bisa menambah rak yang tidak
      terdaftar. Rak tambahan yang di WMS masih berisi item lain otomatis dikosongkan (Qty bertanda -)
      di Template Tahap 1 -- logikanya di RakWmsCore.plan(). */
-  var so = { q: '', lim: 30 };
-  function soItems() { var a = filtered(); return a; }
+  var so = { q: '', lim: 30, sel: false, n: 10 };
+  function picks() { return S.soPick = S.soPick || {}; }
+  function soItems() { var pk = picks(); return ui.items.filter(function (i) { return pk[i.kode]; }); }
+  function soCand() {
+    var q = so.q.toUpperCase(), pk = picks();
+    return ui.items.filter(function (i) { return !pk[i.kode] && (!so.sel || i.sel !== 0) && (!q || (i.nama + ' ' + i.kode).toUpperCase().indexOf(q) >= 0); });
+  }
   function soLine(it, l, i) {
     var hl = l.manual ? holders(it.kode, l.rak) : [], id = esc(it.kode);
     return '<tr class="' + (l.manual ? 'man' : '') + '"><td class="l"><b style="font-family:var(--mono)">' + esc(l.rak) + '</b>' + (l.manual ? ' <span class="chip2 nt">RAK TAMBAHAN</span>' : '') +
@@ -333,7 +338,7 @@
   }
   function soRefresh() {
     ui.plan = K.plan(S, ui.items);
-    soItems().slice(0, so.lim).forEach(function (it) {
+    soItems().forEach(function (it) {
       var L = K.lines(S, it, ui.plan), proj = 0;
       L.forEach(function (l, i) {
         var c = $('so-d-' + it.kode + '-' + i); if (!c) return;
@@ -347,40 +352,48 @@
     var t = $('so-sum'); if (t) { var m = K.summary(S, ui.items, ui.plan); t.innerHTML = 'Rak terinput: <b>' + fmt(m.rin) + '</b> &middot; Template Tahap 1: <b>' + fmt(ui.plan.step1.length) + '</b> baris &middot; Tahap 2: <b>' + fmt(ui.plan.step2.length) + '</b> baris'; }
   }
   function renderSO() {
-    var a = soItems(), el = $('rk-so'); if (!el) return;
+    var el = $('rk-so'); if (!el) return;
     var ae = document.activeElement, keep = ae && ae.id === 'so-q';
-    el.innerHTML = '<div class="dh"><div><div style="font-family:Outfit;font-size:18px;font-weight:700">&#128221; Form Stock Opname</div><div class="cd">Lihat rak &amp; saldo WMS, isi jumlah aktual di lapangan. Adjustment dibuat otomatis (kurang = -, tambah = angka polos).</div></div><button class="btn2 sm" onclick="RakUI.closeSO()">Tutup &#10005;</button></div>' +
-      '<div class="db"><div class="rk-tools"><input type="text" id="so-q" placeholder="Cari kode / nama item..." value="' + esc(ui.q) + '" style="width:240px" oninput="RakUI.soSearch(this.value)">' +
-      '<div class="rk-seg">' + [['all', 'Semua'], ['sel', 'Selisih'], ['todo', 'Belum diinput'], ['done', 'Sudah diinput']].map(function (x) { return '<button class="' + (ui.f === x[0] ? 'on' : '') + '" onclick="RakUI.soFilter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' +
-      '<button class="btn2 sm" onclick="RakUI.print()" title="Cetak lembar pegangan SO untuk di lapangan">&#128424; Cetak lembar SO</button></div>' +
+    var a = soItems(), cand = soCand(), shown = cand.slice(0, 25);
+    el.innerHTML = '<div class="dh"><div><div style="font-family:Outfit;font-size:18px;font-weight:700">&#128221; Form Stock Opname</div><div class="cd">Pilih item yang akan di-SO, isi qty &amp; rak aktual. Adjustment dibuat otomatis (kurang = -, tambah = angka polos).</div></div><button class="btn2 sm" onclick="RakUI.closeSO()">Tutup &#10005;</button></div>' +
+      '<div class="db">' +
+      '<div class="glass" style="border-radius:14px"><div class="gb"><div style="font-family:Outfit;font-weight:700;font-size:13px;margin-bottom:8px">1. Pilih item yang akan di-SO <span class="cd">(' + fmt(a.length) + ' dipilih dari ' + fmt(ui.items.length) + ' item)</span></div>' +
+      '<div class="rk-tools"><input type="text" id="so-q" placeholder="Cari kode / nama item..." value="' + esc(so.q) + '" style="width:240px" oninput="RakUI.soSearch(this.value)">' +
+      '<label class="chk" style="margin:0"><input type="checkbox" ' + (so.sel ? 'checked' : '') + ' onchange="RakUI.soSelOnly(this.checked)"> hanya yang selisih</label>' +
+      '<span class="cd">atau</span><input type="number" min="1" id="so-n" value="' + so.n + '" style="width:70px" onchange="RakUI.soSetN(this.value)"><button class="btn2 sm" onclick="RakUI.soTopN()">Pilih ' + so.n + ' selisih terbesar</button>' +
+      (a.length ? '<button class="btn2 dng sm" onclick="RakUI.soClear()">Kosongkan pilihan</button>' : '') + '</div>' +
+      '<div class="rk-tw" style="margin-top:8px;max-height:230px;overflow:auto"><table><thead><tr><th class="l">Item</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th></th></tr></thead><tbody>' +
+      (shown.map(function (i) { return '<tr><td class="l"><div class="nm">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td><td><button class="btn2 pri sm" data-k="' + esc(i.kode) + '" onclick="RakUI.soPick(this.dataset.k,true)">+ Pilih</button></td></tr>'; }).join('') || '<tr><td colspan="5" class="empty">' + (ui.items.length ? 'Tidak ada item lain yang cocok.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS dulu.') + '</td></tr>') +
+      '</tbody></table></div>' + (cand.length > shown.length ? '<div class="sub">+' + fmt(cand.length - shown.length) + ' item lain, persempit dengan pencarian.</div>' : '') + '</div></div>' +
+      '<div class="rk-tools"><div style="font-family:Outfit;font-weight:700;font-size:13px">2. Isi hasil SO</div><span style="flex:1"></span><button class="btn2 sm" onclick="RakUI.print()" ' + (a.length ? '' : 'disabled') + '>&#128424; Cetak Lembar SO (' + fmt(a.length) + ' item)</button></div>' +
       '<div class="sub" id="so-sum"></div>' +
-      (a.length ? a.slice(0, so.lim).map(soCard).join('') : '<div class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS dulu.') + '</div>') +
-      (a.length > so.lim ? '<button class="btn2" onclick="RakUI.soMore()">Tampilkan lebih banyak (sisa ' + (a.length - so.lim) + ')</button>' : '') +
+      (a.length ? a.map(soCard).join('') : '<div class="empty">Belum ada item dipilih.</div>') +
       '<div style="position:sticky;bottom:0;padding:10px 0;display:flex;gap:10px;justify-content:flex-end"><button class="btn2 pri" onclick="RakUI.soDone()">Selesai &amp; lihat Template Adjustment &darr;</button></div></div>';
     soRefresh();
     if (keep) { var q = $('so-q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   }
-
-  /* ---------- cetak laporan akurasi QAD vs WMS (lengkap dengan nama rak) ---------- */
-  function printReport() {
-    var a = filtered(); if (!a.length) return toast('Tidak ada data untuk dicetak. Upload data dulu atau ubah filter.', true);
-    var m = ui.sum, now = new Date().toLocaleString('id-ID'), nm = sessionStorage.getItem('wh_nama') || '';
-    var rowsItem = a.map(function (i, n) {
-      return '<tr><td>' + (n + 1) + '</td><td class="m">' + esc(i.kode) + '</td><td>' + esc(i.nama) + '</td><td class="c">' + esc(i.grp) + '</td><td class="m">' + esc(i.racks.map(function (r) { return r.rak; }).join(', ') || '-') + '</td><td class="r">' + fmt(i.qadv) + '</td><td class="r">' + fmt(i.wms) + '</td><td class="r ' + (i.sel ? 'bd' : '') + '">' + fmt(i.sel) + '</td><td class="c">' + (i.sel === 0 ? 'SESUAI' : 'SELISIH') + '</td></tr>';
-    }).join('');
-    var rowsRak = '';
-    a.forEach(function (i) {
-      K.lines(S, i, ui.plan).forEach(function (l) {
-        var d = l.aktual === null ? '' : l.aktual - l.exist;
-        rowsRak += '<tr><td class="m">' + esc(l.rak) + '</td><td>' + esc(l.area || '') + '</td><td class="m">' + esc(i.kode) + '</td><td>' + esc(i.nama) + '</td><td class="r">' + fmt(l.exist) + '</td><td class="r">' + (l.aktual === null ? '' : fmt(l.aktual)) + '</td><td class="r ' + (d ? 'bd' : '') + '">' + (d === '' ? '' : fmt(d)) + '</td></tr>';
+  /* ---------- cetak LEMBAR STOCK OPNAME (format lembar SO: sistem diganti QAD & WMS, ada Fisik & Rak Aktual) ---------- */
+  function printSO() {
+    var a = soItems(); if (!a.length) return toast('Pilih dulu item yang akan di-SO.', true);
+    var d = new Date(), p2 = function (n) { return n < 10 ? '0' + n : '' + n; };
+    var grp = a.map(function (i) { return i.grp; }).filter(function (v, i, x) { return x.indexOf(v) === i; }).join(', ');
+    var nm = (sessionStorage.getItem('wh_nama') || '').toUpperCase();
+    var no = 'SO-' + (grp.split(', ')[0] || 'WMS') + '-' + String(d.getFullYear()).slice(2) + p2(d.getMonth() + 1) + p2(d.getDate()) + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+    var n = 0, rows = '';
+    a.forEach(function (it) {
+      var rk = it.racks.length ? it.racks : [{ rak: '', onhand: '' }];
+      n++;
+      rk.forEach(function (r, i) {
+        rows += '<tr><td class="c">' + (i === 0 ? n : '') + '</td><td class="m">' + (i === 0 ? esc(it.kode) : '') + '</td><td>' + (i === 0 ? esc(it.nama) : '') + '</td><td></td><td class="c m">' + esc(r.rak) + '</td><td class="r">' + (i === 0 ? fmt(it.qadv) : '') + '</td><td class="r">' + (r.onhand === '' ? '' : fmt(r.onhand)) + '</td><td></td><td></td><td></td><td></td></tr>';
       });
+      rows += '<tr class="ex"><td></td><td></td><td class="cd">rak lain / tambahan &rarr;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
     });
-    var css = '@page{size:A4 landscape;margin:10mm}body{font:11px Arial,sans-serif;color:#111;margin:0}h1{font-size:17px;margin:0}h2{font-size:13px;margin:18px 0 6px}.sub{color:#555;font-size:10px;margin:3px 0 10px}.k{display:flex;gap:10px;margin:8px 0}.k div{border:1px solid #bbb;border-radius:6px;padding:6px 12px;min-width:120px}.k b{display:block;font-size:17px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:3px 5px;vertical-align:top}th{background:#e8ecf2;font-size:10px}.r{text-align:right}.c{text-align:center}.m{font-family:Consolas,monospace;font-size:10px}.bd{color:#b00020;font-weight:700}tr{page-break-inside:avoid}thead{display:table-header-group}';
-    var h = '<!doctype html><html><head><meta charset="utf-8"><title>Akurasi Rak WMS ' + esc(S.cfg.tgl) + '</title><style>' + css + '</style></head><body>' +
-      '<h1>Laporan Akurasi Stok Rak - QAD vs WMS (' + K.LOC + ')</h1><div class="sub">Group: ' + esc(ui.allowed.join(', ')) + (ui.g !== 'all' ? ' (filter ' + esc(ui.g) + ')' : '') + ' | Dicetak ' + esc(now) + (nm ? ' oleh ' + esc(nm) : '') + ' | Data WMS: ' + esc(S.meta.wmsAt || '-') + ' | Data QAD: ' + esc(S.meta.qadAt || '-') + '</div>' +
-      '<div class="k"><div>Akurasi Item<b>' + pct(m.accItem) + '%</b></div><div>Akurasi Qty<b>' + pct(m.accQty) + '%</b></div><div>Akurasi Rak (SO)<b>' + (m.accRak == null ? '-' : pct(m.accRak) + '%') + '</b></div><div>Item sesuai<b>' + fmt(m.ok) + ' / ' + fmt(m.n) + '</b></div><div>Saldo QAD / WMS<b>' + fmt(m.qad) + ' / ' + fmt(m.wms) + '</b></div></div>' +
-      '<h2>A. Perbandingan per item</h2><table><thead><tr><th>No</th><th>Kode Item</th><th>Nama Item</th><th>Group</th><th>Nama Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th></tr></thead><tbody>' + rowsItem + '</tbody></table>' +
-      '<h2>B. Detail per rak</h2><table><thead><tr><th>Rak</th><th>Area</th><th>Kode Item</th><th>Nama Item</th><th>Saldo WMS</th><th>Aktual</th><th>Adjustment</th></tr></thead><tbody>' + rowsRak + '</tbody></table></body></html>';
+    var css = '@page{size:A4 landscape;margin:10mm}body{font:11px Arial,sans-serif;color:#000;margin:0}.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}h1{font-size:20px;margin:0}.mt{display:grid;grid-template-columns:repeat(4,auto);gap:3px 24px;margin-bottom:8px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #000;padding:4px 5px;vertical-align:middle}th{background:#e6e6e6;font-size:10px}.r{text-align:right}.c{text-align:center}.m{font-family:Consolas,monospace}.ex td{height:20px;color:#888;font-size:9px}tr{page-break-inside:avoid}thead{display:table-header-group}.sg{display:flex;gap:60px;margin-top:26px}.sg div{width:170px;text-align:center}.sg span{display:block;height:50px;border-bottom:1px solid #000;margin-bottom:4px}';
+    var h = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(no) + '</title><style>' + css + '</style></head><body>' +
+      '<div class="hd"><h1>LEMBAR STOCK OPNAME</h1><div>PT Rucika &mdash; Warehouse</div></div>' +
+      '<div class="mt"><span>No. Lembar</span><b>' + esc(no) + '</b><span>Group</span><b>' + esc(grp) + '</b><span>PIC</span><b>' + esc(nm) + '</b><span>Lokasi WMS</span><b>' + K.LOC + '</b><span>Item dicetak</span><b>' + a.length + ' dari ' + ui.items.length + '</b><span>Tanggal cetak</span><b>' + d.toLocaleDateString('id-ID') + '</b><span>Data WMS</span><b>' + esc(S.meta.wmsAt || '-') + '</b><span>Data QAD</span><b>' + esc(S.meta.qadAt || '-') + '</b></div>' +
+      '<table><thead><tr><th>NO</th><th>ITEM</th><th>DESKRIPSI</th><th>UM</th><th>RAK</th><th>QAD</th><th>WMS</th><th>FISIK (QTY)</th><th>RAK AKTUAL</th><th>SELISIH</th><th>KETERANGAN</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<div class="sg"><div><span></span>PIC ( ' + esc(nm) + ' )</div><div><span></span>Checker (            )</div><div><span></span>Team Leader (            )</div></div></body></html>';
     var w = window.open('', '_blank'); if (!w) return toast('Pop-up diblokir browser. Izinkan pop-up untuk mencetak.', true);
     w.document.open(); w.document.write(h); w.document.close(); w.focus(); setTimeout(function () { w.print(); }, 400);
   }
@@ -429,9 +442,16 @@
     openSO: function () { recalc(); so.lim = 30; renderSO(); $('rk-ov').classList.add('on'); $('rk-so').classList.add('on'); ui.soOpen = true; },
     closeSO: function () { ui.soOpen = false; $('rk-so').classList.remove('on'); $('rk-ov').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
     soDone: function () { API.closeSO(); var a = $('rk-adj'); if (a && a.scrollIntoView) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
-    soSearch: function (v) { ui.q = v; so.lim = 30; renderSO(); },
-    soFilter: function (f) { ui.f = f; so.lim = 30; renderSO(); },
-    soMore: function () { so.lim += 30; renderSO(); },
+    soSearch: function (v) { so.q = v; renderSO(); },
+    soSelOnly: function (on) { so.sel = !!on; renderSO(); },
+    soSetN: function (v) { so.n = Math.max(1, Math.min(500, Math.floor(Number(v)) || 10)); renderSO(); },
+    soPick: function (k, on) { if (on) picks()[k] = 1; else delete picks()[k]; save(); renderSO(); },
+    soTopN: function () {
+      var pk = picks(), c = ui.items.filter(function (i) { return !pk[i.kode] && i.sel !== 0; }).sort(function (x, y) { return Math.abs(y.sel) - Math.abs(x.sel); }).slice(0, so.n);
+      if (!c.length) return toast('Tidak ada item selisih yang tersisa.', true);
+      c.forEach(function (i) { pk[i.kode] = 1; }); save(); renderSO();
+    },
+    soClear: function () { if (!confirm('Kosongkan pilihan item SO? (input aktual tidak dihapus)')) return; S.soPick = {}; save(); renderSO(); },
     soAkt: function (inp, i) {
       var it = itemOf(inp.dataset.k), l = K.lines(S, it, ui.plan)[i], v = inp.value;
       if (l.manual) { S.manual[it.kode][l.idx].aktual = v; } else { (S.inputs[it.kode] = S.inputs[it.kode] || {})[l.rak] = v; }
@@ -451,7 +471,7 @@
       var it = itemOf(kode); S.manual[kode].splice(idx, 1); save(); ui.plan = K.plan(S, ui.items);
       var c = $('so-c-' + kode); if (c) { c.outerHTML = soCard(it); } soRefresh();
     },
-    print: function () { printReport(); },
+    print: function () { printSO(); },
     ack: function (on) { S.step1 = on ? sig1(ui.plan) : ''; save(); renderAdj(); },
     dl: function (n) {
       var rows = n === 1 ? ui.plan.step1 : ui.plan.step2; if (!rows.length) return;
