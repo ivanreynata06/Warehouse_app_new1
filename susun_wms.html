@@ -942,15 +942,15 @@ function agingList(){
 var SRC = { upload: 'Laporan relokasi', konfirmasi: 'Konfirmasi admin', otomatis: 'Otomatis' };
 function filteredH(){
   var q = S.qH.trim().toLowerCase();
-  return scopeH().filter(function(e){ if (S.tfH !== 'all' && e.src !== S.tfH) return false; if (q && (e.v + ' ' + e.i + ' ' + e.from + ' ' + e.to + ' ' + e.p).toLowerCase().indexOf(q) === -1) return false; return true; });
+  return scopeH().filter(function(e){ if (S.tfH !== 'all' && e.src !== S.tfH) return false; if (q && (e.v + ' ' + (e.id || '') + ' ' + e.i + ' ' + e.from + ' ' + e.to + ' ' + e.p + ' ' + (e.kt || '')).toLowerCase().indexOf(q) === -1) return false; return true; });
 }
 function tableH(){
   var list = filteredH(), shown = list.slice(0, S.showH);
   $('tblH-title').textContent = 'Histori relokasi · ' + C.monLabel(S.month);
   var h = '<thead><tr><th>Tanggal</th><th>Voucher</th><th>Item</th><th class="num">Qty</th><th>Dari</th><th>Ke</th><th>PIC</th><th>Sumber</th><th class="num">Lama di transit</th></tr></thead><tbody>';
   h += shown.map(function(e){
-    var open = S.openV === e.v + '|' + e.to, row = '<tr class="hrow" onclick="toggleTl(' + esc(JSON.stringify(e.v + '|' + e.to)).replace(/&quot;/g, '&quot;') + ')"><td>' + esc(C.fmtDate(e.t)) + '</td><td class="mono">' + esc(e.v) + '</td><td class="wrap">' + esc(K.fullName(e.i)) + '</td><td class="num">' + fmt(e.q) + '</td><td class="mono">' + esc(e.from || '–') + '</td><td class="mono">' + esc(e.to || '–') + '</td><td class="mono">' + esc(e.p || '–') + '</td><td><span class="bdg ' + e.src + '"><i></i>' + SRC[e.src] + '</span></td><td class="num">' + (e.days == null ? '–' : e.days + ' hari') + '</td></tr>';
-    if (open) { var ev = K.timeline(e.v, S.susun.master, S.susun.relok, S.susun.cek, S.wms); var col = { wms: '#9db6ff', transit: '#ffb454', rak: '#7aa2ff', reloc: '#5eead4', konf: '#ffb454', ok: '#7ee8c7', bad: '#ff93a8' };
+    var ek = e.v || ('ID ' + e.id), open = S.openV === ek + '|' + e.to, row = '<tr class="hrow" onclick="toggleTl(' + esc(JSON.stringify(ek + '|' + e.to)).replace(/&quot;/g, '&quot;') + ')"><td>' + esc(C.fmtDate(e.t)) + '</td><td class="mono">' + esc(ek) + '</td><td class="wrap">' + esc(K.fullName(e.i)) + (e.kt ? '<div style="color:var(--txt3);font-size:10.5px">' + esc((e.jn ? e.jn + ' · ' : '') + e.kt) + '</div>' : '') + '</td><td class="num">' + fmt(e.q) + '</td><td class="mono">' + esc(e.from || '–') + '</td><td class="mono">' + esc(e.to || '–') + '</td><td class="mono">' + esc(e.p || '–') + '</td><td><span class="bdg ' + e.src + '"><i></i>' + SRC[e.src] + '</span></td><td class="num">' + (e.days == null ? '–' : e.days + ' hari') + '</td></tr>';
+    if (open) { var ev = K.timeline(ek, S.susun.master, S.susun.relok, S.susun.cek, S.wms); var col = { wms: '#9db6ff', transit: '#ffb454', rak: '#7aa2ff', reloc: '#5eead4', konf: '#ffb454', ok: '#7ee8c7', bad: '#ff93a8' };
       row += '<tr class="exp"><td colspan="9"><div class="tl">' + ev.map(function(x, i){ return '<div class="e" style="--i:' + i + ';--c:' + (col[x.k] || '#9db6ff') + '"><b>' + esc(x.title) + '</b><span><i>' + esc(C.fmtDate(x.t)) + '</i>' + esc(x.det || '') + '</span></div>'; }).join('') + '</div></td></tr>'; }
     return row;
   }).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--txt3);padding:26px">Belum ada relokasi. Upload laporan relokasi di Upload Data Harian, tab Susun &amp; Rak.</td></tr>';

@@ -127,7 +127,7 @@
     var hasRak = {}; (master || []).forEach(function (x) { if (kategori(x.r) === 'susun') hasRak[x.v] = 1; });
     (cek || []).forEach(function (c) { if (String(c.k).indexOf('RELOK|') === 0) ans[c.v] = c; });
     T.forEach(function (t) { if (hasRak[t.v]) auto[t.v] = 1; });
-    (relokRows || []).forEach(function (r) { auto[r.v] = 1; });           // sudah ada di laporan relokasi
+    (relokRows || []).forEach(function (r) { if (r.v) auto[r.v] = 1; });           // sudah ada di laporan relokasi
     var used = {}, out = [];
     L.slice().sort(function (a, b) { return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; }).forEach(function (l) {
       var c = T.filter(function (t) { return !used[t.v] && !auto[t.v] && (t.v === l.v || (t.i === l.i && t.q === l.q)) && t.t <= l.t; })
@@ -143,7 +143,7 @@
   // wmsRows: baris master WMS (Akurasi QAD vs WMS) {t,v,i,n,q};  cek: untuk jawaban relokasi
   function analyzeOperator(wmsRows, master, cek, relokRows) {
     var tr = {}, rk = {}, lk = {}, relokYa = {}, rlk = {};
-    (relokRows || []).forEach(function (r) { (rlk[r.v] = rlk[r.v] || []).push(r); });
+    (relokRows || []).forEach(function (r) { if (r.v) (rlk[r.v] = rlk[r.v] || []).push(r); });
     (master || []).forEach(function (x) { var k = kategori(x.r); if (k === 'transit') (tr[x.v] = tr[x.v] || []).push(x); else if (k === 'susun') (rk[x.v] = rk[x.v] || []).push(x); else if (k === 'lokasi') (lk[x.v] = lk[x.v] || []).push(x); });
     (cek || []).forEach(function (c) { if (String(c.k).indexOf('RELOK|') === 0 && c.sl) relokYa[c.v] = c; });
     var V = {};
@@ -176,40 +176,47 @@
   var RL_SYN = {
     v: ['novoucher', 'novouchersjt', 'voucher', 'nosjt', 'nomorvoucher', 'novoucherrelokasi', 'norelokasi', 'nodokumen'],
     t: ['tanggalrelokasi', 'tglrelokasi', 'tanggal', 'tgl', 'tanggalproses', 'waktu', 'tanggaltransaksi', 'selesairelokasi'],
-    from: ['rakasal', 'darirak', 'dari', 'asal', 'lokasiasal', 'fromrak', 'rakawal', 'lokasidari'],
-    to: ['raktujuan', 'kerak', 'ke', 'tujuan', 'lokasitujuan', 'torak', 'rakbaru', 'lokasike'],
+    from: ['asalrak', 'rakasal', 'darirak', 'dari', 'asal', 'lokasiasal', 'fromrak', 'rakawal', 'lokasidari'],
+    to: ['tujuanrak', 'raktujuan', 'kerak', 'ke', 'tujuan', 'lokasitujuan', 'torak', 'rakbaru', 'lokasike'],
     q: ['qty', 'jumlah', 'qtyrelokasi', 'qtypindah'],
-    p: ['picrelokasi', 'pic', 'user', 'operator', 'dikerjakanoleh', 'petugas', 'picsusun'],
-    i: ['namaitem', 'deskripsi', 'item', 'descitem']
+    p: ['picrelokasi', 'pic', 'user', 'operator', 'dikerjakanoleh', 'petugas', 'picsusun', 'jurususun', 'jurusun'],
+    i: ['namaitem', 'deskripsi', 'item', 'descitem'],
+    // template "Laporan Relokasi": ID Relokasi | Tanggal | Jenis Item | Kode Item | Nama Item | Asal Rak | Tujuan Rak | Asal MC | Tujuan MC | Qty | Jenis Relokasi | Keterangan | Juru Susun
+    id: ['idrelokasi', 'idreloc', 'idrelok'],
+    kode: ['kodeitem', 'itemnumber', 'kode'],
+    jn: ['jenisrelokasi'],
+    kt: ['keterangan', 'catatan', 'ket']
   };
+  // kolom rak kadang berisi nama item (data relokasi dari area transit / tanpa rak) -> dianggap kosong
+  function cleanRak(v) { var x = norm(v); return /^(PIPE|PIPA|RUCIKA|FITTING)\b/i.test(x) ? '' : x; }
   function parseRelokasi(rows, knownVouchers) {
     var h = null, map;
     for (var r = 0; r < Math.min(rows.length, 25) && !h; r++) {
       var hd = (rows[r] || []).map(normHead), m = {};
       Object.keys(RL_SYN).forEach(function (k) { m[k] = idx(hd, RL_SYN[k]); });
-      if (m.v !== -1 && m.t !== -1 && (m.to !== -1 || m.from !== -1)) { h = { row: r, heads: hd }; map = m; }
+      if ((m.v !== -1 || m.id !== -1) && m.t !== -1 && (m.to !== -1 || m.from !== -1)) { h = { row: r, heads: hd }; map = m; }
     }
     if (!h) {
       var seen = (rows[0] || []).concat(rows[1] || []).map(norm).filter(Boolean).slice(0, 14).join(' | ');
-      throw new Error('Kolom laporan relokasi belum dikenali. Dibutuhkan minimal: nomor voucher, tanggal, dan rak asal/tujuan. Kolom yang terbaca: ' + (seen || '(kosong)') + '. Kirim template aslinya agar pembaca disesuaikan.');
+      throw new Error('Kolom laporan relokasi belum dikenali. Dibutuhkan minimal: nomor voucher atau ID Relokasi, tanggal, dan rak asal/tujuan. Kolom yang terbaca: ' + (seen || '(kosong)') + '. Kirim template aslinya agar pembaca disesuaikan.');
     }
     var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0, voucher: 0 }, vs = {};
     for (var i = h.row + 1; i < rows.length; i++) {
-      var row = rows[i] || [], v = vKey(row[map.v]);
-      if (!v) continue;
+      var row = rows[i] || [], v = map.v === -1 ? '' : vKey(row[map.v]), rid = map.id === -1 ? '' : vKey(row[map.id]);
+      if (!v && !rid) continue;
       st.total++;
       var item = map.i === -1 ? '' : norm(row[map.i]);
       if (map.i !== -1 && item && !W.lolosNama(item)) { st.dropped++; continue; }        // bukan PIPE PPR Kelen
-      if (map.i === -1 && knownVouchers && !knownVouchers[v]) { st.dropped++; continue; }   // tanpa kolom item: pakai voucher yang dikenal
+      if (map.i === -1 && knownVouchers && v && !knownVouchers[v]) { st.dropped++; continue; }   // tanpa kolom item: pakai voucher yang dikenal
       var t = W.parseDate(row[map.t]);
       if (!t) { st.noDate++; continue; }
-      st.kept++; vs[v] = 1;
-      out.push({ t: t, v: v, from: map.from === -1 ? '' : norm(row[map.from]), to: map.to === -1 ? '' : norm(row[map.to]), q: map.q === -1 ? 0 : W.parseQty(row[map.q]), p: map.p === -1 ? '' : norm(row[map.p]), i: item });
+      st.kept++; vs[v || ('ID' + rid)] = 1;
+      out.push({ t: t, v: v, id: rid, from: map.from === -1 ? '' : cleanRak(row[map.from]), to: map.to === -1 ? '' : cleanRak(row[map.to]), q: map.q === -1 ? 0 : W.parseQty(row[map.q]), p: map.p === -1 ? '' : norm(row[map.p]), i: item, kode: map.kode === -1 ? '' : vKey(row[map.kode]), jn: map.jn === -1 ? '' : norm(row[map.jn]), kt: map.kt === -1 ? '' : norm(row[map.kt]) });
     }
     st.voucher = Object.keys(vs).length;
     return { rows: out, stats: st, detected: Object.keys(map).filter(function (k) { return map[k] !== -1; }) };
   }
-  function relDup(r) { return r.v + '|' + r.t + '|' + rakKey(r.from) + '|' + rakKey(r.to) + '|' + r.q; }
+  function relDup(r) { if (r.id) return 'ID|' + r.id + '|' + r.t + '|' + rakKey(r.from) + '|' + rakKey(r.to) + '|' + r.q; return r.v + '|' + r.t + '|' + rakKey(r.from) + '|' + rakKey(r.to) + '|' + r.q; }
   function dedupeRelok(newRows, existing) {
     var have = {}, add = [], dup = 0;
     (existing || []).forEach(function (r) { have[relDup(r)] = 1; });
@@ -220,9 +227,9 @@
   // histori relokasi gabungan: upload > konfirmasi admin (C-FITLK) > otomatis (transit lalu rak I/J)
   function relokHistory(master, relokRows, cek) {
     var out = [], have = {};
-    function push(e) { var k = e.v + '|' + rakKey(e.to); if (have[k]) return; have[k] = 1; out.push(e); }
+    function push(e) { var k = e.id ? 'ID|' + e.id + '|' + rakKey(e.to) : e.v + '|' + rakKey(e.to); if (have[k]) return; have[k] = 1; out.push(e); }
     var tr = {}; (master || []).forEach(function (x) { if (kategori(x.r) === 'transit') { var o = tr[x.v]; if (!o || x.t < o.t) tr[x.v] = x; } });
-    (relokRows || []).forEach(function (r) { push({ v: r.v, t: r.t, from: r.from || (tr[r.v] ? 'Area transit' : ''), to: r.to, q: r.q || (tr[r.v] ? tr[r.v].q : 0), i: r.i || (tr[r.v] ? tr[r.v].i : ''), p: r.p, src: 'upload', tt: tr[r.v] ? tr[r.v].t : '' }); });
+    (relokRows || []).forEach(function (r) { push({ v: r.v, id: r.id || '', kt: r.kt || '', jn: r.jn || '', t: r.t, from: r.from || (r.v && tr[r.v] ? 'Area transit' : ''), to: r.to, q: r.q || (r.v && tr[r.v] ? tr[r.v].q : 0), i: r.i || (r.v && tr[r.v] ? tr[r.v].i : ''), p: r.p, src: 'upload', tt: r.v && tr[r.v] ? tr[r.v].t : '' }); });
     (cek || []).forEach(function (c) {
       if (String(c.k).indexOf('RELOK|') !== 0 || !c.sl) return;
       var t0 = tr[c.v]; push({ v: c.v, t: String(c.ts || '').slice(0, 10) || (t0 ? t0.t : ''), from: 'Area transit', to: c.rw, q: c.qw, i: t0 ? t0.i : '', p: '', src: 'konfirmasi', tt: t0 ? t0.t : '' });
@@ -255,7 +262,7 @@
       if (x.v !== v) return; var k = kategori(x.r);
       ev.push({ t: x.t, k: k === 'transit' ? 'transit' : 'rak', title: k === 'transit' ? 'Masuk area transit' : 'Disusun ke rak ' + x.r, det: 'Qty ' + x.q + (x.p ? ' · PIC ' + x.p : '') });
     });
-    (relokRows || []).forEach(function (r) { if (r.v === v) ev.push({ t: r.t, k: 'reloc', title: 'Relokasi ' + (r.from || '?') + ' → ' + (r.to || '?'), det: (r.q ? 'Qty ' + r.q : '') + (r.p ? ' · PIC ' + r.p : '') }); });
+    (relokRows || []).forEach(function (r) { if ((r.v && r.v === v) || (r.id && v === 'ID ' + r.id)) ev.push({ t: r.t, k: 'reloc', title: 'Relokasi ' + (r.from || '?') + ' → ' + (r.to || '?'), det: (r.q ? 'Qty ' + r.q : '') + (r.p ? ' · PIC ' + r.p : '') + (r.jn ? ' · ' + r.jn : '') + (r.kt ? ' · ' + r.kt : '') }); });
     (cek || []).forEach(function (c) {
       if (c.v !== v) return;
       if (String(c.k).indexOf('RELOK|') === 0) ev.push({ t: String(c.ts || '').slice(0, 10), k: 'konf', title: c.sl ? 'Admin mengonfirmasi relokasi ke ' + c.rw : 'Admin: relokasi belum dilakukan', det: '' });

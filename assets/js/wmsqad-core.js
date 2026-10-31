@@ -125,6 +125,8 @@
     h.heads.forEach(function (x, i) { if (x === 'description') cDesc.push(i); });
     if (!cDesc.length) throw new Error('Kolom "Description" tidak ditemukan di file QAD.');
     var cEnt = idxOf(h.heads, ['entereddate']), cEff = idxOf(h.heads, ['effectivedate']);
+    // nomor referensi/voucher QAD (opsional) -- dipakai untuk menelusuri input QAD yang tidak punya voucher WMS
+    var cRef = idxOf(h.heads, ['reference', 'ref', 'referensi', 'nbr', 'ordernbr', 'order', 'trnbr', 'transactionnbr', 'novoucher', 'voucher', 'nomorreferensi']);
     var cT = (dateCol === 'effective') ? (cEff !== -1 ? cEff : cEnt) : (cEnt !== -1 ? cEnt : cEff);
     if (cT === -1) throw new Error('Kolom tanggal ("Entered Date" / "Effective Date") tidak ditemukan di file QAD.');
     var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0 };
@@ -137,7 +139,7 @@
       if (!lolosNama(nama)) { st.dropped++; continue; }
       var t = parseDate(row[cT]);
       if (!t) { st.noDate++; continue; }
-      out.push({ t: t, i: item, n: nama, q: parseQty(row[cQ]) });
+      out.push({ t: t, i: item, n: nama, q: parseQty(row[cQ]), v: cRef === -1 ? '' : cleanText(row[cRef]) });
       st.kept++;
     }
     return { rows: out, stats: st };
@@ -202,8 +204,10 @@
       pairs.forEach(function (p) {
         var wq = p.w ? p.w.q : null, qq = p.q ? p.q.q : null;
         tx.push({
-          id: ++seq, t: G.t, i: G.i, n: G.n, v: p.w ? p.w.v : '',
-          wq: wq, qq: qq, diff: (qq == null ? 0 : qq) - (wq == null ? 0 : wq), st: p.st
+          id: ++seq, t: G.t, i: G.i, n: G.n, v: p.w ? p.w.v : '', qv: p.q ? (p.q.v || '') : '',
+          wq: wq, qq: qq, diff: (qq == null ? 0 : qq) - (wq == null ? 0 : wq), st: p.st,
+          // untuk input QAD tanpa voucher WMS: voucher WMS lain pada item & tanggal yang sama (bahan telusur)
+          near: p.st === 'nowms' ? G.W.map(function (w) { return { v: w.v, q: w.q }; }) : undefined
         });
         it[p.st]++;
         it.wQty += wq || 0; it.qQty += qq || 0;
@@ -238,7 +242,8 @@
   function explain(x) {
     var nm = shortName(x.n), f = function (n) { return (Number(n) || 0).toLocaleString('id-ID'); };
     if (x.st === 'noqad') return 'Voucher ' + (x.v || '-') + ' (' + f(x.wq) + ') sudah ada di WMS, tetapi belum ada input di QAD.';
-    if (x.st === 'nowms') return 'Ada input QAD ' + f(x.qq) + ' yang tidak punya voucher di WMS.';
+    if (x.st === 'nowms') return 'Ada input QAD ' + (x.qv ? 'No. ' + x.qv + ' ' : '') + f(x.qq) + ' yang tidak punya voucher di WMS.' +
+      (x.near && x.near.length ? ' Voucher WMS lain pada item & tanggal ini: ' + x.near.map(function (w) { return (w.v || '-') + ' (' + f(w.q) + ')'; }).join(', ') + '.' : ' Tidak ada voucher WMS sama sekali untuk item ini pada tanggal tersebut.');
     if (x.st === 'qty') return 'Voucher ' + (x.v || '-') + ': WMS ' + f(x.wq) + ', QAD ' + f(x.qq) + ' (' + (x.diff > 0 ? 'lebih ' : 'kurang ') + f(Math.abs(x.diff)) + ').';
     return 'Sesuai';
   }

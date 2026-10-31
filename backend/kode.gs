@@ -87,6 +87,7 @@ var API_FUNCTIONS = {
   adminSetFonnteToken     : adminSetFonnteToken,
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
+  adminSetFonnteTlWa: adminSetFonnteTlWa,
   adminSetFonnteTokenUmum: adminSetFonnteTokenUmum,
   adminGetKaryawanMaster: adminGetKaryawanMaster,
   adminSimpanKaryawan: adminSimpanKaryawan,
@@ -215,7 +216,7 @@ var AUTH_PUBLIC_ACTIONS = { loginUser: 1, getAvailablePlantsForLogin: 1 };
 var AUTH_ACTOR_BOUND = {
   auditProduktivitasFTE: 1, getSupabaseStorageStats: 1, setSupabaseDbLimitMB: 1, bersihkanPengajuanDitolakLama: 1, getAkunList: 1,
   adminTambahUser: 1, adminResetPassword: 1, adminSetAktif: 1, adminEditUser: 1, adminHapusUser: 1, adminSetFonnteToken: 1, adminGetFonnteStatus: 1,
-  adminSetFonnteApproverWa: 1, adminSetFonnteTokenUmum: 1, adminGetKaryawanMaster: 1, adminSimpanKaryawan: 1, adminImporKaryawanDariAkun: 1,
+  adminSetFonnteApproverWa: 1, adminSetFonnteTlWa: 1, adminSetFonnteTokenUmum: 1, adminGetKaryawanMaster: 1, adminSimpanKaryawan: 1, adminImporKaryawanDariAkun: 1,
   adminTesKirimFonnte: 1, adminGetKeywordKategoriTambahan: 1, adminSetKeywordKategoriTambahan: 1, adminGetTargetProduktivitas: 1, adminSetTargetProduktivitas: 1,
   getWorkspaceListForAdmin: 1, adminProvisionNewDepartment: 1, adminRepairWorkspaceSheets: 1, adminHapusDepartemen: 1, adminHapusPlant: 1, adminGetMenuConfig: 1,
   adminSetMenuConfig: 1, adminGetCrossWorkspaceTL: 1, adminSetCrossWorkspaceTL: 1, getPendingApprovals: 1, adminGetSplSignatures: 1, adminUploadSplSignature: 1,
@@ -4969,6 +4970,23 @@ function _fonnteCariToken(kode) {
   return null;
 }
 
+// Nomor WA TL untuk notif persiapan muat. Urutan: FONNTE_TL_WA_<workspace> -> FONNTE_TL_WA -> nomor approver
+// (jadi tanpa konfigurasi tambahan notif tetap terkirim ke nomor yang sama dengan notif lembur).
+function _fonnteTl() {
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('FONNTE_TL_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_TL_WA') || _fonnteApprover();
+}
+function adminSetFonnteTlWa(actorNik, nomorWa, targetWorkspace) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur nomor WA TL.' };
+    nomorWa = String(nomorWa || '').trim();
+    var workspaceKey = (targetWorkspace && _isSuperAdmin(actorNik)) ? targetWorkspace : ACTIVE_WORKSPACE;
+    var props = PropertiesService.getScriptProperties(), key = 'FONNTE_TL_WA_' + workspaceKey;
+    if (!nomorWa) { props.deleteProperty(key); return { success: true, cleared: true }; }
+    props.setProperty(key, nomorWa);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
 function _fonnteApprover() {
   var props = PropertiesService.getScriptProperties();
   return props.getProperty('FONNTE_APPROVER_WA_' + ACTIVE_WORKSPACE) || props.getProperty('FONNTE_APPROVER_WA') || '';
@@ -4995,10 +5013,10 @@ function _fonnteSimpanStatus(r) {
 
 // Kirim 1 pesan lewat Fonnte. Mengembalikan objek {ok, pesan, saran, to, sumber, httpCode}
 // -- alasan gagal dari Fonnte (reason) ikut dikembalikan & disimpan, bukan cuma "false".
-function _fonnteKirim(kodePengirim, pesan) {
+function _fonnteKirim(kodePengirim, pesan, targetOverride) {
   var hasil = { ok: false };
   var tk = _fonnteCariToken(kodePengirim);
-  var targetRaw = _fonnteApprover();
+  var targetRaw = targetOverride || _fonnteApprover();
   if (!tk || !targetRaw) {
     var kurang = [];
     if (!tk) kurang.push('Token Fonnte');
@@ -10261,7 +10279,7 @@ function getWmsQadData() {
     var all = _wqBaca(_getOrCreateWmsQadSheet()), wms = [], qad = [];
     all.forEach(function (r) {
       if (r[0] === 'wms') wms.push({ t: r[1], v: r[2], i: r[3], n: r[4], q: r[5] });
-      else if (r[0] === 'qad') qad.push({ t: r[1], i: r[3], n: r[4], q: r[5] });
+      else if (r[0] === 'qad') qad.push({ t: r[1], v: r[2], i: r[3], n: r[4], q: r[5] });
     });
     return { success: true, wms: wms, qad: qad };
   } catch (err) {
@@ -10284,7 +10302,7 @@ function saveWmsQadData(kind, jsonStr) {
       var t = String(r.t || '').trim(), nama = String(r.n || '').replace(/\s+/g, ' ').trim();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !_wqLolos(nama)) { dibuang++; return; }
       tgls[t] = 1;
-      baru.push([kind, t, kind === 'wms' ? String(r.v || '').trim() : '', String(r.i || '').trim(), nama, Number(r.q) || 0]);
+      baru.push([kind, t, String(r.v || '').trim(), String(r.i || '').trim(), nama, Number(r.q) || 0]);   // kolom voucher: voucher WMS, atau nomor referensi QAD
     });
     if (!baru.length) return { success: false, error: 'Semua baris ditolak server (tanggal / deskripsi tidak sesuai).' };
     lock.waitLock(25000);
@@ -10409,12 +10427,73 @@ function savePicWmsData(kind, jsonStr) {
     });
     var semua = sisa.concat(baru);
     _pwTulis(sh, semua);
-    return { success: true, ditambah: baru.length, diganti: diganti, tanggal: Object.keys(tgls).sort(), total: semua.length };
+    var notif = kind === 'master' ? _notifPersiapanMuat(baru) : null;
+    return { success: true, ditambah: baru.length, diganti: diganti, tanggal: Object.keys(tgls).sort(), total: semua.length, notif: notif };
   } catch (err) {
     return { success: false, error: String(err && err.message || err) };
   } finally {
     try { lock.releaseLock(); } catch (e) {}
   }
+}
+
+// ----------------------------------------------------------------
+//  NOTIF WA PERSIAPAN MUAT -> TL
+//  Dipanggil setelah upload Laporan Muat (master) tersimpan. Hanya SPM yang
+//  (a) ada di laporan muat DAN (b) ada di data Loading Time (sheet PENGIRIMAN, kolom E)
+//  yang dilaporkan. Tiap SPM hanya dinotifikasi SEKALI (upload ulang tidak mengirim dobel).
+//  Token: sama dengan notif lembur (_fonnteCariToken). Tidak pernah menggagalkan upload.
+// ----------------------------------------------------------------
+function _notifPersiapanMuat(baru) {
+  var hasil = { dicek: 0, cocok: 0, terkirim: false };
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID), shP = ss.getSheetByName(SH_PENGIRIMAN);
+    if (!shP) return hasil;
+    // SPM di Loading Time -> {agen, nopol}
+    var lt = {}, dP = shP.getDataRange().getValues();
+    for (var i = 1; i < dP.length; i++) {
+      var sp = String(dP[i][4] || '').replace(/\s+/g, '').toUpperCase();
+      if (sp && !lt[sp]) lt[sp] = { agen: String(dP[i][1] || '').trim(), nopol: String(dP[i][5] || '').trim() };
+    }
+    // gabungkan baris laporan muat per SPM
+    var per = {}, order = [];
+    baru.forEach(function (r) {
+      var sp = r[2]; hasil.dicek++;
+      if (!lt[sp]) return;
+      if (!per[sp]) { per[sp] = { spm: sp, t: r[1], qty: 0, pic: {} }; order.push(sp); }
+      per[sp].qty += Number(r[6]) || 0; if (r[4]) per[sp].pic[r[4]] = 1;
+    });
+    // buang yang sudah pernah dinotifikasi
+    var props = PropertiesService.getScriptProperties(), kS = 'WA_SPM_SIAP_' + ACTIVE_WORKSPACE, sent = {};
+    try { sent = JSON.parse(props.getProperty(kS) || '{}'); } catch (e) { sent = {}; }
+    var nowMs = new Date().getTime(), CUT = 90 * 864e5;
+    Object.keys(sent).forEach(function (k) { if (nowMs - sent[k] > CUT) delete sent[k]; });
+    var daftar = order.filter(function (sp) { return !sent[sp]; });
+    hasil.cocok = order.length;
+    if (!daftar.length) return hasil;
+    var tglSet = {}, totQty = 0;
+    daftar.forEach(function (sp) { tglSet[per[sp].t] = 1; totQty += per[sp].qty; });
+    var tglKey = Object.keys(tglSet).sort();
+    // perkiraan tonase = tonase persiapan pipa tercatat di REKAP MUATAN pada tanggal muat tsb
+    var ton = 0, shM = ss.getSheetByName(SH_REKAP_MUATAN);
+    if (shM) {
+      var dM = shM.getDataRange().getValues();
+      for (var j = 1; j < dM.length; j++) { var d = toDate(dM[j][1]); if (d && tglSet[_fmtYMD(d)]) ton += parseFloat(dM[j][3]) || 0; }
+    }
+    var jam = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'HH:mm');
+    var baris = daftar.map(function (sp, n) {
+      var l = lt[sp], x = per[sp];
+      return (n + 1) + '. SPM ' + sp + (l.agen ? ' - ' + l.agen : '') + (l.nopol ? ' (' + l.nopol + ')' : '') + ' : ' + Math.round(x.qty).toLocaleString('id-ID') + ' btg';
+    });
+    var pesan = '📦 *Persiapan Muat Selesai*\n\n' +
+      'Team persiapan telah menyiapkan barang untuk *' + daftar.length + ' SPM*:\n' + baris.join('\n') + '\n\n' +
+      'Total qty muat: ' + Math.round(totQty).toLocaleString('id-ID') + ' btg\n' +
+      (ton > 0 ? 'Perkiraan tonase: ' + (Math.round(ton / 10) / 100).toString().replace('.', ',') + ' ton (tonase persiapan tercatat tgl ' + tglKey.map(_waTgl).join(', ') + ')\n' : '') +
+      'Selesai sampai jam ' + jam + ' WIB';
+    var r = _fonnteKirim('', pesan, _fonnteTl());
+    hasil.terkirim = !!r.ok; hasil.info = r.pesan || '';
+    if (r.ok) { daftar.forEach(function (sp) { sent[sp] = nowMs; }); props.setProperty(kS, JSON.stringify(sent)); }
+  } catch (err) { hasil.error = String(err && err.message || err); Logger.log('Notif persiapan muat gagal: ' + hasil.error); }
+  return hasil;
 }
 
 // kind: 'master' | 'jadwal' | 'semua'
@@ -10494,7 +10573,7 @@ function getSusunData() {
       return { k: String(r[0]), v: String(r[1]), rw: String(r[2]), qw: Number(r[3]) || 0, rk: String(r[4]), qk: r[5] === '' ? '' : Number(r[5]),
                ik: String(r[6]), st: String(r[7]), rs: String(r[8]), sl: Number(r[9]) ? 1 : 0, adj: String(r[10]), ts: String(r[11]) };
     });
-    return { success: true, master: master, cek: cek, relok: _rlRows().map(function (r) { return { t: r[0], v: r[1], from: r[2], to: r[3], q: r[4], p: r[5], i: r[6] }; }) };
+    return { success: true, master: master, cek: cek, relok: _rlRows().map(function (r) { return { t: r[0], v: r[1], from: r[2], to: r[3], q: r[4], p: r[5], i: r[6], id: r[7], jn: r[8], kt: r[9], kode: r[10] }; }) };
   } catch (err) { return { success: false, error: String(err && err.message || err) }; }
 }
 
@@ -10582,13 +10661,18 @@ function hapusSusunData(kind, dari, sampai) {
 //  Tidak dikirim ke Supabase.
 // ================================================================
 var SH_RELOK = 'RELOKASI_DATA';
-function _rlSheet() { return _suSheet(SH_RELOK, ['tanggal', 'voucher', 'rak_asal', 'rak_tujuan', 'qty', 'pic', 'item']); }
+function _rlSheet() {
+  var sh = _suSheet(SH_RELOK, ['tanggal', 'voucher', 'rak_asal', 'rak_tujuan', 'qty', 'pic', 'item', 'id_relokasi', 'jenis_relokasi', 'keterangan', 'kode_item']);
+  if (String(sh.getRange(1, 8).getValue() || '') !== 'id_relokasi') sh.getRange(1, 8, 1, 4).setValues([['id_relokasi', 'jenis_relokasi', 'keterangan', 'kode_item']]);   // sheet lama (7 kolom) diperluas
+  return sh;
+}
 function _rlRows() {
-  return _suRead(_rlSheet(), 7).map(function (r) {
-    return [_wqTgl(r[0]), String(r[1]).trim(), String(r[2]).trim(), String(r[3]).trim(), Number(r[4]) || 0, String(r[5]).trim(), String(r[6]).trim()];
+  return _suRead(_rlSheet(), 11).map(function (r) {
+    return [_wqTgl(r[0]), String(r[1]).trim(), String(r[2]).trim(), String(r[3]).trim(), Number(r[4]) || 0, String(r[5]).trim(), String(r[6]).trim(),
+            String(r[7] == null ? '' : r[7]).trim(), String(r[8] == null ? '' : r[8]).trim(), String(r[9] == null ? '' : r[9]).trim(), String(r[10] == null ? '' : r[10]).trim()];
   });
 }
-function _rlKey(r) { return r[1] + '|' + r[0] + '|' + String(r[2]).toUpperCase().replace(/\s+/g, '') + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]; }
+function _rlKey(r) { if (r[7]) return 'ID|' + r[7] + '|' + r[0] + '|' + String(r[2]).toUpperCase().replace(/\s+/g, '') + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]; return r[1] + '|' + r[0] + '|' + String(r[2]).toUpperCase().replace(/\s+/g, '') + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]; }
 
 function saveRelokasiData(jsonStr) {
   var lock = LockService.getScriptLock();
@@ -10601,13 +10685,14 @@ function saveRelokasiData(jsonStr) {
     var baru = [], dobel = 0, dibuang = 0, tgls = {};
     arr.forEach(function (x) {
       var t = String(x.t || '').trim(), v = String(x.v || '').replace(/\s+/g, ''), it = String(x.i || '').replace(/\s+/g, ' ').trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !v || (it && !_wqLolos(it))) { dibuang++; return; }
-      var row = [t, v, String(x.from || '').replace(/\s+/g, ' ').trim(), String(x.to || '').replace(/\s+/g, ' ').trim(), Number(x.q) || 0, String(x.p || '').replace(/\s+/g, ' ').trim(), it], k = _rlKey(row);
+      var rid = String(x.id || '').replace(/\s+/g, '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || (!v && !rid) || (it && !_wqLolos(it))) { dibuang++; return; }
+      var row = [t, v, String(x.from || '').replace(/\s+/g, ' ').trim(), String(x.to || '').replace(/\s+/g, ' ').trim(), Number(x.q) || 0, String(x.p || '').replace(/\s+/g, ' ').trim(), it, rid, String(x.jn || '').replace(/\s+/g, ' ').trim(), String(x.kt || '').replace(/\s+/g, ' ').trim().substring(0, 300), String(x.kode || '').replace(/\s+/g, '')], k = _rlKey(row);
       if (have[k]) { dobel++; return; }
       have[k] = 1; baru.push(row); tgls[t] = 1;
     });
     var semua = lama.concat(baru).sort(function (a, b) { return (a[0] + a[1]).localeCompare(b[0] + b[1]); });
-    if (baru.length) _suWrite(sh, 7, semua, [1, 2, 3, 4, 6, 7]);
+    if (baru.length) _suWrite(sh, 11, semua, [1, 2, 3, 4, 6, 7, 8, 9, 10, 11]);
     return { success: true, ditambah: baru.length, dobel: dobel, dibuang: dibuang, tanggal: Object.keys(tgls).sort(), total: semua.length };
   } catch (err) { return { success: false, error: String(err && err.message || err) }; }
   finally { try { lock.releaseLock(); } catch (e) {} }
@@ -10619,7 +10704,7 @@ function hapusRelokasiData(dari, sampai) {
     dari = String(dari || ''); sampai = String(sampai || '');
     lock.waitLock(25000);
     var dihapus = 0, sisa = _rlRows().filter(function (r) { var kena = (!dari || r[0] >= dari) && (!sampai || r[0] <= sampai); if (kena) dihapus++; return !kena; });
-    _suWrite(_rlSheet(), 7, sisa, [1, 2, 3, 4, 6, 7]);
+    _suWrite(_rlSheet(), 11, sisa, [1, 2, 3, 4, 6, 7, 8, 9, 10, 11]);
     return { success: true, dihapus: dihapus, sisa: sisa.length };
   } catch (err) { return { success: false, error: String(err && err.message || err) }; }
   finally { try { lock.releaseLock(); } catch (e) {} }

@@ -1882,6 +1882,13 @@ window.PicWmsUpload = (function(){
         pt.set(100, 'Selesai'); pt.stop();
         var adm = p.rows.filter(function(x){ return P.isBanned(x.p); }).length;
         msg = { cls: 'ok', html: '✅ ' + n(st.total) + ' baris dibaca → <b>' + n(st.spm) + ' SPM disimpan</b>, ' + n(st.dropped) + ' baris dibuang (item bukan PIPE PPR yang dimaksud).' + (r.diganti ? '<br>' + n(r.diganti) + ' baris lama pada tanggal yang sama diganti.' : '') + (adm ? '<br>⚠️ <b>' + adm + ' data memakai akun administrator.</b>' : '') };
+        if (r.notif) {
+          var nf = r.notif;
+          msg.html += '<br>' + (nf.terkirim ? '📲 Notifikasi WA ke TL terkirim (' + n(nf.cocok) + ' SPM cocok dengan data Loading Time).'
+            : nf.error ? '⚠️ Notifikasi WA ke TL gagal: ' + esc(nf.error)
+            : nf.cocok ? '⚠️ Notifikasi WA ke TL tidak terkirim' + (nf.info ? ': ' + esc(nf.info) : '') + '.'
+            : 'ℹ️ Tidak ada SPM baru yang cocok dengan data Loading Time, jadi tidak ada notifikasi WA.');
+        }
         if (adm) toast('⚠️ Ada PIC Muat yang memakai akun <b>administrator_wdj</b> pada master ini.');
       });
     }).then(function(){ busy = false; lock(false); return refresh(); })
