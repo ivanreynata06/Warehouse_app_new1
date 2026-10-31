@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<script src="./assets/js/auth-guard.js?v=20261029g"></script>
-<script src="./assets/js/config.js?v=20261029g"></script>
-<script src="./assets/js/api-shim.js?v=20261029g"></script>
+<script src="./assets/js/auth-guard.js?v=20261030a"></script>
+<script src="./assets/js/config.js?v=20261030a"></script>
+<script src="./assets/js/api-shim.js?v=20261030a"></script>
 <script src="./assets/js/sw-register.js?v=20261002a"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -284,6 +284,21 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
 @media (max-width:1100px){.hero{grid-template-columns:1fr;}.charts{grid-template-columns:1fr;}}
 @media (max-width:720px){.kpis{grid-template-columns:1fr;}.cr{grid-template-columns:1fr;}.skel{grid-template-columns:1fr 1fr;}.content{padding:14px;}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;}}
+.mini{padding:6px 12px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--line2);background:rgba(255,255,255,.06);color:var(--txt);transition:all .25s var(--ease);}
+.mini:hover{transform:translateY(-2px);background:rgba(255,255,255,.12);}
+.mini.go{background:linear-gradient(135deg,#7ee8c7,#8fb4ff);color:#06130f;border-color:transparent;}
+.mini.sm{padding:4px 10px;font-size:10.5px;}
+.trc{display:flex;flex-direction:column;gap:9px;margin-top:2px;}
+.trc .cz{padding:11px 13px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid var(--line);display:flex;flex-direction:column;gap:6px;opacity:0;animation:rise .5s var(--ease) forwards;animation-delay:calc(var(--i) * 80ms);}
+.trc .cz .hd{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;}
+.trc .cz .sc{margin-left:auto;font-family:'Outfit',sans-serif;font-size:15px;color:var(--mint);}
+.trc .cz .br{height:6px;border-radius:6px;background:rgba(255,255,255,.07);overflow:hidden;}.trc .cz .br i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#7ee8c7,#8fb4ff);transform-origin:left;animation:growx 1s var(--ease) both;}
+.trc .cz p{font-size:11.5px;color:var(--txt2);line-height:1.55;}.trc .cz .ev{font-size:10.5px;color:var(--txt3);}
+.trc .fbk{display:flex;gap:7px;align-items:center;flex-wrap:wrap;}
+.prow{display:grid;grid-template-columns:minmax(150px,230px) 1fr 40px;gap:12px;align-items:center;padding:7px 0;font-size:11.5px;opacity:0;animation:rise .5s var(--ease) forwards;animation-delay:calc(var(--i) * 70ms);}
+.prow .bar{height:9px;border-radius:9px;background:rgba(255,255,255,.07);overflow:hidden;}.prow .bar i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#ffb454,#ff7d99);transform-origin:left;animation:growx 1s var(--ease) both;}
+.prow.pic .bar i{background:linear-gradient(90deg,#7aa2ff,#c8a8ff);}
+.prow b{text-align:right;font-variant-numeric:tabular-nums;}
 </style>
 </head>
 <body>
@@ -366,6 +381,7 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Unduh rekap
       </button>
+      <button class="btn" onclick="sendWA()" title="Kirim ringkasan ke WhatsApp"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.5 7.3L3 20l1.3-5.3A8.4 8.4 0 1 1 21 11.5z"/></svg>Kirim WA</button>
       <button class="btn" id="btn-reload" onclick="reloadData()">Muat ulang</button>
       <button class="btn primary" onclick="goUpload()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -454,6 +470,10 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
         <div class="cmp" id="cmp"></div>
       </div>
 
+      <div class="glass pad rise" id="predCard" style="--d:4" hidden>
+        <div class="sect-t"><span>Prediksi penyebab &amp; PIC yang perlu mengecek</span><small id="pred-sub">Berdasarkan histori laporan muat, laporan susun, dan pola input</small></div>
+        <div class="two" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:22px"><div><div style="font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--txt3);margin-bottom:4px">Dugaan penyebab teratas</div><div id="pred-causes"></div></div><div><div style="font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--txt3);margin-bottom:4px">PIC yang perlu mengecek</div><div id="pred-pics"></div></div></div>
+      </div>
       <div class="glass pad rise" style="--d:5">
         <div class="sect-t"><span>Perlu tindakan</span><small>Item yang inputnya belum sesuai</small></div>
         <div class="pills" id="ipills"></div>
@@ -489,13 +509,14 @@ details.rules ul{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:6px
 <div id="tip"></div>
 
 <script src="./assets/js/wmsqad-core.js?v=20261027a"></script>
+<script src="./assets/js/trace-core.js?v=20261030c"></script>
 <script>
 (function(){
 'use strict';
 var C = window.WmsQadCore;
 var REDUCE = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 var COL = { ok: '#7ee8c7', noqad: '#ff93a8', qty: '#ffcb8a', nowms: '#c8a8ff' };
-var S = { raw: null, an: null, month: '', day: 'all', tf: 'all', q: '', issueF: 'all', showIssues: 12, showRows: 80 };
+var S = { T: { muat: [], susun: [], fb: [], loaded: false }, open: {}, raw: null, an: null, month: '', day: 'all', tf: 'all', q: '', issueF: 'all', showIssues: 12, showRows: 80 };
 var $ = function(id){ return document.getElementById(id); };
 function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmt(v, dec){ return (Number(v) || 0).toLocaleString('id-ID', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 }); }
@@ -595,7 +616,7 @@ function load(silent){
     .withSuccessHandler(function(r){
       $('btn-reload').disabled = false; show('loader', false);
       if (!r || r.success === false) return fail((r && r.error) || 'Data kosong dari server.');
-      S.raw = r; S.an = C.analyze(r.wms, r.qad);
+      S.raw = r; S.an = C.analyze(r.wms, r.qad); if (!S.T.loaded) loadTrace();
       if (!S.an.tx.length) { show('app', false); show('empty', true); fillMonths(); return; }
       if (!S.month || S.an.months.indexOf(S.month) === -1) S.month = S.an.months[S.an.months.length - 1];
       show('empty', false); show('errbox', false); show('app', true);
@@ -623,7 +644,7 @@ window.moreIssues = function(){ S.showIssues += 12; renderIssues(true); };
 window.moreRows = function(){ S.showRows += 100; renderTable(); };
 
 function renderAll(){
-  renderHead(); renderRail(); renderHero(); renderTrend(); renderDonut(); renderCompare(); renderIssues(); renderTable();
+  renderHead(); renderRail(); renderHero(); renderTrend(); renderDonut(); renderCompare(); renderPred(); renderIssues(); renderTable();
 }
 
 /* ───────── judul & peringatan ───────── */
@@ -796,7 +817,7 @@ function renderIssues(keep){
   var shown = list.slice(0, S.showIssues);
   $('icards').innerHTML = '<div class="icards">' + shown.map(function(x, i){
     var idx = keep ? Math.max(0, i - (S.showIssues - 12)) : i;
-    return '<div class="ic" style="--c:' + COL[x.st] + ';--i:' + idx + '"><div class="h" style="color:' + COL[x.st] + '">' + ICON[x.st] + TTL[x.st] + '</div><p>' + esc(C.explain(x)) + '</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">' + esc(C.shortName(x.n)) + '</span>' + (x.v ? '<span class="tag">Voucher <b>' + esc(x.v) + '</b></span>' : '') + '<span class="tag">WMS <b>' + (x.wq == null ? '–' : fmt(x.wq)) + '</b></span><span class="tag">QAD <b>' + (x.qq == null ? '–' : fmt(x.qq)) + '</b></span></div></div>';
+    return '<div class="ic" style="--c:' + COL[x.st] + ';--i:' + idx + '"><div class="h" style="color:' + COL[x.st] + '">' + ICON[x.st] + TTL[x.st] + '</div><p>' + esc(C.explain(x)) + '</p><div class="m"><span class="tag"><b>' + esc(C.fmtDate(x.t)) + '</b></span><span class="tag">' + esc(C.shortName(x.n)) + '</span>' + (x.v ? '<span class="tag">Voucher <b>' + esc(x.v) + '</b></span>' : '') + '<span class="tag">WMS <b>' + (x.wq == null ? '–' : fmt(x.wq)) + '</b></span><span class="tag">QAD <b>' + (x.qq == null ? '–' : fmt(x.qq)) + '</b></span></div><div style="display:flex;gap:8px"><button class="mini go" onclick="openTrace(' + x.id + ')">Telusuri penyebab</button></div><div class="trc" id="trc-' + x.id + '"></div></div>';
   }).join('') + '</div>' + (list.length > shown.length ? '<div style="text-align:center"><button class="btn more" onclick="moreIssues()">Tampilkan ' + Math.min(12, list.length - shown.length) + ' lagi (sisa ' + (list.length - shown.length) + ')</button></div>' : '');
 }
 
@@ -821,6 +842,54 @@ function renderTable(){
   $('tbl').innerHTML = h + '</tbody>';
   var more = $('tbl-more'); more.hidden = list.length <= shown.length; more.textContent = 'Tampilkan lebih banyak (sisa ' + (list.length - shown.length) + ')';
 }
+
+
+/* ───────── penelusuran penyebab selisih ───────── */
+function loadTrace(){
+  if (!window.google || !google.script || !google.script.run) return;
+  google.script.run.withSuccessHandler(function(r){
+    if (!r || r.success === false) return;
+    S.T = { muat: r.muat || [], susun: r.susun || [], fb: r.fb || [], loaded: true };
+    if (S.an) { renderPred(); }
+  }).withFailureHandler(function(){}).getTraceData();
+}
+function traceCtx(){ return { tx: S.an.tx, muat: S.T.muat, susun: S.T.susun, fb: TraceCore.fbStats(S.T.fb) }; }
+function fbAns(x, cause){ var k = TraceCore.fbKey(x), r = S.T.fb.filter(function(f){ return f.k === k && f.cause === cause; })[0]; return r ? r.ans : ''; }
+window.openTrace = function(id){
+  S.open[id] = !S.open[id]; var el = $('trc-' + id); if (!el) return;
+  if (!S.open[id]) { el.innerHTML = ''; return; }
+  var x = S.an.tx.filter(function(t){ return t.id === id; })[0]; if (!x) return;
+  var res = TraceCore.trace(x, traceCtx());
+  el.innerHTML = (S.T.loaded ? '' : '<div style="font-size:11px;color:var(--txt3)">Data histori muat/susun masih dimuat; hasil bisa berubah.</div>') + res.map(function(c, i){
+    var a = fbAns(x, c.key), kk = esc(JSON.stringify(TraceCore.fbKey(x))).replace(/&quot;/g, '&quot;');
+    return '<div class="cz" style="--i:' + i + '"><div class="hd">' + (i === 0 ? '🔎 ' : '') + esc(c.label) + '<span class="sc">' + c.score + '%</span></div><div class="br"><i style="width:' + c.score + '%"></i></div><p>' + esc(c.check) + '</p><div class="ev">Dasar: ' + esc(c.evidence) + '</div><div class="fbk"><span class="tag">PIC yang mengecek: <b>' + esc(c.pic) + '</b></span>' + (a ? '<span class="tag">' + (a === 'ya' ? '✓ Dikonfirmasi benar' : '✗ Bukan penyebab') + '</span>' : '') + '<button class="mini sm" onclick="sendFb(' + id + ',\'' + c.key + '\',\'ya\')">Benar penyebabnya</button><button class="mini sm" onclick="sendFb(' + id + ',\'' + c.key + '\',\'bukan\')">Bukan</button></div></div>';
+  }).join('');
+};
+window.sendFb = function(id, cause, ans){
+  var x = S.an.tx.filter(function(t){ return t.id === id; })[0]; if (!x) return; var k = TraceCore.fbKey(x);
+  google.script.run.withSuccessHandler(function(r){
+    if (r && r.success === false) return;
+    S.T.fb = S.T.fb.filter(function(f){ return !(f.k === k && f.cause === cause); }).concat([{ k: k, cause: cause, ans: ans }]);
+    S.open[id] = false; openTrace(id); renderPred();
+  }).withFailureHandler(function(){}).saveTraceFeedback(JSON.stringify([{ k: k, cause: cause, ans: ans }]));
+};
+function renderPred(){
+  var bad = scopeTx().filter(function(x){ return x.st !== 'ok'; }); show('predCard', bad.length > 0); if (!bad.length) return;
+  var ctx = traceCtx(), cz = {}, pc = {};
+  bad.forEach(function(x){ var r = TraceCore.trace(x, ctx)[0]; if (!r) return; cz[r.label] = (cz[r.label] || 0) + 1; var k = r.pic; pc[k] = (pc[k] || 0) + 1; });
+  function rows(m, cls){ var ks = Object.keys(m).sort(function(a, b){ return m[b] - m[a]; }).slice(0, 6), mx = Math.max.apply(null, ks.map(function(k){ return m[k]; }).concat([1])); return ks.map(function(k, i){ return '<div class="prow ' + cls + '" style="--i:' + i + '"><div>' + esc(k) + '</div><div class="bar"><i style="width:' + m[k] / mx * 100 + '%"></i></div><b>' + m[k] + '</b></div>'; }).join(''); }
+  $('pred-causes').innerHTML = rows(cz, ''); $('pred-pics').innerHTML = rows(pc, 'pic');
+  $('pred-sub').textContent = S.T.loaded ? 'Berdasarkan histori laporan muat (' + fmt(S.T.muat.length) + ' baris), laporan susun (' + fmt(S.T.susun.length) + ' baris), dan pola input. ' + S.T.fb.length + ' umpan balik PIC dipakai menyetel skor.' : 'Memuat histori laporan muat dan susun…';
+}
+
+/* ───────── ringkasan ke WhatsApp ───────── */
+window.sendWA = function(){
+  google.script.run.withSuccessHandler(function(r){
+    if (!r || r.success === false) { alert('Gagal: ' + ((r && r.error) || 'tidak ada respon')); return; }
+    if (!confirm('Kirim ringkasan ini ke WhatsApp?\n\n' + r.pesan)) return;
+    google.script.run.withSuccessHandler(function(x){ alert(x && x.success ? 'Terkirim ke WhatsApp.' : 'Gagal kirim: ' + ((x && x.error) || '')); }).withFailureHandler(function(e){ alert('Gagal kirim: ' + (e && e.message || e)); }).kirimRingkasanWA();
+  }).withFailureHandler(function(e){ alert('Gagal: ' + (e && e.message || e)); }).previewRingkasanWA();
+};
 
 /* ───────── unduh rekap ───────── */
 window.exportXlsx = function(){

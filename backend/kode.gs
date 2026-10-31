@@ -159,6 +159,12 @@ var API_FUNCTIONS = {
   saveSusunMaster         : saveSusunMaster,
   saveSusunCek            : saveSusunCek,
   hapusSusunData          : hapusSusunData,
+  saveRelokasiData        : saveRelokasiData,
+  getTraceData            : getTraceData,
+  previewRingkasanWA      : previewRingkasanWA,
+  kirimRingkasanWA        : kirimRingkasanWA,
+  saveTraceFeedback       : saveTraceFeedback,
+  hapusRelokasiData       : hapusRelokasiData,
   // Stock Opname
   soGetMaster: soGetMaster, soGetGroupItems: soGetGroupItems, soBuatLembar: soBuatLembar,
   soListLembar: soListLembar, soGetLembarDetail: soGetLembarDetail, soSimpanIsi: soSimpanIsi,
@@ -9894,7 +9900,7 @@ var SB_MENU_MAP = {
   fte: 'Monitoring FTE', ot_trend6: 'Monitoring FTE', kat_trend6: 'Monitoring FTE',
   group_list: 'Umum (daftar group)'
 };
-var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode', 'Akurasi QAD vs WMS', 'Kepatuhan PIC WMS', 'Monitoring Susun WMS'];
+var SB_TIDAK_DISIMPAN = ['Monitoring Stock Opname (SO)', 'Input Lembur & Data Karyawan', 'Akun login / Kelola User', 'Upload Data Harian (data mentah)', 'Akurasi Scan Barcode', 'Akurasi QAD vs WMS', 'Kepatuhan PIC WMS', 'Monitoring Susun WMS', 'Histori Relokasi'];
 
 function _actorIsTlOrSuper(actorNik) {
   if (_isSuperAdmin(actorNik)) return true;
@@ -10339,33 +10345,35 @@ function _getOrCreatePicWmsSheet() {
   var sh = ss.getSheetByName(SH_PICWMS);
   if (!sh) {
     sh = ss.insertSheet(SH_PICWMS);
-    sh.getRange('A1:E1').setValues([['sumber', 'tanggal', 'spm', 'ship_to', 'pic_muat']]);
+    sh.getRange('A1:G1').setValues([['sumber', 'tanggal', 'spm', 'ship_to', 'pic_muat', 'item', 'qty_muat']]);
     sh.setFrozenRows(1);
+  } else if (String(sh.getRange('F1').getValue()) === '') {
+    sh.getRange('F1:G1').setValues([['item', 'qty_muat']]);          // sheet lama (5 kolom) -> tambah item & qty
   }
   return sh;
 }
 function _pwBaca(sh) {
   var last = sh.getLastRow();
   if (last < 2) return [];
-  return sh.getRange(2, 1, last - 1, 5).getValues().map(function (r) {
-    return [String(r[0]).trim(), _wqTgl(r[1]), String(r[2]).trim(), String(r[3]).trim(), String(r[4]).trim()];
+  return sh.getRange(2, 1, last - 1, 7).getValues().map(function (r) {
+    return [String(r[0]).trim(), _wqTgl(r[1]), String(r[2]).trim(), String(r[3]).trim(), String(r[4]).trim(), String(r[5] == null ? '' : r[5]).trim(), Number(r[6]) || 0];
   });
 }
 function _pwTulis(sh, rows) {
   var last = sh.getLastRow();
-  if (last > 1) sh.getRange(2, 1, last - 1, 5).clearContent();
+  if (last > 1) sh.getRange(2, 1, last - 1, 7).clearContent();
   if (!rows.length) return;
   rows.sort(function (a, b) { return (a[0] + a[1] + a[2]).localeCompare(b[0] + b[1] + b[2]); });
   if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
-  sh.getRange(2, 1, rows.length, 5).setNumberFormat('@');
-  sh.getRange(2, 1, rows.length, 5).setValues(rows);
+  sh.getRange(2, 1, rows.length, 6).setNumberFormat('@');
+  sh.getRange(2, 1, rows.length, 7).setValues(rows);
 }
 
 function getPicWmsData() {
   try {
     var master = [], jadwal = [];
     _pwBaca(_getOrCreatePicWmsSheet()).forEach(function (r) {
-      if (r[0] === 'master') master.push({ t: r[1], s: r[2], c: r[3], p: r[4] });
+      if (r[0] === 'master') master.push({ t: r[1], s: r[2], c: r[3], p: r[4], i: r[5], q: r[6] });
       else if (r[0] === 'jadwal') jadwal.push({ t: r[1], s: r[2] });
     });
     return { success: true, master: master, jadwal: jadwal };
@@ -10387,7 +10395,9 @@ function savePicWmsData(kind, jsonStr) {
       var t = String(r.t || '').trim(), s = String(r.s || '').replace(/\s+/g, '').toUpperCase();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !/^[A-Z0-9]{6,12}$/.test(s)) return;
       tgls[t] = 1;
-      baru.push([kind, t, s, kind === 'master' ? String(r.c || '').replace(/\s+/g, ' ').trim() : '', kind === 'master' ? String(r.p || '').replace(/\s+/g, ' ').trim() : '']);
+      var nm = kind === 'master' ? String(r.i || '').replace(/\s+/g, ' ').trim() : '';
+      if (kind === 'master' && nm && !_wqLolos(nm)) return;                 // item bukan PIPE PPR Kelen -> tolak
+      baru.push([kind, t, s, kind === 'master' ? String(r.c || '').replace(/\s+/g, ' ').trim() : '', kind === 'master' ? String(r.p || '').replace(/\s+/g, ' ').trim() : '', nm, kind === 'master' ? (Number(r.q) || 0) : 0]);
     });
     if (!baru.length) return { success: false, error: 'Semua baris ditolak server (tanggal / nomor SPM tidak valid).' };
     lock.waitLock(25000);
@@ -10484,7 +10494,7 @@ function getSusunData() {
       return { k: String(r[0]), v: String(r[1]), rw: String(r[2]), qw: Number(r[3]) || 0, rk: String(r[4]), qk: r[5] === '' ? '' : Number(r[5]),
                ik: String(r[6]), st: String(r[7]), rs: String(r[8]), sl: Number(r[9]) ? 1 : 0, adj: String(r[10]), ts: String(r[11]) };
     });
-    return { success: true, master: master, cek: cek };
+    return { success: true, master: master, cek: cek, relok: _rlRows().map(function (r) { return { t: r[0], v: r[1], from: r[2], to: r[3], q: r[4], p: r[5], i: r[6] }; }) };
   } catch (err) { return { success: false, error: String(err && err.message || err) }; }
 }
 
@@ -10561,4 +10571,185 @@ function hapusSusunData(kind, dari, sampai) {
     return { success: true, dihapus: dihapus };
   } catch (err) { return { success: false, error: String(err && err.message || err) }; }
   finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+
+// ================================================================
+//  HISTORI RELOKASI -- sheet RELOKASI_DATA
+//  A=tanggal B=voucher C=rak asal D=rak tujuan E=qty F=PIC G=nama item
+//  (template laporan relokasi dibaca di browser; hanya 7 kolom ini yang disimpan.
+//   Upload dobel -- voucher+tanggal+asal+tujuan+qty sama -- dibuang otomatis.)
+//  Tidak dikirim ke Supabase.
+// ================================================================
+var SH_RELOK = 'RELOKASI_DATA';
+function _rlSheet() { return _suSheet(SH_RELOK, ['tanggal', 'voucher', 'rak_asal', 'rak_tujuan', 'qty', 'pic', 'item']); }
+function _rlRows() {
+  return _suRead(_rlSheet(), 7).map(function (r) {
+    return [_wqTgl(r[0]), String(r[1]).trim(), String(r[2]).trim(), String(r[3]).trim(), Number(r[4]) || 0, String(r[5]).trim(), String(r[6]).trim()];
+  });
+}
+function _rlKey(r) { return r[1] + '|' + r[0] + '|' + String(r[2]).toUpperCase().replace(/\s+/g, '') + '|' + String(r[3]).toUpperCase().replace(/\s+/g, '') + '|' + r[4]; }
+
+function saveRelokasiData(jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    var arr = JSON.parse(String(jsonStr || '[]'));
+    if (!arr || !arr.length) return { success: false, error: 'Tidak ada baris untuk disimpan.' };
+    lock.waitLock(25000);
+    var sh = _rlSheet(), lama = _rlRows(), have = {};
+    lama.forEach(function (r) { have[_rlKey(r)] = 1; });
+    var baru = [], dobel = 0, dibuang = 0, tgls = {};
+    arr.forEach(function (x) {
+      var t = String(x.t || '').trim(), v = String(x.v || '').replace(/\s+/g, ''), it = String(x.i || '').replace(/\s+/g, ' ').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !v || (it && !_wqLolos(it))) { dibuang++; return; }
+      var row = [t, v, String(x.from || '').replace(/\s+/g, ' ').trim(), String(x.to || '').replace(/\s+/g, ' ').trim(), Number(x.q) || 0, String(x.p || '').replace(/\s+/g, ' ').trim(), it], k = _rlKey(row);
+      if (have[k]) { dobel++; return; }
+      have[k] = 1; baru.push(row); tgls[t] = 1;
+    });
+    var semua = lama.concat(baru).sort(function (a, b) { return (a[0] + a[1]).localeCompare(b[0] + b[1]); });
+    if (baru.length) _suWrite(sh, 7, semua, [1, 2, 3, 4, 6, 7]);
+    return { success: true, ditambah: baru.length, dobel: dobel, dibuang: dibuang, tanggal: Object.keys(tgls).sort(), total: semua.length };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+function hapusRelokasiData(dari, sampai) {
+  var lock = LockService.getScriptLock();
+  try {
+    dari = String(dari || ''); sampai = String(sampai || '');
+    lock.waitLock(25000);
+    var dihapus = 0, sisa = _rlRows().filter(function (r) { var kena = (!dari || r[0] >= dari) && (!sampai || r[0] <= sampai); if (kena) dihapus++; return !kena; });
+    _suWrite(_rlSheet(), 7, sisa, [1, 2, 3, 4, 6, 7]);
+    return { success: true, dihapus: dihapus, sisa: sisa.length };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+
+// ================================================================
+//  PENELUSURAN PENYEBAB SELISIH -- data pendukung + umpan balik PIC
+//  getTraceData  : histori laporan muat (PICWMS_DATA master), laporan susun, umpan balik
+//  TRACE_FB      : k (kunci selisih), cause, ans (ya|bukan), waktu
+// ================================================================
+var SH_TRACE_FB = 'TRACE_FB';
+function _tfSheet() { return _suSheet(SH_TRACE_FB, ['k', 'cause', 'ans', 'waktu']); }
+
+function getTraceData() {
+  try {
+    var muat = _pwBaca(_getOrCreatePicWmsSheet()).filter(function (r) { return r[0] === 'master'; }).map(function (r) { return { t: r[1], s: r[2], c: r[3], p: r[4], i: r[5], q: r[6] }; });
+    var susun = _suMasterRows().map(function (r) { return { t: r[0], v: r[1], i: r[2], r: r[3], q: r[4], p: r[5] }; });
+    var fb = _suRead(_tfSheet(), 4).map(function (r) { return { k: String(r[0]), cause: String(r[1]), ans: String(r[2]), ts: String(r[3]) }; });
+    return { success: true, muat: muat, susun: susun, fb: fb };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+}
+
+function saveTraceFeedback(jsonStr) {
+  var lock = LockService.getScriptLock();
+  try {
+    var arr = JSON.parse(String(jsonStr || '[]'));
+    if (!arr || !arr.length) return { success: false, error: 'Tidak ada umpan balik.' };
+    lock.waitLock(25000);
+    var sh = _tfSheet(), cur = _suRead(sh, 4), map = {}, order = [];
+    cur.forEach(function (r) { var k = r[0] + '||' + r[1]; map[k] = r; order.push(k); });
+    var now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm');
+    arr.forEach(function (f) {
+      var k = String(f.k || '').trim(), c = String(f.cause || '').trim(), a = f.ans === 'ya' ? 'ya' : (f.ans === 'bukan' ? 'bukan' : '');
+      if (!k || !c || !a) return;
+      var key = k + '||' + c; if (!map[key]) order.push(key);
+      map[key] = [k, c, a, now];
+    });
+    _suWrite(sh, 4, order.map(function (k) { return map[k]; }), [1, 2, 3, 4]);
+    return { success: true, total: order.length };
+  } catch (err) { return { success: false, error: String(err && err.message || err) }; }
+  finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+
+// ================================================================
+//  NOTIFIKASI WHATSAPP (gateway)
+//  Konfigurasi disimpan di Script Properties (BUKAN di kode / GitHub). Jalankan SEKALI dari
+//  editor Apps Script:
+//     setupNotifWA('https://api.fonnte.com/send', 'TOKEN_GATEWAY', '62812xxxx,62813xxxx', 'fonnte')
+//  lalu  tesKirimWA()  dan  aktifkanNotifHarian(17)  (kirim otomatis tiap hari jam 17).
+//  provider: 'fonnte' (header Authorization, field target/message) atau 'generic'
+//            (POST form: target, message; header Authorization: token).
+//  Ambang: WA_TARGET_AKURASI (default 95), WA_AGING_JAM (default 48).
+// ================================================================
+function setupNotifWA(url, token, target, provider) {
+  var p = PropertiesService.getScriptProperties();
+  p.setProperty('WA_URL', String(url || 'https://api.fonnte.com/send'));
+  p.setProperty('WA_TOKEN', String(token || ''));
+  p.setProperty('WA_TARGET', String(target || ''));
+  p.setProperty('WA_PROVIDER', String(provider || 'fonnte'));
+  return 'Konfigurasi WhatsApp tersimpan.';
+}
+function _waCfg() {
+  var p = PropertiesService.getScriptProperties();
+  return { url: p.getProperty('WA_URL') || 'https://api.fonnte.com/send', token: p.getProperty('WA_TOKEN') || '', target: p.getProperty('WA_TARGET') || '',
+           provider: p.getProperty('WA_PROVIDER') || 'fonnte', akurasi: Number(p.getProperty('WA_TARGET_AKURASI')) || 95, aging: Number(p.getProperty('WA_AGING_JAM')) || 48 };
+}
+function _waKirim(pesan) {
+  var c = _waCfg();
+  if (!c.token || !c.target) throw new Error('Gateway WhatsApp belum dikonfigurasi. Jalankan setupNotifWA(url, token, target, provider) di editor Apps Script.');
+  var res = UrlFetchApp.fetch(c.url, { method: 'post', muteHttpExceptions: true, headers: { Authorization: c.token },
+    payload: { target: c.target, message: pesan, countryCode: '62' } });
+  var code = res.getResponseCode(), body = String(res.getContentText()).slice(0, 300);
+  if (code < 200 || code >= 300) throw new Error('Gateway menolak (HTTP ' + code + '): ' + body);
+  return body;
+}
+function tesKirimWA() { return _waKirim('✅ Tes notifikasi Warehouse App: gateway WhatsApp tersambung.'); }
+
+function _waTgl(t) { var p = String(t).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(t); }
+function _waPct(v) { return v == null ? '-' : (Math.round(v * 10) / 10).toString().replace('.', ',') + '%'; }
+
+// Pencocokan WMS vs QAD (port ringkas dari wmsqad-core.js): hitung status per transaksi
+function _waAkurasi(wms, qad) {
+  var G = {}, keys = [];
+  function g(t, i) { var k = t + '|' + i; if (!G[k]) { G[k] = { W: [], Q: [] }; keys.push(k); } return G[k]; }
+  wms.forEach(function (r) { g(r.t, r.i).W.push(r.q); }); qad.forEach(function (r) { g(r.t, r.i).Q.push(r.q); });
+  var o = { total: 0, ok: 0, qty: 0, noqad: 0, nowms: 0 };
+  keys.forEach(function (k) {
+    var G1 = G[k], used = {}, lw = [], lq = [];
+    G1.W.forEach(function (w) { var h = -1; for (var j = 0; j < G1.Q.length; j++) if (!used[j] && G1.Q[j] === w) { h = j; break; } if (h !== -1) { used[h] = 1; o.ok++; o.total++; } else lw.push(w); });
+    G1.Q.forEach(function (q, j) { if (!used[j]) lq.push(q); });
+    while (lw.length && lq.length) { var bi = 0, bj = 0, best = Infinity; for (var a = 0; a < lw.length; a++) for (var b = 0; b < lq.length; b++) { var d = Math.abs(lw[a] - lq[b]); if (d < best) { best = d; bi = a; bj = b; } } o.qty++; o.total++; lw.splice(bi, 1); lq.splice(bj, 1); }
+    o.noqad += lw.length; o.nowms += lq.length; o.total += lw.length + lq.length;
+  });
+  return o;
+}
+
+function _waRingkasan() {
+  var c = _waCfg(), q = getWmsQadData(), L = [];
+  var wms = (q.wms || []), qad = (q.qad || []);
+  var tgl = wms.concat(qad).map(function (r) { return r.t; }).sort().pop() || '';
+  var hari = function (a) { return a.filter(function (r) { return r.t === tgl; }); };
+  L.push('📊 *Ringkasan WMS* ' + (tgl ? _waTgl(tgl) : ''));
+  if (tgl) {
+    var a = _waAkurasi(hari(wms), hari(qad)), acc = a.total ? a.ok / a.total * 100 : null;
+    L.push((acc != null && acc < c.akurasi ? '⚠️ ' : '✅ ') + 'Akurasi QAD vs WMS: *' + _waPct(acc) + '* (target ' + c.akurasi + '%)');
+    if (a.total - a.ok) L.push('   • ' + a.noqad + ' belum diinput QAD · ' + a.qty + ' qty beda · ' + a.nowms + ' tanpa voucher');
+  }
+  var pw = getPicWmsData(), mas = pw.master || [], jad = pw.jadwal || [], adm = {}, ada = {};
+  mas.forEach(function (r) { ada[r.s] = 1; if (/^administrator/i.test(r.p)) adm[r.s] = 1; });
+  var nowms = jad.filter(function (r) { return r.t === tgl && !ada[r.s]; }).length, nAdm = Object.keys(adm).length;
+  if (nAdm || nowms) L.push((nAdm ? '⛔ ' + nAdm + ' SPM memakai akun administrator_wdj' : '') + (nAdm && nowms ? ' · ' : '') + (nowms ? '❌ ' + nowms + ' SPM jadwal tidak menjalankan WMS' : ''));
+  var sd = getSusunData(), cek = {}; (sd.cek || []).forEach(function (x) { cek[x.k] = x; });
+  var rak = (sd.master || []).filter(function (r) { return SUSUN_RACK_RE.test(String(r.r).toUpperCase().replace(/\s+/g, '')); });
+  var belum = 0, tidak = 0;
+  rak.forEach(function (r) { var k = r.v + '|' + String(r.r).toUpperCase().replace(/\s+/g, '') + '|' + r.q, x = cek[k]; if (!x) belum++; else if (x.st === 'tidak' && !x.sl) tidak++; });
+  L.push('🧱 Susun: ' + belum + ' voucher belum dicocokkan dengan kertas · ' + tidak + ' tidak sesuai rak');
+  var reloc = {}; (sd.relok || []).forEach(function (r) { reloc[r.v] = 1; }); (sd.cek || []).forEach(function (x) { if (String(x.k).indexOf('RELOK|') === 0 && x.sl) reloc[x.v] = 1; });
+  var nonTr = {}; (sd.master || []).forEach(function (r) { if (!_wqLolos(r.r)) nonTr[r.v] = 1; });
+  var ag = {}, now = new Date().getTime();
+  (sd.master || []).forEach(function (r) { if (_wqLolos(r.r) && !reloc[r.v] && !nonTr[r.v] && (now - new Date(r.t + 'T00:00:00').getTime()) / 36e5 >= c.aging) ag[r.v] = 1; });
+  L.push('🕒 Transit: ' + Object.keys(ag).length + ' voucher > ' + c.aging + ' jam belum direlokasi');
+  return L.join('\n');
+}
+function previewRingkasanWA() { try { return { success: true, pesan: _waRingkasan() }; } catch (e) { return { success: false, error: String(e && e.message || e) }; } }
+function kirimRingkasanWA() { try { var m = _waRingkasan(); _waKirim(m); return { success: true, pesan: m }; } catch (e) { return { success: false, error: String(e && e.message || e) }; } }
+function ringkasanHarianWA() { _waKirim(_waRingkasan()); }
+function aktifkanNotifHarian(jam) {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'ringkasanHarianWA') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('ringkasanHarianWA').timeBased().everyDays(1).atHour(Number(jam) || 17).create();
+  return 'Ringkasan WhatsApp akan dikirim setiap hari pukul ' + (Number(jam) || 17) + ':00.';
 }

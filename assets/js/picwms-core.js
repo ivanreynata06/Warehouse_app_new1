@@ -31,22 +31,21 @@
     }
     if (!h) throw new Error('Kolom "No SPM" dan "Tgl Muat" tidak ditemukan. Pastikan ini file Laporan Persiapan Muat dari WMS.');
     var cS = idx(h.heads, ['nospm']), cT = idx(h.heads, ['tglmuat']), cC = idx(h.heads, ['shipto']),
-        cP = idx(h.heads, ['picmuat']), cD = idx(h.heads, ['deskripsi', 'namaitem']);
+        cP = idx(h.heads, ['picmuat']), cD = idx(h.heads, ['deskripsi', 'namaitem']), cQ = idx(h.heads, ['qtymuat', 'qty']);
     if (cP === -1) throw new Error('Kolom "PIC Muat" tidak ditemukan.');
     if (cD === -1) throw new Error('Kolom "Deskripsi" tidak ditemukan (dipakai untuk menyaring item).');
-    var out = [], seen = {}, st = { total: 0, kept: 0, dropped: 0, noDate: 0, spm: 0 }, spms = {};
+    var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0, spm: 0 }, spms = {};
     for (var i = h.row + 1; i < rows.length; i++) {
       var row = rows[i] || [], spm = spmKey(row[cS]);
       if (!spm) continue;
       st.total++;
-      if (!W.lolosNama(norm(row[cD]))) { st.dropped++; continue; }
+      var nama = norm(row[cD]);
+      if (!W.lolosNama(nama)) { st.dropped++; continue; }
       var t = W.parseDate(row[cT]);
       if (!t) { st.noDate++; continue; }
-      st.kept++;
-      var pic = norm(row[cP]), key = spm + '|' + t + '|' + pic;
-      if (seen[key]) continue;                 // satu baris per SPM + tanggal + PIC
-      seen[key] = 1; spms[spm] = 1;
-      out.push({ t: t, s: spm, c: norm(row[cC]), p: pic });
+      st.kept++; spms[spm] = 1;
+      // satu baris per baris muat: tanggal, SPM, ship to, PIC, item (deskripsi), qty muat
+      out.push({ t: t, s: spm, c: norm(row[cC]), p: norm(row[cP]), i: nama, q: cQ === -1 ? 0 : W.parseQty(row[cQ]) });
     }
     st.spm = Object.keys(spms).length;
     return { rows: out, stats: st };

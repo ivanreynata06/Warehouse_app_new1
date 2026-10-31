@@ -126,7 +126,7 @@
     // (lewat GET query string melebihi batas panjang URL -> "Failed to fetch")
     saveWmsQadData: 1, hapusWmsQadData: 1, savePicWmsData: 1, hapusPicWmsData: 1,
     // Monitoring Susun WMS
-    saveSusunMaster: 1, saveSusunCek: 1, hapusSusunData: 1 };
+    saveSusunMaster: 1, saveSusunCek: 1, hapusSusunData: 1, saveRelokasiData: 1, hapusRelokasiData: 1, saveTraceFeedback: 1 };
 
   // Bungkus r.json() supaya kalau Apps Script Web App ternyata
   // mengembalikan HALAMAN HTML (bukan JSON) -- ini SELALU terjadi kalau
