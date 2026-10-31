@@ -1884,10 +1884,11 @@ window.PicWmsUpload = (function(){
         msg = { cls: 'ok', html: '✅ ' + n(st.total) + ' baris dibaca → <b>' + n(st.spm) + ' SPM disimpan</b>, ' + n(st.dropped) + ' baris dibuang (item bukan PIPE PPR yang dimaksud).' + (r.diganti ? '<br>' + n(r.diganti) + ' baris lama pada tanggal yang sama diganti.' : '') + (adm ? '<br>⚠️ <b>' + adm + ' data memakai akun administrator.</b>' : '') };
         if (r.notif) {
           var nf = r.notif;
-          msg.html += '<br>' + (nf.terkirim ? '📲 Notifikasi WA ke TL terkirim (' + n(nf.cocok) + ' SPM cocok dengan data Loading Time).'
+          msg.html += '<br>' + (nf.terkirim ? '📲 Notifikasi WA ke TL terkirim untuk ' + n(nf.cocok) + ' SPM (cocok dengan jadwal / data pengiriman).'
             : nf.error ? '⚠️ Notifikasi WA ke TL gagal: ' + esc(nf.error)
             : nf.cocok ? '⚠️ Notifikasi WA ke TL tidak terkirim' + (nf.info ? ': ' + esc(nf.info) : '') + '.'
-            : 'ℹ️ Tidak ada SPM baru yang cocok dengan data Loading Time, jadi tidak ada notifikasi WA.');
+            : '') +
+            (nf.tertunda ? '<br>⏳ ' + n(nf.tertunda) + ' SPM menunggu jadwal / data pengiriman. Notifikasi dikirim otomatis begitu datanya terupdate.' : (!nf.cocok && !nf.error ? 'ℹ️ Tidak ada SPM baru untuk dinotifikasi.' : ''));
         }
         if (adm) toast('⚠️ Ada PIC Muat yang memakai akun <b>administrator_wdj</b> pada master ini.');
       });

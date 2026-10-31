@@ -712,6 +712,7 @@ function getResidenceTimeData(filter) {
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
     if (!sheet) throw new Error('Sheet PENGIRIMAN tidak ditemukan. Pastikan nama sheet tepat.');
 
+    _pmCekTertundaRingan();   // notif persiapan muat yang tertahan menunggu data pengiriman
     var data         = sheet.getDataRange().getValues();
     var today        = _hariIniKerja();
     var firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -10427,7 +10428,7 @@ function savePicWmsData(kind, jsonStr) {
     });
     var semua = sisa.concat(baru);
     _pwTulis(sh, semua);
-    var notif = kind === 'master' ? _notifPersiapanMuat(baru) : null;
+    var notif = kind === 'master' ? _notifPersiapanMuat(baru) : _pmProses();   // jadwal baru disimpan -> SPM tertahan bisa terkirim
     return { success: true, ditambah: baru.length, diganti: diganti, tanggal: Object.keys(tgls).sort(), total: semua.length, notif: notif };
   } catch (err) {
     return { success: false, error: String(err && err.message || err) };
@@ -10438,51 +10439,76 @@ function savePicWmsData(kind, jsonStr) {
 
 // ----------------------------------------------------------------
 //  NOTIF WA PERSIAPAN MUAT -> TL
-//  Dipanggil setelah upload Laporan Muat (master) tersimpan. Hanya SPM yang
-//  (a) ada di laporan muat DAN (b) ada di data Loading Time (sheet PENGIRIMAN, kolom E)
-//  yang dilaporkan. Tiap SPM hanya dinotifikasi SEKALI (upload ulang tidak mengirim dobel).
-//  Token: sama dengan notif lembur (_fonnteCariToken). Tidak pernah menggagalkan upload.
+//  Acuan SPM (sama seperti Kepatuhan PIC WMS): JADWAL PENGIRIMAN (PICWMS_DATA kind 'jadwal')
+//  ATAU data pengiriman di spreadsheet (sheet PENGIRIMAN kolom E / Loading Time).
+//  SPM dari Laporan Muat yang belum ada di salah satunya DITAHAN (antrean tertunda) dan
+//  dikirim otomatis begitu jadwal / data pengiriman terupdate. Tiap SPM dinotifikasi SEKALI.
+//  Pengecekan ulang terjadi: saat jadwal disimpan, saat halaman Loading Time dibuka,
+//  dan terjadwal lewat aktifkanCekNotifPersiapanMuat(menit). Token = token lembur.
 // ----------------------------------------------------------------
+function _pmProps() { return PropertiesService.getScriptProperties(); }
+function _pmBaca(k) { try { return JSON.parse(_pmProps().getProperty(k + ACTIVE_WORKSPACE) || '{}'); } catch (e) { return {}; } }
+function _pmTulis(k, o) { _pmProps().setProperty(k + ACTIVE_WORKSPACE, JSON.stringify(o)); }
+
+// Tambah SPM dari upload master ke antrean, lalu proses antrean.
 function _notifPersiapanMuat(baru) {
-  var hasil = { dicek: 0, cocok: 0, terkirim: false };
+  var hasil = { dicek: 0, cocok: 0, terkirim: false, tertunda: 0 };
   try {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID), shP = ss.getSheetByName(SH_PENGIRIMAN);
-    if (!shP) return hasil;
-    // SPM di Loading Time -> {agen, nopol}
-    var lt = {}, dP = shP.getDataRange().getValues();
-    for (var i = 1; i < dP.length; i++) {
-      var sp = String(dP[i][4] || '').replace(/\s+/g, '').toUpperCase();
-      if (sp && !lt[sp]) lt[sp] = { agen: String(dP[i][1] || '').trim(), nopol: String(dP[i][5] || '').trim() };
+    var pend = _pmBaca('WA_SPM_TUNDA_'), sent = _pmBaca('WA_SPM_SIAP_'), now = new Date().getTime();
+    baru.forEach(function (r) { hasil.dicek++; var sp = r[2]; if (sp && !sent[sp] && !pend[sp]) pend[sp] = now; });
+    _pmTulis('WA_SPM_TUNDA_', pend);
+    var h = _pmProses();
+    for (var k in h) hasil[k] = h[k];
+  } catch (err) { hasil.error = String(err && err.message || err); Logger.log('Notif persiapan muat gagal: ' + hasil.error); }
+  return hasil;
+}
+
+function _pmProses() {
+  var hasil = { cocok: 0, terkirim: false, tertunda: 0 };
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+    var pend = _pmBaca('WA_SPM_TUNDA_'), sent = _pmBaca('WA_SPM_SIAP_'), now = new Date().getTime();
+    Object.keys(sent).forEach(function (k) { if (now - sent[k] > 90 * 864e5) delete sent[k]; });
+    Object.keys(pend).forEach(function (k) { if (sent[k] || now - pend[k] > 14 * 864e5) delete pend[k]; });   // kedaluwarsa 14 hari
+    var antre = Object.keys(pend);
+    if (!antre.length) { _pmTulis('WA_SPM_TUNDA_', pend); return hasil; }
+
+    // acuan 1: jadwal pengiriman; acuan 2: data pengiriman spreadsheet
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID), ok = {}, lt = {};
+    var dataPw = _pwBaca(_getOrCreatePicWmsSheet());
+    dataPw.forEach(function (r) { if (r[0] === 'jadwal') ok[r[2]] = 1; });
+    var shP = ss.getSheetByName(SH_PENGIRIMAN);
+    if (shP) {
+      var dP = shP.getDataRange().getValues();
+      for (var i = 1; i < dP.length; i++) {
+        var sp = String(dP[i][4] || '').replace(/\s+/g, '').toUpperCase();
+        if (sp) { ok[sp] = 1; if (!lt[sp]) lt[sp] = { agen: String(dP[i][1] || '').trim(), nopol: String(dP[i][5] || '').trim() }; }
+      }
     }
-    // gabungkan baris laporan muat per SPM
-    var per = {}, order = [];
-    baru.forEach(function (r) {
-      var sp = r[2]; hasil.dicek++;
-      if (!lt[sp]) return;
-      if (!per[sp]) { per[sp] = { spm: sp, t: r[1], qty: 0, pic: {} }; order.push(sp); }
-      per[sp].qty += Number(r[6]) || 0; if (r[4]) per[sp].pic[r[4]] = 1;
+    // qty & PIC dibaca dari master tersimpan (akurat walau upload terpecah)
+    var per = {};
+    dataPw.forEach(function (r) {
+      if (r[0] !== 'master' || !pend[r[2]] || !ok[r[2]]) return;
+      var x = per[r[2]] = per[r[2]] || { t: r[1], ship: r[3], qty: 0 };
+      x.qty += Number(r[6]) || 0;
     });
-    // buang yang sudah pernah dinotifikasi
-    var props = PropertiesService.getScriptProperties(), kS = 'WA_SPM_SIAP_' + ACTIVE_WORKSPACE, sent = {};
-    try { sent = JSON.parse(props.getProperty(kS) || '{}'); } catch (e) { sent = {}; }
-    var nowMs = new Date().getTime(), CUT = 90 * 864e5;
-    Object.keys(sent).forEach(function (k) { if (nowMs - sent[k] > CUT) delete sent[k]; });
-    var daftar = order.filter(function (sp) { return !sent[sp]; });
-    hasil.cocok = order.length;
-    if (!daftar.length) return hasil;
+    var daftar = antre.filter(function (sp) { return per[sp]; }).sort();
+    hasil.cocok = daftar.length;
+    hasil.tertunda = antre.length - daftar.length;
+    if (!daftar.length) { _pmTulis('WA_SPM_TUNDA_', pend); return hasil; }
+
     var tglSet = {}, totQty = 0;
     daftar.forEach(function (sp) { tglSet[per[sp].t] = 1; totQty += per[sp].qty; });
-    var tglKey = Object.keys(tglSet).sort();
-    // perkiraan tonase = tonase persiapan pipa tercatat di REKAP MUATAN pada tanggal muat tsb
-    var ton = 0, shM = ss.getSheetByName(SH_REKAP_MUATAN);
+    var tglKey = Object.keys(tglSet).sort(), ton = 0, shM = ss.getSheetByName(SH_REKAP_MUATAN);
     if (shM) {
       var dM = shM.getDataRange().getValues();
       for (var j = 1; j < dM.length; j++) { var d = toDate(dM[j][1]); if (d && tglSet[_fmtYMD(d)]) ton += parseFloat(dM[j][3]) || 0; }
     }
     var jam = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'HH:mm');
     var baris = daftar.map(function (sp, n) {
-      var l = lt[sp], x = per[sp];
-      return (n + 1) + '. SPM ' + sp + (l.agen ? ' - ' + l.agen : '') + (l.nopol ? ' (' + l.nopol + ')' : '') + ' : ' + Math.round(x.qty).toLocaleString('id-ID') + ' btg';
+      var l = lt[sp] || {}, x = per[sp], tujuan = l.agen || x.ship;
+      return (n + 1) + '. SPM ' + sp + (tujuan ? ' - ' + tujuan : '') + (l.nopol ? ' (' + l.nopol + ')' : '') + ' : ' + Math.round(x.qty).toLocaleString('id-ID') + ' btg';
     });
     var pesan = '📦 *Persiapan Muat Selesai*\n\n' +
       'Team persiapan telah menyiapkan barang untuk *' + daftar.length + ' SPM*:\n' + baris.join('\n') + '\n\n' +
@@ -10491,10 +10517,28 @@ function _notifPersiapanMuat(baru) {
       'Selesai sampai jam ' + jam + ' WIB';
     var r = _fonnteKirim('', pesan, _fonnteTl());
     hasil.terkirim = !!r.ok; hasil.info = r.pesan || '';
-    if (r.ok) { daftar.forEach(function (sp) { sent[sp] = nowMs; }); props.setProperty(kS, JSON.stringify(sent)); }
-  } catch (err) { hasil.error = String(err && err.message || err); Logger.log('Notif persiapan muat gagal: ' + hasil.error); }
+    if (r.ok) { daftar.forEach(function (sp) { sent[sp] = now; delete pend[sp]; }); _pmTulis('WA_SPM_SIAP_', sent); }
+    _pmTulis('WA_SPM_TUNDA_', pend);
+  } catch (err) { hasil.error = String(err && err.message || err); Logger.log('Proses notif persiapan muat gagal: ' + hasil.error); }
+  finally { try { lock.releaseLock(); } catch (e) {} }
   return hasil;
 }
+
+// Dipanggil saat halaman Loading Time dibuka / data pengiriman dibaca: kirim yang tadinya tertahan (maks 1x per 5 menit).
+function _pmCekTertundaRingan() {
+  try {
+    var pend = _pmBaca('WA_SPM_TUNDA_'); if (!Object.keys(pend).length) return;
+    var cache = CacheService.getScriptCache(), ck = 'pm_cek_' + ACTIVE_WORKSPACE;
+    if (cache.get(ck)) return; cache.put(ck, '1', 300);
+    _pmProses();
+  } catch (e) { Logger.log('cek tertunda: ' + e.message); }
+}
+// Jalankan SEKALI di editor Apps Script agar antrean dicek otomatis tiap N menit (data pengiriman terupdate -> notif terkirim).
+function aktifkanCekNotifPersiapanMuat(menit) {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'cekNotifPersiapanMuatTrigger') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('cekNotifPersiapanMuatTrigger').timeBased().everyMinutes([1, 5, 10, 15, 30].indexOf(menit) >= 0 ? menit : 10).create();
+}
+function cekNotifPersiapanMuatTrigger() { _pmProses(); }
 
 // kind: 'master' | 'jadwal' | 'semua'
 function hapusPicWmsData(kind, dari, sampai) {
