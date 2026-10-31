@@ -41,6 +41,12 @@
   // ------------------------------------------------------------------
   // Parser nilai
   // ------------------------------------------------------------------
+  // "1032740/2C" -> "1032740": hanya nomor voucher, akhiran setelah "/" bukan bagian parameter
+  function voucherNo(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') return isFinite(v) ? v.toFixed(0) : '';
+    return String(v).split('/')[0].replace(/\s+/g, '').trim();
+  }
   function parseDate(v) {
     if (v == null || v === '') return '';
     if (v instanceof Date) return isNaN(v) ? '' : ymd(v.getFullYear(), v.getMonth() + 1, v.getDate());
@@ -101,7 +107,7 @@
     var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0 };
     for (var r = h.row + 1; r < rows.length; r++) {
       var row = rows[r] || [];
-      var nama = cleanText(row[cN]), vou = cleanText(row[cV]), item = parseItem(row[cI]);
+      var nama = cleanText(row[cN]), vou = voucherNo(row[cV]), item = parseItem(row[cI]);
       if (!nama && !vou && !item) continue;           // baris kosong
       st.total++;
       if (!lolosNama(nama)) { st.dropped++; continue; }
@@ -126,11 +132,11 @@
     if (!cDesc.length) throw new Error('Kolom "Description" tidak ditemukan di file QAD.');
     var cEnt = idxOf(h.heads, ['entereddate']), cEff = idxOf(h.heads, ['effectivedate']);
     // nomor referensi/voucher QAD (opsional) -- dipakai untuk menelusuri input QAD yang tidak punya voucher WMS
-    var cRef = idxOf(h.heads, ['reference', 'ref', 'referensi', 'nbr', 'ordernbr', 'order', 'trnbr', 'transactionnbr', 'novoucher', 'voucher', 'nomorreferensi', 'lotserial', 'lotref']);
+    var cRef = idxOf(h.heads, ['document', 'documentno', 'docno', 'nodocument', 'nomordokumen', 'dokumen', 'reference', 'ref', 'referensi', 'nbr', 'ordernbr', 'order', 'trnbr', 'transactionnbr', 'novoucher', 'voucher', 'nomorreferensi', 'lotserial', 'lotref']);
     var VRE = /(?:^|\D)(10\d{5})(?!\d)/;   // pola nomor voucher WMS (mis. 1033248)
     function voucherOf(row) {
       var c, m;
-      if (cRef !== -1) { c = String(row[cRef] == null ? '' : row[cRef]).trim(); m = c.match(VRE); if (m) return m[1]; if (c) return c; }
+      if (cRef !== -1) { c = voucherNo(row[cRef]); if (c) return c; }
       for (var k = 0; k < row.length; k++) {            // tidak ada kolom referensi dikenal -> cari pola voucher di sel teks lain
         if (k === cI || k === cQ || k === cT || cDesc.indexOf(k) !== -1) continue;
         c = String(row[k] == null ? '' : row[k]).trim();
