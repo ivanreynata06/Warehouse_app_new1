@@ -72,7 +72,9 @@
   function cekKey(row) { return row.v + '|' + rakKey(row.r) + '|' + row.q; }
   function sameItem(a, b) { return rakKey(a) === rakKey(b); }
   // entry: {v, i, q, r}  (dari kertas juru lokasi)
-  function matchEntry(master, entry) {
+  // opts (opsional): { relok: baris Laporan Relokasi, cek: hasil pencocokan/konfirmasi } -> rak di kertas yang
+  // WMS-nya masih "Area transit" dicocokkan otomatis dengan data relokasi (asal transit -> rak tujuan).
+  function matchEntry(master, entry, opts) {
     var v = vKey(entry.v), rows = (master || []).filter(function (x) { return x.v === v; });
     if (!v) return { code: 'kosong' };
     if (!rows.length) return { code: 'novoucher', v: v };
@@ -80,9 +82,35 @@
     function sameRak(x) { return rakKey(x.r) === rk || (kategori(x.r) === 'transit' && /TRANSIT/.test(rk)); }
     var hit = rows.filter(sameRak);
     var row = (hit.length ? hit : rows).slice().sort(function (a, b) { return (q != null && b.q === q) - (q != null && a.q === q); })[0];
-    var f = { rak: sameRak(row), qty: q == null ? true : row.q === q, item: !entry.i || sameItem(row.i, entry.i) };
+
+    // ---- data relokasi untuk voucher ini (upload laporan + konfirmasi admin + otomatis) ----
+    var rel = [], relInfo = '', viaRel = null;
+    if (opts && (opts.relok || opts.cek)) {
+      var hist = relokHistory(master, opts.relok || [], opts.cek || []);
+      rel = hist.filter(function (e) { return e.v === v && e.to; });
+      if (!rel.length) {   // baris relokasi tanpa nomor voucher: cocokkan lewat item + qty barang di transit
+        rel = (opts.relok || []).filter(function (r) { return !r.v && r.to && (!r.i || sameItem(r.i, row.i)) && (!r.q || r.q === row.q); })
+          .map(function (r) { return { v: v, t: r.t, from: r.from || 'Area transit', to: r.to, q: r.q || row.q }; });
+      }
+    }
+    // asal relokasi harus sesuai posisi barang di WMS: area transit / kosong / rak WMS saat ini
+    function originOk(e) { return !e.from || kategori(e.from) === 'transit' || /TRANSIT/.test(rakKey(e.from)) || rakKey(e.from) === rakKey(row.r); }
+    var relOk = rel.filter(originOk);
+    var relTo = relOk.filter(function (e) { return rakKey(e.to) === rk; });
+    if (!hit.length && relTo.length) {
+      viaRel = relTo.slice().sort(function (a, b) { return (q != null && b.q === q) - (q != null && a.q === q) || (a.t < b.t ? 1 : a.t > b.t ? -1 : 0); })[0];
+      var tr0 = rows.filter(function (x) { return kategori(x.r) === 'transit'; }).sort(function (a, b) { return (q != null && b.q === q) - (q != null && a.q === q); })[0];
+      if (tr0) row = tr0;
+      relInfo = 'Sesuai data relokasi: ' + rakLabel(viaRel.from || 'Area transit') + ' → ' + viaRel.to + (viaRel.t ? ' (' + viaRel.t + ')' : '');
+    } else if (!hit.length && kategori(row.r) === 'transit') {
+      relInfo = rel.length
+        ? 'Data relokasi voucher ini: ' + rel.map(function (e) { return (e.from || 'Area transit') + ' → ' + e.to; }).join('; ') + (relOk.length ? ' — tujuan tidak sama dengan rak kertas ' + (entry.r || '-') : ' — asal relokasi tidak sama dengan posisi barang di WMS (' + rakLabel(row.r) + ')')
+        : 'Belum ada data relokasi untuk voucher ini. Upload Laporan Relokasi terbaru lalu Cocokkan lagi';
+    }
+    var qtyRel = viaRel && q != null && relTo.some(function (e) { return e.q === q; });
+    var f = { rak: sameRak(row) || !!viaRel, qty: q == null ? true : (row.q === q || !!qtyRel), item: !entry.i || sameItem(row.i, entry.i) };
     var reasons = []; if (!f.rak) reasons.push('rak'); if (!f.qty) reasons.push('qty'); if (!f.item) reasons.push('item');
-    return { code: 'ok', row: row, flags: f, reasons: reasons, st: reasons.length ? 'tidak' : 'sesuai',
+    return { code: 'ok', row: row, flags: f, reasons: reasons, st: reasons.length ? 'tidak' : 'sesuai', via: viaRel ? 'relokasi' : '', info: relInfo, reloc: viaRel,
       rec: { k: cekKey(row), v: row.v, rw: row.r, qw: row.q, rk: norm(entry.r).toUpperCase(), qk: q == null ? '' : q, ik: entry.i || '', st: reasons.length ? 'tidak' : 'sesuai', rs: reasons.join(','), sl: 0, adj: '' } };
   }
   function note(c, row) {
@@ -295,7 +323,7 @@
   function uniq(a) { var s = {}; a.forEach(function (x) { if (x) s[x] = 1; }); return Object.keys(s).sort(); }
 
   var api = { parseKertas: parseKertas, rakLabel: rakLabel, fullName: fullName, kategori: kategori, parseMaster: parseMaster, dedupe: dedupe, dupKey: dupKey, cekKey: cekKey, matchEntry: matchEntry, note: note,
-    analyzeSusun: analyzeSusun, sumSusun: sumSusun, analyzeOperator: analyzeOperator, sumOperator: sumOperator, relocCandidates: relocCandidates, parseRelokasi: parseRelokasi, dedupeRelok: dedupeRelok, relokHistory: relokHistory, agingTransit: agingTransit, timeline: timeline, rakKey: rakKey };
+    analyzeSusun: analyzeSusun, sumSusun: sumSusun, analyzeOperator: analyzeOperator, sumOperator: sumOperator, relocCandidates: relocCandidates, parseRelokasi: parseRelokasi, dedupeRelok: dedupeRelok, relokHistory: relokHistory, agingTransit: agingTransit, relokHistory: relokHistory, timeline: timeline, rakKey: rakKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.SusunCore = api;
 })(typeof window !== 'undefined' ? window : this);
