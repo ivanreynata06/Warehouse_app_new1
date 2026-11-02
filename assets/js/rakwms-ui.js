@@ -355,6 +355,7 @@
     var el = $('rk-so'); if (!el) return;
     var ae = document.activeElement, keep = ae && ae.id === 'so-q';
     var a = soItems(), cand = soCand(), shown = cand.slice(0, 25);
+    var sc0 = el.querySelector('.db'), pl0 = el.querySelector('.so-pick'), st0 = sc0 ? sc0.scrollTop : 0, pt0 = pl0 ? pl0.scrollTop : 0;
     el.innerHTML = '<div class="dh"><div><div style="font-family:Outfit;font-size:18px;font-weight:700">&#128221; Form Stock Opname</div><div class="cd">Pilih item yang akan di-SO, isi qty &amp; rak aktual. Adjustment dibuat otomatis (kurang = -, tambah = angka polos).</div></div><button class="btn2 sm" onclick="RakUI.closeSO()">Tutup &#10005;</button></div>' +
       '<div class="db">' +
       '<div class="glass" style="border-radius:14px"><div class="gb"><div style="font-family:Outfit;font-weight:700;font-size:13px;margin-bottom:8px">1. Pilih item yang akan di-SO <span class="cd">(' + fmt(a.length) + ' dipilih dari ' + fmt(ui.items.length) + ' item)</span></div>' +
@@ -362,7 +363,8 @@
       '<label class="chk" style="margin:0"><input type="checkbox" ' + (so.sel ? 'checked' : '') + ' onchange="RakUI.soSelOnly(this.checked)"> hanya yang selisih</label>' +
       '<span class="cd">atau</span><input type="number" min="1" id="so-n" value="' + so.n + '" style="width:70px" onchange="RakUI.soSetN(this.value)"><button class="btn2 sm" onclick="RakUI.soTopN()">Pilih ' + so.n + ' selisih terbesar</button>' +
       (a.length ? '<button class="btn2 dng sm" onclick="RakUI.soClear()">Kosongkan pilihan</button>' : '') + '</div>' +
-      '<div class="rk-tw" style="margin-top:8px;max-height:230px;overflow:auto"><table><thead><tr><th class="l">Item</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th></th></tr></thead><tbody>' +
+      (a.length ? '<div class="so-chips"><span class="cd">Dipilih:</span>' + a.map(function (i) { return '<span class="so-chip" title="' + esc(i.nama) + '">' + esc(short(i.nama)) + '<button data-k="' + esc(i.kode) + '" onclick="RakUI.soPick(this.dataset.k,false)" aria-label="Hapus">&#10005;</button></span>'; }).join('') + '</div>' : '') +
+      '<div class="rk-tw so-pick" style="margin-top:8px;max-height:300px;overflow:auto"><table><thead><tr><th class="l">Item</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th></th></tr></thead><tbody>' +
       (shown.map(function (i) { return '<tr><td class="l"><div class="nm">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td><td><button class="btn2 pri sm" data-k="' + esc(i.kode) + '" onclick="RakUI.soPick(this.dataset.k,true)">+ Pilih</button></td></tr>'; }).join('') || '<tr><td colspan="5" class="empty">' + (ui.items.length ? 'Tidak ada item lain yang cocok.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS dulu.') + '</td></tr>') +
       '</tbody></table></div>' + (cand.length > shown.length ? '<div class="sub">+' + fmt(cand.length - shown.length) + ' item lain, persempit dengan pencarian.</div>' : '') + '</div></div>' +
       '<div class="rk-tools"><div style="font-family:Outfit;font-weight:700;font-size:13px">2. Isi hasil SO</div><span style="flex:1"></span><button class="btn2 sm" onclick="RakUI.print()" ' + (a.length ? '' : 'disabled') + '>&#128424; Cetak Lembar SO (' + fmt(a.length) + ' item)</button></div>' +
@@ -370,6 +372,7 @@
       (a.length ? a.map(soCard).join('') : '<div class="empty">Belum ada item dipilih.</div>') +
       '<div style="position:sticky;bottom:0;padding:10px 0;display:flex;gap:10px;justify-content:flex-end"><button class="btn2 pri" onclick="RakUI.soDone()">Selesai &amp; lihat Template Adjustment &darr;</button></div></div>';
     soRefresh();
+    var sc1 = el.querySelector('.db'), pl1 = el.querySelector('.so-pick'); if (sc1) sc1.scrollTop = st0; if (pl1) pl1.scrollTop = pt0;
     if (keep) { var q = $('so-q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   }
   /* ---------- cetak LEMBAR STOCK OPNAME (format lembar SO: sistem diganti QAD & WMS, ada Fisik & Rak Aktual) ---------- */

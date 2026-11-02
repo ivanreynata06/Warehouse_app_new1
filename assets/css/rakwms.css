@@ -173,3 +173,13 @@
 .rk-so .dh{padding:18px 22px 12px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;gap:12px;justify-content:space-between;align-items:flex-start}
 .rk-so .db{flex:1;overflow:auto;padding:16px 22px 24px;display:flex;flex-direction:column;gap:6px}
 .rk-so input.aq{width:120px;text-align:right;font-family:var(--mono)}
+
+/* Form SO: perbaikan tata letak -- kotak pilihan item tidak boleh tertekan/tertutup kartu di bawahnya */
+.rk-so .db>*{flex:0 0 auto}
+.rk-so .glass .rk-tw{max-height:none;overflow:visible}                 /* tabel rak di kartu tampil penuh, tanpa scroll bersarang */
+.rk-so .glass .rk-tw.so-pick{max-height:300px;overflow:auto}           /* hanya daftar pilihan yang punya scroll sendiri */
+.rk-so .so-pick thead th{position:sticky;top:0;z-index:2;background:#16162c}
+.so-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 2px}
+.so-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 4px 3px 10px;border-radius:999px;background:rgba(124,92,255,.18);border:1px solid rgba(124,92,255,.4);font-size:11px;max-width:260px;white-space:nowrap}
+.so-chip button{border:0;background:rgba(255,255,255,.1);color:inherit;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:10px;line-height:1}
+.so-chip button:hover{background:rgba(255,95,95,.5)}
