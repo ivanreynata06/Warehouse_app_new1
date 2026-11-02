@@ -521,19 +521,31 @@ function renderDash(){
 
 /* ---------- BUAT LEMBAR ---------- */
 function findCol(hdr,re){for(var i=0;i<hdr.length;i++){if(re.test(String(hdr[i]).trim()))return i}return -1}
+function numQty(v){
+  if(typeof v==='number') return isFinite(v)?v:0;
+  var t=String(v==null?'':v).trim().replace(/\s/g,''); if(!t) return 0;
+  var neg=/^\(.*\)$/.test(t)||/-$/.test(t); t=t.replace(/[()]/g,'').replace(/-$/,'');
+  if(/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t=t.replace(/\./g,'').replace(',','.');      // format Indonesia 1.600,5
+  else t=t.replace(/,/g,'');                                                              // format 1,600.5
+  var n=Number(t); if(!isFinite(n)) return 0; return neg&&n>0?-n:n;
+}
 function qadParseBuffer(buf){
   var wb=XLSX.read(buf,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]];
   var aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}),h=-1;
   for(var i=0;i<Math.min(15,aoa.length);i++){if(findCol(aoa[i],/^(item|part|material|kode)/i)>=0){h=i;break}}
   if(h<0) throw new Error('Kolom Item/Part tidak ditemukan di 15 baris awal file.');
-  var H=aoa[h],ci=findCol(H,/^(item|part|material|kode)/i),cd=findCol(H,/desc|nama|uraian/i),cq=findCol(H,/qty|on ?hand|stock|stok|saldo/i),cu=findCol(H,/^(um|uom|unit|satuan)/i),cl=findCol(H,/loc|lokasi|bin/i),cg=findCol(H,/^group/i);
+  var H=aoa[h],ci=findCol(H,/^(item|part|material|kode)/i),cu=findCol(H,/^(um|uom|unit|satuan)/i),cg=findCol(H,/^group/i);
+  var cq=findCol(H,/on ?hand/i); if(cq<0) cq=findCol(H,/^(qty|quantity|stock|stok|saldo)/i); if(cq<0) cq=findCol(H,/qty|stock|stok|saldo/i);
+  var cl=findCol(H,/^(loc|location|lokasi|bin)/i);
+  var cds=[]; H.forEach(function(x,j){if(/^(desc|nama|uraian)/i.test(String(x).trim())) cds.push(j)});   // file QAD sering punya 2 kolom Description
   if(cq<0) throw new Error('Kolom Qty/Stock tidak ditemukan.');
   var map={};
   aoa.slice(h+1).forEach(function(r){
     var it=String(r[ci]).trim(); if(!it) return;
-    var q=Number(String(r[cq]).replace(/,/g,''))||0, k=it.toUpperCase();
+    var q=numQty(r[cq]), k=it.toUpperCase();
     var grp=cg>=0?String(r[cg]).trim().toUpperCase():'', loc=cl>=0?String(r[cl]).trim():'', kk=grp+'|'+k;
-    if(!map[kk]) map[kk]={item:it,grp:grp,desc:cd>=0?String(r[cd]).trim():'',um:cu>=0?String(r[cu]).trim():'',lokasi:'',locs:[],sistem:0};
+    var ds=cds.map(function(j){return String(r[j]).trim()}).filter(Boolean).join(' ');
+    if(!map[kk]) map[kk]={item:it,grp:grp,desc:ds,um:cu>=0?String(r[cu]).trim():'',lokasi:'',locs:[],sistem:0};
     map[kk].sistem+=q; if(loc&&map[kk].locs.indexOf(loc.toUpperCase())<0) map[kk].locs.push(loc.toUpperCase());
   });
   return Object.keys(map).map(function(k){var x=map[k];x.lokasi=x.locs.join(', ');return x});
@@ -541,16 +553,42 @@ function qadParseBuffer(buf){
 function parseQad(ev){
   var f=ev.target.files[0]; if(!f) return;
   var rd=new FileReader();
-  rd.onload=function(e){try{S.qad=qadParseBuffer(e.target.result);S.qadAll=S.qad;checkGroup()}catch(err){toast(err.message,true)}};
+  rd.onload=function(e){try{var rows=qadParseBuffer(e.target.result);if(!rows.length) throw new Error('File tidak berisi baris item. Periksa file QAD-nya.');S.qad=rows;S.qadAll=rows;checkGroup()}catch(err){toast(err.message,true)}};
   rd.readAsArrayBuffer(f);
 }
+function grpNorm(x){return String(x||'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}
+function grpTok(x){return grpNorm(x).split(' ').filter(Boolean)}
+function grpSubset(a,b){var A=grpTok(a),B=grpTok(b);if(!A.length||!B.length)return false;var s1=A.every(function(t){return B.indexOf(t)>=0}),s2=B.every(function(t){return A.indexOf(t)>=0});return s1||s2}
+var chkSeq=0;
 function checkGroup(){
   var g=document.getElementById('bGroup').value; if(!g) return toast('Pilih group dulu',true);
+  var mySeq=++chkSeq;
   Promise.all([api('soGetGroupItems',g),api('soGetLembarAktif',g)]).then(function(rs){
+    if(mySeq!==chkSeq) return;   // pilihan group sudah berganti -> abaikan respons lama
     var gi=rs[0],ak=rs[1];
     S.sisa=(!ak.lembar&&ak.sisaSebelumnya)?ak.sisaSebelumnya:null; S.qtyT=ak.qtyTerakhir||{}; S.valid=gi.items||{}; S.aktif=ak.lembar; S.exist=ak.items||{}; S.boleh=!!ak.bolehTambahItem; S.pick={};
-    var hasGrp=(S.qadAll||[]).some(function(x){return x.grp}), gU=g.toUpperCase().replace(/\s+/g,'');
-    var inGrp=(S.qadAll||[]).filter(function(x){return !hasGrp||x.grp.replace(/\s+/g,'')===gU});
+    var all=S.qadAll||[],hasGrp=all.some(function(x){return x.grp}),mst=(S.master||[]).filter(function(x){return x.group===g})[0]||{};
+    all.forEach(function(x){x.hold=false;x.noadd=false;x.same=false;x.sameTgl='';x.state='';x.inSheet=false});   // reset sisa status dari group sebelumnya
+    var labels=[g,mst.desc].filter(Boolean).map(grpNorm),how='';
+    var exact=all.filter(function(x){return labels.indexOf(grpNorm(x.grp))>=0});
+    var inGrp;
+    if(!hasGrp){inGrp=all;how='file tanpa kolom Group'}
+    else if(exact.length){inGrp=exact;how='Group sama persis'}
+    else{
+      var sub=all.filter(function(x){return x.grp&&labels.some(function(l){return grpSubset(x.grp,l)})});
+      if(sub.length){inGrp=sub;how='Group file <b>'+esc(sub[0].grp)+'</b> dicocokkan dengan <b>'+esc(g)+'</b>'}
+      else{inGrp=[];how=''}
+    }
+    // SKU yang terdaftar di sheet group ikut ditarik walau label Group di file berbeda
+    if(hasGrp&&gi.found){var have={};inGrp.forEach(function(x){have[x.item.toUpperCase()]=1});
+      var extra=all.filter(function(x){var k=x.item.toUpperCase();return !have[k]&&S.valid&&S.valid.hasOwnProperty(k)});
+      if(extra.length){inGrp=inGrp.concat(extra);how+=(how?' + ':'')+extra.length+' SKU cocok dengan sheet group'}}
+    // gabung duplikat item (mis. label Group berbeda) supaya tidak dobel
+    var mg={};inGrp.forEach(function(x){var k=x.item.toUpperCase();if(!mg[k]){mg[k]=x}else{mg[k].sistem+=x.sistem;x.locs.forEach(function(l){if(mg[k].locs.indexOf(l)<0)mg[k].locs.push(l)});mg[k].lokasi=mg[k].locs.join(', ');if(!mg[k].desc)mg[k].desc=x.desc}});
+    inGrp=Object.keys(mg).map(function(k){return mg[k]});
+    S.how=how;
+    if(!inGrp.length&&all.length){var cn={};all.forEach(function(x){cn[x.grp||'(kosong)']=(cn[x.grp||'(kosong)']||0)+1});
+      S.noMatch='Tidak ada baris di file yang cocok dengan group <b>'+esc(g)+'</b>. Group di file: '+Object.keys(cn).map(function(k){return '<b>'+esc(k)+'</b> ('+cn[k]+')'}).join(', ')+'.'}else S.noMatch='';
     var dropped=0;
     S.qad=inGrp.filter(function(x){var k=x.item.toUpperCase();x.inSheet=S.valid.hasOwnProperty(k);
       if(!(x.sistem>0)){dropped++;return false}   // QTY 0 / minus tidak ditarik
@@ -566,7 +604,7 @@ function checkGroup(){
     var up={};S.qad.forEach(function(x){up[x.item.toUpperCase()]=1});var removed=0;Object.keys(S.exist).forEach(function(k){if(S.exist[k].fisik===null&&!up[k])removed++});
     document.getElementById('bPreview').style.display='block';
     document.getElementById('bGo').textContent=S.aktif?'Perbarui Lembar SO':'Buat Lembar SO';
-    document.getElementById('bInfo').innerHTML='Group <b>'+esc(g)+'</b>: '+(gi.found?Object.keys(S.valid).length+' SKU di sheet group':'<span style="color:var(--amber)">sheet group tidak ditemukan — item ditarik dari data QAD</span>')+' · '+inGrp.length+' baris QAD ber-Group '+esc(g)+'.<br>'+
+    document.getElementById('bInfo').innerHTML='Group <b>'+esc(g)+'</b>: '+(gi.found?Object.keys(S.valid).length+' SKU di sheet group':'<span style="color:var(--amber)">sheet group tidak ditemukan — item ditarik dari data QAD</span>')+' · '+inGrp.length+' item QAD terbaca untuk group ini'+(S.how?' ('+S.how+')':'')+'.'+(S.noMatch?'<br><span style="color:var(--red)">'+S.noMatch+'</span>':'')+'<br>'+
       (S.aktif?'Lembar aktif <b>'+esc(S.aktif.id)+'</b> ('+esc(S.aktif.mulai)+' s/d '+esc(S.aktif.akhir)+') akan <b>digabung</b> — SKU upload pertama tetap jadi master: <b>'+c.locked+'</b> sudah di-SO (dikunci), <b>'+c.update+'</b> belum di-SO (qty diperbarui)'+(S.boleh?', <b>'+c.new+'</b> item baru ditambahkan (group ini boleh menambah item)':(c.new?'. <b>'+c.new+'</b> item baru di data QAD <b>tidak ditambahkan</b> (hanya group I053 &amp; Q055 yang boleh)':''))+(removed?'. <b>'+removed+'</b> SKU belum di-SO akan <b>dikeluarkan karena stok 0 / tidak ada di data QAD terbaru</b>':'')+'. ':'Belum ada lembar aktif — upload ini menjadi <b>master SKU</b> periode ('+(c.new+c.carry)+' item). '+(S.sisa?'<br>⚠ Periode sebelumnya belum selesai: <b>'+c.carry+'</b> item yang belum di-SO menjadi <b>SISA</b> (dikerjakan dulu), <b>'+S.qad.filter(function(x){return x.hold}).length+'</b> item yang sudah di-SO <b>terkunci sementara</b> dan terbuka otomatis setelah sisa selesai. Progres dicatat di periode ini.'+(carryDrop?' '+carryDrop+' item sisa tidak ikut karena stok 0 / tidak ada di data QAD.':''):''))+
       (c.out?c.out+' item di luar list sheet group ikut ditarik karena ada QTY. ':'')+(dropped?dropped+' item QTY 0 tidak ditarik.':'');
     renderPick();
@@ -593,6 +631,7 @@ function renderPick(){
   rows=sortRows(rows,'pick');drawHeads();
   document.getElementById('bBody').innerHTML=rows.slice(0,800).map(function(x){var k=x.item.toUpperCase(),lk=x.state==='locked'||x.state==='carry'||(S.aktif&&(x.state==='update'||x.noadd));
     return '<tr style="'+(lk?'opacity:.55':'')+'"><td><input type="checkbox" '+(lk?'disabled'+(S.pick[k]?' checked':''):(S.pick[k]?'checked':''))+' onchange="S.pick[\''+k.replace(/'/g,"\\'")+'\']=this.checked;cnt()"></td><td class="l mono">'+esc(x.item)+'</td><td class="l">'+esc(x.desc||S.valid[k]||'')+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td>'+stateChip(x)+'</td></tr>'}).join('')||'<tr><td colspan="7" class="empty">Tidak ada item</td></tr>';
+  document.getElementById('bBody').insertAdjacentHTML('beforeend',rows.length>800?'<tr><td colspan="7" class="muted" style="text-align:center">+'+(rows.length-800)+' item lain tidak ditampilkan (tetap ikut terkirim jika tercentang). Gunakan pencarian.</td></tr>':'');
   cnt();
 }
 function cnt(){document.getElementById('bCount').textContent=kirimItems().length+' item dikirim'+(S.aktif?' (SKU master tetap, tidak termasuk yang sudah di-SO)':' sebagai master SKU')}
@@ -601,6 +640,8 @@ function pickAll(v){var q=document.getElementById('bSearch').value.toUpperCase()
   S.qad.forEach(function(x){if(x.state!=='locked'&&x.state!=='carry'&&!x.noadd&&!(S.aktif&&x.state==='update')&&(!only||x.sistem>0)&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1))S.pick[x.item.toUpperCase()]=v});renderPick()}
 function buatLembar(){
   var g=document.getElementById('bGroup').value,m=S.master.filter(function(x){return x.group===g})[0];
+  if(!m) return toast('Group belum terdaftar di master SO. Muat ulang halaman.',true);
+  if(!S.qad.length) return toast('Tidak ada data QAD yang cocok dengan group ini -- lembar tidak diproses (mencegah item terhapus karena file/group salah).',true);
   var items=kirimItems();
   if(!items.length&&!S.aktif) return toast('Pilih minimal 1 item sebagai master SKU',true);
   var b=document.getElementById('bGo'); b.disabled=true;
