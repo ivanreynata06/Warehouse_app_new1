@@ -249,34 +249,53 @@
     });
     var idx = {}, tMin = '', tMax = '';
     (trxRows || []).forEach(function (t) {
-      var o = idx[t.d] || (idx[t.d] = { total: 0, items: {}, dates: {} });
+      var o = idx[t.d] || (idx[t.d] = { total: 0, items: {}, dates: {}, ent: [] });
       o.total += t.q; o.items[t.i] = (o.items[t.i] || 0) + t.q; if (t.t) o.dates[t.t] = 1;
+      o.ent.push({ i: t.i, q: t.q });
       if (t.t) { if (!tMin || t.t < tMin) tMin = t.t; if (!tMax || t.t > tMax) tMax = t.t; }
     });
     var res = { items: [], total: 0, sesuai: 0, selisih: 0, belumMasuk: 0, nodata: 0, qtyBfl: 0, qtyTrx: 0,
-                trxMin: tMin, trxMax: tMax, trxCount: (trxRows || []).length, hanyaTrx: 0 };
+                trxMin: tMin, trxMax: tMax, trxCount: (trxRows || []).length, hanyaTrx: 0, revisi: 0 };
     var used = {};
     recs.forEach(function (r) {
       if (!(r.status === 'BFL' || (opt.manual && r.status === 'MANUAL'))) return;
       if (!(r.qty > 0)) return;
-      var o = idx[r.voucher], tq = 0, st, why = '';
+      var o = idx[r.voucher], tq = 0, st, why = '', revisi = false, adaNeg = false, negBad = '';
       if (o) {
         used[r.voucher] = 1;
         tq = (r.item && (r.item in o.items)) ? o.items[r.item] : (r.item && Object.keys(o.items).length && !(r.item in o.items) ? 0 : o.total);
         if (r.item && !(r.item in o.items) && Object.keys(o.items).some(function (k) { return k; })) why = 'Dokumen ada tetapi item berbeda';
       }
+      // REVISI: pengurangan (Loc Qty Change bertanda -) harus punya pasangan pemasukan dengan nilai SAMA.
+      // Pasangan sama = telah direvisi (sesuai), berapa pun pemasukan berikutnya. Pengurangan tanpa pasangan = selisih.
+      if (o) {
+        var en = o.ent.filter(function (e) { return !r.item || e.i === r.item || !o.ent.some(function (z) { return z.i === r.item; }); });
+        var pos = en.filter(function (e) { return e.q > 0; }).map(function (e) { return e.q; }), neg = en.filter(function (e) { return e.q < 0; }).map(function (e) { return -e.q; });
+        if (neg.length) {
+          adaNeg = true;
+          var left = [];
+          neg.forEach(function (n) { var k = pos.indexOf(n); if (k === -1) left.push(n); else pos.splice(k, 1); });
+          if (left.length) negBad = 'Pengurangan -' + left.join(', -') + ' tidak punya pasangan pemasukan dengan nilai yang sama';
+          else {
+            tq = pos.reduce(function (a, b) { return a + b; }, 0);
+            if (tq > 0) revisi = true; else negBad = 'Seluruh pemasukan sudah dikurangi, tidak ada pemasukan akhir';
+          }
+        }
+      }
       var inRange = tMin && r.date && r.date >= tMin && r.date <= tMax;
       var late = (!o && !inRange);
       if (late) { st = 'nodata'; why = tMin ? 'Tanggal voucher di luar rentang file transaksi (' + tMin + ' s/d ' + tMax + ')' : 'Belum ada file transaksi'; }
+      else if (revisi) { st = 'sesuai'; why = 'Telah direvisi: pengurangan sudah berpasangan dengan pemasukan yang sama' + (Math.abs(tq - r.qty) < 0.0001 ? '' : ' (qty akhir ' + tq + ' vs voucher ' + r.qty + ')'); }
+      else if (adaNeg) { st = 'selisih'; why = negBad; }
       else if (Math.abs(tq - r.qty) < 0.0001) st = 'sesuai';
       else {
         st = 'selisih';
         if (!o) why = 'Belum masuk stock (dokumen tidak ada di transaksi)';
         else if (!why) why = tq < r.qty ? 'Qty transaksi kurang dari qty voucher' : 'Qty transaksi lebih dari qty voucher';
       }
-      var it = { voucher: r.voucher, item: r.item, desc: r.desc, group: r.group, date: r.date, dept: r.dept, qtyBfl: r.qty, qtyTrx: tq, selisih: tq - r.qty, status: st, reason: why, found: !!o, trxDate: o ? Object.keys(o.dates).sort().join(', ') : '' };
+      var it = { voucher: r.voucher, item: r.item, desc: r.desc, group: r.group, date: r.date, dept: r.dept, qtyBfl: r.qty, qtyTrx: tq, selisih: tq - r.qty, status: st, revisi: revisi && st === 'sesuai', reason: why, found: !!o, trxDate: o ? Object.keys(o.dates).sort().join(', ') : '' };
       res.items.push(it); res.total++;
-      if (st === 'sesuai') res.sesuai++;
+      if (st === 'sesuai') { res.sesuai++; if (revisi) res.revisi++; }
       else if (st === 'nodata') res.nodata++;
       else { res.selisih++; if (!o) res.belumMasuk++; }
       if (st !== 'nodata') { res.qtyBfl += r.qty; res.qtyTrx += tq; }
