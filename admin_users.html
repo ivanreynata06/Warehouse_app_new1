@@ -564,6 +564,41 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
         </div>
       </div>
 
+      <div class="card" id="notifwa-card">
+        <div class="card-hdr">
+          <div class="card-title"><i data-lucide="send" style="width:12px;"></i>Gateway WhatsApp — Ringkasan WMS &amp; Notifikasi Muat</div>
+        </div>
+        <div class="modal-note" style="margin:0 0 10px;">
+          Dipakai tombol <b>Kirim WA</b> di Akurasi QAD vs WMS dan notifikasi persiapan muat ke TL. Kalau token/nomor tujuan dikosongkan, otomatis memakai <b>token Fonnte yang sama dengan lembur</b> dan nomor TL/approver.
+        </div>
+        <div class="modal-field two-col" style="max-width:640px;">
+          <div><label for="nw-provider">Provider</label><input type="text" id="nw-provider" placeholder="fonnte"></div>
+          <div><label for="nw-url">URL Gateway</label><input type="text" id="nw-url" placeholder="https://api.fonnte.com/send"></div>
+        </div>
+        <div class="modal-field" style="max-width:640px;">
+          <label for="nw-token">Token Gateway <span id="nw-token-st" style="color:var(--text-muted);font-weight:400;"></span></label>
+          <input type="password" id="nw-token" placeholder="Kosongkan = pakai token yang sudah ada / token lembur" autocomplete="off">
+        </div>
+        <div class="modal-field" style="max-width:640px;">
+          <label for="nw-target">Nomor Tujuan Ringkasan (pisahkan koma, format 628xxx)</label>
+          <input type="text" id="nw-target" placeholder="62812xxxx,62813xxxx">
+        </div>
+        <div class="modal-field" style="max-width:640px;">
+          <label for="nw-tl">Nomor WA TL untuk notifikasi Persiapan Muat (departemen ini)</label>
+          <input type="text" id="nw-tl" placeholder="Kosong = nomor approver">
+        </div>
+        <div class="modal-field two-col" style="max-width:640px;">
+          <div><label for="nw-akurasi">Target Akurasi (%)</label><input type="number" id="nw-akurasi" min="1" max="100" placeholder="95"></div>
+          <div><label for="nw-aging">Ambang Aging (jam)</label><input type="number" id="nw-aging" min="1" max="720" placeholder="48"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-modal-save" onclick="submitNotifWa()">Simpan</button>
+          <button class="btn-flat btn-flat-ghost" onclick="tesNotifWa()">Tes Kirim</button>
+          <button class="btn-flat btn-flat-danger" onclick="hapusTokenNotifWa()">Hapus Token</button>
+          <span id="nw-status" style="font-size:9.5px;color:var(--text-muted);"></span>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-hdr">
           <div class="card-title"><i data-lucide="target" style="width:12px;"></i>Target Produktivitas (Ton/FTE) — Departemen Ini</div>
@@ -1735,6 +1770,62 @@ function resetFormKaryawan(){
 }
 
 // ---- Nomor WA Approver (per departemen/plant yang sedang login) ----
+// ---- Gateway WhatsApp (Ringkasan WMS & notifikasi muat) ----
+function loadNotifWa(){
+  google.script.run
+    .withSuccessHandler(function(r){
+      var box = document.getElementById('notifwa-card'); if (!box) return;
+      if (!r || !r.success){ box.style.display = 'none'; return; }
+      box.style.display = '';
+      document.getElementById('nw-provider').value = r.provider || 'fonnte';
+      document.getElementById('nw-url').value = r.url || '';
+      document.getElementById('nw-target').value = r.target || '';
+      document.getElementById('nw-tl').value = r.tlWa || '';
+      document.getElementById('nw-akurasi').value = r.akurasi || '';
+      document.getElementById('nw-aging').value = r.aging || '';
+      document.getElementById('nw-token').value = '';
+      document.getElementById('nw-token-st').textContent = r.tokenSet ? '(token khusus sudah diisi)' : (r.tokenFonnte ? '(memakai token Fonnte lembur)' : '(belum ada token)');
+      document.getElementById('nw-status').textContent = r.tokenEfektif && r.targetEfektif ? 'Siap kirim ke: ' + r.targetEfektif : 'Belum lengkap: ' + (!r.tokenEfektif ? 'token ' : '') + (!r.targetEfektif ? 'nomor tujuan' : '');
+    })
+    .withFailureHandler(function(){})
+    .adminGetNotifWa(actorNik);
+}
+function submitNotifWa(){
+  var cfg = {
+    provider: document.getElementById('nw-provider').value.trim(), url: document.getElementById('nw-url').value.trim(),
+    token: document.getElementById('nw-token').value.trim(), target: document.getElementById('nw-target').value.trim(),
+    tlWa: document.getElementById('nw-tl').value.trim(), akurasi: document.getElementById('nw-akurasi').value, aging: document.getElementById('nw-aging').value
+  };
+  showToast('Menyimpan gateway WhatsApp...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Gateway WhatsApp disimpan','success'); loadNotifWa();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetNotifWa(actorNik, cfg);
+}
+function hapusTokenNotifWa(){
+  if (!confirm('Hapus token khusus gateway ini? Setelah dihapus akan memakai token Fonnte lembur (jika ada).')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Token dihapus','success'); loadNotifWa();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminSetNotifWa(actorNik, { hapusToken: true, url: document.getElementById('nw-url').value.trim(), provider: document.getElementById('nw-provider').value.trim(), target: document.getElementById('nw-target').value.trim(), tlWa: document.getElementById('nw-tl').value.trim(), akurasi: document.getElementById('nw-akurasi').value, aging: document.getElementById('nw-aging').value });
+}
+function tesNotifWa(){
+  showToast('Mengirim pesan tes...','info');
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal kirim: '+(res&&res.error?res.error:''),'error'); return; }
+      showToast('Pesan tes terkirim','success');
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
+    .adminTesNotifWa(actorNik);
+}
+
 function loadFonnteStatus(){
   google.script.run
     .withSuccessHandler(function(res){
@@ -1744,6 +1835,7 @@ function loadFonnteStatus(){
         (res.approverWaUmum ? 'Belum ada nomor khusus -- memakai nomor WA umum.' : 'Belum ada nomor WA approver yang diisi.');
       var uw = document.getElementById('fonnte-umum-wrap');
       if (uw) uw.style.display = isSuperAdmin ? 'block' : 'none';
+      loadNotifWa();
       var us = document.getElementById('fonnte-umum-status');
       if (us) us.textContent = res.tokenUmum ? 'Token umum sudah diisi.' : 'Belum ada token umum.';
       var le = document.getElementById('fonnte-last-status');

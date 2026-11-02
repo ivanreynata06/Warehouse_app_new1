@@ -88,6 +88,9 @@ var API_FUNCTIONS = {
   adminGetFonnteStatus    : adminGetFonnteStatus,
   adminSetFonnteApproverWa: adminSetFonnteApproverWa,
   adminSetFonnteTlWa: adminSetFonnteTlWa,
+  adminGetNotifWa: adminGetNotifWa,
+  adminSetNotifWa: adminSetNotifWa,
+  adminTesNotifWa: adminTesNotifWa,
   adminSetFonnteTokenUmum: adminSetFonnteTokenUmum,
   adminGetKaryawanMaster: adminGetKaryawanMaster,
   adminSimpanKaryawan: adminSimpanKaryawan,
@@ -216,7 +219,7 @@ var AUTH_PUBLIC_ACTIONS = { loginUser: 1, getAvailablePlantsForLogin: 1 };
 var AUTH_ACTOR_BOUND = {
   auditProduktivitasFTE: 1, getSupabaseStorageStats: 1, setSupabaseDbLimitMB: 1, bersihkanPengajuanDitolakLama: 1, getAkunList: 1,
   adminTambahUser: 1, adminResetPassword: 1, adminSetAktif: 1, adminEditUser: 1, adminHapusUser: 1, adminSetFonnteToken: 1, adminGetFonnteStatus: 1,
-  adminSetFonnteApproverWa: 1, adminSetFonnteTlWa: 1, adminSetFonnteTokenUmum: 1, adminGetKaryawanMaster: 1, adminSimpanKaryawan: 1, adminImporKaryawanDariAkun: 1,
+  adminSetFonnteApproverWa: 1, adminSetFonnteTlWa: 1, adminGetNotifWa: 1, adminSetNotifWa: 1, adminTesNotifWa: 1, adminSetFonnteTokenUmum: 1, adminGetKaryawanMaster: 1, adminSimpanKaryawan: 1, adminImporKaryawanDariAkun: 1,
   adminTesKirimFonnte: 1, adminGetKeywordKategoriTambahan: 1, adminSetKeywordKategoriTambahan: 1, adminGetTargetProduktivitas: 1, adminSetTargetProduktivitas: 1,
   getWorkspaceListForAdmin: 1, adminProvisionNewDepartment: 1, adminRepairWorkspaceSheets: 1, adminHapusDepartemen: 1, adminHapusPlant: 1, adminGetMenuConfig: 1,
   adminSetMenuConfig: 1, adminGetCrossWorkspaceTL: 1, adminSetCrossWorkspaceTL: 1, getPendingApprovals: 1, adminGetSplSignatures: 1, adminUploadSplSignature: 1,
@@ -10804,6 +10807,53 @@ function saveTraceFeedback(jsonStr) {
 //            (POST form: target, message; header Authorization: token).
 //  Ambang: WA_TARGET_AKURASI (default 95), WA_AGING_JAM (default 48).
 // ================================================================
+// ================================================================
+//  KONFIGURASI GATEWAY WA (Ringkasan WMS / tombol "Kirim WA") -- diisi dari menu Kelola User
+//  Menggantikan setupNotifWA() di editor Apps Script. Token tidak pernah dikirim balik ke browser.
+// ================================================================
+function adminGetNotifWa(actorNik) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    var p = PropertiesService.getScriptProperties(), c = _waCfg(), fn = null;
+    try { fn = _fonnteCariToken(''); } catch (e) {}
+    return {
+      success: true, url: p.getProperty('WA_URL') || 'https://api.fonnte.com/send', provider: p.getProperty('WA_PROVIDER') || 'fonnte',
+      target: p.getProperty('WA_TARGET') || '', akurasi: c.akurasi, aging: c.aging,
+      tokenSet: !!p.getProperty('WA_TOKEN'), tokenFonnte: !!fn,
+      tlWa: p.getProperty('FONNTE_TL_WA_' + ACTIVE_WORKSPACE) || p.getProperty('FONNTE_TL_WA') || '',
+      targetEfektif: c.target, tokenEfektif: !!c.token
+    };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+function adminSetNotifWa(actorNik, cfg) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak -- hanya TL/Admin yang boleh mengatur gateway WhatsApp.' };
+    cfg = typeof cfg === 'string' ? JSON.parse(cfg) : (cfg || {});
+    var p = PropertiesService.getScriptProperties();
+    var url = String(cfg.url || '').trim() || 'https://api.fonnte.com/send';
+    if (!/^https:\/\//i.test(url)) return { success: false, error: 'URL gateway harus diawali https://' };
+    var target = String(cfg.target || '').replace(/[^\d,]/g, '');
+    p.setProperty('WA_URL', url);
+    p.setProperty('WA_PROVIDER', String(cfg.provider || 'fonnte').trim() || 'fonnte');
+    if (cfg.hapusToken) p.deleteProperty('WA_TOKEN');
+    else if (String(cfg.token || '').trim()) p.setProperty('WA_TOKEN', String(cfg.token).trim());   // kosong = token lama tetap
+    if (target) p.setProperty('WA_TARGET', target); else p.deleteProperty('WA_TARGET');
+    var ak = Number(cfg.akurasi), ag = Number(cfg.aging);
+    if (ak > 0 && ak <= 100) p.setProperty('WA_TARGET_AKURASI', String(ak));
+    if (ag > 0 && ag <= 720) p.setProperty('WA_AGING_JAM', String(ag));
+    var tl = String(cfg.tlWa || '').replace(/[^\d]/g, '');
+    if (tl) p.setProperty('FONNTE_TL_WA_' + ACTIVE_WORKSPACE, tl); else p.deleteProperty('FONNTE_TL_WA_' + ACTIVE_WORKSPACE);
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+function adminTesNotifWa(actorNik) {
+  try {
+    if (!_actorIsFullAccess(actorNik)) return { success: false, error: 'Akses ditolak.' };
+    var body = _waKirim('✅ Tes notifikasi Warehouse App: gateway WhatsApp tersambung.');
+    return { success: true, info: String(body).slice(0, 200) };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
 function setupNotifWA(url, token, target, provider) {
   var p = PropertiesService.getScriptProperties();
   p.setProperty('WA_URL', String(url || 'https://api.fonnte.com/send'));
@@ -10814,12 +10864,16 @@ function setupNotifWA(url, token, target, provider) {
 }
 function _waCfg() {
   var p = PropertiesService.getScriptProperties();
-  return { url: p.getProperty('WA_URL') || 'https://api.fonnte.com/send', token: p.getProperty('WA_TOKEN') || '', target: p.getProperty('WA_TARGET') || '',
+  // Belum diisi di Kelola User -> pakai token Fonnte yang sama dengan lembur & nomor TL (tanpa konfigurasi tambahan)
+  var tk = p.getProperty('WA_TOKEN') || '', tg = p.getProperty('WA_TARGET') || '';
+  if (!tk) { try { var f = _fonnteCariToken(''); if (f) tk = f.token; } catch (e) {} }
+  if (!tg) { try { tg = _fonnteTl() || ''; } catch (e) {} }
+  return { url: p.getProperty('WA_URL') || 'https://api.fonnte.com/send', token: tk, target: tg,
            provider: p.getProperty('WA_PROVIDER') || 'fonnte', akurasi: Number(p.getProperty('WA_TARGET_AKURASI')) || 95, aging: Number(p.getProperty('WA_AGING_JAM')) || 48 };
 }
 function _waKirim(pesan) {
   var c = _waCfg();
-  if (!c.token || !c.target) throw new Error('Gateway WhatsApp belum dikonfigurasi. Jalankan setupNotifWA(url, token, target, provider) di editor Apps Script.');
+  if (!c.token || !c.target) throw new Error('Gateway WhatsApp belum dikonfigurasi. Isi di menu Kelola User → Gateway WhatsApp (Ringkasan WMS).');
   var res = UrlFetchApp.fetch(c.url, { method: 'post', muteHttpExceptions: true, headers: { Authorization: c.token },
     payload: { target: c.target, message: pesan, countryCode: '62' } });
   var code = res.getResponseCode(), body = String(res.getContentText()).slice(0, 300);
