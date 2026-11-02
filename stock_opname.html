@@ -202,6 +202,7 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
   .sheet table{width:100%;border-collapse:collapse}
   .sheet th,.sheet td{border:1px solid #000;padding:.32em .45em;color:#000;background:#fff;font-size:1em;position:static}
   .sheet th{background:#e6e6e6}
+  .so-tbl td,.so-tbl th{white-space:nowrap}.so-tbl td:nth-child(3){width:1%}.so-tbl .hp{white-space:normal;width:34%;min-width:34%}.so-tbl tbody td{height:2.3em}
 }
 .sheet{background:#fff;color:#000}
 .sh-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}
@@ -785,8 +786,8 @@ function doPrint(){
       total+=list.length;
       return '<div class="sheet"><div class="sh-head"><h2>LEMBAR STOCK OPNAME</h2><div>PT Rucika — Warehouse</div></div>'+
       '<div class="sh-meta"><span>No. Lembar</span><b>'+esc(l.id)+'</b><span>Group</span><b>'+esc(l.group)+'</b><span>PIC</span><b>'+esc(l.pic)+'</b><span>Periode</span><b>'+esc(l.mulai)+' s/d '+esc(l.akhir)+'</b><span>Item dicetak</span><b>'+list.length+' dari '+r.items.length+'</b></div>'+
-      '<table><thead><tr><th>No</th><th>Item</th><th>Deskripsi</th><th>UM</th><th>Lokasi</th><th>Sistem</th><th>Fisik</th><th>Selisih</th><th>Keterangan</th></tr></thead><tbody>'+
-      list.map(function(o){var x=o.x;return '<tr><td>'+o.no+'</td><td>'+esc(x.item)+'</td><td>'+esc(x.desc)+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td style="text-align:right">'+fmt(x.sistem)+'</td><td style="text-align:right">'+(x.fisik===null?'':fmt(x.fisik))+'</td><td style="text-align:right">'+(x.selisih===null?'':fmt(x.selisih))+'</td><td>'+esc(x.ket)+'</td></tr>'}).join('')+
+      '<table class="so-tbl"><thead><tr><th>No</th><th>Item</th><th>Deskripsi</th><th>Lokasi</th><th>Sistem</th><th class="hp">Hasil Perhitungan</th><th>Fisik</th><th>Selisih</th><th>Keterangan</th></tr></thead><tbody>'+
+      list.map(function(o){var x=o.x;return '<tr><td>'+o.no+'</td><td>'+esc(x.item)+'</td><td>'+esc(x.desc)+'</td><td>'+esc(x.lokasi)+'</td><td style="text-align:right">'+fmt(x.sistem)+'</td><td class="hp"></td><td style="text-align:right">'+(x.fisik===null?'':fmt(x.fisik))+'</td><td style="text-align:right">'+(x.selisih===null?'':fmt(x.selisih))+'</td><td>'+esc(x.ket)+'</td></tr>'}).join('')+
       '</tbody></table><div class="sh-sign"><div>PIC<span></span>( '+esc(l.pic)+' )</div><div>Checker<span></span>(              )</div><div>Team Leader<span></span>(              )</div></div></div>'}).join('');
     if(!total) return toast('Tidak ada item yang sesuai pengaturan cetak',true);
     setTimeout(function(){window.print()},150);
