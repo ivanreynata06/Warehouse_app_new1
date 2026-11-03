@@ -437,6 +437,14 @@ function loadAll(force){
     L.fail(e.message,function(){loadAll(true)});
   });
 }
+// Dipanggil Akurasi Rak WMS setelah hasil rak tercatat ke SO_DETAIL: segarkan progres Monitoring SO tanpa loading layar penuh
+window.soAfterRakSync=function(){
+  if(window.clearApiCache) clearApiCache();
+  api('soGetAll',true).then(function(r){
+    S.today=r.today; S.revisi=r.revisi||[]; S.mingguan=r.mingguan||[]; S.akun=r.akun||[]; S.master=r.master; S.dash=r.dash; S.warn=r.warnings; S.lembar=r.lembar; S.sel=r.selisih;
+    renderDash(); renderGcards(); renderRevBox('revBox',function(x){return IS_TL||isMine(x.pic)}); renderSel(); renderPrint(); renderRiw();
+  }).catch(function(){});
+};
 function fillSelects(){
   var pics=[]; S.master.forEach(function(m){if(isMine(m.pic)&&pics.indexOf(m.pic)===-1)pics.push(m.pic)});
   var f=document.getElementById('fPic'),old=f.value;
@@ -1001,7 +1009,7 @@ function lengkapiModal(id){
 loadPrintCfg();
 loadAll();
 </script>
-<script src="./assets/js/rakwms.js?v=20261102c"></script>
-<script src="./assets/js/rakwms-ui.js?v=20261102c"></script>
+<script src="./assets/js/rakwms.js?v=20261103a"></script>
+<script src="./assets/js/rakwms-ui.js?v=20261103a"></script>
 </body>
 </html>

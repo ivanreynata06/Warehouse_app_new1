@@ -23,6 +23,8 @@ var API_FUNCTIONS = {
   getRakWmsData           : getRakWmsData,
   saveRakWmsData          : saveRakWmsData,
   hapusRakWmsData         : hapusRakWmsData,
+  soSyncDariRak           : soSyncDariRak,
+  soStatusDariRak         : soStatusDariRak,
   getGroupList          : getGroupList,
   getDashboardData       : getDashboardData,
   getOutboundData         : getOutboundData,
@@ -10179,7 +10181,8 @@ function _wqTgl(v) {
 function _rakSanitize(o) {
   function t(v, n) { return String(v == null ? '' : v).slice(0, n || 200); }
   o = o || {};
-  var out = { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: {}, cfg: {}, step1: t(o.step1, 20000) };
+  var out = { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: {}, cfg: {}, soPick: {}, step1: t(o.step1, 20000) };
+  var np = 0; Object.keys(o.soPick || {}).forEach(function (k) { if (o.soPick[k] && np++ < 3000) out.soPick[t(k, 40)] = 1; });   // item yang dipilih untuk lembar SO
   (o.wms || []).slice(0, 40000).forEach(function (r) { out.wms.push({ lok: t(r.lok, 20), area: t(r.area, 60), rak: t(r.rak, 60), kode: t(r.kode, 40), nama: t(r.nama, 200), onhand: Number(r.onhand) || 0 }); });
   (o.qad || []).slice(0, 40000).forEach(function (r) { out.qad.push({ kode: t(r.kode, 40), nama: t(r.nama, 200), qty: Number(r.qty) || 0, grp: t(r.grp, 10) }); });
   (o.qadSkip || []).slice(0, 40000).forEach(function (k) { out.qadSkip.push(t(k, 40)); });
@@ -10198,7 +10201,10 @@ function _rakSanitize(o) {
 }
 function _rakKey(key) {
   key = String(key || '').trim().toUpperCase().replace(/[^A-Z0-9_.-]/g, '').slice(0, 60);
-  if (CURRENT_AUTH && _authMode() === 'enforce') key = CURRENT_AUTH.n;   // user hanya boleh menyentuh datanya sendiri
+  // 'SHARED' = data Akurasi Rak WMS bersama satu departemen (spreadsheet per workspace), dipakai semua PIC/TL --
+  // sama seperti data Stock Opname: upload hari ini tetap ada besok dan terbaca akun mana pun.
+  if (key === 'SHARED') return key;
+  if (CURRENT_AUTH && _authMode() === 'enforce') key = CURRENT_AUTH.n;   // key lama per user: hanya boleh menyentuh datanya sendiri
   return key;
 }
 function _getOrCreateRakSheet() {
@@ -10248,6 +10254,67 @@ function hapusRakWmsData(key) {
     return { success: true, dihapus: all.length - keep.length };
   } catch (err) { return { success: false, error: String(err && err.message || err) }; }
   finally { try { lock.releaseLock(); } catch (e) {} }
+}
+
+// ================================================================
+//  LINK Akurasi Rak WMS <-> Stock Opname
+//  - soSyncDariRak : item yang SEMUA raknya sudah diisi aktual di Akurasi Rak WMS -> Fisik di SO_DETAIL
+//                    lembar aktif group itu terisi otomatis (progres Monitoring SO ikut naik).
+//                    Fisik = total aktual semua rak. Item yang sudah diisi lewat Pengisian SO biasa TIDAK ditimpa;
+//                    isian dari Akurasi Rak sendiri boleh dikoreksi selama selisihnya belum di-CLOSE.
+//  - soStatusDariRak: status SO per item (lembar aktif) untuk ditandai "SUDAH SO" di Akurasi Rak WMS & saat cetak.
+//  payload: {user, items:[{group, item, fisik}]}
+// ================================================================
+function soSyncDariRak(payload) {
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var user = String((payload && payload.user) || '').trim(), by = {}, out = { tersimpan: 0, diperbarui: 0, sudahAda: 0, tidakAda: 0, ditahan: 0, tanpaLembar: [], gagal: [] };
+    ((payload && payload.items) || []).slice(0, 3000).forEach(function (x) {
+      var g = String(x.group || '').trim(); if (!g || x.item == null || x.fisik === '' || x.fisik == null || isNaN(Number(x.fisik))) return;
+      (by[g] = by[g] || []).push({ item: _soNorm(x.item), fisik: Number(x.fisik) });
+    });
+    Object.keys(by).forEach(function (g) {
+      var l = _soLembarAktif(g);
+      if (!l) { out.tanpaLembar.push(g); return; }
+      var map = {}; _soDetailRows().forEach(function (d) { if (d.lembar === l.id) map[_soNorm(d.item)] = d; });
+      var rows = [];
+      by[g].forEach(function (it) {
+        var d = map[it.item];
+        if (!d) { out.tidakAda++; return; }
+        if (d.mode === 'HOLD') { out.ditahan++; return; }
+        if (d.fisik !== null) {
+          var dariRak = String(d.diisiOleh || '').indexOf('Akurasi Rak') >= 0;
+          if (!dariRak || d.statusSel === 'CLOSED') { out.sudahAda++; return; }   // isian SO biasa / sudah di-close: jangan ditimpa
+          if (Number(d.fisik) === it.fisik) { out.sudahAda++; return; }
+          out.diperbarui++;
+        } else out.tersimpan++;
+        rows.push({ row: d.row, fisik: it.fisik, konfirmasi: true });
+      });
+      if (!rows.length) return;
+      var r = soSimpanIsi({ id: l.id, user: (user || 'PIC') + ' (Akurasi Rak)', rows: rows });
+      if (!r || r.success === false) out.gagal.push(g + ': ' + ((r && r.error) || 'gagal'));
+    });
+    if (out.gagal.length) return { success: false, error: out.gagal.join(' | '), data: out };
+    return { success: true, data: out };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+function soStatusDariRak(groups) {
+  try {
+    groups = typeof groups === 'string' ? JSON.parse(groups) : groups; if (!groups || !groups.length) groups = ['I053', 'Q055'];
+    var res = {}, det = _soDetailRows();
+    groups.slice(0, 10).forEach(function (g) {
+      var l = _soLembarAktif(g);
+      if (!l) { res[g] = null; return; }
+      var items = {}, total = 0, isi = 0;
+      det.forEach(function (d) {
+        if (d.lembar !== l.id) return;
+        total++; var done = d.fisik !== null; if (done) isi++;
+        items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem, selisih: d.selisih, tgl: d.tglIsi, oleh: d.diisiOleh, status: d.statusSel, mode: d.mode, dariRak: String(d.diisiOleh || '').indexOf('Akurasi Rak') >= 0 };
+      });
+      res[g] = { lembarId: l.id, mulai: l.mulai, akhir: l.akhir, total: total, isi: isi, items: items };
+    });
+    return { success: true, today: _soToday(), data: res };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
 function _getOrCreateWmsQadSheet() {

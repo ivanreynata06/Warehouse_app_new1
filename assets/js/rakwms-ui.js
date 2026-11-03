@@ -1,18 +1,20 @@
 /*!
  * rakwms-ui.js -- tampilan tab "Akurasi Rak WMS" (glass + 3D)
- * Logika murni ada di rakwms.js (RakWmsCore). Data hanya di browser.
+ * Logika murni ada di rakwms.js (RakWmsCore).
+ * Data disimpan di SERVER (kunci bersama 'SHARED' per departemen, sama seperti data Stock Opname) + salinan di browser,
+ * dan hasil aktual yang lengkap per item otomatis masuk ke Stock Opname (SO_DETAIL lembar aktif).
  */
 (function () {
   'use strict';
   var K = window.RakWmsCore, esc = K.esc, fmt = K.fmt;
   var USER = (sessionStorage.getItem('wh_nama') || 'anon').trim().toLowerCase();
   var KEY = 'rakwms_v1::' + USER;
-  var S = load(), ui = { allowed: [], g: 'all', q: '', f: 'all', open: null, items: [], plan: null, sum: null };
+  var S = load(), ui = { allowed: [], g: 'all', q: '', f: 'all', open: null, items: [], plan: null, sum: null, soStat: {}, soErr: '' };
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- penyimpanan lokal (BUKAN Supabase / Spreadsheet) ---------- */
   function load() { try { var j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.wms) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; return j; } } catch (e) {} return K.blank(); }
-  var NIK = (sessionStorage.getItem('wh_nik') || '').trim(), syncTimer = null, syncState = ['idle', ''];
+  var NIK = (sessionStorage.getItem('wh_nik') || '').trim(), NAMA = (sessionStorage.getItem('wh_nama') || '').trim(), SKEY = 'SHARED', syncTimer = null, syncState = ['idle', ''], soTimer = null, soBusy = false, lastPull = 0;
   function saveLocal() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Penyimpanan browser penuh / diblokir. Data tetap disalin ke server; gunakan juga Simpan Cadangan.', true); }
     idbSet(JSON.stringify(S));
@@ -31,25 +33,77 @@
     var m = map[st] || map.idle; el.className = 'rk-chip ' + m[1]; el.textContent = (st === 'ok' ? '\u2601 ' : '') + (msg || m[0]);
     el.style.borderColor = st === 'err' ? 'rgba(244,63,94,.5)' : ''; el.style.color = st === 'err' ? '#fda4af' : '';
   }
-  function scheduleSync() { if (!NIK) return; clearTimeout(syncTimer); setSync('pending'); syncTimer = setTimeout(syncNow, 2500); }
+  function scheduleSync() { clearTimeout(syncTimer); setSync('pending'); syncTimer = setTimeout(syncNow, 2500); scheduleSo(); }
   function syncNow() {
-    if (!NIK) return Promise.resolve(); clearTimeout(syncTimer); setSync('saving');
-    return gs('saveRakWmsData', [NIK, JSON.stringify(S)]).then(function (r) {
+    clearTimeout(syncTimer); setSync('saving');
+    return gs('saveRakWmsData', [SKEY, JSON.stringify(S)]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
       S.meta.syncAt = r.updatedAt; S.meta.dirty = false; saveLocal(); setSync('ok', 'Tersimpan di server ' + new Date().toLocaleTimeString('id-ID'));
     }).catch(function (e) { setSync('err', 'Gagal simpan ke server: ' + (e && e.message || e) + ' (data aman di browser, akan dicoba lagi)'); clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, 30000); });
   }
-  function pullServer() {
-    if (!NIK) return;
-    gs('getRakWmsData', [NIK]).then(function (r) {
+  function pullServer(quiet) {
+    lastPull = Date.now();
+    gs('getRakWmsData', [SKEY]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'gagal');
       var local = (S.wms.length || S.qad.length);
-      if (!r.found) { if (local) syncNow(); else setSync('idle', 'Belum ada data di server'); return; }
+      if (!r.found) {
+        // belum ada data bersama: ambil data lama milik user ini (versi sebelumnya per-user), lalu jadikan data bersama
+        return gs('getRakWmsData', [NIK || NAMA]).then(function (o) {
+          if (o && o.found && !local) { try { adopt(JSON.parse(o.data)); saveLocal(); render(); } catch (e) {} }
+          if (S.wms.length || S.qad.length) syncNow(); else setSync('idle', 'Belum ada data di server');
+        }).catch(function () { if (local) syncNow(); else setSync('idle', 'Belum ada data di server'); });
+      }
       if (local && S.meta.syncAt === r.updatedAt) { if (S.meta.dirty) syncNow(); else setSync('ok', 'Tersimpan di server'); return; }
       var j = JSON.parse(r.data);
-      if (local && S.meta.dirty && !confirm('Ada perubahan di browser ini yang belum tersimpan, sementara data di server lebih baru (dari perangkat/browser lain).\n\nOK = pakai data SERVER\nBatal = pertahankan data browser ini dan timpa server')) { syncNow(); return; }
-      adopt(j); S.meta.syncAt = r.updatedAt; S.meta.dirty = false; saveLocal(); render(); setSync('ok', 'Data dipulihkan dari server');
+      if (local && S.meta.dirty && !confirm('Ada perubahan di browser ini yang belum tersimpan, sementara data di server lebih baru (dari PIC/perangkat lain).\n\nOK = pakai data SERVER\nBatal = pertahankan data browser ini dan timpa server')) { syncNow(); return; }
+      adopt(j); S.meta.syncAt = r.updatedAt; S.meta.dirty = false; saveLocal(); render(); setSync('ok', quiet ? 'Data diperbarui dari server' : 'Data dipulihkan dari server');
     }).catch(function (e) { setSync('err', 'Server tidak terjangkau: ' + (e && e.message || e)); });
+  }
+  /* ---------- LINK ke Stock Opname (SO_DETAIL lembar aktif) ---------- */
+  function isTransit(rak) { return /TRANSIT/i.test(String(rak || '')); }
+  function soKey(kode) { return String(kode == null ? '' : kode).trim().toUpperCase(); }
+  function soRec(it) { var g = ui.soStat && ui.soStat[it.grp]; var r = g && g.items && g.items[soKey(it.kode)]; return r && r.fisik !== null && r.fisik !== undefined ? r : null; }
+  function soTgl(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '')); return m ? m[3] + '/' + m[2] : ''; }
+  // item "lengkap" = semua rak (selain TRANSIT) sudah diisi aktual; Fisik = total aktual
+  function completeItems() {
+    var out = [];
+    ui.items.forEach(function (it) {
+      var L = K.lines(S, it, ui.plan), req = L.filter(function (l) { return !isTransit(l.rak); }), tot = 0;
+      if (!req.length || req.some(function (l) { return l.aktual === null; })) return;
+      L.forEach(function (l) { if (l.aktual !== null) tot += l.aktual; });
+      out.push({ group: it.grp, item: it.kode, fisik: Math.round(tot * 1000) / 1000 });
+    });
+    return out;
+  }
+  function loadSoStat() {
+    var gr = ui.allowed.length ? ui.allowed : K.GROUPS;
+    return gs('soStatusDariRak', [JSON.stringify(gr)]).then(function (r) {
+      if (!r || r.success === false) throw new Error((r && r.error) || 'gagal');
+      ui.soStat = r.data || {}; ui.soErr = ''; return true;
+    }).catch(function (e) { ui.soErr = String((e && e.message) || e || ''); return false; });
+  }
+  function scheduleSo(now) { clearTimeout(soTimer); if (!ui.items.length) return; soTimer = setTimeout(syncSo, now ? 50 : 12000); }
+  function syncSo() {
+    clearTimeout(soTimer); if (soBusy || !ui.items.length) return Promise.resolve();
+    S.soSent = S.soSent || {};
+    var todo = completeItems().filter(function (x) { return S.soSent[soKey(x.item)] !== x.fisik; });
+    if (!todo.length) return Promise.resolve();
+    soBusy = true;
+    return gs('soSyncDariRak', [JSON.stringify({ user: NAMA, items: todo })]).then(function (r) {
+      if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
+      var d = r.data || {}, skip = {}; (d.tanpaLembar || []).forEach(function (g) { skip[g] = 1; });
+      todo.forEach(function (x) { if (!skip[x.group]) S.soSent[soKey(x.item)] = x.fisik; });
+      saveLocal();
+      var n = (d.tersimpan || 0) + (d.diperbarui || 0);
+      if (n) toast('✓ ' + fmt(n) + ' item tercatat ke Stock Opname (progres SO terupdate).');
+      if (d.tanpaLembar && d.tanpaLembar.length) ui.soErr = 'Lembar SO periode ini untuk group ' + d.tanpaLembar.join(', ') + ' belum dibuat. Buat dulu di tab Buat Lembar SO - hasil rak akan terkirim otomatis setelahnya.';
+      else ui.soErr = '';
+      return loadSoStat().then(function () {
+        if (!ui.open && !ui.soOpen) { renderTbl(); }
+        try { if (typeof window.soAfterRakSync === 'function') window.soAfterRakSync(); } catch (e) {}
+      });
+    }).catch(function (e) { ui.soErr = 'Gagal kirim ke Stock Opname: ' + (e && e.message || e) + ' (akan dicoba lagi)'; if (!ui.open && !ui.soOpen) renderTbl(); clearTimeout(soTimer); soTimer = setTimeout(syncSo, 45000); })
+      .then(function () { soBusy = false; });
   }
   /* IndexedDB = salinan kedua (tetap ada walau localStorage terhapus sebagian). Clear data situs tetap menghapus keduanya -> pakai file cadangan. */
   function idb(cb) { try { var r = indexedDB.open('rakwms', 1); r.onupgradeneeded = function () { r.result.createObjectStore('kv'); }; r.onsuccess = function () { cb(r.result); }; r.onerror = function () { cb(null); }; } catch (e) { cb(null); } }
@@ -150,23 +204,37 @@
       var c = soCount(i);
       if (ui.f === 'sel') return i.sel !== 0;
       if (ui.f === 'ok') return i.sel === 0;
-      if (ui.f === 'todo') return c.n === 0;
-      if (ui.f === 'done') return c.n > 0;
+      var sd = !!soRec(i) || (c.t > 0 && c.n >= c.t);
+      if (ui.f === 'todo') return !sd;
+      if (ui.f === 'done') return sd;
       return true;
     });
+  }
+  function soChip(it) {
+    var r = soRec(it);
+    if (r) return '<div class="cd" style="text-align:right;margin-top:3px;color:#34d399;font-weight:700" title="Tercatat di Stock Opname' + (r.oleh ? ' oleh ' + esc(r.oleh) : '') + '">&#10003; Sudah SO ' + esc(soTgl(r.tgl)) + ' &middot; fisik ' + fmt(r.fisik) + '</div>';
+    return '';
+  }
+  function soBanner() {
+    var g0 = Object.keys(ui.soStat || {}).filter(function (g) { return ui.soStat[g]; });
+    var t = g0.map(function (g) { var x = ui.soStat[g]; return '<b>' + esc(g) + '</b> ' + fmt(x.isi) + '/' + fmt(x.total) + ' item (' + esc(soTgl(x.mulai)) + ' - ' + esc(soTgl(x.akhir)) + ')'; }).join(' &middot; ');
+    var h = '';
+    if (t) h += '<div class="sub" style="margin-bottom:6px">Progres Stock Opname periode ini: ' + t + '. Item yang semua raknya sudah diisi aktual otomatis tercatat ke Stock Opname.</div>';
+    if (ui.soErr) h += '<div class="warnb" style="margin-bottom:8px">' + esc(ui.soErr) + '</div>';
+    return h;
   }
   function renderTbl() {
     var a = filtered(), lim = 400;
     $('rk-tbl').innerHTML = '<div class="gh"><h3>Daftar Item &amp; Rak <em>klik baris untuk input aktual</em></h3><div class="rk-tools">' +
       '<button class="btn2 pri" onclick="RakUI.openSO()">&#128221; Form Stock Opname</button>' +
       '<input type="text" id="rk-q" placeholder="Cari kode / nama item..." value="' + esc(ui.q) + '" style="width:220px" oninput="RakUI.search(this.value)">' +
-      (ui.allowed.length > 1 ? '<div class="rk-seg">' + [['all', 'Semua group'], ['I053', 'I053 Pipa'], ['Q055', 'Q055 Fitting']].map(function (x) { return '<button class="' + (ui.g === x[0] ? 'on' : '') + '" onclick="RakUI.grp(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' : '') + '<div class="rk-seg">' + [['all', 'Semua'], ['sel', 'Selisih'], ['ok', 'Sesuai'], ['todo', 'Belum diinput'], ['done', 'Sudah diinput']].map(function (x) { return '<button class="' + (ui.f === x[0] ? 'on' : '') + '" onclick="RakUI.filter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div></div>' +
-      '<div class="gb"><div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Group</th><th class="l">Nama Rak</th><th>Jml Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
+      (ui.allowed.length > 1 ? '<div class="rk-seg">' + [['all', 'Semua group'], ['I053', 'I053 Pipa'], ['Q055', 'Q055 Fitting']].map(function (x) { return '<button class="' + (ui.g === x[0] ? 'on' : '') + '" onclick="RakUI.grp(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' : '') + '<div class="rk-seg">' + [['all', 'Semua'], ['sel', 'Selisih'], ['ok', 'Sesuai'], ['todo', 'Belum SO'], ['done', 'Sudah SO']].map(function (x) { return '<button class="' + (ui.f === x[0] ? 'on' : '') + '" onclick="RakUI.filter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div></div>' +
+      '<div class="gb">' + soBanner() + '<div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Group</th><th class="l">Nama Rak</th><th>Jml Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
       (a.length ? a.slice(0, lim).map(function (i) {
         var c = soCount(i), pc = c.t ? c.n / c.t * 100 : 0;
         return '<tr class="it" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td class="l" title="' + esc(i.racks.map(function (r) { return r.rak; }).join(', ')) + '"><div class="cd" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)">' + (i.racks.length ? esc(i.racks.slice(0, 2).map(function (r) { return r.rak; }).join(', ')) + (i.racks.length > 2 ? ' +' + (i.racks.length - 2) : '') : '-') + '</div></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
           '<td><span class="chip2 ' + (i.sel === 0 ? 'ok' : 'bd') + '">' + (i.sel === 0 ? 'SESUAI' : 'SELISIH') + '</span></td>' +
-          '<td style="min-width:120px"><div class="prg"><i style="width:' + pc + '%"></i></div><div class="cd" style="text-align:right;margin-top:3px">' + c.n + '/' + c.t + ' rak</div></td></tr>';
+          '<td style="min-width:120px"><div class="prg"><i style="width:' + pc + '%"></i></div><div class="cd" style="text-align:right;margin-top:3px">' + c.n + '/' + c.t + ' rak</div>' + soChip(i) + '</td></tr>';
       }).join('') : '<tr><td colspan="10" class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS di atas.') + '</td></tr>') +
       '</tbody></table></div>' + (a.length > lim ? '<div class="sub" style="margin-top:8px">Menampilkan ' + lim + ' dari ' + fmt(a.length) + ' item - gunakan pencarian.</div>' : '') + '</div>';
     var q = $('rk-q'); if (q && ui._focusQ) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); ui._focusQ = false; }
@@ -298,7 +366,7 @@
           S.qad = res.rows; S.qadSkip = res.stats.skip || []; S.meta.qadAt = now; S.meta.qadFile = f.name;
           toast('Saldo QAD: ' + fmt(res.rows.length) + ' item dibaca' + (res.stats.otherGroup ? ', ' + fmt(res.stats.otherGroup) + ' baris group selain I053/Q055 dibuang' : '') + '. Kolom lain dihapus.');
         }
-        S.step1 = ''; save(); render();
+        S.step1 = ''; save(); syncNow(); render(); loadSoStat().then(renderTbl);
       } catch (x) { toast(x.message || String(x), true); }
     };
     rd.readAsArrayBuffer(f);
@@ -309,12 +377,12 @@
      PIC melihat rak & saldo WMS tiap item, mengisi aktual di lapangan, dan bisa menambah rak yang tidak
      terdaftar. Rak tambahan yang di WMS masih berisi item lain otomatis dikosongkan (Qty bertanda -)
      di Template Tahap 1 -- logikanya di RakWmsCore.plan(). */
-  var so = { q: '', lim: 30, sel: false, n: 10 };
+  var so = { q: '', lim: 30, sel: false, n: 10, done: false };
   function picks() { return S.soPick = S.soPick || {}; }
   function soItems() { var pk = picks(); return ui.items.filter(function (i) { return pk[i.kode]; }); }
   function soCand() {
     var q = so.q.toUpperCase(), pk = picks();
-    return ui.items.filter(function (i) { return !pk[i.kode] && (!so.sel || i.sel !== 0) && (!q || (i.nama + ' ' + i.kode).toUpperCase().indexOf(q) >= 0); });
+    return ui.items.filter(function (i) { return !pk[i.kode] && (so.done || !soRec(i)) && (!so.sel || i.sel !== 0) && (!q || (i.nama + ' ' + i.kode).toUpperCase().indexOf(q) >= 0); });
   }
   function soLine(it, l, i) {
     var hl = l.manual ? holders(it.kode, l.rak) : [], id = esc(it.kode);
@@ -361,7 +429,7 @@
       '<div class="glass" style="border-radius:14px"><div class="gb"><div style="font-family:Outfit;font-weight:700;font-size:13px;margin-bottom:8px">1. Pilih item yang akan di-SO <span class="cd">(' + fmt(a.length) + ' dipilih dari ' + fmt(ui.items.length) + ' item)</span></div>' +
       '<div class="rk-tools"><input type="text" id="so-q" placeholder="Cari kode / nama item..." value="' + esc(so.q) + '" style="width:240px" oninput="RakUI.soSearch(this.value)">' +
       '<label class="chk" style="margin:0"><input type="checkbox" ' + (so.sel ? 'checked' : '') + ' onchange="RakUI.soSelOnly(this.checked)"> hanya yang selisih</label>' +
-      '<span class="cd">atau</span><input type="number" min="1" id="so-n" value="' + so.n + '" style="width:70px" onchange="RakUI.soSetN(this.value)"><button class="btn2 sm" onclick="RakUI.soTopN()">Pilih ' + so.n + ' selisih terbesar</button>' +
+      '<label class="chk" style="margin:0"><input type="checkbox" ' + (so.done ? 'checked' : '') + ' onchange="RakUI.soShowDone(this.checked)"> tampilkan yang sudah SO</label><span class="cd">atau</span><input type="number" min="1" id="so-n" value="' + so.n + '" style="width:70px" onchange="RakUI.soSetN(this.value)"><button class="btn2 sm" onclick="RakUI.soTopN()">Pilih ' + so.n + ' selisih terbesar</button>' +
       (a.length ? '<button class="btn2 dng sm" onclick="RakUI.soClear()">Kosongkan pilihan</button>' : '') + '</div>' +
       (a.length ? '<div class="so-chips"><span class="cd">Dipilih:</span>' + a.map(function (i) { return '<span class="so-chip" title="' + esc(i.nama) + '">' + esc(short(i.nama)) + '<button data-k="' + esc(i.kode) + '" onclick="RakUI.soPick(this.dataset.k,false)" aria-label="Hapus">&#10005;</button></span>'; }).join('') + '</div>' : '') +
       '<div class="rk-tw so-pick" style="margin-top:8px;max-height:300px;overflow:auto"><table><thead><tr><th class="l">Item</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th></th></tr></thead><tbody>' +
@@ -378,6 +446,11 @@
   /* ---------- cetak LEMBAR STOCK OPNAME (format lembar SO: sistem diganti QAD & WMS, ada Fisik & Rak Aktual) ---------- */
   function printSO() {
     var a = soItems(); if (!a.length) return toast('Pilih dulu item yang akan di-SO.', true);
+    var sdone = a.filter(function (i) { return !!soRec(i); });
+    if (sdone.length && confirm(fmt(sdone.length) + ' dari ' + fmt(a.length) + ' item sudah di-SO pada periode ini (tercatat di Stock Opname).\n\nOK = lewati yang sudah SO (cetak sisanya)\nBatal = tetap cetak semua, yang sudah SO diberi keterangan')) {
+      a = a.filter(function (i) { return !soRec(i); });
+      if (!a.length) return toast('Semua item terpilih sudah di-SO periode ini. Tidak ada yang perlu dicetak.', true);
+    }
     var d = new Date(), p2 = function (n) { return n < 10 ? '0' + n : '' + n; };
     var grp = a.map(function (i) { return i.grp; }).filter(function (v, i, x) { return x.indexOf(v) === i; }).join(', ');
     var nm = (sessionStorage.getItem('wh_nama') || '').toUpperCase();
@@ -387,7 +460,7 @@
       var rk = it.racks.length ? it.racks : [{ rak: '', onhand: '' }];
       n++;
       rk.forEach(function (r, i) {
-        rows += '<tr><td class="c">' + (i === 0 ? n : '') + '</td><td class="m">' + (i === 0 ? esc(it.kode) : '') + '</td><td>' + (i === 0 ? esc(it.nama) : '') + '</td><td></td><td class="c m">' + esc(r.rak) + '</td><td class="r">' + (i === 0 ? fmt(it.qadv) : '') + '</td><td class="r">' + (r.onhand === '' ? '' : fmt(r.onhand)) + '</td><td></td><td></td><td></td><td></td></tr>';
+        rows += '<tr><td class="c">' + (i === 0 ? n : '') + '</td><td class="m">' + (i === 0 ? esc(it.kode) : '') + '</td><td>' + (i === 0 ? esc(it.nama) : '') + '</td><td></td><td class="c m">' + esc(r.rak) + '</td><td class="r">' + (i === 0 ? fmt(it.qadv) : '') + '</td><td class="r">' + (r.onhand === '' ? '' : fmt(r.onhand)) + '</td><td></td><td></td><td></td><td>' + (i === 0 && soRec(it) ? 'SUDAH SO ' + esc(soTgl(soRec(it).tgl)) + ' (fisik ' + fmt(soRec(it).fisik) + ')' : '') + '</td></tr>';
       });
       rows += '<tr class="ex"><td></td><td></td><td class="cd">rak lain / tambahan &rarr;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
     });
@@ -404,12 +477,12 @@
   /* ---------- aksi publik ---------- */
   var API = {
     pick: function (kind) { var i = $('rk-file'); i.value = ''; i.onchange = function () { if (i.files[0]) readFile(kind, i.files[0]); }; i.click(); },
-    clear: function (kind) { if (!confirm('Hapus data ' + (kind === 'wms' ? 'Informasi Rak WMS' : 'Saldo QAD') + ' dari browser ini?')) return; if (kind === 'wms') { S.wms = []; S.meta.wmsFile = ''; S.meta.wmsAt = ''; } else { S.qad = []; S.qadSkip = []; S.meta.qadFile = ''; S.meta.qadAt = ''; } S.step1 = ''; save(); render(); },
+    clear: function (kind) { if (!confirm('Hapus data ' + (kind === 'wms' ? 'Informasi Rak WMS' : 'Saldo QAD') + '?\n\nData ini tersimpan di server dan dipakai semua PIC, jadi akan terhapus untuk semua. Hasil SO yang sudah tercatat di Stock Opname TIDAK ikut terhapus.')) return; if (kind === 'wms') { S.wms = []; S.meta.wmsFile = ''; S.meta.wmsAt = ''; } else { S.qad = []; S.qadSkip = []; S.meta.qadFile = ''; S.meta.qadAt = ''; } S.step1 = ''; save(); render(); },
     search: function (v) { ui.q = v; ui._focusQ = true; renderTbl(); },
     grp: function (g) { ui.g = g; renderTbl(); },
     filter: function (f) { ui.f = f; renderTbl(); },
     open: function (kode) { ui.open = kode; renderDrawer(); $('rk-ov').classList.add('on'); $('rk-dr').classList.add('on'); },
-    close: function () { if (ui.soOpen) return API.closeSO(); ui.open = null; $('rk-ov').classList.remove('on'); $('rk-dr').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
+    close: function () { if (ui.soOpen) return API.closeSO(); ui.open = null; scheduleSo(true); $('rk-ov').classList.remove('on'); $('rk-dr').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
     akt: function (inp) {
       var it = itemOf(ui.open), L = K.lines(S, it, ui.plan), l = L[+inp.dataset.i], v = inp.value;
       if (l.manual) { S.manual[it.kode][l.idx].aktual = v; } else { (S.inputs[it.kode] = S.inputs[it.kode] || {})[l.rak] = v; }
@@ -443,14 +516,15 @@
       }; i.click();
     },
     openSO: function () { recalc(); so.lim = 30; renderSO(); $('rk-ov').classList.add('on'); $('rk-so').classList.add('on'); ui.soOpen = true; },
-    closeSO: function () { ui.soOpen = false; $('rk-so').classList.remove('on'); $('rk-ov').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
+    closeSO: function () { scheduleSo(true); ui.soOpen = false; $('rk-so').classList.remove('on'); $('rk-ov').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
     soDone: function () { API.closeSO(); var a = $('rk-adj'); if (a && a.scrollIntoView) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     soSearch: function (v) { so.q = v; renderSO(); },
     soSelOnly: function (on) { so.sel = !!on; renderSO(); },
+    soShowDone: function (on) { so.done = !!on; renderSO(); },
     soSetN: function (v) { so.n = Math.max(1, Math.min(500, Math.floor(Number(v)) || 10)); renderSO(); },
     soPick: function (k, on) { if (on) picks()[k] = 1; else delete picks()[k]; save(); renderSO(); },
     soTopN: function () {
-      var pk = picks(), c = ui.items.filter(function (i) { return !pk[i.kode] && i.sel !== 0; }).sort(function (x, y) { return Math.abs(y.sel) - Math.abs(x.sel); }).slice(0, so.n);
+      var pk = picks(), c = ui.items.filter(function (i) { return !pk[i.kode] && !soRec(i) && i.sel !== 0; }).sort(function (x, y) { return Math.abs(y.sel) - Math.abs(x.sel); }).slice(0, so.n);
       if (!c.length) return toast('Tidak ada item selisih yang tersisa.', true);
       c.forEach(function (i) { pk[i.kode] = 1; }); save(); renderSO();
     },
@@ -509,7 +583,9 @@
     var tb = document.querySelector('.tab[data-t="rak"]'); if (tb) tb.style.display = 'none';   // tersembunyi sampai akses dipastikan
     var tries = 0, iv = setInterval(function () { if (applyAccess() || ++tries > 120) clearInterval(iv); }, 500);
     shell(); tilt();
-    setTimeout(pullServer, 700);
+    setTimeout(function () { pullServer(); }, 700);
+    setTimeout(function () { var w = setInterval(function () { if (ui.items.length) { clearInterval(w); loadSoStat().then(function () { renderTbl(); syncSo(); }); } }, 800); setTimeout(function () { clearInterval(w); }, 90000); }, 900);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !ui.open && !ui.soOpen && !(S.meta && S.meta.dirty) && Date.now() - lastPull > 30000) { pullServer(true); loadSoStat().then(renderTbl); } });
     if (/[?&]embed=1\b/.test(location.search) && location.hash === '#rak') { var tbs = $('tabs'); if (tbs) tbs.style.display = 'none'; }   // dibuka dari tab Monitoring WMS: baris tab Stock Opname disembunyikan
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     if (!S.wms.length && !S.qad.length) idbGet(function (v) { if (!v) return; try { var j = JSON.parse(v); if (j && (j.wms || []).length) { adopt(j); try { localStorage.setItem(KEY, v); } catch (e) {} render(); } } catch (e) {} });
