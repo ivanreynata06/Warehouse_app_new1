@@ -25,6 +25,9 @@ var API_FUNCTIONS = {
   hapusRakWmsData         : hapusRakWmsData,
   soSyncDariRak           : soSyncDariRak,
   soStatusDariRak         : soStatusDariRak,
+  soUlangBuka             : soUlangBuka,
+  soUlangSelesai          : soUlangSelesai,
+  soUlangStat             : soUlangStat,
   getGroupList          : getGroupList,
   getDashboardData       : getDashboardData,
   getOutboundData         : getOutboundData,
@@ -10263,8 +10266,8 @@ function hapusRakWmsData(key) {
 //  LINK Akurasi Rak WMS <-> Stock Opname
 //  - soSyncDariRak : item yang SEMUA raknya sudah diisi aktual di Akurasi Rak WMS -> Fisik di SO_DETAIL
 //                    lembar aktif group itu terisi otomatis (progres Monitoring SO ikut naik).
-//                    Fisik = total aktual semua rak. Item yang sudah diisi lewat Pengisian SO biasa TIDAK ditimpa;
-//                    isian dari Akurasi Rak sendiri boleh dikoreksi selama selisihnya belum di-CLOSE.
+//                    Fisik = total aktual semua rak. Item yang sudah punya Fisik di periode ini TIDAK PERNAH ditimpa (aturan
+//                    dashboard SO: 2 minggu sekali, SO pertama terkunci). SO ulang/perbaikan dicatat di RAKWMS_SO_ULANG.
 //  - soStatusDariRak: status SO per item (lembar aktif) untuk ditandai "SUDAH SO" di Akurasi Rak WMS & saat cetak.
 //  payload: {user, items:[{group, item, fisik}]}
 // ================================================================
@@ -10285,12 +10288,8 @@ function soSyncDariRak(payload) {
         var d = map[it.item];
         if (!d) { out.tidakAda++; return; }
         if (d.mode === 'HOLD') { out.ditahan++; return; }
-        if (d.fisik !== null) {
-          var dariRak = String(d.diisiOleh || '').indexOf('Akurasi Rak') >= 0;
-          if (!dariRak || d.statusSel === 'CLOSED') { out.sudahAda++; return; }   // isian SO biasa / sudah di-close: jangan ditimpa
-          if (Number(d.fisik) === it.fisik) { out.sudahAda++; return; }
-          out.diperbarui++;
-        } else out.tersimpan++;
+        if (d.fisik !== null) { out.sudahAda++; return; }   // nilai SO pertama periode ini terkunci - SO ulang dicatat terpisah (soUlangSelesai), tidak menimpa SO_DETAIL
+        out.tersimpan++;
         rows.push({ row: d.row, fisik: it.fisik, konfirmasi: true });
       });
       if (!rows.length) return;
@@ -10308,15 +10307,125 @@ function soStatusDariRak(groups) {
     groups.slice(0, 10).forEach(function (g) {
       var l = _soLembarAktif(g);
       if (!l) { res[g] = null; return; }
-      var items = {}, total = 0, isi = 0;
+      var items = {}, total = 0, isi = 0, carryBelum = 0, ulang = {};
       det.forEach(function (d) {
         if (d.lembar !== l.id) return;
         total++; var done = d.fisik !== null; if (done) isi++;
+        if (d.mode === 'CARRY' && !done) carryBelum++;
         items[_soNorm(d.item)] = { fisik: d.fisik, sistem: d.sistem, selisih: d.selisih, tgl: d.tglIsi, oleh: d.diisiOleh, status: d.statusSel, mode: d.mode, dariRak: String(d.diisiOleh || '').indexOf('Akurasi Rak') >= 0 };
       });
-      res[g] = { lembarId: l.id, mulai: l.mulai, akhir: l.akhir, total: total, isi: isi, items: items };
+      _soUlangRows().forEach(function (u) { if (u.status === 'TERBUKA' && u.lembar === l.id) ulang[_soNorm(u.item)] = { id: u.id, tgl: u.tgl, alasan: u.alasan, oleh: u.oleh, fisikLama: u.fisikLama }; });
+      res[g] = { lembarId: l.id, mulai: l.mulai, akhir: l.akhir, total: total, isi: isi, carryBelum: carryBelum, ulang: ulang, items: items };
     });
     return { success: true, today: _soToday(), data: res };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// ================================================================
+//  SO ULANG / PERBAIKAN (hanya di Akurasi Rak WMS)
+//  Item yang sudah di-SO periode ini terkunci. Bila data terbaru (upload QAD / Informasi Rak) ternyata masih selisih,
+//  PIC group itu (atau TL/Admin) boleh membuka kunci untuk SO ulang -- dengan syarat SO sisa periode sebelumnya
+//  (mode CARRY) sudah selesai. Dashboard Stock Opname TIDAK berubah: aturan 2 minggu sekali tetap, nilai SO pertama
+//  di SO_DETAIL tetap terkunci. SO ulang hanya dicatat di sheet RAKWMS_SO_ULANG (dasar grafik frekuensi SO per bulan).
+// ================================================================
+var SO_ULANG_HDR = ['ID', 'Tgl', 'Waktu Buka', 'Group', 'Lembar', 'Item', 'Nama Item', 'PIC', 'Dibuka Oleh', 'Alasan', 'Saldo WMS', 'Saldo QAD', 'Selisih Saat Buka', 'Fisik SO Sebelumnya', 'Status', 'Waktu Selesai', 'Fisik Ulang', 'Selisih Ulang', 'Selesai Oleh'];
+function _soUlangRows() {
+  if (_SO_MEM.ulang) return _SO_MEM.ulang;
+  return _SO_MEM.ulang = _soRows(_soSheet('RAKWMS_SO_ULANG', SO_ULANG_HDR), SO_ULANG_HDR.length).map(function (r, i) {
+    return { row: i + 2, id: String(r[0]), tgl: _soTgl(r[1]), waktu: String(r[2]), group: String(r[3]), lembar: String(r[4]), item: String(r[5]), nama: String(r[6]), pic: String(r[7]), oleh: String(r[8]),
+      alasan: String(r[9]), wms: Number(r[10]) || 0, qad: Number(r[11]) || 0, selBuka: Number(r[12]) || 0, fisikLama: r[13] === '' ? null : Number(r[13]), status: String(r[14]),
+      waktuSelesai: String(r[15]), fisikBaru: r[16] === '' ? null : Number(r[16]), selUlang: r[17] === '' ? null : Number(r[17]), selesaiOleh: String(r[18]) };
+  }).filter(function (u) { return u.id; });
+}
+function _soActorNik(payload) { return String((CURRENT_AUTH && CURRENT_AUTH.n) || (payload && payload.nik) || '').trim().toUpperCase(); }
+// boleh: TL / Admin / Super Admin, atau PIC pemilik lembar group tsb
+function _soBolehUlang(nik, lm) {
+  if (_soBolehBuka(nik)) return true;
+  var u = _soUserInfo(nik); return !!(u && lm && _soNorm(u.nama) === _soNorm(lm.pic));
+}
+// payload: {group, item, nama, alasan, nik, user, wms, qad}
+function soUlangBuka(payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var nik = _soActorNik(payload), group = String(payload.group || '').trim(), item = String(payload.item || '').trim(), alasan = String(payload.alasan || '').trim();
+    if (!group || !item) return { success: false, error: 'Group dan item wajib diisi.' };
+    if (alasan.length < 5) return { success: false, error: 'Alasan SO ulang wajib diisi (minimal 5 karakter).' };
+    lock.waitLock(25000); _SO_MEM.ulang = null; _SO_MEM.det = null;
+    var lm = _soLembarAktif(group);
+    if (!lm) return { success: false, error: 'Lembar SO periode ini untuk group ' + group + ' belum dibuat.' };
+    if (!_soBolehUlang(nik, lm)) return { success: false, error: 'Akses ditolak. Hanya PIC group ini, TL, atau Admin yang dapat membuka kunci SO ulang.' };
+    var rows = _soDetailRows().filter(function (d) { return d.lembar === lm.id; }), d = null, carry = 0;
+    rows.forEach(function (x) { if (_soNorm(x.item) === _soNorm(item)) d = x; if (x.mode === 'CARRY' && x.fisik === null) carry++; });
+    if (!d) return { success: false, error: 'Item tidak ada di lembar SO periode ini.' };
+    if (d.fisik === null) return { success: false, error: 'Item ini belum di-SO pada periode ini. Lakukan SO biasa terlebih dahulu.' };
+    if (carry > 0) return { success: false, error: 'Selesaikan dulu SO sisa periode sebelumnya (' + carry + ' item belum di-SO) sebelum membuka kunci SO ulang.' };
+    var wms = Number(payload.wms) || 0, qad = Number(payload.qad) || 0;
+    if (wms - qad === 0) return { success: false, error: 'Tidak ada selisih WMS - QAD pada data terbaru, SO ulang tidak diperlukan.' };
+    var all = _soUlangRows();
+    if (all.some(function (u) { return u.status === 'TERBUKA' && u.lembar === lm.id && _soNorm(u.item) === _soNorm(item); })) return { success: false, error: 'SO ulang item ini sudah terbuka.' };
+    var u0 = _soUserInfo(nik), nama = (u0 && u0.nama) || payload.user || nik;
+    var id = _soUniqueId('ULG-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), all.map(function (u) { return u.id; }));
+    var sh = _soSheet('RAKWMS_SO_ULANG', SO_ULANG_HDR);
+    sh.getRange(sh.getLastRow() + 1, 1, 1, SO_ULANG_HDR.length).setNumberFormat('@').setValues([[id, _soToday(), _soNow(), lm.group, lm.id, d.item, String(payload.nama || d.desc || ''), lm.pic, nama, alasan, wms, qad, wms - qad, d.fisik, 'TERBUKA', '', '', '', '']]);
+    _SO_MEM.ulang = null;
+    return { success: true, id: id };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
+}
+// payload: {id, fisik, qad, batal, nik, user}  -- selesai: catat hasil hitung ulang (TIDAK menyentuh SO_DETAIL); batal: tutup tanpa hasil
+function soUlangSelesai(payload) {
+  var lock = LockService.getScriptLock();
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var nik = _soActorNik(payload), batal = !!payload.batal;
+    lock.waitLock(25000); _SO_MEM.ulang = null;
+    var u = _soUlangRows().filter(function (x) { return x.id === String(payload.id) && x.status === 'TERBUKA'; })[0];
+    if (!u) return { success: false, error: 'SO ulang yang terbuka tidak ditemukan (mungkin sudah selesai).' };
+    var lm = _soLembarList().filter(function (l) { return l.id === u.lembar; })[0];
+    if (!_soBolehUlang(nik, lm)) return { success: false, error: 'Akses ditolak.' };
+    var u0 = _soUserInfo(nik), nama = (u0 && u0.nama) || payload.user || nik, fisik = null, sel = null;
+    if (!batal) {
+      if (payload.fisik === '' || payload.fisik == null || isNaN(Number(payload.fisik))) return { success: false, error: 'Fisik hasil SO ulang wajib diisi.' };
+      fisik = Number(payload.fisik); sel = fisik - (Number(payload.qad) || 0);
+    }
+    var sh = _soSheet('RAKWMS_SO_ULANG', SO_ULANG_HDR);
+    sh.getRange(u.row, 15, 1, 5).setNumberFormat('@').setValues([[batal ? 'BATAL' : 'SELESAI', _soNow(), fisik === null ? '' : fisik, sel === null ? '' : sel, nama]]);
+    _SO_MEM.ulang = null;
+    return { success: true, status: batal ? 'BATAL' : 'SELESAI' };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
+}
+// payload: {month:'yyyy-MM', groups:[...]} -> frekuensi SO per item dalam sebulan: SO periode (SO_DETAIL) + SO ulang (RAKWMS_SO_ULANG)
+function soUlangStat(payload) {
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
+    var month = /^\d{4}-\d{2}$/.test(String(payload.month || '')) ? payload.month : _soToday().slice(0, 7);
+    var gs = (payload.groups || []).map(_soNorm).filter(Boolean);
+    function okG(g) { return !gs.length || gs.indexOf(_soNorm(g)) >= 0; }
+    var gOf = {}; _soLembarList().forEach(function (l) { gOf[l.id] = l.group; });
+    var items = {};
+    function get(g, item, nama) { var k = _soNorm(g) + '|' + _soNorm(item); return items[k] || (items[k] = { group: g, item: item, nama: nama || '', reguler: 0, ulang: 0, total: 0, terakhir: '' }); }
+    _soDetailRows().forEach(function (d) {
+      if (d.fisik === null || !d.tglIsi || d.tglIsi.slice(0, 7) !== month) return;
+      var g = gOf[d.lembar]; if (!g || !okG(g)) return;
+      var o = get(g, d.item, d.desc); o.reguler++; if (d.tglIsi > o.terakhir) o.terakhir = d.tglIsi;
+    });
+    var aktif = {}; (gs.length ? gs : ['I053', 'Q055']).forEach(function (g) { var l = _soLembarAktif(g); if (l) aktif[l.id] = 1; });
+    var ev = [];
+    _soUlangRows().forEach(function (u) {
+      if (!okG(u.group)) return;
+      var tSel = String(u.waktuSelesai || '').slice(0, 10), inM = (u.tgl || '').slice(0, 7) === month || tSel.slice(0, 7) === month;
+      if (u.status === 'SELESAI' && tSel.slice(0, 7) === month) { var o = get(u.group, u.item, u.nama); o.ulang++; if (tSel > o.terakhir) o.terakhir = tSel; }
+      if (inM) ev.push({ tgl: u.tgl, group: u.group, item: u.item, nama: u.nama, pic: u.pic, oleh: u.oleh, alasan: u.alasan, selBuka: u.selBuka, fisikLama: u.fisikLama, fisikBaru: u.fisikBaru, selUlang: u.selUlang,
+        status: (u.status === 'TERBUKA' && !aktif[u.lembar]) ? 'KEDALUWARSA' : u.status, selesai: u.waktuSelesai });
+    });
+    var list = Object.keys(items).map(function (k) { var o = items[k]; o.total = o.reguler + o.ulang; return o; })
+      .sort(function (a, b) { return b.total - a.total || b.ulang - a.ulang || String(a.nama).localeCompare(String(b.nama)); });
+    ev.sort(function (a, b) { return a.tgl < b.tgl ? 1 : (a.tgl > b.tgl ? -1 : 0); });
+    var berulang = list.filter(function (o) { return o.total >= 2; });
+    return { success: true, month: month, items: list.slice(0, 200), events: ev.slice(0, 100),
+      kpi: { itemSO: list.length, itemBerulang: berulang.length, kejadianUlang: list.reduce(function (a, o) { return a + o.ulang; }, 0), top: list.length ? { nama: list[0].nama, item: list[0].item, total: list[0].total } : null } };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 

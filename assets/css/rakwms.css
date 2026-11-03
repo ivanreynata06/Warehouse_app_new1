@@ -206,3 +206,20 @@
 .rk .rk-apick .ap-n{flex:1;min-width:0;display:flex;flex-direction:column}
 .rk .rk-apick .ap-n .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rk .rk-apick .ap-c{display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+
+/* ---- grafik frekuensi SO per item ---- */
+.rk .rep-k{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.rk .rep-k>div{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);display:flex;flex-direction:column;gap:4px}
+.rk .rep-k span{font-size:9.5px;font-weight:700;letter-spacing:.5px;color:var(--txt3,#8b93a7);text-transform:uppercase}
+.rk .rep-k b{font-family:'Outfit',sans-serif;font-size:22px}
+.rk .rep-lg{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--txt2,#aab);margin-bottom:10px}
+.rk .rep-lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.rk .rep-b{display:flex;flex-direction:column;gap:8px}
+.rk .rep-r{display:grid;grid-template-columns:minmax(120px,230px) 1fr 74px;gap:12px;align-items:center}
+.rk .rep-r .rn{min-width:0;display:flex;flex-direction:column}
+.rk .rep-r .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.rk .rep-r .rt{display:flex;height:16px;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.06)}
+.rk .rep-r .rt i{display:block;height:100%;transition:width .5s ease}
+.rk .rep-r .rv{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
+.rk .rep-r .rv b{font-family:'Outfit',sans-serif;font-size:15px}
+@media(max-width:640px){.rk .rep-r{grid-template-columns:1fr 60px}.rk .rep-r .rt{grid-column:1/-1;order:3}}
