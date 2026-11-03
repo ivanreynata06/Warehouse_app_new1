@@ -83,7 +83,7 @@
   };
 
   /* ================= MODEL ================= */
-  function blank() { return { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: { wmsAt: '', qadAt: '', wmsFile: '', qadFile: '' }, cfg: { tgl: today(), site: SITE, ket: 'Adjustment SO rak', kat: 1 }, step1: '' }; }
+  function blank() { return { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: { wmsAt: '', qadAt: '', wmsFile: '', qadFile: '' }, cfg: { tgl: today(), site: SITE, ket: 'Adjustment SO rak', kat: 1 }, koreksi: {}, adjOff: {}, step1: '' }; }
   NS.blank = blank;
 
   // item = { kode, nama, qad (null bila tak ada di QAD), racks:[{rak,area,onhand}], wms, sel }
@@ -105,6 +105,15 @@
     a.sort(function (x, y) { return Math.abs(y.sel) - Math.abs(x.sel) || x.nama.localeCompare(y.nama, 'id', { numeric: true }); });
     return a;
   };
+  function isTr(rak) { return /TRANSIT/i.test(String(rak || '')); }
+  NS.isTransit = isTr;
+  // RAK KOREKSI = rak virtual penyeimbang stok: barang yang sudah keluar (pengiriman) di WMS tetapi saldo QAD belum terpotong.
+  // Qty ini dihitung sebagai fisik (supaya tidak muncul selisih di dashboard Stock Opname) dan TIDAK masuk template adjustment WMS.
+  NS.koreksiOf = function (S, kode) {
+    var k = (S.koreksi || {})[kode]; if (!k) return { q: null, ket: '' };
+    var q = (k.q === '' || k.q == null) ? null : num(k.q);
+    return { q: q > 0 ? q : null, ket: String(k.ket || '') };
+  };
   function inVal(S, kode, rak) { var v = (S.inputs[kode] || {})[rak]; return (v === undefined || v === '' || v === null) ? null : num(v); }
   function wmsByRak(S) { var m = {}; S.wms.forEach(function (r) { (m[r.rak] = m[r.rak] || []).push(r); }); return m; }
 
@@ -118,7 +127,7 @@
         (byRak[mr.rak] || []).forEach(function (o) {
           if (o.kode === it.kode || !o.onhand) return;
           var k = o.rak + '|' + o.kode; if (cleared[k]) return; cleared[k] = 1;
-          step1.push({ rak: o.rak, kode: o.kode, nama: o.nama, qty: -o.onhand });
+          step1.push({ rak: o.rak, kode: o.kode, nama: o.nama, qty: -o.onhand, by: it.kode });
           conflicts.push({ rak: o.rak, pakaiOleh: o.kode, namaLama: o.nama, onhand: o.onhand, itemBaru: it.kode, namaBaru: it.nama });
         });
       });
@@ -127,7 +136,11 @@
     items.forEach(function (it) {
       it.racks.forEach(function (r) {
         if (cleared[r.rak + '|' + it.kode]) return;
-        var a = inVal(S, it.kode, r.rak); if (a === null) return;
+        var a = inVal(S, it.kode, r.rak);
+        if (a === null) {   // rak TRANSIT yang tidak diberi nilai (item sudah lengkap diinput) -> dijadikan adjustment pengurangan (-)
+          if (isTr(r.rak) && r.onhand > 0 && NS.lines(S, it, null).complete) step2.push({ rak: r.rak, kode: it.kode, nama: it.nama, qty: -r.onhand, auto: true });
+          return;
+        }
         var d = a - r.onhand; if (d) step2.push({ rak: r.rak, kode: it.kode, nama: it.nama, qty: d });
       });
       (S.manual[it.kode] || []).forEach(function (mr) {
@@ -146,7 +159,16 @@
       return { rak: r.rak, area: r.area, exist: r.onhand, aktual: inVal(S, it.kode, r.rak), manual: false, cleared: cl };
     });
     (S.manual[it.kode] || []).forEach(function (mr, i) { L.push({ rak: mr.rak, area: 'MANUAL', exist: 0, aktual: (mr.aktual === '' || mr.aktual == null) ? null : num(mr.aktual), manual: true, idx: i }); });
+    // item lengkap = semua rak selain TRANSIT sudah diisi aktual. Rak TRANSIT kosong pada item lengkap = otomatis dikurangi (-)
+    var req = L.filter(function (l) { return !isTr(l.rak); }), comp = req.length > 0 && req.every(function (l) { return l.aktual !== null; });
+    L.forEach(function (l) { if (isTr(l.rak) && l.aktual === null && l.exist > 0 && comp) l.auto = true; });
+    L.complete = comp;
     return L;
+  };
+  // fisik item = total aktual semua rak + rak koreksi
+  NS.fisik = function (S, it) {
+    var t = 0, k = NS.koreksiOf(S, it.kode); NS.lines(S, it, null).forEach(function (l) { if (l.aktual !== null) t += l.aktual; });
+    return Math.round((t + (k.q || 0)) * 1000) / 1000;
   };
   NS.summary = function (S, items, plan) {
     var n = items.length, ok = 0, sa = 0, sq = 0, sw = 0, rin = 0, rok = 0;
@@ -173,7 +195,9 @@
       var a = ws['A' + (i + 1)]; if (a) { a.t = 'd'; a.z = 'yyyy\\-mm\\-dd;@'; }
       var e = ws['E' + (i + 1)]; if (e && e.t === 'n') e.z = '0';
     }
-    ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 11 }, { wch: 14 }, { wch: 17 }, { wch: 26 }, { wch: 8 }, { wch: 14 }];
+    // semua sel (termasuk judul kolom) rata kiri -- format ini sama untuk Template Tahap 1 dan Tahap 2
+    Object.keys(ws).forEach(function (k) { if (k.charAt(0) !== '!') ws[k].s = { alignment: { horizontal: 'left', vertical: 'center' } }; });
+    ws['!cols'] = [{ wch: 12.1 }, { wch: 8.1 }, { wch: 11.1 }, { wch: 14.1 }, { wch: 17.1 }, { wch: 26.1 }, { wch: 8.1 }, { wch: 14.1 }];
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Area Rak'); return wb;
   };
 

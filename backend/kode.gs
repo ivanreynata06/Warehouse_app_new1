@@ -10182,6 +10182,9 @@ function _rakSanitize(o) {
   function t(v, n) { return String(v == null ? '' : v).slice(0, n || 200); }
   o = o || {};
   var out = { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: {}, cfg: {}, soPick: {}, step1: t(o.step1, 20000) };
+  out.koreksi = {}; out.adjOff = {};   // rak koreksi per item {q, ket} & item yang tidak ikut template adjustment
+  var nk = 0; Object.keys(o.koreksi || {}).forEach(function (k) { var v = o.koreksi[k] || {}; if (nk++ < 3000) out.koreksi[t(k, 40)] = { q: t(v.q, 20), ket: t(v.ket, 120) }; });
+  var na = 0; Object.keys(o.adjOff || {}).forEach(function (k) { if (o.adjOff[k] && na++ < 5000) out.adjOff[t(k, 40)] = 1; });
   var np = 0; Object.keys(o.soPick || {}).forEach(function (k) { if (o.soPick[k] && np++ < 3000) out.soPick[t(k, 40)] = 1; });   // item yang dipilih untuk lembar SO
   (o.wms || []).slice(0, 40000).forEach(function (r) { out.wms.push({ lok: t(r.lok, 20), area: t(r.area, 60), rak: t(r.rak, 60), kode: t(r.kode, 40), nama: t(r.nama, 200), onhand: Number(r.onhand) || 0 }); });
   (o.qad || []).slice(0, 40000).forEach(function (r) { out.qad.push({ kode: t(r.kode, 40), nama: t(r.nama, 200), qty: Number(r.qty) || 0, grp: t(r.grp, 10) }); });

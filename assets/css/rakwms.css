@@ -183,3 +183,26 @@
 .so-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 4px 3px 10px;border-radius:999px;background:rgba(124,92,255,.18);border:1px solid rgba(124,92,255,.4);font-size:11px;max-width:260px;white-space:nowrap}
 .so-chip button{border:0;background:rgba(255,255,255,.1);color:inherit;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:10px;line-height:1}
 .so-chip button:hover{background:rgba(255,95,95,.5)}
+
+/* ---- Rak Koreksi (penyeimbang stok) ---- */
+.rk .rk-kor{margin-top:12px;padding:12px 14px;border-radius:14px;border:1px dashed rgba(251,191,36,.4);background:rgba(251,191,36,.05)}
+.rk .rk-kor .kh{display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif;font-size:12.5px;margin-bottom:4px}
+.rk .rk-kor .kf{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px}
+.rk .rk-kor .kf label{display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--txt3,#8b93a7)}
+.rk .rk-kor .kf label:first-child input{width:130px}
+.rk .rk-kor .kf label:last-child{flex:1;min-width:220px}
+.rk .rk-kor .kf input:disabled{opacity:.55;cursor:not-allowed}
+/* ---- item terkunci (sudah di-SO) ---- */
+.rk tbody tr.it.lk{background:rgba(16,185,129,.05)}
+.rk tbody tr.it.lk:hover{background:rgba(16,185,129,.1)}
+.rk input.aq:disabled{opacity:.55;cursor:not-allowed}
+/* ---- pilihan item adjustment ---- */
+.rk .rk-apick{border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.025)}
+.rk .rk-apick .ap-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.rk .rk-apick .ap-l{max-height:260px;overflow:auto;border-top:1px solid rgba(255,255,255,.07)}
+.rk .rk-apick .ap-r{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;font-size:12px}
+.rk .rk-apick .ap-r:hover{background:rgba(34,211,238,.06)}
+.rk .rk-apick .ap-r input{width:16px;height:16px;flex:none;accent-color:#22d3ee}
+.rk .rk-apick .ap-n{flex:1;min-width:0;display:flex;flex-direction:column}
+.rk .rk-apick .ap-n .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rk .rk-apick .ap-c{display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap;justify-content:flex-end}
