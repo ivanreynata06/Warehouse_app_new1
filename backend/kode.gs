@@ -1131,6 +1131,99 @@ function getPendingRows() {
 //  mencakup semua tanggal sebelum hari ini sampai 31 hari ke belakang
 //  (nama fungsi dipertahankan supaya frontend lama tetap jalan).
 // ================================================================
+// ================================================================
+//  PENGAMAN TANGGAL PENGIRIMAN BERDASAR NOMOR SPM
+//  Nomor SPM standar berformat YYMMnnnn (mis. 26110142 = Nov 2026). SPM TIDAK MUNGKIN
+//  bernomor bulan LEBIH BARU daripada tanggal kirimnya. Kalau terjadi, tanggal baris itu
+//  pasti salah (mis. link/nama file jadwal sumber masih bulan lalu, atau tab bulan baru
+//  terbaca sebagai bulan lama). Kasus nyata: SPM 2611xxxx tersimpan bertanggal 04/10/2026,
+//  jadi pada 4 Nov tampil sebagai "kiriman 31 hari lalu yang belum selesai".
+//  Nomor yang bukan format YYMM (mis. "PS26151257") diabaikan -- tidak pernah dipakai menebak.
+// ================================================================
+var LT_PENDING_HARI_MAKS = 7;   // kiriman "tertinggal" yang MENGUNCI Mulai Muat hanya yang <= 7 hari ke belakang
+
+function _spmBulanIdx(spm) {   // idx bulan = tahun*12 + (bulan-1), terbesar dari bagian gabungan "A+B"; null kalau tidak berformat YYMM
+  var best = null;
+  String(spm || '').toUpperCase().replace(/\s+/g, '').split('+').forEach(function (p) {
+    var m = /^(?:PS)?(\d{2})(0[1-9]|1[0-2])\d{2,}$/.exec(p);
+    if (!m) return;
+    var idx = (2000 + parseInt(m[1], 10)) * 12 + (parseInt(m[2], 10) - 1);
+    if (best === null || idx > best) best = idx;
+  });
+  return best;
+}
+// Tanggal "hari yang sama, bulan idx" atau null kalau tidak valid / mustahil (terlalu jauh dari hari ini).
+function _tglDiBulanIdx(idx, hari, today) {
+  var y = Math.floor(idx / 12), mo = idx % 12, d = new Date(y, mo, hari, 0, 0, 0, 0);
+  if (d.getMonth() !== mo || d.getDate() !== hari) return null;
+  if (d.getTime() > today.getTime() + 7 * 86400000) return null;
+  return d;
+}
+// Tab jadwal sumber: kalau MAYORITAS SPM bernomor bulan lebih baru dari tanggal tab -> bulan tab dikoreksi
+// ke bulan SPM (hari sama); kalau hanya sebagian kecil -> SPM itu dilewati saja.
+function _koreksiBulanJadwal(tanggal, spmArr, today) {
+  var stamped = tanggal.getFullYear() * 12 + tanggal.getMonth(), ok = [], fut = [];
+  spmArr.forEach(function (sp) { var i = _spmBulanIdx(sp); if (i === null) return; ok.push(sp); if (i > stamped) fut.push({ sp: sp, i: i }); });
+  if (!fut.length) return { tanggal: tanggal, koreksi: false, dilewati: [] };
+  if (fut.length / ok.length >= 0.6) {
+    var cnt = {}, mode = null;
+    fut.forEach(function (f) { cnt[f.i] = (cnt[f.i] || 0) + 1; if (mode === null || cnt[f.i] > cnt[mode]) mode = f.i; });
+    var nd = (mode - stamped >= 1 && mode - stamped <= 3) ? _tglDiBulanIdx(mode, tanggal.getDate(), today) : null;
+    if (!nd) return { error: 'Nomor SPM di tab ini bulan ' + Math.floor(mode / 12) + '-' + ((mode % 12) + 1) + ', tidak cocok dengan tanggal ' + _fmtYMD(tanggal) + ' dan tidak bisa dikoreksi otomatis. Cek link/nama file jadwal sumber bulan ini.' };
+    return { tanggal: nd, koreksi: true, dari: tanggal, dilewati: [] };
+  }
+  return { tanggal: tanggal, koreksi: false, dilewati: fut.map(function (f) { return f.sp; }) };
+}
+// Baris PENGIRIMAN yang BELUM tersentuh (H/I/J kosong) tapi tanggalnya mustahil (lebih lama dari bulan SPM-nya)
+// -> tanggal dibetulkan ke hari yang sama di bulan SPM. Return daftar perbaikan. terapkan=false -> hanya melaporkan.
+function _perbaikiTanggalSpmSalah(sheet, data, today, terapkan) {
+  var hasil = [];
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i], spm = String(r[4] || '').trim();
+    if (!spm || r[7] || r[8] || String(r[9] || '').trim()) continue;       // sudah ada aktivitas muat/keputusan -> jangan disentuh
+    var tgl = _tglPengiriman(r[0]); if (!tgl) continue;
+    var idx = _spmBulanIdx(spm); if (idx === null) continue;
+    var stamped = tgl.getFullYear() * 12 + tgl.getMonth();
+    if (idx - stamped < 1 || idx - stamped > 3) continue;
+    var nd = _tglDiBulanIdx(idx, tgl.getDate(), today); if (!nd) continue;
+    hasil.push({ row: i + 1, spm: spm, dari: _fmtYMD(tgl), ke: _fmtYMD(nd) });
+    if (terapkan) {
+      sheet.getRange(i + 1, 1).setValue(Utilities.parseDate(_fmtYMD(nd), _tzKerja(), 'yyyy-MM-dd'));
+      data[i][0] = nd;
+    }
+  }
+  // Baris SATU BATCH (tanggal salah yang sama, belum tersentuh) tapi nomor SPM-nya bukan format YYMM (mis. "PS26151257")
+  // ikut dibetulkan ke tanggal yang sama -- hanya kalau minimal 2 baris ber-SPM YYMM membuktikan batch itu salah tanggal.
+  var peta = {}, jml = {};
+  hasil.forEach(function (h) { peta[h.dari] = h.ke; jml[h.dari] = (jml[h.dari] || 0) + 1; });
+  var sudah = {}; hasil.forEach(function (h) { sudah[h.row] = 1; });
+  for (var j = 1; j < data.length; j++) {
+    var q = data[j], spm2 = String(q[4] || '').trim();
+    if (sudah[j + 1] || !spm2 || q[7] || q[8] || String(q[9] || '').trim() || _spmBulanIdx(spm2) !== null) continue;
+    var t2 = _tglPengiriman(q[0]); if (!t2) continue;
+    var asal = _fmtYMD(t2);
+    if (!peta[asal] || jml[asal] < 2) continue;
+    hasil.push({ row: j + 1, spm: spm2, dari: asal, ke: peta[asal], satuBatch: true });
+    if (terapkan) {
+      sheet.getRange(j + 1, 1).setValue(Utilities.parseDate(peta[asal], _tzKerja(), 'yyyy-MM-dd'));
+      var pp = peta[asal].split('-'); data[j][0] = new Date(+pp[0], +pp[1] - 1, +pp[2]);
+    }
+  }
+  return hasil;
+}
+// Jalankan MANUAL dari editor Apps Script: laporan semua baris bertanggal mustahil (belum diubah apa pun).
+function diagTanggalPengirimanSalah() {
+  var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_PENGIRIMAN);
+  var r = _perbaikiTanggalSpmSalah(sh, sh.getDataRange().getValues(), _hariIniKerja(), false);
+  Logger.log(r.length + ' baris bertanggal mustahil:\n' + r.map(function (x) { return 'baris ' + x.row + ' SPM ' + x.spm + ': ' + x.dari + ' -> ' + x.ke; }).join('\n'));
+}
+function perbaikiTanggalPengirimanSalah() {
+  var sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SH_PENGIRIMAN);
+  var r = _perbaikiTanggalSpmSalah(sh, sh.getDataRange().getValues(), _hariIniKerja(), true);
+  if (r.length) _bumpDataCacheVersion();
+  Logger.log(r.length + ' baris diperbaiki:\n' + r.map(function (x) { return 'baris ' + x.row + ' SPM ' + x.spm + ': ' + x.dari + ' -> ' + x.ke; }).join('\n'));
+}
+
 function getPendingRowsKemarin() {
   try {
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -1139,8 +1232,13 @@ function getPendingRowsKemarin() {
 
     var data      = sheet.getDataRange().getValues();
     var today     = _hariIniKerja();
-    var batasAwal = new Date(today); batasAwal.setDate(batasAwal.getDate() - 31);
+    var batasAwal = new Date(today); batasAwal.setDate(batasAwal.getDate() - LT_PENDING_HARI_MAKS);
     var pending   = [];
+    // Tanggal mustahil (SPM bulan lebih baru dari tanggalnya) dibetulkan DULU, supaya kiriman hari ini tidak
+    // nyasar jadi "tertinggal" dari bulan lalu.
+    var diperbaiki = [];
+    try { diperbaiki = _perbaikiTanggalSpmSalah(sheet, data, today, true); if (diperbaiki.length) _bumpDataCacheVersion(); }
+    catch (eFix) { Logger.log('Perbaikan tanggal SPM salah gagal: ' + eFix.message); }
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
@@ -1159,7 +1257,7 @@ function getPendingRowsKemarin() {
       var tgl = _tglPengiriman(row[0]);
       if (!tgl) continue;
       if (tgl.getTime() >= today.getTime()) continue;   // hari ini / masa depan bukan "tertinggal"
-      if (tgl.getTime() < batasAwal.getTime()) continue; // terlalu lama -> bukan urusan kartu notif harian
+      if (tgl.getTime() < batasAwal.getTime()) continue; // lebih lama dari LT_PENDING_HARI_MAKS hari -> tidak mengunci Mulai Muat
 
       pending.push({
         rowIndex : i + 1,
@@ -1174,7 +1272,7 @@ function getPendingRowsKemarin() {
     }
     pending.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : (a.tanggal > b.tanggal ? 1 : a.rowIndex - b.rowIndex); });
 
-    return { success: true, rows: pending };
+    return { success: true, rows: pending, diperbaiki: diperbaiki, maksHari: LT_PENDING_HARI_MAKS };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -5994,11 +6092,20 @@ function _bacaJadwalPPRDariSumber(tanggal) {
 //    belakangan di sumber, sistem otomatis nyusul begitu di-sync lagi.
 function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
   try {
-    var tanggal = tanggalDDMMYYYY ? _parseTanggalFleksibel(tanggalDDMMYYYY) : new Date();
+    var tanggal = tanggalDDMMYYYY ? _parseTanggalFleksibel(tanggalDDMMYYYY) : _hariIniKerja();
+    if (!(tanggal instanceof Date) || isNaN(tanggal.getTime())) return { success: false, error: 'Tanggal sync tidak valid: ' + tanggalDDMMYYYY };
     tanggal.setHours(0, 0, 0, 0);
 
     var bacaan = _bacaJadwalPPRDariSumber(tanggal);
     if (!bacaan.success) return bacaan;
+
+    // PENGAMAN BULAN: nomor SPM (YYMMnnnn) tidak boleh lebih baru dari tanggal kirim. Kalau mayoritas SPM di tab
+    // ini bernomor bulan lebih baru, bulan tab dikoreksi ke bulan SPM; kalau hanya sedikit, SPM itu dilewati.
+    var kor = _koreksiBulanJadwal(tanggal, bacaan.data.map(function (x) { return x.spm; }), _hariIniKerja());
+    if (kor.error) return { success: false, error: kor.error };
+    var tanggalAsal = null;
+    if (kor.koreksi) { tanggalAsal = tanggal; tanggal = kor.tanggal; Logger.log('Sync jadwal: tanggal ' + _fmtYMD(tanggalAsal) + ' dikoreksi ke ' + _fmtYMD(tanggal) + ' berdasar nomor SPM.'); }
+    if (kor.dilewati.length) bacaan.data = bacaan.data.filter(function (x) { return kor.dilewati.indexOf(x.spm) === -1; });
 
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SH_PENGIRIMAN);
@@ -6025,14 +6132,14 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     // di-sync ulang di tanggalnya sendiri kalau sumbernya diedit lagi).
     var lastRow = sheet.getLastRow();
     var spmKeRow = {}; // { spm: rowNumber } -- scope: tanggal yg sama saja
-    var tanggalYmd = Utilities.formatDate(tanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var tanggalYmd = _fmtYMD(tanggal);   // dari komponen tanggal, bebas masalah zona waktu
     var existingFull = []; // dipakai jg utk deteksi baris basi di bawah
     if (lastRow >= 2) {
       existingFull = sheet.getRange(2, 1, lastRow - 1, 10).getValues(); // A-J
       existingFull.forEach(function (r, idx) {
         var rowTanggal = r[0];
         var rowYmd = (rowTanggal instanceof Date)
-          ? Utilities.formatDate(rowTanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
+          ? Utilities.formatDate(rowTanggal, _tzKerja(), 'yyyy-MM-dd') : '';
         if (rowYmd !== tanggalYmd) return; // beda tanggal -> jangan dicocokkan
         var spmRow = String(r[4] || '').trim();
         if (spmRow) spmKeRow[spmRow] = 2 + idx;
@@ -6054,7 +6161,7 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
         // tampilan langsung terisi tanpa perlu PIC ketik manual lagi.
         // Keterangan disimpan di kolom K (kolom baru, tidak dipakai
         // fungsi lain) sbg referensi -- munculkan di UI kalau perlu.
-        barisBaru.push([tanggal, x.nama || '', '', '', x.spm, x.nopol, '', '', '', '', x.keterangan || '']);
+        barisBaru.push([Utilities.parseDate(tanggalYmd, _tzKerja(), 'yyyy-MM-dd'), x.nama || '', '', '', x.spm, x.nopol, '', '', '', '', x.keterangan || '']);
         return;
       }
       // Sudah ada (tanggal sama) -- cek apakah Agen(B)/Nopol(F) di sheet
@@ -6101,7 +6208,7 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
     existingFull.forEach(function (r, idx) {
       var rowTanggal = r[0];
       var rowYmd = (rowTanggal instanceof Date)
-        ? Utilities.formatDate(rowTanggal, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
+        ? Utilities.formatDate(rowTanggal, _tzKerja(), 'yyyy-MM-dd') : '';
       if (rowYmd !== tanggalYmd) return;
       var spmRow = String(r[4] || '').trim();
       if (!spmRow || spmDiSumberSet[spmRow]) return; // SPM masih ada di sumber -> bukan basi
@@ -6122,7 +6229,9 @@ function syncJadwalPengirimanHarian(tanggalDDMMYYYY) {
       dibersihkan: barisBasi.length,
       totalDiSumber: bacaan.data.length,
       dilewati: bacaan.data.length - barisBaru.length - diupdate,
-      dilewatiFormatSalah: bacaan.dilewatiFormatSalah || []
+      dilewatiFormatSalah: bacaan.dilewatiFormatSalah || [],
+      tanggalDikoreksi: tanggalAsal ? tanggalYmd : '',
+      dilewatiBulanSalah: kor.dilewati
     };
   } catch (err) { return { success: false, error: err.message }; }
 }
@@ -6152,6 +6261,15 @@ function hapusDataPengirimanByTanggal(tanggalDDMMYYYY) {
 function resyncBersihJadwalTanggal(tanggalDDMMYYYY) {
   try {
     if (!tanggalDDMMYYYY) return { success: false, error: 'Tanggal wajib diisi (format DD/MM/YYYY).' };
+    // PRA-CEK sebelum menghapus apa pun: sumber harus benar-benar berisi jadwal bulan ini, bukan bulan lain.
+    var tglCek = _parseTanggalFleksibel(tanggalDDMMYYYY);
+    if (!(tglCek instanceof Date) || isNaN(tglCek.getTime())) return { success: false, error: 'Tanggal tidak valid: ' + tanggalDDMMYYYY };
+    tglCek.setHours(0, 0, 0, 0);
+    var baca = _bacaJadwalPPRDariSumber(tglCek);
+    if (!baca.success) return baca;
+    var korCek = _koreksiBulanJadwal(tglCek, baca.data.map(function (x) { return x.spm; }), _hariIniKerja());
+    if (korCek.error) return { success: false, error: korCek.error + ' (Tidak ada data yang dihapus.)' };
+    if (korCek.koreksi) return { success: false, error: 'Tab "' + tglCek.getDate() + '" di sumber berisi SPM bulan ' + _fmtYMD(korCek.tanggal).slice(0, 7) + ', bukan ' + _fmtYMD(tglCek).slice(0, 7) + '. Link/nama file jadwal sumber kemungkinan belum diganti ke bulan yang benar. Sync ulang dibatalkan -- TIDAK ada data yang dihapus.' };
     var hapus = hapusDataPengirimanByTanggal(tanggalDDMMYYYY);
     if (!hapus.success) return hapus;
     var sync = syncJadwalPengirimanHarian(tanggalDDMMYYYY);

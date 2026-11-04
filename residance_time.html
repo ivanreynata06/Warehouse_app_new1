@@ -1317,9 +1317,9 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
     <div class="modal-icon" style="background:linear-gradient(135deg,rgba(239,68,68,.3),rgba(239,68,68,.1));border-color:rgba(239,68,68,.3);">
       <i data-lucide="alert-octagon" style="width:16px;color:var(--accent-red);"></i>
     </div>
-    <div class="modal-title" style="color:var(--accent-red);">Kiriman Kemarin Belum Selesai</div>
+    <div class="modal-title" style="color:var(--accent-red);">Kiriman Sebelumnya Belum Selesai</div>
     <div class="modal-hint" style="margin:-4px 0 12px;">
-      Masih ada <b id="kemarin-pending-count" style="color:var(--accent-red);">0</b> kiriman dari <b>kemarin</b> yang statusnya masih menunggu. Selesaikan dulu (tandai <b>Ikut Fitting</b> atau <b>Batalkan</b>) sebelum bisa mulai muat kiriman hari ini.
+      Masih ada <b id="kemarin-pending-count" style="color:var(--accent-red);">0</b> kiriman dari <b>hari sebelumnya</b> (maksimal 7 hari terakhir) yang statusnya masih menunggu. Selesaikan dulu (tandai <b>Ikut Fitting</b> atau <b>Batalkan</b>) sebelum bisa mulai muat kiriman hari ini.
     </div>
     <div id="list-kemarin-pending" style="display:flex;flex-direction:column;gap:8px;"></div>
     <div class="modal-actions" style="margin-top:14px;">
@@ -3103,7 +3103,7 @@ var pendingRowsData=[];
 var isKemarinPendingLocked=false;
 function openAddModal(){
   if(isKemarinPendingLocked){
-    showToast('⚠️ Selesaikan dulu kiriman kemarin yang masih menunggu (Ikut Fitting/Batal) sebelum mulai muat hari ini.','error');
+    showToast('⚠️ Selesaikan dulu kiriman sebelumnya yang masih menunggu (Ikut Fitting/Batal) sebelum mulai muat hari ini.','error');
     checkKemarinPending(); // buka lagi modalnya biar checker langsung bisa selesaikan
     return;
   }
@@ -3563,6 +3563,10 @@ function checkKemarinPending(){
     .withSuccessHandler(function(res){
       var rows = (res && res.success && res.rows) ? res.rows : [];
       kemarinPendingData = rows;
+      if(res && res.diperbaiki && res.diperbaiki.length){   // tanggal mustahil (SPM bulan lebih baru dari tanggalnya) sudah dibetulkan otomatis
+        showToast('🛠️ '+res.diperbaiki.length+' kiriman bertanggal salah dibetulkan otomatis: '+res.diperbaiki.map(function(x){return x.spm+' ('+x.dari+' → '+x.ke+')'}).join(', '),'warning',9000);
+        clearApiCache(); loadData();
+      }
       if(rows.length){
         renderKemarinPendingList(rows);
         document.getElementById('kemarin-pending-count').textContent = rows.length;
@@ -3583,7 +3587,7 @@ function setKemarinPendingLocked(locked){
   if(!btn) return;
   if(locked){
     btn.classList.add('locked');
-    if(hint) hint.innerHTML = '<span class="push-start-note">⚠️ Selesaikan kiriman kemarin dulu</span>';
+    if(hint) hint.innerHTML = '<span class="push-start-note">⚠️ Selesaikan kiriman sebelumnya dulu</span>';
   } else {
     btn.classList.remove('locked');
     if(hint) hint.textContent = 'Klik untuk mulai muat';
@@ -3748,6 +3752,12 @@ function syncJadwalHariIni(){
         showToast('✅ '+pesan.join(', ')+' -- sisanya sudah tersinkron','success');
       } else {
         showToast('Tidak ada perubahan -- semua sudah tersinkron ('+res.totalDiSumber+' total di jadwal)','info');
+      }
+      if (res.tanggalDikoreksi){
+        showToast('📅 Nomor SPM di tab jadwal ini bulan lebih baru dari tanggal tab -- tanggal dikoreksi otomatis ke '+res.tanggalDikoreksi+'. Cek link/nama file jadwal sumber bulan ini.','warning',9000);
+      }
+      if (res.dilewatiBulanSalah && res.dilewatiBulanSalah.length){
+        setTimeout(function(){ showToast('⚠️ '+res.dilewatiBulanSalah.length+' SPM dilewati karena nomornya bulan lebih baru dari tanggal tab: '+res.dilewatiBulanSalah.join(', '),'error',9000); }, 1200);
       }
       // Notifikasi TERPISAH & lebih mencolok utk PPR yang keterangannya
       // "IKUT PIPA" -- PIC/checker perlu tahu ini TIDAK perlu proses
