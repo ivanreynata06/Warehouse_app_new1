@@ -20,6 +20,21 @@
     if (typeof v === 'number') return isFinite(v) ? v.toFixed(0) : '';
     return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase();
   }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  // jam (HH:mm) dari sel Excel: serial berpecahan (tanggal+jam), serial < 1 (hanya jam), Date, atau teks "... 08:52[:10]"
+  function parseTime(v) {
+    if (v == null || v === '') return '';
+    if (v instanceof Date) { if (isNaN(v)) return ''; var h0 = v.getHours(), m0 = v.getMinutes(); return (h0 || m0) ? pad2(h0) + ':' + pad2(m0) : ''; }
+    if (typeof v === 'number') {
+      if (!isFinite(v) || v < 0) return '';
+      var f = v - Math.floor(v); if (f < 1e-6 || f > 1 - 1e-6) return '';
+      var mins = Math.round(f * 1440) % 1440; return pad2(Math.floor(mins / 60)) + ':' + pad2(mins % 60);
+    }
+    var mm = String(v).trim().match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i); if (!mm) return '';
+    var h = +mm[1], m = +mm[2];
+    if (mm[3]) { if (/pm/i.test(mm[3]) && h < 12) h += 12; if (/am/i.test(mm[3]) && h === 12) h = 0; }
+    return (h > 23 || m > 59) ? '' : pad2(h) + ':' + pad2(m);
+  }
   function idx(heads, names) { for (var i = 0; i < names.length; i++) { var x = heads.indexOf(names[i]); if (x !== -1) return x; } return -1; }
 
   // ---------- master WMS (Laporan Persiapan Muat) ----------
@@ -32,9 +47,12 @@
     if (!h) throw new Error('Kolom "No SPM" dan "Tgl Muat" tidak ditemukan. Pastikan ini file Laporan Persiapan Muat dari WMS.');
     var cS = idx(h.heads, ['nospm']), cT = idx(h.heads, ['tglmuat']), cC = idx(h.heads, ['shipto']),
         cP = idx(h.heads, ['picmuat']), cD = idx(h.heads, ['deskripsi', 'namaitem']), cQ = idx(h.heads, ['qtymuat', 'qty']);
+    // JAM SELESAI PERSIAPAN: kolom khusus bila ada (nama kolom di bawah); bila tidak ada, jam diambil dari sel "Tgl Muat" (tanggal + jam)
+    var cJ = idx(h.heads, ['jamselesaipersiapan', 'waktuselesaipersiapan', 'tglselesaipersiapan', 'selesaipersiapan', 'jamselesai', 'waktuselesai', 'tglselesai', 'jamsiap', 'waktusiap', 'jamsiapmuat', 'selesaisiap']);
+    var timeSrc = cJ !== -1 ? norm((rows[h.row] || [])[cJ]) : 'Tgl Muat';
     if (cP === -1) throw new Error('Kolom "PIC Muat" tidak ditemukan.');
     if (cD === -1) throw new Error('Kolom "Deskripsi" tidak ditemukan (dipakai untuk menyaring item).');
-    var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0, spm: 0 }, spms = {};
+    var out = [], st = { total: 0, kept: 0, dropped: 0, noDate: 0, spm: 0, timed: 0, timeSrc: timeSrc }, spms = {};
     for (var i = h.row + 1; i < rows.length; i++) {
       var row = rows[i] || [], spm = spmKey(row[cS]);
       if (!spm) continue;
@@ -44,8 +62,11 @@
       var t = W.parseDate(row[cT]);
       if (!t) { st.noDate++; continue; }
       st.kept++; spms[spm] = 1;
+      var tj = cJ !== -1 ? parseTime(row[cJ]) : '', dj = cJ !== -1 && tj ? W.parseDate(row[cJ]) : '', tm = tj || parseTime(row[cT]);
+      var jam = tm ? (dj || t) + ' ' + tm : '';   // waktu selesai persiapan "yyyy-mm-dd HH:mm" (dari data WMS)
+      if (jam) st.timed++;
       // satu baris per baris muat: tanggal, SPM, ship to, PIC, item (deskripsi), qty muat
-      out.push({ t: t, s: spm, c: norm(row[cC]), p: norm(row[cP]), i: nama, q: cQ === -1 ? 0 : W.parseQty(row[cQ]) });
+      out.push({ t: t, s: spm, c: norm(row[cC]), p: norm(row[cP]), i: nama, q: cQ === -1 ? 0 : W.parseQty(row[cQ]), j: jam });
     }
     st.spm = Object.keys(spms).length;
     return { rows: out, stats: st };
@@ -140,7 +161,7 @@
   }
 
   var api = { BANNED_LABEL: 'administrator_wdj', isBanned: isBanned, parseMaster: parseMaster, parseSpmList: parseSpmList,
-    similar: similar, dist: dist, analyze: analyze, summarize: summarize, picStats: picStats, ST_LABEL: ST_LABEL, explain: explain, spmKey: spmKey };
+    similar: similar, dist: dist, analyze: analyze, summarize: summarize, picStats: picStats, ST_LABEL: ST_LABEL, explain: explain, spmKey: spmKey, parseTime: parseTime };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PicWmsCore = api;
 })(typeof window !== 'undefined' ? window : this);

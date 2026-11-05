@@ -71,6 +71,9 @@
     });
   }
   function isTransit(rak) { return /TRANSIT/i.test(String(rak || '')); }
+  var SOG = ['I053'];   // group yang pengisian SO-nya sudah dipindah ke Akurasi WMS (Fitting / Q055 menyusul)
+  function inSOG(it) { return SOG.indexOf(String(it.grp).toUpperCase()) >= 0; }
+  function sogAllowed() { return ui.allowed.filter(function (g) { return SOG.indexOf(String(g).toUpperCase()) >= 0; }); }
   function soKey(kode) { return String(kode == null ? '' : kode).trim().toUpperCase(); }
   function soRec(it) { var g = ui.soStat && ui.soStat[it.grp]; var r = g && g.items && g.items[soKey(it.kode)]; return r && r.fisik !== null && r.fisik !== undefined ? r : null; }
   function soTglF(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
@@ -79,12 +82,14 @@
   function ulangOf(it) { var g = soGrp(it); return (g && g.ulang && g.ulang[soKey(it.kode)]) || null; }
   function carryN(it) { var g = soGrp(it); return g ? (g.carryBelum || 0) : 0; }
   function locked(it) { return !!soRec(it) && !ulangOf(it); }
-  function clearItem(kode) { delete S.inputs[kode]; delete S.manual[kode]; if (S.koreksi) delete S.koreksi[kode]; if (S.soSent) delete S.soSent[soKey(kode)]; }
+  function clearItem(kode) { if (S.adjDone) delete S.adjDone[kode]; delete S.inputs[kode]; delete S.manual[kode]; if (S.koreksi) delete S.koreksi[kode]; if (S.soSent) delete S.soSent[soKey(kode)]; }
   // keterangan resmi untuk item yang sudah di-SO (terkunci); bila data terbaru masih selisih, diberi catatan khusus
+  function canUnlock() { return !!window.IS_TL; }   // TL atau Admin
   function soNote(it) {
     var r = soRec(it); if (!r) return '';
-    var b = 'Item ini sudah di-SO pada ' + soTglF(r.tgl) + (r.oleh ? ' oleh ' + String(r.oleh).replace(/\s*\(Akurasi Rak\)\s*$/, '') : '') + ' dengan fisik ' + fmt(r.fisik) + '.';
-    if (it.sel !== 0) return b + ' Namun pada data terbaru masih terdapat selisih WMS - QAD sebesar ' + (it.sel > 0 ? '+' : '') + fmt(it.sel) + ' (WMS ' + fmt(it.wms) + ' vs QAD ' + fmt(it.qadv) + '). Mohon diperiksa apakah adjustment sudah diproses di WMS atau terdapat transaksi setelah SO.';
+    var ad = S.adjDone && S.adjDone[it.kode];
+    var b = 'Item ini telah di-SO pada tanggal ' + soTglF(r.tgl) + (r.oleh ? ' oleh ' + String(r.oleh).replace(/\s*\(Akurasi Rak\)\s*$/, '') : '') + ' dengan fisik ' + fmt(r.fisik) + (ad ? ' dan sudah di-adjustment (template diunduh ' + soTglF(ad) + ')' : '') + '.';
+    if (it.sel !== 0) return b + ' Namun pada data terbaru masih terdapat selisih WMS - QAD sebesar ' + (it.sel > 0 ? '+' : '') + fmt(it.sel) + ' (WMS ' + fmt(it.wms) + ' vs QAD ' + fmt(it.qadv) + '). Apakah akan di-SO ulang? ' + (canUnlock() ? 'Jika ya, buka kunci untuk SO ulang.' : 'Jika ya, minta TL atau Admin membuka kunci.');
     return b + ' Pada data terbaru saldo WMS dan QAD sudah sesuai.';
   }
   function soTgl(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '')); return m ? m[3] + '/' + m[2] : ''; }
@@ -92,13 +97,13 @@
   function completeItems() {
     var out = [];
     ui.items.forEach(function (it) {
-      if (!K.lines(S, it, ui.plan).complete) return;
+      if (!inSOG(it) || !K.lines(S, it, ui.plan).complete) return;
       out.push({ group: it.grp, item: it.kode, fisik: K.fisik(S, it) });
     });
     return out;
   }
   function loadSoStat() {
-    var gr = ui.allowed.length ? ui.allowed : K.GROUPS;
+    var gr = sogAllowed(); if (!gr.length) { ui.soStat = {}; return Promise.resolve(true); }
     return gs('soStatusDariRak', [JSON.stringify(gr)]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'gagal');
       ui.soStat = r.data || {}; ui.soErr = ''; return true;
@@ -186,7 +191,7 @@
       '<linearGradient id="rk-g-good" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>' +
       '<linearGradient id="rk-g-warn" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#fb923c"/></linearGradient>' +
       '<linearGradient id="rk-g-bad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fb7185"/><stop offset="1" stop-color="#e879f9"/></linearGradient></defs></svg>' +
-      '<div id="rk-hero"></div><div class="glass" id="rk-up"></div><div class="glass" id="rk-chart"></div><div class="glass" id="rk-rep"></div><div class="glass" id="rk-tbl"></div><div class="glass" id="rk-adj"></div>' +
+      '<div id="rk-hero"></div><div id="rk-prog"></div><div class="glass" id="rk-up"></div><div class="glass" id="rk-chart"></div><div class="glass" id="rk-rep"></div><div class="glass" id="rk-tbl"></div><div class="glass" id="rk-adj"></div>' +
       '<div class="rk-ov" id="rk-ov" onclick="RakUI.close()"></div><div class="rk-dr" id="rk-dr"></div><div class="rk-so" id="rk-so"></div></div>';
   }
 
@@ -261,15 +266,18 @@
   function soChip(it) {
     var r = soRec(it); if (!r) return '';
     var u = ulangOf(it);
-    if (u) return '<div class="cd" style="text-align:right;margin-top:3px;color:#fbbf24;font-weight:700">&#9998; SO ulang berjalan &middot; dibuka ' + esc(soTgl(u.tgl)) + '</div>';
+    if (u) return '<div class="cd" style="text-align:right;margin-top:3px;color:#c4b5fd;font-weight:700">&#9998; SO ulang berjalan &middot; dibuka ' + esc(soTgl(u.tgl)) + '</div>';
+    var ad = S.adjDone && S.adjDone[it.kode];
     var h = '<div class="cd" style="text-align:right;margin-top:3px;color:#34d399;font-weight:700" title="Tercatat di Stock Opname' + (r.oleh ? ' oleh ' + esc(r.oleh) : '') + '">&#128274; Terkunci &middot; Sudah SO ' + esc(soTgl(r.tgl)) + ' &middot; fisik ' + fmt(r.fisik) + '</div>';
-    if (it.sel !== 0) h += '<div class="cd" style="text-align:right;margin-top:3px;color:#fcd34d;white-space:normal;line-height:1.35" title="' + esc(soNote(it)) + '">Sudah di-SO ' + esc(soTgl(r.tgl)) + ', namun data terbaru masih selisih ' + (it.sel > 0 ? '+' : '') + fmt(it.sel) + '</div>';
+    if (it.sel !== 0) h += '<div class="cd" style="text-align:right;margin-top:3px;color:#fcd34d;white-space:normal;line-height:1.35" title="' + esc(soNote(it)) + '">Sudah di-SO ' + esc(soTgl(r.tgl)) + (ad ? ' dan sudah di-adjustment' : '') + ', namun data terbaru masih selisih ' + (it.sel > 0 ? '+' : '') + fmt(it.sel) + '. Apakah akan di-SO ulang?</div>';
+    else if (ad) h += '<div class="cd" style="text-align:right;margin-top:3px;color:#67e8f9">&#10003; Sudah di-adjustment (' + esc(soTgl(ad)) + ') &middot; saldo WMS = QAD</div>';
     return h;
   }
   function soBanner() {
     var g0 = Object.keys(ui.soStat || {}).filter(function (g) { return ui.soStat[g]; });
     var t = g0.map(function (g) { var x = ui.soStat[g]; return '<b>' + esc(g) + '</b> ' + fmt(x.isi) + '/' + fmt(x.total) + ' item (' + esc(soTgl(x.mulai)) + ' - ' + esc(soTgl(x.akhir)) + ')'; }).join(' &middot; ');
     var h = '', nl = ui.items.filter(locked).length, nm = ui.items.filter(function (i) { return locked(i) && i.sel !== 0; }).length, nu = ui.items.filter(function (i) { return !!ulangOf(i); }).length;
+    h += '<div class="rk-leg"><span><i style="background:#34d399"></i>Sudah di-SO &amp; sesuai</span><span><i style="background:#fbbf24"></i>Sudah di-SO, data terbaru selisih</span><span><i style="background:#a78bfa"></i>SO ulang berjalan</span></div>';
     if (t) h += '<div class="sub" style="margin-bottom:6px">Progres Stock Opname periode ini: ' + t + '. Item yang semua raknya sudah diisi aktual otomatis tercatat ke Stock Opname dan <b>terkunci</b> (tidak dapat dipilih / diubah lagi pada periode ini).</div>';
     if (nm) h += '<div class="warnb" style="margin-bottom:8px">' + fmt(nm) + ' dari ' + fmt(nl) + ' item yang sudah di-SO <b>masih menunjukkan selisih WMS - QAD</b> pada data terbaru. Mohon diperiksa apakah adjustment sudah diproses di WMS atau ada transaksi setelah SO. <button class="btn2 sm" style="margin-left:8px" onclick="RakUI.filter(\'soSel\')">Tampilkan item</button></div>';
     if (nu) h += '<div class="infob" style="margin-bottom:8px">&#9998; ' + fmt(nu) + ' item sedang <b>SO ulang</b> (kunci dibuka PIC). Hasilnya dicatat di Akurasi WMS dan tidak mengubah Dashboard Stock Opname.</div>';
@@ -282,15 +290,15 @@
   function shiftMonth(m, n) { var p = m.split('-'), d = new Date(+p[0], +p[1] - 1 + n, 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
   function monthLabel(m) { var p = String(m).split('-'); return (BLN[+p[1] - 1] || m) + ' ' + p[0]; }
   function loadRep() {
-    if (!ui.allowed.length) return Promise.resolve();
+    if (!sogAllowed().length) return Promise.resolve();
     ui.repM = ui.repM || curMonth(); ui.repLoading = true; renderRep();
-    return gs('soUlangStat', [JSON.stringify({ month: ui.repM, groups: ui.allowed })]).then(function (r) {
+    return gs('soUlangStat', [JSON.stringify({ month: ui.repM, groups: sogAllowed() })]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'gagal'); ui.rep = r; ui.repErr = '';
     }).catch(function (e) { ui.repErr = String((e && e.message) || e || ''); }).then(function () { ui.repLoading = false; renderRep(); });
   }
   function renderRep() {
     var el = $('rk-rep'); if (!el) return;
-    if (!ui.allowed.length) { el.innerHTML = ''; return; }
+    if (!sogAllowed().length) { el.innerHTML = ''; return; }
     var m = ui.repM || curMonth(), r = ui.rep && ui.rep.month === m ? ui.rep : null;
     var h = '<div class="gh"><h3>Frekuensi SO per Item <em>berapa kali item yang sama di-SO dalam sebulan</em></h3><div class="rk-tools">' +
       '<button class="btn2 sm" onclick="RakUI.repMonth(-1)" aria-label="Bulan sebelumnya">&lsaquo;</button><b style="min-width:120px;text-align:center;font-family:Outfit">' + esc(monthLabel(m)) + '</b>' +
@@ -326,7 +334,7 @@
       '<div class="gb">' + soBanner() + '<div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Group</th><th class="l">Nama Rak</th><th>Jml Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
       (a.length ? a.slice(0, lim).map(function (i) {
         var c = soCount(i), pc = c.t ? c.n / c.t * 100 : 0;
-        return '<tr class="it' + (locked(i) ? ' lk' : '') + '" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td class="l" title="' + esc(i.racks.map(function (r) { return r.rak; }).join(', ')) + '"><div class="cd" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)">' + (i.racks.length ? esc(i.racks.slice(0, 2).map(function (r) { return r.rak; }).join(', ')) + (i.racks.length > 2 ? ' +' + (i.racks.length - 2) : '') : '-') + '</div></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
+        return '<tr class="it' + (locked(i) ? ' lk' + (i.sel !== 0 ? ' lksel' : '') : '') + (ulangOf(i) ? ' ul' : '') + '" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td class="l" title="' + esc(i.racks.map(function (r) { return r.rak; }).join(', ')) + '"><div class="cd" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)">' + (i.racks.length ? esc(i.racks.slice(0, 2).map(function (r) { return r.rak; }).join(', ')) + (i.racks.length > 2 ? ' +' + (i.racks.length - 2) : '') : '-') + '</div></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
           '<td><span class="chip2 ' + (i.sel === 0 ? 'ok' : 'bd') + '">' + (i.sel === 0 ? 'SESUAI' : 'SELISIH') + '</span></td>' +
           '<td style="min-width:120px"><div class="prg"><i style="width:' + pc + '%"></i></div><div class="cd" style="text-align:right;margin-top:3px">' + c.n + '/' + c.t + ' rak</div>' + soChip(i) + '</td></tr>';
       }).join('') : '<tr><td colspan="10" class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS di atas.') + '</td></tr>') +
@@ -343,9 +351,9 @@
       '<div style="margin-top:8px"><button class="btn2 dng sm" data-k="' + k + '" onclick="RakUI.cancelUlang(this.dataset.k)">Batalkan SO ulang</button></div></div>';
     if (!ro) return '';
     var h = '<div class="' + (it.sel !== 0 ? 'warnb' : 'infob') + '">&#128274; <b>Item terkunci.</b> ' + esc(soNote(it));
-    if (it.sel !== 0) {
+    if (it.sel !== 0 && canUnlock()) {
       var n = carryN(it);
-      h += n > 0 ? '<div class="sub" style="margin-top:8px">Buka kunci SO ulang belum dapat dilakukan: selesaikan dulu SO sisa periode sebelumnya (<b>' + fmt(n) + ' item</b> belum di-SO) di Form Stock Opname.</div>'
+      h += n > 0 ? '<div class="sub" style="margin-top:8px">Buka kunci SO ulang belum dapat dilakukan: selesaikan dulu SO sisa periode sebelumnya (<b>' + fmt(n) + ' item</b> belum di-SO).</div>'
         : '<div style="margin-top:8px"><button class="btn2 pri sm" data-k="' + k + '" onclick="RakUI.unlock(this.dataset.k)">&#128275; Buka kunci untuk SO ulang</button></div>';
     }
     return h + '</div>';
@@ -406,11 +414,13 @@
   }
   function sig1(p) { return p.step1.map(function (r) { return r.rak + '|' + r.kode + '|' + r.qty; }).join(';'); }
   function adjOff() { return S.adjOff = S.adjOff || {}; }
-  function adjPlan() { var off = adjOff(); return K.plan(S, ui.items.filter(function (i) { return !off[i.kode]; })); }
+  function adjDoneOf(kode) { return (S.adjDone && S.adjDone[kode]) || ''; }
+  // item yang templatenya sudah diunduh (sudah di-adjustment) tidak masuk daftar adjustment lagi -> dicatat di Riwayat Adjustment
+  function adjPlan() { var off = adjOff(); return K.plan(S, ui.items.filter(function (i) { return !off[i.kode] && !adjDoneOf(i.kode); })); }
   // item yang punya baris adjustment (dihitung dari seluruh input) -> daftar pilihan
   function adjCands() {
     var m = {}, p = ui.plan;
-    function get(kode) { var it = itemOf(kode); if (!it) return null; return m[kode] || (m[kode] = { it: it, n2: 0, n1: 0, net: 0, auto: false }); }
+    function get(kode) { var it = itemOf(kode); if (!it || adjDoneOf(kode)) return null; return m[kode] || (m[kode] = { it: it, n2: 0, n1: 0, net: 0, auto: false }); }
     p.step2.forEach(function (r) { var o = get(r.kode); if (!o) return; o.n2++; o.net += r.qty; if (r.auto) o.auto = true; });
     p.step1.forEach(function (r) { var o = get(r.by); if (o) o.n1++; });
     return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return a.it.nama.localeCompare(b.it.nama, 'id', { numeric: true }); });
@@ -429,13 +439,25 @@
           '<span class="cd">' + fmt(o.n2) + ' baris</span>' + sgn(o.net) + '</span></label>';
       }).join('') : '<div class="empty">Tidak ada item yang cocok.</div>') + '</div></div>';
   }
+  function adjHist() {
+    var h = (S.adjHist || []).slice(0, 40), nd = Object.keys(S.adjDone || {}).length;
+    var head = '<div class="rk-hist"><div class="ah-h"><b>Riwayat Adjustment</b><div class="sub">Item yang sudah di-save dan di-adjustment tidak ditampilkan lagi di daftar di atas. Jika data baru di-upload, hanya riwayatnya yang tampil di sini.</div></div>';
+    if (!h.length) return head + '<div class="infob">Belum ada riwayat adjustment. Setelah Template Adjustment diunduh, item terkait dipindahkan ke sini.</div></div>';
+    return head + '<div class="rk-tw"><table><thead><tr><th>Tanggal</th><th class="l">Item</th><th>Tahap</th><th class="l">Rak yang di-adjust</th><th>Total</th></tr></thead><tbody>' + h.map(function (e) {
+      var net = e.rows.reduce(function (a, r) { return a + r.q; }, 0);
+      return '<tr><td class="mono">' + esc(soTglF(e.t)) + '</td><td class="l"><div class="nm" title="' + esc(e.n) + '">' + esc(short(e.n)) + '</div><div class="cd">' + esc(e.k) + (e.u ? ' &middot; ' + esc(e.u) : '') + '</div></td><td><span class="chip2 ' + (e.h === 1 ? 'wr' : 'ok') + '">' + (e.h === 1 ? 'TAHAP 1 &middot; KOSONGKAN' : 'TAHAP 2 &middot; ADJUSTMENT') + '</span></td>' +
+        '<td class="l"><div class="ah-r">' + e.rows.slice(0, 6).map(function (r) { return '<span><b style="font-family:var(--mono)">' + esc(r.r) + '</b> ' + sgn(r.q) + (r.a ? ' <i class="chip2 wr" style="padding:0 5px">TRANSIT</i>' : '') + '</span>'; }).join('') + (e.rows.length > 6 ? '<span class="cd">+' + (e.rows.length - 6) + ' lagi</span>' : '') + '</div></td><td>' + sgn(net) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' + ((S.adjHist || []).length > 40 ? '<div class="sub">Menampilkan 40 riwayat terbaru dari ' + fmt(S.adjHist.length) + '.</div>' : '') + '</div>';
+  }
   function renderAdj() {
     var cand = adjCands(), p = ui.planAdj = adjPlan(), c = S.cfg, has1 = p.step1.length > 0, ok1 = !has1 || (S.step1 && S.step1 === sig1(p)), has2 = p.step2.length > 0;
     var none = cand.length > 0 && !cand.some(function (o) { return !adjOff()[o.it.kode]; });
+    var ndone = ui.items.filter(function (i) { return adjDoneOf(i.kode); }).length;
     var fa = document.activeElement && document.activeElement.id === 'rk-adjq';
     $('rk-adj').innerHTML = '<div class="gh"><h3>Template Adjustment WMS <em>otomatis dari input aktual</em></h3></div><div class="gb" style="display:flex;flex-direction:column;gap:14px">' +
       '<div class="rk-cfg"><label>Tanggal<input type="date" value="' + esc(c.tgl) + '" onchange="RakUI.cfg(\'tgl\',this.value)"></label><label>Site<input type="number" value="' + esc(c.site) + '" style="width:90px" onchange="RakUI.cfg(\'site\',this.value)"></label>' +
       '<label>Keterangan<input type="text" value="' + esc(c.ket) + '" style="width:240px" onchange="RakUI.cfg(\'ket\',this.value)"></label><label>Kode Kategori<input type="number" value="' + esc(c.kat) + '" style="width:90px" onchange="RakUI.cfg(\'kat\',this.value)"></label><label>Location<input type="text" value="' + K.LOC + '" disabled style="width:100px;opacity:.6"></label></div>' +
+      (ndone ? '<div class="infob">&#10003; ' + fmt(ndone) + ' item sudah di-adjustment dan tidak ditampilkan lagi di daftar. Lihat <b>Riwayat Adjustment</b> di bawah.</div>' : '') +
       adjPick(cand) +
       (p.dup.length ? '<div class="warnb">Rak manual yang sama dipakai oleh lebih dari satu item: <b>' + p.dup.map(function (d) { return esc(d.rak); }).join(', ') + '</b>. Pastikan hanya satu item per rak.</div>' : '') +
       '<div class="rk-steps">' +
@@ -446,7 +468,8 @@
       '<div class="rk-step s2 ' + (ok1 ? '' : 'lock') + '"><div class="no">2</div><h4>Adjustment rak (aktual vs saldo WMS)</h4>' + (has2 ?
         '<ul><li>' + fmt(p.step2.length) + ' baris: ' + fmt(p.step2.filter(function (r) { return r.qty < 0; }).length) + ' pengurangan (-), ' + fmt(p.step2.filter(function (r) { return r.qty > 0; }).length) + ' penambahan.</li><li>Pengurangan ditempatkan di urutan awal.</li></ul>' + miniT(p.step2) +
         '<button class="btn2 pri" ' + (ok1 ? '' : 'disabled') + ' onclick="RakUI.dl(2)">&#11015; Unduh Template Adjustment</button>' + (ok1 ? '' : '<div class="sub">Terbuka setelah Tahap 1 dikonfirmasi.</div>')
-        : '<div class="infob">' + (none ? 'Belum ada item yang dipilih. Centang item pada daftar di atas, atau klik Pilih semua.' : 'Belum ada selisih. Input aktual rak pada tabel di atas; baris adjustment dibuat otomatis.') + '</div>') + '</div></div></div>';
+        : '<div class="infob">' + (none ? 'Belum ada item yang dipilih. Centang item pada daftar di atas, atau klik Pilih semua.' : (ndone ? 'Tidak ada item yang perlu di-adjust. Item yang sudah di-adjustment ada di Riwayat Adjustment.' : 'Belum ada selisih. Input aktual rak pada tabel di atas; baris adjustment dibuat otomatis.')) + '</div>') + '</div></div>' +
+      adjHist() + '</div>';
     if (fa) { var q = $('rk-adjq'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
   }
 
@@ -526,10 +549,10 @@
      di Template Tahap 1 -- logikanya di RakWmsCore.plan(). */
   var so = { q: '', lim: 30, sel: false, n: 10 };
   function picks() { return S.soPick = S.soPick || {}; }
-  function soItems() { var pk = picks(); return ui.items.filter(function (i) { return pk[i.kode] && !locked(i); }); }
+  function soItems() { var pk = picks(); return ui.items.filter(function (i) { return inSOG(i) && pk[i.kode] && !locked(i); }); }
   function soCand() {
     var q = so.q.toUpperCase(), pk = picks();
-    return ui.items.filter(function (i) { return !pk[i.kode] && !locked(i) && (!so.sel || i.sel !== 0) && (!q || (i.nama + ' ' + i.kode).toUpperCase().indexOf(q) >= 0); });
+    return ui.items.filter(function (i) { return inSOG(i) && !pk[i.kode] && !locked(i) && (!so.sel || i.sel !== 0) && (!q || (i.nama + ' ' + i.kode).toUpperCase().indexOf(q) >= 0); });
   }
   function soLine(it, l, i) {
     var hl = l.manual ? holders(it.kode, l.rak) : [], id = esc(it.kode);
@@ -580,6 +603,7 @@
       '<span class="cd">atau</span><input type="number" min="1" id="so-n" value="' + so.n + '" style="width:70px" onchange="RakUI.soSetN(this.value)"><button class="btn2 sm" onclick="RakUI.soTopN()">Pilih ' + so.n + ' selisih terbesar</button>' +
       (a.length ? '<button class="btn2 dng sm" onclick="RakUI.soClear()">Kosongkan pilihan</button>' : '') + '</div>' +
       (a.length ? '<div class="so-chips"><span class="cd">Dipilih:</span>' + a.map(function (i) { return '<span class="so-chip" title="' + esc(i.nama) + '">' + esc(short(i.nama)) + '<button data-k="' + esc(i.kode) + '" onclick="RakUI.soPick(this.dataset.k,false)" aria-label="Hapus">&#10005;</button></span>'; }).join('') + '</div>' : '') +
+      (ui.items.some(function (i) { return !inSOG(i); }) ? '<div class="sub" style="margin-top:6px">Form SO di Akurasi WMS saat ini hanya untuk group <b>I053</b> (Pipa PPR). Pengisian SO group Fitting (Q055) masih di menu Stock Opname.</div>' : '') +
       (ui.items.filter(locked).length ? '<div class="sub" style="margin-top:6px">&#128274; ' + fmt(ui.items.filter(locked).length) + ' item sudah di-SO pada periode ini dan terkunci - tidak tampil di daftar pilihan.</div>' : '') +
       '<div class="rk-tw so-pick" style="margin-top:8px;max-height:300px;overflow:auto"><table><thead><tr><th class="l">Item</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th></th></tr></thead><tbody>' +
       (shown.map(function (i) { return '<tr><td class="l"><div class="nm">' + esc(i.nama) + (ulangOf(i) ? ' <span class="chip2 wr">SO ULANG</span>' : '') + '</div><div class="cd">' + esc(i.kode) + '</div></td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td><td><button class="btn2 pri sm" data-k="' + esc(i.kode) + '" onclick="RakUI.soPick(this.dataset.k,true)">+ Pilih</button></td></tr>'; }).join('') || '<tr><td colspan="5" class="empty">' + (ui.items.length ? 'Tidak ada item lain yang cocok.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS dulu.') + '</td></tr>') +
@@ -669,7 +693,7 @@
     soSetN: function (v) { so.n = Math.max(1, Math.min(500, Math.floor(Number(v)) || 10)); renderSO(); },
     soPick: function (k, on) { if (on) picks()[k] = 1; else delete picks()[k]; save(); renderSO(); },
     soTopN: function () {
-      var pk = picks(), c = ui.items.filter(function (i) { return !pk[i.kode] && !locked(i) && i.sel !== 0; }).sort(function (x, y) { return Math.abs(y.sel) - Math.abs(x.sel); }).slice(0, so.n);
+      var pk = picks(), c = ui.items.filter(function (i) { return inSOG(i) && !pk[i.kode] && !locked(i) && i.sel !== 0; }).sort(function (x, y) { return Math.abs(y.sel) - Math.abs(x.sel); }).slice(0, so.n);
       if (!c.length) return toast('Tidak ada item selisih yang tersisa.', true);
       c.forEach(function (i) { pk[i.kode] = 1; }); save(); renderSO();
     },
@@ -703,6 +727,7 @@
     // buka kunci -> SO ulang (PIC group / TL). Syarat dicek juga di server: ada selisih & SO sisa periode lalu (CARRY) sudah selesai
     unlock: function (kode) {
       var it = itemOf(kode); if (!it || !locked(it)) return;
+      if (!canUnlock()) return toast('Buka kunci SO ulang hanya dapat dilakukan oleh TL atau Admin.', true);
       if (it.sel === 0) return toast('Tidak ada selisih WMS - QAD, SO ulang tidak diperlukan.', true);
       var n = carryN(it); if (n > 0) return toast('Selesaikan dulu SO sisa periode sebelumnya (' + n + ' item belum di-SO).', true);
       var al = prompt('Buka kunci untuk SO ulang:\n' + it.nama + '\n\nSelisih WMS - QAD pada data terbaru: ' + (it.sel > 0 ? '+' : '') + it.sel + '\n\nTulis alasan SO ulang (minimal 5 karakter):', '');
@@ -735,9 +760,17 @@
     dl: function (n) {
       var pl = adjPlan(), rows = n === 1 ? pl.step1 : pl.step2; if (!rows.length) return;
       var d = S.cfg.tgl.replace(/-/g, ''), name = (n === 1 ? 'ADJUST_RAK_TAHAP1_KOSONGKAN_' : 'ADJUST_RAK_TAHAP2_') + d + '.xlsx';
+      // riwayat adjustment per item (Tahap 1 dicatat untuk item pemicunya); Tahap 2 -> item ditandai sudah di-adjustment & hilang dari daftar
+      var byItem = {}, hist = S.adjHist = S.adjHist || [];
+      rows.forEach(function (r) { var k = n === 1 ? r.by : r.kode; (byItem[k] = byItem[k] || []).push({ r: r.rak, q: r.qty, a: r.auto ? 1 : 0 }); });
+      Object.keys(byItem).forEach(function (k) { var it0 = itemOf(k); hist.unshift({ t: S.cfg.tgl, k: k, n: it0 ? it0.nama : k, h: n, rows: byItem[k], u: NAMA, w: new Date().toISOString().slice(0, 16) }); });
+      S.adjHist = hist.slice(0, 200);
+      if (n === 2) { S.adjDone = S.adjDone || {}; pl.step2.forEach(function (r) { S.adjDone[r.kode] = S.cfg.tgl; }); }
+      save();
       loadStyled().then(function (X) {   // X = SheetJS dengan dukungan format sel (rata kiri), sama untuk Tahap 1 & 2
         var lib = X || XLSX; lib.writeFile(K.buildWorkbook(lib, rows, S.cfg), name);
-        toast(X ? 'Template ' + name + ' diunduh (' + fmt(rows.length) + ' baris).' : 'Template ' + name + ' diunduh, tetapi format rata kiri tidak dapat diterapkan (library gagal dimuat).', !X);
+        renderAdj(); renderTbl();
+        toast(X ? 'Template ' + name + ' diunduh (' + fmt(rows.length) + ' baris). Item yang sudah di-adjustment dipindahkan ke Riwayat Adjustment.' : 'Template ' + name + ' diunduh, tetapi format rata kiri tidak dapat diterapkan (library gagal dimuat).', !X);
       });
     }
   };
@@ -746,10 +779,10 @@
   function render() {
     if (!ui.allowed.length) {
       $('rk-hero').innerHTML = '<div class="glass"><div class="gb empty">Akurasi Rak WMS saat ini hanya untuk PIC / TL group <b>I053</b> (Pipa PPR) dan <b>Q055</b> (Fitting).<br><span class="sub">Jika Anda PIC salah satu group tersebut, tunggu data group selesai dimuat lalu buka ulang tab ini.</span></div></div>';
-      ['rk-up', 'rk-chart', 'rk-rep', 'rk-tbl', 'rk-adj'].forEach(function (id) { $(id).innerHTML = ''; });
+      ['rk-prog', 'rk-up', 'rk-chart', 'rk-rep', 'rk-tbl', 'rk-adj'].forEach(function (id) { if ($(id)) $(id).innerHTML = ''; });
       return;
     }
-    recalc(); renderHero(); renderUp(); renderChart(); renderRep(); renderTbl(); renderAdj(); animate(); }
+    recalc(); renderHero(); try { if (typeof window.soRenderRakProgress === 'function') window.soRenderRakProgress(); } catch (e) {} renderUp(); renderChart(); renderRep(); renderTbl(); renderAdj(); animate(); }
   /* ---------- akses: SEMENTARA hanya group I053 & Q055 ---------- */
   function applyAccess() {
     var P = window.S || {}, m = P.master || [];

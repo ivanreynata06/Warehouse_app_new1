@@ -10303,8 +10303,13 @@ function _rakSanitize(o) {
   function t(v, n) { return String(v == null ? '' : v).slice(0, n || 200); }
   o = o || {};
   var out = { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: {}, cfg: {}, soPick: {}, step1: t(o.step1, 20000) };
-  out.koreksi = {}; out.adjOff = {};   // rak koreksi per item {q, ket} & item yang tidak ikut template adjustment
+  out.koreksi = {}; out.adjOff = {}; out.adjDone = {};   // rak koreksi per item {q, ket} & item yang tidak ikut template adjustment
   var nk = 0; Object.keys(o.koreksi || {}).forEach(function (k) { var v = o.koreksi[k] || {}; if (nk++ < 3000) out.koreksi[t(k, 40)] = { q: t(v.q, 20), ket: t(v.ket, 120) }; });
+  var nd = 0; Object.keys(o.adjDone || {}).forEach(function (k) { var v = String(o.adjDone[k] || ''); if (/^\d{4}-\d{2}-\d{2}$/.test(v) && nd++ < 5000) out.adjDone[t(k, 40)] = v; });   // tanggal template adjustment diunduh
+  out.adjHist = (o.adjHist || []).slice(0, 200).map(function (e) {   // riwayat adjustment (template diunduh)
+    return { t: t(e.t, 10), k: t(e.k, 40), n: t(e.n, 120), h: Number(e.h) === 1 ? 1 : 2, u: t(e.u, 60), w: t(e.w, 16),
+      rows: (e.rows || []).slice(0, 60).map(function (r) { return { r: t(r.r, 30), q: Number(r.q) || 0, a: r.a ? 1 : 0 }; }) };
+  }).filter(function (e) { return e.k && e.rows.length; });
   var na = 0; Object.keys(o.adjOff || {}).forEach(function (k) { if (o.adjOff[k] && na++ < 5000) out.adjOff[t(k, 40)] = 1; });
   var np = 0; Object.keys(o.soPick || {}).forEach(function (k) { if (o.soPick[k] && np++ < 3000) out.soPick[t(k, 40)] = 1; });   // item yang dipilih untuk lembar SO
   (o.wms || []).slice(0, 40000).forEach(function (r) { out.wms.push({ lok: t(r.lok, 20), area: t(r.area, 60), rak: t(r.rak, 60), kode: t(r.kode, 40), nama: t(r.nama, 200), onhand: Number(r.onhand) || 0 }); });
@@ -10389,6 +10394,8 @@ function hapusRakWmsData(key) {
 //  - soStatusDariRak: status SO per item (lembar aktif) untuk ditandai "SUDAH SO" di Akurasi Rak WMS & saat cetak.
 //  payload: {user, items:[{group, item, fisik}]}
 // ================================================================
+var SO_RAK_GROUPS = ['I053'];   // group yang pengisian SO-nya dipindah ke Akurasi Rak WMS (Fitting/Q055 menyusul)
+function _soRakGroup(g) { return SO_RAK_GROUPS.indexOf(String(g || '').trim().toUpperCase()) >= 0; }
 function soSyncDariRak(payload) {
   try {
     payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
@@ -10398,6 +10405,7 @@ function soSyncDariRak(payload) {
       (by[g] = by[g] || []).push({ item: _soNorm(x.item), fisik: Number(x.fisik) });
     });
     Object.keys(by).forEach(function (g) {
+      if (!_soRakGroup(g)) { out.tidakAda += by[g].length; return; }   // belum diaktifkan untuk group ini
       var l = _soLembarAktif(g);
       if (!l) { out.tanpaLembar.push(g); return; }
       var map = {}; _soDetailRows().forEach(function (d) { if (d.lembar === l.id) map[_soNorm(d.item)] = d; });
@@ -10423,6 +10431,7 @@ function soStatusDariRak(groups) {
     groups = typeof groups === 'string' ? JSON.parse(groups) : groups; if (!groups || !groups.length) groups = ['I053', 'Q055'];
     var res = {}, det = _soDetailRows();
     groups.slice(0, 10).forEach(function (g) {
+      if (!_soRakGroup(g)) { res[g] = null; return; }
       var l = _soLembarAktif(g);
       if (!l) { res[g] = null; return; }
       var items = {}, total = 0, isi = 0, carryBelum = 0, ulang = {};
@@ -10442,7 +10451,7 @@ function soStatusDariRak(groups) {
 // ================================================================
 //  SO ULANG / PERBAIKAN (hanya di Akurasi Rak WMS)
 //  Item yang sudah di-SO periode ini terkunci. Bila data terbaru (upload QAD / Informasi Rak) ternyata masih selisih,
-//  PIC group itu (atau TL/Admin) boleh membuka kunci untuk SO ulang -- dengan syarat SO sisa periode sebelumnya
+//  TL atau Admin boleh membuka kunci untuk SO ulang (PIC yang menghitung ulang) -- dengan syarat SO sisa periode sebelumnya
 //  (mode CARRY) sudah selesai. Dashboard Stock Opname TIDAK berubah: aturan 2 minggu sekali tetap, nilai SO pertama
 //  di SO_DETAIL tetap terkunci. SO ulang hanya dicatat di sheet RAKWMS_SO_ULANG (dasar grafik frekuensi SO per bulan).
 // ================================================================
@@ -10468,11 +10477,12 @@ function soUlangBuka(payload) {
     payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
     var nik = _soActorNik(payload), group = String(payload.group || '').trim(), item = String(payload.item || '').trim(), alasan = String(payload.alasan || '').trim();
     if (!group || !item) return { success: false, error: 'Group dan item wajib diisi.' };
+    if (!_soRakGroup(group)) return { success: false, error: 'SO ulang di Akurasi WMS belum diaktifkan untuk group ' + group + '.' };
     if (alasan.length < 5) return { success: false, error: 'Alasan SO ulang wajib diisi (minimal 5 karakter).' };
     lock.waitLock(25000); _SO_MEM.ulang = null; _SO_MEM.det = null;
     var lm = _soLembarAktif(group);
     if (!lm) return { success: false, error: 'Lembar SO periode ini untuk group ' + group + ' belum dibuat.' };
-    if (!_soBolehUlang(nik, lm)) return { success: false, error: 'Akses ditolak. Hanya PIC group ini, TL, atau Admin yang dapat membuka kunci SO ulang.' };
+    if (!_soBolehBuka(nik)) return { success: false, error: 'Akses ditolak. Buka kunci SO ulang hanya dapat dilakukan oleh TL atau Admin.' };
     var rows = _soDetailRows().filter(function (d) { return d.lembar === lm.id; }), d = null, carry = 0;
     rows.forEach(function (x) { if (_soNorm(x.item) === _soNorm(item)) d = x; if (x.mode === 'CARRY' && x.fisik === null) carry++; });
     if (!d) return { success: false, error: 'Item tidak ada di lembar SO periode ini.' };
@@ -10664,35 +10674,37 @@ function _getOrCreatePicWmsSheet() {
   var sh = ss.getSheetByName(SH_PICWMS);
   if (!sh) {
     sh = ss.insertSheet(SH_PICWMS);
-    sh.getRange('A1:G1').setValues([['sumber', 'tanggal', 'spm', 'ship_to', 'pic_muat', 'item', 'qty_muat']]);
+    sh.getRange('A1:H1').setValues([['sumber', 'tanggal', 'spm', 'ship_to', 'pic_muat', 'item', 'qty_muat', 'jam_siap']]);
     sh.setFrozenRows(1);
   } else if (String(sh.getRange('F1').getValue()) === '') {
     sh.getRange('F1:G1').setValues([['item', 'qty_muat']]);          // sheet lama (5 kolom) -> tambah item & qty
   }
+  if (String(sh.getRange('H1').getValue()) === '') sh.getRange('H1').setValue('jam_siap');   // waktu selesai persiapan dari Laporan Persiapan Muat WMS (yyyy-mm-dd HH:mm)
   return sh;
 }
 function _pwBaca(sh) {
   var last = sh.getLastRow();
   if (last < 2) return [];
-  return sh.getRange(2, 1, last - 1, 7).getValues().map(function (r) {
-    return [String(r[0]).trim(), _wqTgl(r[1]), String(r[2]).trim(), String(r[3]).trim(), String(r[4]).trim(), String(r[5] == null ? '' : r[5]).trim(), Number(r[6]) || 0];
+  return sh.getRange(2, 1, last - 1, 8).getValues().map(function (r) {
+    var jam = r[7] instanceof Date ? Utilities.formatDate(r[7], 'Asia/Jakarta', 'yyyy-MM-dd HH:mm') : String(r[7] == null ? '' : r[7]).trim();
+    return [String(r[0]).trim(), _wqTgl(r[1]), String(r[2]).trim(), String(r[3]).trim(), String(r[4]).trim(), String(r[5] == null ? '' : r[5]).trim(), Number(r[6]) || 0, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(jam) ? jam : ''];
   });
 }
 function _pwTulis(sh, rows) {
   var last = sh.getLastRow();
-  if (last > 1) sh.getRange(2, 1, last - 1, 7).clearContent();
+  if (last > 1) sh.getRange(2, 1, last - 1, 8).clearContent();
   if (!rows.length) return;
   rows.sort(function (a, b) { return (a[0] + a[1] + a[2]).localeCompare(b[0] + b[1] + b[2]); });
   if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
-  sh.getRange(2, 1, rows.length, 6).setNumberFormat('@');
-  sh.getRange(2, 1, rows.length, 7).setValues(rows);
+  sh.getRange(2, 1, rows.length, 6).setNumberFormat('@'); sh.getRange(2, 1, rows.length, 1).offset(0, 7).setNumberFormat('@');
+  sh.getRange(2, 1, rows.length, 8).setValues(rows.map(function (r) { var x = r.slice(0, 8); while (x.length < 8) x.push(''); return x; }));
 }
 
 function getPicWmsData() {
   try {
     var master = [], jadwal = [];
     _pwBaca(_getOrCreatePicWmsSheet()).forEach(function (r) {
-      if (r[0] === 'master') master.push({ t: r[1], s: r[2], c: r[3], p: r[4], i: r[5], q: r[6] });
+      if (r[0] === 'master') master.push({ t: r[1], s: r[2], c: r[3], p: r[4], i: r[5], q: r[6], j: r[7] });
       else if (r[0] === 'jadwal') jadwal.push({ t: r[1], s: r[2] });
     });
     return { success: true, master: master, jadwal: jadwal };
@@ -10716,7 +10728,8 @@ function savePicWmsData(kind, jsonStr) {
       tgls[t] = 1;
       var nm = kind === 'master' ? String(r.i || '').replace(/\s+/g, ' ').trim() : '';
       if (kind === 'master' && nm && !_wqLolos(nm)) return;                 // item bukan PIPE PPR Kelen -> tolak
-      baru.push([kind, t, s, kind === 'master' ? String(r.c || '').replace(/\s+/g, ' ').trim() : '', kind === 'master' ? String(r.p || '').replace(/\s+/g, ' ').trim() : '', nm, kind === 'master' ? (Number(r.q) || 0) : 0]);
+      var jam = kind === 'master' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(String(r.j || '').trim()) ? String(r.j).trim() : '';   // waktu selesai persiapan (WMS)
+      baru.push([kind, t, s, kind === 'master' ? String(r.c || '').replace(/\s+/g, ' ').trim() : '', kind === 'master' ? String(r.p || '').replace(/\s+/g, ' ').trim() : '', nm, kind === 'master' ? (Number(r.q) || 0) : 0, jam]);
     });
     if (!baru.length) return { success: false, error: 'Semua baris ditolak server (tanggal / nomor SPM tidak valid).' };
     lock.waitLock(25000);
@@ -10777,21 +10790,23 @@ function _pmProses() {
     // acuan 1: jadwal pengiriman; acuan 2: data pengiriman spreadsheet
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID), ok = {}, lt = {};
     var dataPw = _pwBaca(_getOrCreatePicWmsSheet());
-    dataPw.forEach(function (r) { if (r[0] === 'jadwal') ok[r[2]] = 1; });
+    var jd = {};   // tanggal kirim menurut jadwal pengiriman
+    dataPw.forEach(function (r) { if (r[0] === 'jadwal') { ok[r[2]] = 1; jd[r[2]] = r[1]; } });
     var shP = ss.getSheetByName(SH_PENGIRIMAN);
     if (shP) {
       var dP = shP.getDataRange().getValues();
       for (var i = 1; i < dP.length; i++) {
         var sp = String(dP[i][4] || '').replace(/\s+/g, '').toUpperCase();
-        if (sp) { ok[sp] = 1; if (!lt[sp]) lt[sp] = { agen: String(dP[i][1] || '').trim(), nopol: String(dP[i][5] || '').trim() }; }
+        if (sp) { ok[sp] = 1; if (!lt[sp]) { var dKirim = toDate(dP[i][0]); lt[sp] = { agen: String(dP[i][1] || '').trim(), nopol: String(dP[i][5] || '').trim(), tgl: dKirim ? _fmtYMD(dKirim) : '' }; } }
       }
     }
     // qty & PIC dibaca dari master tersimpan (akurat walau upload terpecah)
     var per = {};
     dataPw.forEach(function (r) {
       if (r[0] !== 'master' || !pend[r[2]] || !ok[r[2]]) return;
-      var x = per[r[2]] = per[r[2]] || { t: r[1], ship: r[3], qty: 0 };
+      var x = per[r[2]] = per[r[2]] || { t: r[1], ship: r[3], qty: 0, jam: '' };
       x.qty += Number(r[6]) || 0;
+      if (r[7] && r[7] > x.jam) x.jam = r[7];   // waktu selesai persiapan SPM = baris terakhir yang disiapkan (data WMS)
     });
     var daftar = antre.filter(function (sp) { return per[sp]; }).sort();
     hasil.cocok = daftar.length;
@@ -10805,16 +10820,7 @@ function _pmProses() {
       var dM = shM.getDataRange().getValues();
       for (var j = 1; j < dM.length; j++) { var d = toDate(dM[j][1]); if (d && tglSet[_fmtYMD(d)]) ton += parseFloat(dM[j][3]) || 0; }
     }
-    var jam = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'HH:mm');
-    var baris = daftar.map(function (sp, n) {
-      var l = lt[sp] || {}, x = per[sp], tujuan = l.agen || x.ship;
-      return (n + 1) + '. SPM ' + sp + (tujuan ? ' - ' + tujuan : '') + (l.nopol ? ' (' + l.nopol + ')' : '') + ' : ' + Math.round(x.qty).toLocaleString('id-ID') + ' btg';
-    });
-    var pesan = '📦 *Persiapan Muat Selesai*\n\n' +
-      'Team persiapan telah menyiapkan barang untuk *' + daftar.length + ' SPM*:\n' + baris.join('\n') + '\n\n' +
-      'Total qty muat: ' + Math.round(totQty).toLocaleString('id-ID') + ' btg\n' +
-      (ton > 0 ? 'Perkiraan tonase: ' + (Math.round(ton / 10) / 100).toString().replace('.', ',') + ' ton (tonase persiapan tercatat tgl ' + tglKey.map(_waTgl).join(', ') + ')\n' : '') +
-      'Selesai sampai jam ' + jam + ' WIB';
+    var pesan = _pmSusunPesan(daftar, per, lt, jd, totQty, ton, tglKey, Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm'));
     var r = _fonnteKirim('', pesan, _fonnteTl());
     hasil.terkirim = !!r.ok; hasil.info = r.pesan || '';
     if (r.ok) { daftar.forEach(function (sp) { sent[sp] = now; delete pend[sp]; }); _pmTulis('WA_SPM_SIAP_', sent); }
@@ -10822,6 +10828,29 @@ function _pmProses() {
   } catch (err) { hasil.error = String(err && err.message || err); Logger.log('Proses notif persiapan muat gagal: ' + hasil.error); }
   finally { try { lock.releaseLock(); } catch (e) {} }
   return hasil;
+}
+
+// Susun pesan WA "Persiapan Muat Selesai" (fungsi murni).
+//  - "Selesai ... sampai jam" = waktu selesai persiapan TERAKHIR dari data WMS (bukan jam pesan dikirim)
+//  - tiap SPM: tanggal dikirim + kapan sudah disiapkan (tanggal & jam selesai persiapan dari data WMS)
+//  daftar:[spm]  per:{spm:{t,ship,qty,jam}}  lt:{spm:{agen,nopol,tgl}}  jd:{spm:tglJadwal}  sekarang:'yyyy-mm-dd HH:mm' (WIB)
+function _pmSusunPesan(daftar, per, lt, jd, totQty, ton, tglKey, sekarang) {
+  var maxJam = '';
+  daftar.forEach(function (sp) { if (per[sp].jam && per[sp].jam > maxJam) maxJam = per[sp].jam; });
+  var baris = daftar.map(function (sp, n) {
+    var l = lt[sp] || {}, x = per[sp], tujuan = l.agen || x.ship, kirim = jd[sp] || l.tgl || x.t;
+    return (n + 1) + '. SPM ' + sp + (tujuan ? ' - ' + tujuan : '') + (l.nopol ? ' (' + l.nopol + ')' : '') + ' : ' + Math.round(x.qty).toLocaleString('id-ID') + ' btg\n' +
+      '    Untuk dikirim tanggal ' + _waTgl(kirim) +
+      (x.jam ? '\n    Telah disiapkan sebelumnya pada tanggal ' + _waTgl(x.jam.slice(0, 10)) + ' jam ' + x.jam.slice(11, 16) + ' WIB' : '');
+  });
+  var akhir = maxJam
+    ? 'Selesai persiapan sampai jam ' + maxJam.slice(11, 16) + ' WIB' + (maxJam.slice(0, 10) !== String(sekarang).slice(0, 10) ? ' (tanggal ' + _waTgl(maxJam.slice(0, 10)) + ')' : '')
+    : 'Selesai persiapan sampai jam ' + String(sekarang).slice(11, 16) + ' WIB (waktu notifikasi dikirim; jam selesai persiapan tidak ada di data WMS)';
+  return '📦 *Persiapan Muat Selesai*\n\n' +
+    'Team persiapan telah menyiapkan barang untuk *' + daftar.length + ' SPM*:\n' + baris.join('\n') + '\n\n' +
+    'Total qty muat: ' + Math.round(totQty).toLocaleString('id-ID') + ' btg\n' +
+    (ton > 0 ? 'Perkiraan tonase: ' + (Math.round(ton / 10) / 100).toString().replace('.', ',') + ' ton (tonase persiapan tercatat tgl ' + tglKey.map(_waTgl).join(', ') + ')\n' : '') +
+    akhir;
 }
 
 // Dipanggil saat halaman Loading Time dibuka / data pengiriman dibaca: kirim yang tadinya tertahan (maks 1x per 5 menit).

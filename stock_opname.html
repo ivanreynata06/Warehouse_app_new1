@@ -12,7 +12,7 @@
 <title>Monitoring Stock Opname</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261103c">
+<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261105b">
 <style>
 :root{--bg:#0d0d1a;--bg2:#12121f;--card:#18182a;--card2:#1e1e30;--bd:#252538;--bd2:#2e2e48;
 --txt:#e8eaf0;--txt2:#9da3b8;--txt3:#6b7280;--green:#10b981;--blue:#3b82f6;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--mono:'JetBrains Mono',monospace;--sw:200px}
@@ -91,7 +91,9 @@ tr.hold-row td{opacity:.6}
 .wc.w .ic{background:rgba(245,158,11,.2);color:#f6c667;animation:none}
 @keyframes icPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 7px rgba(239,68,68,0)}}
 .wc b{font-family:'Outfit';font-size:12.5px}.wc-act{margin-top:4px;color:#ffb4b4;font-weight:600}
-#warnBox,#warnBox2{display:flex;flex-direction:column;gap:8px}#warnBox:empty,#warnBox2:empty{display:none}
+#warnBox,#warnBox2{display:flex;flex-direction:column;gap:8px}
+.mvnote{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;border:1px solid rgba(34,211,238,.35);background:linear-gradient(180deg,rgba(34,211,238,.1),rgba(34,211,238,.03));border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.mvnote b{font-family:'Outfit'}.gc .mv{margin-top:6px;font-size:10px;color:var(--cyan,#22d3ee)}#warnBox:empty,#warnBox2:empty{display:none}
 .gc.late{border-color:rgba(239,68,68,.55)}.gc .lt{color:#ff8a8a;font-size:10.5px;margin-top:5px;font-weight:600}
 .modal{position:fixed;inset:0;background:rgba(5,5,12,.72);display:none;align-items:center;justify-content:center;z-index:120;padding:16px}
 .modal.show{display:flex}
@@ -289,6 +291,7 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
 
   <!-- PENGISIAN -->
   <div class="pane" id="p-isi">
+    <div id="rakMoveNote"></div>
     <div id="warnBox2"></div>
     <div id="revBox2"></div>
     <div id="weeklyBox2" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -668,12 +671,30 @@ function renderGcards(){
   renderWarn('warnBox2',S.warn.filter(function(x){return ownPic(x.pic)}));
   renderWeekly('weeklyBox2',function(m){return ownPic(m.pic)});
   renderRevBox('revBox2',function(x){return ownPic(x.pic)},true);
-  document.getElementById('gcards').innerHTML=rows.map(function(r){
-    return '<div class="gc'+(r.status==='TERLAMBAT'?' late':'')+'" onclick="bukaLembar(\''+esc(r.lembarId)+'\')"><b>'+esc(r.group)+'</b>'+statusChip(r.status).replace('class="chip','style="float:right" class="chip')+'<small>'+esc(r.desc)+' · '+esc(r.pic)+'</small>'+
-    '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div>'+(r.status==='TERLAMBAT'&&r.sejak?'<div class="lt">Terlambat sejak '+idDate(r.sejak)+'</div>':'')+(r.mingguTelat?'<div class="lt">'+r.mingguTelat+' minggu belum selesai</div>':'')+'</div>'}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO (NIK '+esc(NIK)+'). Minta admin menambahkan akun ini di sheet <b>SO_AKUN</b> (kolom A: NIK/nama akun, kolom B: nama PIC sesuai sheet DASHBOARD).</div>';
+  var mv=rows.filter(function(r){return RAK_SO_GROUPS.indexOf(String(r.group).toUpperCase())>=0});
+  document.getElementById('rakMoveNote').innerHTML=mv.length?'<div class="mvnote"><div><b>Pengisian SO group '+mv.map(function(r){return esc(r.group)}).join(', ')+' dipindahkan ke tab Akurasi Rak WMS.</b><div class="muted">Form pengisian, detail rak, dan SO ulang dikerjakan di sana. Progres, status terlambat, dan riwayat tetap tampil di dashboard ini.</div></div><button class="btn p" onclick="goTab(\'rak\')">Buka Akurasi Rak WMS ›</button></div>':'';
+  document.getElementById('gcards').innerHTML=rows.map(function(r){return gcardHtml(r,true)}).join('')||'<div class="empty">Akun <b>'+esc(NAMA)+'</b> belum terdaftar sebagai PIC group SO (NIK '+esc(NIK)+'). Minta admin menambahkan akun ini di sheet <b>SO_AKUN</b> (kolom A: NIK/nama akun, kolom B: nama PIC sesuai sheet DASHBOARD).</div>';
 }
+function gcardHtml(r,nav){
+  var mv=RAK_SO_GROUPS.indexOf(String(r.group).toUpperCase())>=0;
+  return '<div class="gc'+(r.status==='TERLAMBAT'?' late':'')+'"'+(nav?' onclick="bukaLembar(\''+esc(r.lembarId)+'\')"':' style="cursor:default"')+'><b>'+esc(r.group)+'</b>'+statusChip(r.status).replace('class="chip','style="float:right" class="chip')+'<small>'+esc(r.desc)+' · '+esc(r.pic)+'</small>'+
+  '<div class="bar '+barCls(r)+'"><i style="width:'+Math.min(100,r.progress)+'%"></i></div><div class="pc"><span>'+(r.lembarId?fmt(r.telahSo)+' / '+fmt(r.targetItem)+' item':'Belum ada lembar')+'</span><span class="mono">'+String(r.progress).replace('.',',')+'%</span></div>'+(r.status==='TERLAMBAT'&&r.sejak?'<div class="lt">Terlambat sejak '+idDate(r.sejak)+'</div>':'')+(r.mingguTelat?'<div class="lt">'+r.mingguTelat+' minggu belum selesai</div>':'')+(nav&&mv?'<div class="mv">Pengisian &amp; detail di <b>Akurasi Rak WMS</b> ›</div>':'')+'</div>';
+}
+// Progress SO 2 mingguan untuk group Akurasi Rak WMS -- dipakai di tab Akurasi Rak WMS (tampilan sama dengan menu ini)
+function renderRakProgress(){
+  var el=document.getElementById('rk-prog'); if(!el) return;
+  var inG=function(g){return RAK_SO_GROUPS.indexOf(String(g).toUpperCase())>=0};
+  if(!document.getElementById('rkProgW')) el.innerHTML='<div id="rkProgWarn" style="display:flex;flex-direction:column;gap:8px"></div><div id="rkProgW" style="display:flex;flex-direction:column;gap:12px"></div><div class="card"><div class="card-h"><h3>Progress SO group saya <span class="hint">· target 2x sebulan, dikerjakan tiap 2 minggu</span></h3><span class="muted">Detail lengkap ada di tab Stock Opname</span></div><div class="card-b"><div class="gcards" id="rkProgG"></div></div></div>';
+  renderWarn('rkProgWarn',(S.warn||[]).filter(function(x){return inG(x.group)&&isMine(x.pic)}));
+  renderWeekly('rkProgW',function(m){return inG(m.group)&&isMine(m.pic)});
+  document.getElementById('rkProgG').innerHTML=(S.dash||[]).filter(function(r){return inG(r.group)&&isMine(r.pic)}).map(function(r){return gcardHtml(r,false)}).join('')||'<div class="empty">Belum ada data progress group.</div>';
+}
+window.soRenderRakProgress=renderRakProgress;
+var RAK_SO_GROUPS=['I053'];   // pengisian SO group ini ada di tab Akurasi Rak WMS (rakwms-ui.js)
 function bukaLembar(id){
   if(!id) return toast('Belum ada lembar. Buat dulu di tab Buat Lembar SO.',true);
+  var dr=(S.dash||[]).filter(function(r){return r.lembarId===id})[0];
+  if(dr&&RAK_SO_GROUPS.indexOf(String(dr.group).toUpperCase())>=0){toast('Pengisian SO group '+dr.group+' dikerjakan di tab <b>Akurasi Rak WMS</b>.');goTab('rak');return}
   api('soGetLembarDetail',id).then(function(r){
     if(S.curId!==id){S.draft={};S.recheck={};S.curId=id}
     S.cur=r;document.getElementById('isiCard').style.display='block';
@@ -1009,7 +1030,7 @@ function lengkapiModal(id){
 loadPrintCfg();
 loadAll();
 </script>
-<script src="./assets/js/rakwms.js?v=20261103c"></script>
-<script src="./assets/js/rakwms-ui.js?v=20261103c"></script>
+<script src="./assets/js/rakwms.js?v=20261105b"></script>
+<script src="./assets/js/rakwms-ui.js?v=20261105b"></script>
 </body>
 </html>

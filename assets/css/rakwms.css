@@ -223,3 +223,17 @@
 .rk .rep-r .rv{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
 .rk .rep-r .rv b{font-family:'Outfit',sans-serif;font-size:15px}
 @media(max-width:640px){.rk .rep-r{grid-template-columns:1fr 60px}.rk .rep-r .rt{grid-column:1/-1;order:3}}
+
+/* ---- pembeda warna item yang sudah di-SO ---- */
+.rk tbody tr.it.lk:not(.lksel){box-shadow:inset 3px 0 0 #34d399}
+.rk tbody tr.it.lk.lksel{background:rgba(251,191,36,.08);box-shadow:inset 3px 0 0 #fbbf24}
+.rk tbody tr.it.lk.lksel:hover{background:rgba(251,191,36,.14)}
+.rk tbody tr.it.ul{background:rgba(167,139,250,.1);box-shadow:inset 3px 0 0 #a78bfa}
+.rk .rk-leg{display:flex;flex-wrap:wrap;gap:14px;font-size:10.5px;color:var(--txt2,#aab);margin-bottom:8px}
+.rk .rk-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+#rk-prog{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
+
+/* ---- riwayat adjustment ---- */
+.rk .rk-hist{border-top:1px solid rgba(255,255,255,.08);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+.rk .rk-hist .ah-h b{font-family:'Outfit',sans-serif;font-size:13px}
+.rk .rk-hist .ah-r{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px}
