@@ -9436,7 +9436,7 @@ function _soCekSelesaiDanLanjut(id) {
   return { id: nid, mulai: mulai, akhir: akhir, jumlah: rows.length };
 }
 
-// Group yang BOLEH menambah item baru saat upload ulang di periode berjalan (group lain: master SKU tetap)
+// Group yang otomatis menambah item baru saat upload ulang di periode berjalan (group lain: item baru bisa ditambah bila dicentang PIC)
 var SO_GROUP_TAMBAH_ITEM = ['I053', 'Q055'];
 function _soBolehTambahItem(group) { return SO_GROUP_TAMBAH_ITEM.some(function (g) { return _soKey(g) === _soKey(group); }); }
 
@@ -9446,7 +9446,7 @@ function _soBolehTambahItem(group) { return SO_GROUP_TAMBAH_ITEM.some(function (
 //   - SKU di lembar TETAP, walau tidak dicentang / tidak ikut dikirim (tidak ada lagi pemangkasan target);
 //   - item sudah di-SO dikunci; item belum di-SO diperbarui qty-nya (bila ikut dikirim);
 //   - SKU belum di-SO DIKELUARKAN hanya bila di data QAD terbaru stok-nya 0 / sudah tidak ada (qadKeys);
-//   - item BARU hanya ditambahkan utk group I053 & Q055; group lain diabaikan.
+//   - item BARU: group I053 & Q055 otomatis ditambahkan; group lain HANYA bila PIC mencentangnya (it.baru = true), kalau tidak diabaikan.
 // Item QTY 0/minus tidak pernah ditarik. Item di luar list sheet group tetap ditarik (upload pertama) bila QTY > 0.
 function soBuatLembar(payload) {
   var lock = LockService.getScriptLock();
@@ -9484,7 +9484,7 @@ function soBuatLembar(payload) {
           var c = all[row - 1];
           c[2] = it.desc || c[2] || g.map[k] || ''; c[3] = it.um || c[3] || ''; c[4] = it.lokasi || c[4] || ''; c[5] = Number(it.sistem) || 0;
           if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; diperbarui++; updRows.push(row);
-        } else if (boleh) {
+        } else if (boleh || it.baru === true) {   // group default (I053/Q055): semua item baru; group lain: hanya yang dicentang PIC (it.baru)
           baru.push(_soDetailRow(aktif.id, it.item, it.desc || g.map[k] || '', it.um, it.lokasi, it.sistem, hariIni, ''));
         } else {
           ditolakBaru++; // master SKU tetap: item baru tidak ditambahkan di group ini

@@ -12,7 +12,7 @@
 <title>Monitoring Stock Opname</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261105b">
+<link rel="stylesheet" href="./assets/css/rakwms.css?v=20261105c">
 <style>
 :root{--bg:#0d0d1a;--bg2:#12121f;--card:#18182a;--card2:#1e1e30;--bd:#252538;--bd2:#2e2e48;
 --txt:#e8eaf0;--txt2:#9da3b8;--txt3:#6b7280;--green:#10b981;--blue:#3b82f6;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;--mono:'JetBrains Mono',monospace;--sw:200px}
@@ -282,7 +282,7 @@ tr.clk{cursor:pointer;transition:background .2s}tr.clk:hover td{background:rgba(
       <div class="card-h"><h3>2. Pilih item yang akan di-SO</h3>
         <div class="row"><input type="search" id="bSearch" placeholder="Cari item…" oninput="renderPick()">
           <label class="muted" style="display:none"><input type="checkbox" id="bStock" checked onchange="renderPick()"> Hanya stok &gt; 0</label>
-          <button class="btn" onclick="pickAll(true)">Pilih semua</button><button class="btn" onclick="pickAll(false)">Kosongkan</button></div></div>
+          <button class="btn" onclick="pickAll(true)">Pilih semua</button><button class="btn" id="bNewBtn" style="display:none" onclick="pickBaru()">Centang semua item baru</button><button class="btn" onclick="pickAll(false)">Kosongkan</button></div></div>
       <div class="card-b muted" id="bInfo"></div>
       <div class="tw"><table><thead id="bHead"></thead><tbody id="bBody"></tbody></table></div>
       <div class="card-b row"><button class="btn p" id="bGo" onclick="buatLembar()">Buat Lembar SO</button><span class="muted" id="bCount"></span></div>
@@ -604,7 +604,7 @@ function checkGroup(){
     var dropped=0;
     S.qad=inGrp.filter(function(x){var k=x.item.toUpperCase();x.inSheet=S.valid.hasOwnProperty(k);
       if(!(x.sistem>0)){dropped++;return false}   // QTY 0 / minus tidak ditarik
-      var e=S.exist[k];x.state=!e?'new':(e.fisik!==null?'locked':'update');x.noadd=!!(S.aktif&&!e&&!S.boleh);return true});
+      var e=S.exist[k];x.state=!e?'new':(e.fisik!==null?'locked':'update');x.noadd=false;return true});   // item baru bisa dicentang di group mana pun (default tercentang hanya I053 & Q055)
     var pend={},doneK={},carryDrop=0;
     if(S.sisa){S.sisa.pending.forEach(function(p){pend[String(p.item).toUpperCase()]=1});S.sisa.done.forEach(function(k){doneK[k]=1})}
     S.qad.forEach(function(x){var k=x.item.toUpperCase();
@@ -617,8 +617,9 @@ function checkGroup(){
     document.getElementById('bPreview').style.display='block';
     document.getElementById('bGo').textContent=S.aktif?'Perbarui Lembar SO':'Buat Lembar SO';
     document.getElementById('bInfo').innerHTML='Group <b>'+esc(g)+'</b>: '+(gi.found?Object.keys(S.valid).length+' SKU di sheet group':'<span style="color:var(--amber)">sheet group tidak ditemukan — item ditarik dari data QAD</span>')+' · '+inGrp.length+' item QAD terbaca untuk group ini'+(S.how?' ('+S.how+')':'')+'.'+(S.noMatch?'<br><span style="color:var(--red)">'+S.noMatch+'</span>':'')+'<br>'+
-      (S.aktif?'Lembar aktif <b>'+esc(S.aktif.id)+'</b> ('+esc(S.aktif.mulai)+' s/d '+esc(S.aktif.akhir)+') akan <b>digabung</b> — SKU upload pertama tetap jadi master: <b>'+c.locked+'</b> sudah di-SO (dikunci), <b>'+c.update+'</b> belum di-SO (qty diperbarui)'+(S.boleh?', <b>'+c.new+'</b> item baru ditambahkan (group ini boleh menambah item)':(c.new?'. <b>'+c.new+'</b> item baru di data QAD <b>tidak ditambahkan</b> (hanya group I053 &amp; Q055 yang boleh)':''))+(removed?'. <b>'+removed+'</b> SKU belum di-SO akan <b>dikeluarkan karena stok 0 / tidak ada di data QAD terbaru</b>':'')+'. ':'Belum ada lembar aktif — upload ini menjadi <b>master SKU</b> periode ('+(c.new+c.carry)+' item). '+(S.sisa?'<br>⚠ Periode sebelumnya belum selesai: <b>'+c.carry+'</b> item yang belum di-SO menjadi <b>SISA</b> (dikerjakan dulu), <b>'+S.qad.filter(function(x){return x.hold}).length+'</b> item yang sudah di-SO <b>terkunci sementara</b> dan terbuka otomatis setelah sisa selesai. Progres dicatat di periode ini.'+(carryDrop?' '+carryDrop+' item sisa tidak ikut karena stok 0 / tidak ada di data QAD.':''):''))+
+      (S.aktif?'Lembar aktif <b>'+esc(S.aktif.id)+'</b> ('+esc(S.aktif.mulai)+' s/d '+esc(S.aktif.akhir)+') akan <b>digabung</b> — SKU upload pertama tetap jadi master: <b>'+c.locked+'</b> sudah di-SO (dikunci), <b>'+c.update+'</b> belum di-SO (qty diperbarui)'+(S.boleh?', <b>'+c.new+'</b> item baru ditambahkan (otomatis tercentang untuk group ini)':(c.new?'. <b>'+c.new+'</b> item baru di data QAD — <b>centang untuk menambahkannya ke lembar</b> (belum tercentang; target lembar naik sesuai item yang dicentang)':''))+(removed?'. <b>'+removed+'</b> SKU belum di-SO akan <b>dikeluarkan karena stok 0 / tidak ada di data QAD terbaru</b>':'')+'. ':'Belum ada lembar aktif — upload ini menjadi <b>master SKU</b> periode ('+(c.new+c.carry)+' item). '+(S.sisa?'<br>⚠ Periode sebelumnya belum selesai: <b>'+c.carry+'</b> item yang belum di-SO menjadi <b>SISA</b> (dikerjakan dulu), <b>'+S.qad.filter(function(x){return x.hold}).length+'</b> item yang sudah di-SO <b>terkunci sementara</b> dan terbuka otomatis setelah sisa selesai. Progres dicatat di periode ini.'+(carryDrop?' '+carryDrop+' item sisa tidak ikut karena stok 0 / tidak ada di data QAD.':''):''))+
       (c.out?c.out+' item di luar list sheet group ikut ditarik karena ada QTY. ':'')+(dropped?dropped+' item QTY 0 tidak ditarik.':'');
+    var nb=document.getElementById('bNewBtn');if(nb)nb.style.display=(S.aktif&&c.new&&!S.boleh)?'':'none';
     renderPick();
   }).catch(function(e){
     if(/tidak dikenali|tidak diizinkan/i.test(e.message)) {
@@ -632,7 +633,7 @@ function stateChip(x){var h='';
   if(x.state==='carry') h='<span class="chip c-late2">SISA PERIODE LALU · DIKERJAKAN DULU</span>';
   else if(x.state==='locked') h='<span class="chip c-done">SUDAH DI-SO</span>';
   else if(x.state==='update') h='<span class="chip c-ok">'+(S.aktif?'MASTER · UPDATE QTY':'UPDATE QTY')+'</span>';
-  else h=x.noadd?'<span class="chip c-idle">TIDAK DITAMBAH</span>':'<span class="chip c-idle">BARU</span>';
+  else h=(S.aktif&&!S.boleh)?'<span class="chip c-prog">BARU · BISA DITAMBAH</span>':'<span class="chip c-idle">BARU</span>';
   if(x.hold) h+=' <span class="chip c-idle">🔒 TERKUNCI SEMENTARA</span>';
   if(x.same) h+=' <span class="chip" style="background:rgba(245,158,11,.15);color:#f6c667">⏸ TIDAK BERGERAK · sama dgn qty '+idDate(x.sameTgl)+'</span>';
   if(!x.inSheet) h+=' <span class="chip" style="background:rgba(245,158,11,.2);color:#f6c667">DI LUAR LIST</span>';
@@ -641,13 +642,14 @@ function renderPick(){
   var q=document.getElementById('bSearch').value.toUpperCase(),only=document.getElementById('bStock').checked;
   var rows=S.qad.filter(function(x){return (!only||x.sistem>0||x.state==='locked')&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1)});
   rows=sortRows(rows,'pick');drawHeads();
-  document.getElementById('bBody').innerHTML=rows.slice(0,800).map(function(x){var k=x.item.toUpperCase(),lk=x.state==='locked'||x.state==='carry'||(S.aktif&&(x.state==='update'||x.noadd));
+  document.getElementById('bBody').innerHTML=rows.slice(0,800).map(function(x){var k=x.item.toUpperCase(),lk=x.state==='locked'||x.state==='carry'||(S.aktif&&x.state==='update');
     return '<tr style="'+(lk?'opacity:.55':'')+'"><td><input type="checkbox" '+(lk?'disabled'+(S.pick[k]?' checked':''):(S.pick[k]?'checked':''))+' onchange="S.pick[\''+k.replace(/'/g,"\\'")+'\']=this.checked;cnt()"></td><td class="l mono">'+esc(x.item)+'</td><td class="l">'+esc(x.desc||S.valid[k]||'')+'</td><td>'+esc(x.um)+'</td><td>'+esc(x.lokasi)+'</td><td class="mono">'+fmt(x.sistem)+'</td><td>'+stateChip(x)+'</td></tr>'}).join('')||'<tr><td colspan="7" class="empty">Tidak ada item</td></tr>';
   document.getElementById('bBody').insertAdjacentHTML('beforeend',rows.length>800?'<tr><td colspan="7" class="muted" style="text-align:center">+'+(rows.length-800)+' item lain tidak ditampilkan (tetap ikut terkirim jika tercentang). Gunakan pencarian.</td></tr>':'');
   cnt();
 }
-function cnt(){document.getElementById('bCount').textContent=kirimItems().length+' item dikirim'+(S.aktif?' (SKU master tetap, tidak termasuk yang sudah di-SO)':' sebagai master SKU')}
-function kirimItems(){return S.qad.filter(function(x){if(x.state==='carry')return true;if(x.state==='locked'||x.noadd)return false;return S.aktif?(x.state==='update'||(x.state==='new'&&S.boleh&&S.pick[x.item.toUpperCase()])):S.pick[x.item.toUpperCase()]})}
+function cnt(){var k=kirimItems(),nb=S.aktif?k.filter(function(x){return x.state==='new'}).length:0;document.getElementById('bCount').textContent=k.length+' item dikirim'+(S.aktif?' (SKU master tetap, tidak termasuk yang sudah di-SO'+(nb?'; '+nb+' item baru ditambahkan':'')+')':' sebagai master SKU')}
+function kirimItems(){return S.qad.filter(function(x){if(x.state==='carry')return true;if(x.state==='locked'||x.noadd)return false;return S.aktif?(x.state==='update'||(x.state==='new'&&S.pick[x.item.toUpperCase()])):S.pick[x.item.toUpperCase()]})}
+function pickBaru(){S.qad.forEach(function(x){if(x.state==='new')S.pick[x.item.toUpperCase()]=true});renderPick()}
 function pickAll(v){var q=document.getElementById('bSearch').value.toUpperCase(),only=document.getElementById('bStock').checked;
   S.qad.forEach(function(x){if(x.state!=='locked'&&x.state!=='carry'&&!x.noadd&&!(S.aktif&&x.state==='update')&&(!only||x.sistem>0)&&(!q||(x.item+' '+x.desc).toUpperCase().indexOf(q)!==-1))S.pick[x.item.toUpperCase()]=v});renderPick()}
 function buatLembar(){
@@ -657,7 +659,7 @@ function buatLembar(){
   var items=kirimItems();
   if(!items.length&&!S.aktif) return toast('Pilih minimal 1 item sebagai master SKU',true);
   var b=document.getElementById('bGo'); b.disabled=true;
-  api('soBuatLembar',{pic:m.pic,group:g,items:items.map(function(x){return {item:x.item,desc:x.desc,um:x.um,lokasi:x.lokasi,sistem:x.sistem}}),qadKeys:S.qad.map(function(x){return x.item}),user:NAMA}).then(function(r){
+  api('soBuatLembar',{pic:m.pic,group:g,items:items.map(function(x){var o={item:x.item,desc:x.desc,um:x.um,lokasi:x.lokasi,sistem:x.sistem};if(S.aktif&&x.state==='new')o.baru=true;return o}),qadKeys:S.qad.map(function(x){return x.item}),user:NAMA}).then(function(r){
     toast(r.digabung?('Lembar '+r.id+' diperbarui · target '+r.total+' item ('+r.diperbarui+' diupdate, '+r.baru+' baru, '+r.dihapus+' dikeluarkan (stok 0), '+r.dikunci+' sudah di-SO'+(r.ditolakBaru?', '+r.ditolakBaru+' item baru tidak ditambah':'')+')'):('Lembar '+r.id+' dibuat · target '+r.baru+' item'+(r.carry?' · '+r.carry+' item SISA periode lalu dikerjakan dulu, '+r.hold+' item terkunci sementara':'')));
     if(r.lanjut) setTimeout(function(){toast('Semua item selesai — otomatis pindah ke periode berikutnya (mulai '+r.lanjut.mulai+')')},3400);
     S.qad=[];S.qadAll=[];document.getElementById('bPreview').style.display='none';document.getElementById('bFile').value='';
@@ -1030,7 +1032,7 @@ function lengkapiModal(id){
 loadPrintCfg();
 loadAll();
 </script>
-<script src="./assets/js/rakwms.js?v=20261105b"></script>
-<script src="./assets/js/rakwms-ui.js?v=20261105b"></script>
+<script src="./assets/js/rakwms.js?v=20261105c"></script>
+<script src="./assets/js/rakwms-ui.js?v=20261105c"></script>
 </body>
 </html>
