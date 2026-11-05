@@ -43,7 +43,7 @@
   }
   function pullServer(quiet) {
     lastPull = Date.now();
-    gs('getRakWmsData', [SKEY]).then(function (r) {
+    return gs('getRakWmsData', [SKEY]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'gagal');
       var local = (S.wms.length || S.qad.length);
       if (!r.found) {
@@ -58,6 +58,30 @@
       if (local && S.meta.dirty && !confirm('Ada perubahan di browser ini yang belum tersimpan, sementara data di server lebih baru (dari PIC/perangkat lain).\n\nOK = pakai data SERVER\nBatal = pertahankan data browser ini dan timpa server')) { syncNow(); return; }
       adopt(j); S.meta.syncAt = r.updatedAt; S.meta.dirty = false; saveLocal(); render(); setSync('ok', quiet ? 'Data diperbarui dari server' : 'Data dipulihkan dari server');
     }).catch(function (e) { setSync('err', 'Server tidak terjangkau: ' + (e && e.message || e)); });
+  }
+  // Data Akurasi WMS versi lama disimpan PER AKUN. Isian rak (aktual/manual/koreksi) & riwayat milik akun ini yang belum ada di data bersama
+  // digabungkan sekali, supaya SO yang sudah pernah dikerjakan sebelumnya tidak hilang / tidak terbaca.
+  function mergeLegacy() {
+    var fk = 'rakwms_legacy_done::' + String(NAMA || NIK).toLowerCase();
+    try { if (localStorage.getItem(fk)) return Promise.resolve(); } catch (e) {}
+    return gs('getRakWmsData', [NIK || NAMA]).then(function (o) {
+      var n = 0;
+      if (o && o.found) {
+        var j = JSON.parse(o.data); S.inputs = S.inputs || {}; S.manual = S.manual || {}; S.koreksi = S.koreksi || {}; S.adjDone = S.adjDone || {}; S.adjHist = S.adjHist || [];
+        Object.keys(j.inputs || {}).forEach(function (k) {
+          var src = j.inputs[k] || {}, dst = S.inputs[k] = S.inputs[k] || {};
+          Object.keys(src).forEach(function (r) { if (dst[r] === undefined && src[r] !== '' && src[r] != null) { dst[r] = src[r]; n++; } });
+        });
+        Object.keys(j.manual || {}).forEach(function (k) { if (!(S.manual[k] || []).length && (j.manual[k] || []).length) { S.manual[k] = j.manual[k]; n += j.manual[k].length; } });
+        Object.keys(j.koreksi || {}).forEach(function (k) { if (!S.koreksi[k]) { S.koreksi[k] = j.koreksi[k]; n++; } });
+        Object.keys(j.adjDone || {}).forEach(function (k) { if (!S.adjDone[k]) S.adjDone[k] = j.adjDone[k]; });
+        var seen = {}; S.adjHist.forEach(function (e) { seen[e.t + '|' + e.k + '|' + e.h] = 1; });
+        (j.adjHist || []).forEach(function (e) { var kk = e.t + '|' + e.k + '|' + e.h; if (!seen[kk]) { S.adjHist.push(e); seen[kk] = 1; n++; } });
+        S.adjHist.sort(function (a, b) { return a.t < b.t ? 1 : (a.t > b.t ? -1 : 0); }); S.adjHist = S.adjHist.slice(0, 200);
+      }
+      try { localStorage.setItem(fk, '1'); } catch (e) {}
+      if (n) { save(); syncNow(); recalc(); render(); toast('Data Akurasi WMS lama milik akun ini digabungkan (' + fmt(n) + ' isian). SO yang sudah dikerjakan sebelumnya ikut terbaca.'); loadSoStat().then(function () { renderTbl(); syncSo(); }); }
+    }).catch(function () {});
   }
   /* ---------- LINK ke Stock Opname (SO_DETAIL lembar aktif) ---------- */
   var styledLib = null;
@@ -76,6 +100,10 @@
   function sogAllowed() { return ui.allowed.filter(function (g) { return SOG.indexOf(String(g).toUpperCase()) >= 0; }); }
   function soKey(kode) { return String(kode == null ? '' : kode).trim().toUpperCase(); }
   function soRec(it) { var g = ui.soStat && ui.soStat[it.grp]; var r = g && g.items && g.items[soKey(it.kode)]; return r && r.fisik !== null && r.fisik !== undefined ? r : null; }
+  var BLN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  function tglP(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? (+m[3]) + ' ' + BLN3[+m[2] - 1] + ' ' + m[1] : ''; }
+  // group SO terhubung yang lembar periode berjalannya belum dibuat (hasil SO di Akurasi WMS belum bisa tercatat di Stock Opname)
+  function needLembar() { return sogAllowed().filter(function (g) { return ui.soStat && Object.prototype.hasOwnProperty.call(ui.soStat, g) && ui.soStat[g] === null; }); }
   function soTglF(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
   // SO ulang: item yang sudah di-SO tetapi kuncinya dibuka PIC (hanya di Akurasi WMS; Dashboard SO tidak berubah)
   function soGrp(it) { return ui.soStat && ui.soStat[it.grp]; }
@@ -106,7 +134,7 @@
     var gr = sogAllowed(); if (!gr.length) { ui.soStat = {}; return Promise.resolve(true); }
     return gs('soStatusDariRak', [JSON.stringify(gr)]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'gagal');
-      ui.soStat = r.data || {}; ui.soErr = ''; return true;
+      ui.soStat = r.data || {}; ui.soPeriode = r.periode || null; ui.soErr = ''; return true;
     }).catch(function (e) { ui.soErr = String((e && e.message) || e || ''); return false; });
   }
   // jadwal sinkron ke SO: "segera" (saat drawer/form ditutup) tidak boleh ditimpa jadwal debounce 12 detik dari save()
@@ -128,6 +156,7 @@
       if (u) rep.push({ u: u, x: x, it: it });                                                // SO ulang selesai -> dicatat terpisah, TIDAK menyentuh Dashboard SO
       else if (!soRec(it) && S.soSent[soKey(x.item)] !== x.fisik) fresh.push(x);              // SO pertama periode ini -> masuk SO_DETAIL
     });
+    var nl1 = needLembar(); fresh = fresh.filter(function (x) { return nl1.indexOf(x.group) < 0; });   // lembar periode ini belum ada: tunggu 'Buat lembar & masukkan progress SO'
     if (!fresh.length && !rep.length) return Promise.resolve();
     soBusy = true;
     var p = Promise.resolve();
@@ -138,8 +167,7 @@
         fresh.forEach(function (x) { if (!skip[x.group]) S.soSent[soKey(x.item)] = x.fisik; });
         saveLocal();
         if (d.tersimpan) toast('✓ ' + fmt(d.tersimpan) + ' item tercatat ke Stock Opname (progres SO terupdate).');
-        if (d.tanpaLembar && d.tanpaLembar.length) ui.soErr = 'Lembar SO periode ini untuk group ' + d.tanpaLembar.join(', ') + ' belum dibuat. Buat dulu di tab Buat Lembar SO - hasil rak akan terkirim otomatis setelahnya.';
-        else ui.soErr = '';
+        ui.soErr = '';   // lembar periode ini belum ada -> banner "Buat lembar & masukkan progress SO" yang menanganinya
       });
     });
     rep.forEach(function (o) {
@@ -278,6 +306,13 @@
     var t = g0.map(function (g) { var x = ui.soStat[g]; return '<b>' + esc(g) + '</b> ' + fmt(x.isi) + '/' + fmt(x.total) + ' item (' + esc(soTgl(x.mulai)) + ' - ' + esc(soTgl(x.akhir)) + ')'; }).join(' &middot; ');
     var h = '', nl = ui.items.filter(locked).length, nm = ui.items.filter(function (i) { return locked(i) && i.sel !== 0; }).length, nu = ui.items.filter(function (i) { return !!ulangOf(i); }).length;
     h += '<div class="rk-leg"><span><i style="background:#34d399"></i>Sudah di-SO &amp; sesuai</span><span><i style="background:#fbbf24"></i>Sudah di-SO, data terbaru selisih</span><span><i style="background:#a78bfa"></i>SO ulang berjalan</span></div>';
+    var nl0 = needLembar();
+    if (nl0.length) {
+      var pm = ui.soPeriode || {}, nDone = completeItems().filter(function (x) { return nl0.indexOf(x.group) >= 0; }).length;
+      h += '<div class="warnb" style="margin-bottom:8px"><b>Lembar SO ' + esc(nl0.join(', ')) + ' periode ' + esc(tglP(pm.mulai)) + ' - ' + esc(tglP(pm.akhir)) + ' belum dibuat</b>, sehingga SO yang dikerjakan di Akurasi WMS belum tercatat di Stock Opname. ' +
+        '<b>' + fmt(nDone) + ' item</b> sudah lengkap diinput. Lembar dibuat dari data QAD di Akurasi WMS, lalu progress SO yang sudah ada langsung dimasukkan.' +
+        '<div style="margin-top:8px"><button class="btn2 pri sm" onclick="RakUI.buatLembar()">Buat lembar &amp; masukkan progress SO</button></div></div>';
+    }
     if (t) h += '<div class="sub" style="margin-bottom:6px">Progres Stock Opname periode ini: ' + t + '. Item yang semua raknya sudah diisi aktual otomatis tercatat ke Stock Opname dan <b>terkunci</b> (tidak dapat dipilih / diubah lagi pada periode ini).</div>';
     if (nm) h += '<div class="warnb" style="margin-bottom:8px">' + fmt(nm) + ' dari ' + fmt(nl) + ' item yang sudah di-SO <b>masih menunjukkan selisih WMS - QAD</b> pada data terbaru. Mohon diperiksa apakah adjustment sudah diproses di WMS atau ada transaksi setelah SO. <button class="btn2 sm" style="margin-left:8px" onclick="RakUI.filter(\'soSel\')">Tampilkan item</button></div>';
     if (nu) h += '<div class="infob" style="margin-bottom:8px">&#9998; ' + fmt(nu) + ' item sedang <b>SO ulang</b> (kunci dibuka PIC). Hasilnya dicatat di Akurasi WMS dan tidak mengubah Dashboard Stock Opname.</div>';
@@ -722,6 +757,21 @@
     adjTog: function (k, on) { if (on) delete adjOff()[k]; else adjOff()[k] = 1; save(); renderAdj(); },
     adjAll: function (on) { var o = adjOff(); adjCands().forEach(function (x) { if (on) delete o[x.it.kode]; else o[x.it.kode] = 1; }); save(); renderAdj(); },
     adjSearch: function (v) { ui.adjQ = v; renderAdj(); },
+    buatLembar: function () {
+      var nl = needLembar(); if (!nl.length) return toast('Lembar SO periode ini sudah ada.', true);
+      var g = nl[0], pm = ui.soPeriode || {}, qs = (S.qad || []).filter(function (q) { return String(q.grp).toUpperCase() === g; });
+      if (!qs.length) return toast('Data Saldo QAD group ' + g + ' belum ada di Akurasi WMS. Upload dulu Saldo Item QAD.', true);
+      var items = qs.map(function (q) { return { item: q.kode, desc: q.nama, sistem: q.qty }; }), sel = completeItems().filter(function (x) { return x.group === g; });
+      if (!confirm('Buat lembar SO ' + g + ' periode ' + tglP(pm.mulai) + ' - ' + tglP(pm.akhir) + ' dari data QAD Akurasi WMS (' + items.length + ' item)?\n\n' + sel.length + ' item yang sudah selesai di-SO di Akurasi WMS langsung dimasukkan sebagai progress.\n\nItem yang tidak terdaftar di sheet group dilewati.')) return;
+      gs('soBuatLembarDariRak', [JSON.stringify({ group: g, items: items, selesai: sel, user: NAMA, nik: NIK })]).then(function (r) {
+        if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
+        var d = r.data || {}; S.soSent = S.soSent || {}; sel.forEach(function (x) { S.soSent[soKey(x.item)] = x.fisik; }); saveLocal();
+        toast('✓ ' + (d.lembarDibuat ? 'Lembar SO dibuat (' + fmt(d.total) + ' item) dan ' : '') + fmt(d.tersimpan || 0) + ' item progress SO dimasukkan ke Stock Opname.');
+        return loadSoStat();
+      }).then(function () {
+        renderTbl(); renderAdj(); loadRep(); try { if (typeof window.soAfterRakSync === 'function') window.soAfterRakSync(); } catch (e) {} syncSo();
+      }).catch(function (e) { toast('Gagal membuat lembar SO: ' + ((e && e.message) || e), true); });
+    },
     repMonth: function (n) { var m = shiftMonth(ui.repM || curMonth(), n); if (m > curMonth()) return; ui.repM = m; ui.rep = null; loadRep(); },
     repAll: function (on) { ui.repAll = !!on; renderRep(); },
     // buka kunci -> SO ulang (PIC group / TL). Syarat dicek juga di server: ada selisih & SO sisa periode lalu (CARRY) sudah selesai
@@ -801,7 +851,7 @@
     var tb = document.querySelector('.tab[data-t="rak"]'); if (tb) tb.style.display = 'none';   // tersembunyi sampai akses dipastikan
     var tries = 0, iv = setInterval(function () { if (applyAccess() || ++tries > 120) clearInterval(iv); }, 500);
     shell(); tilt();
-    setTimeout(function () { pullServer(); }, 700);
+    setTimeout(function () { pullServer().then(mergeLegacy); }, 700);
     setTimeout(function () { var w = setInterval(function () { if (ui.items.length) { clearInterval(w); loadSoStat().then(function () { renderTbl(); syncSo(); loadRep(); }); } }, 800); setTimeout(function () { clearInterval(w); }, 90000); }, 900);
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !ui.open && !ui.soOpen && !(S.meta && S.meta.dirty) && Date.now() - lastPull > 30000) { pullServer(true); loadSoStat().then(renderTbl); } });
     if (/[?&]embed=1\b/.test(location.search) && location.hash === '#rak') { var tbs = $('tabs'); if (tbs) tbs.style.display = 'none'; }   // dibuka dari tab Monitoring WMS: baris tab Stock Opname disembunyikan

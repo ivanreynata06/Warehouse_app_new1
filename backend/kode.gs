@@ -28,6 +28,7 @@ var API_FUNCTIONS = {
   soUlangBuka             : soUlangBuka,
   soUlangSelesai          : soUlangSelesai,
   soUlangStat             : soUlangStat,
+  soBuatLembarDariRak     : soBuatLembarDariRak,
   getGroupList          : getGroupList,
   getDashboardData       : getDashboardData,
   getOutboundData         : getOutboundData,
@@ -9378,7 +9379,7 @@ var SO_GROUP_CARRYOVER = ['I053', 'Q055'];
 function _soCarryover(group) { return SO_GROUP_CARRYOVER.some(function (g) { return _soKey(g) === _soKey(group); }); }
 function _soCarryoverInfo(group) {
   if (!_soCarryover(group)) return null;
-  var mine = _soLembarList().filter(function (l) { return _soNorm(l.group) === _soNorm(group); });
+  var mine = _soLembarList().filter(function (l) { return _soNorm(l.group) === _soNorm(group) && l.akhir > SO_ARSIP_SAMPAI; });   // lembar evidence (sebelum 1 Nov 2026) tidak di-carry
   if (!mine.length) return null;
   var lastL = mine[mine.length - 1], pending = [], done = {};
   _soDetailRows().forEach(function (d) {
@@ -9420,9 +9421,9 @@ function _soCekSelesaiDanLanjut(id) {
   if (!master) return null;
   var today = _soToday(), mulai, akhir;
   if (master.mode === 'MINGGUAN') {
-    mulai = _soAddDays(_soPeriodeMulai(_soTgl(cur[4])), SO_PERIODE_HARI);
+    mulai = _soPeriodeBerikut(_soTgl(cur[4]));
     var tm = _soPeriodeMulai(today); if (mulai < tm) mulai = tm;
-    akhir = _soAddDays(mulai, SO_PERIODE_HARI - 1);
+    akhir = _soPeriodeAkhir(mulai);
   } else {
     // Periode berikutnya dimulai SETELAH durasi periode ini berakhir (bukan hari ini), supaya progres periode
     // yang sudah selesai tetap tampil selama durasinya (mis. 3 bulan) dan tidak tertimpa lembar kosong.
@@ -9510,7 +9511,7 @@ function soBuatLembar(payload) {
 
     var today = _soToday();
     var mulai = master.mode === 'MINGGUAN' ? _soPeriodeMulai(today) : today;
-    var akhir = master.mode === 'MINGGUAN' ? _soAddDays(mulai, SO_PERIODE_HARI - 1) : _soAddDays(today, master.hari);
+    var akhir = master.mode === 'MINGGUAN' ? _soPeriodeAkhir(mulai) : _soAddDays(today, master.hari);
     var id = _soUniqueId('SO-' + _soNorm(payload.group).replace(/\s+/g, '') + '-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMddHHmmss'), _soLembarList().map(function (l) { return l.id; }));
     // Sisa periode lalu (I053 & Q055): item yg belum di-SO -> CARRY (dikerjakan dulu); item yg sudah di-SO -> HOLD sampai CARRY selesai
     var info = _soCarryoverInfo(payload.group), finalItems = [], carryN = 0, holdN = 0, keepMap = {};
@@ -9544,7 +9545,7 @@ function _soLembarList() {
   if (_SO_MEM.lembar) return _SO_MEM.lembar;
   return _SO_MEM.lembar = _soRows(_soSheet('SO_LEMBAR', SO_LEMBAR_HDR), 8).map(function (r) {
     var mu = _soTgl(r[4]), ak = _soTgl(r[5]);
-    if (_so2Minggu(r[2]) && mu >= SO_MINGGUAN_MULAI) ak = _soAddDays(_soPeriodeMulai(mu), SO_PERIODE_HARI - 1);   // akhir = akhir periode 2 minggu (lembar lama ikut diperpanjang, data tidak diubah)
+    if (_so2Minggu(r[2]) && mu >= SO_LEGACY_MULAI) ak = _soPeriodeAkhir(_soPeriodeMulai(mu));   // akhir = akhir periode 2 minggu (lembar lama ikut diperpanjang, data tidak diubah)
     return { id: String(r[0]), pic: String(r[1]), group: String(r[2]), dibuat: _soTgl(r[3]), mulai: mu, akhir: ak, oleh: String(r[6]), jumlah: Number(r[7]) || 0 };
   });
 }
@@ -9874,36 +9875,50 @@ function soLengkapiLembar(payload) {
 
 // Dashboard monitoring: 1 baris per PIC x Group (lembar terbaru) + peringatan TL
 // Senin pertama yg dihitung utk group MINGGUAN (I053). Aplikasi baru berjalan -> minggu sebelum tanggal ini TIDAK dianggap terlambat.
-var SO_MINGGUAN_MULAI = '2026-10-19';
-// SO WMS dilakukan 2 MINGGU SEKALI (progress per periode 2 minggu, bukan per minggu). Periode dihitung dari SO_MINGGUAN_MULAI (Senin) tiap 14 hari.
+var SO_MINGGUAN_MULAI = '2026-11-01';   // periode pertama yang DIHITUNG (tanggal 1). Periode 1 = tgl 1-14, periode 2 = tgl 15-akhir bulan (2x sebulan)
+var SO_LEGACY_MULAI = '2026-10-19';     // anchor lama (periode 14 hari sejak 19 Okt) -- hanya untuk membaca lembar lama
+var SO_ARSIP_SAMPAI = '2026-10-31';     // periode yang berakhir s/d tanggal ini = EVIDENCE: progress dibekukan, tidak dihitung/terlambat lagi, tidak di-carry
+// SO WMS dilakukan 2 MINGGU SEKALI. Sejak SO_MINGGUAN_MULAI periode mengikuti bulan kalender: tgl 1-14 (periode ke-1) dan tgl 15-akhir bulan (periode ke-2).
 var SO_PERIODE_HARI = 14;
 var SO_GROUP_2MINGGU = ['I053', 'Q055'];
 function _so2Minggu(group) { return SO_GROUP_2MINGGU.some(function (g) { return _soKey(g) === _soKey(group); }); }
 function _soPeriodeMulai(iso) {
-  var d = _soDiffDays(SO_MINGGUAN_MULAI, iso);
+  if (iso >= SO_MINGGUAN_MULAI) { var p = iso.split('-'); return p[0] + '-' + p[1] + '-' + (Number(p[2]) <= 14 ? '01' : '15'); }
+  var d = _soDiffDays(SO_LEGACY_MULAI, iso);
   if (d < 0) return _soMonday(iso);
-  return _soAddDays(SO_MINGGUAN_MULAI, Math.floor(d / SO_PERIODE_HARI) * SO_PERIODE_HARI);
+  return _soAddDays(SO_LEGACY_MULAI, Math.floor(d / SO_PERIODE_HARI) * SO_PERIODE_HARI);
 }
+function _soPeriodeAkhir(mulai) {
+  if (mulai >= SO_MINGGUAN_MULAI) {
+    var p = mulai.split('-');
+    if (Number(p[2]) <= 14) return p[0] + '-' + p[1] + '-14';
+    return p[0] + '-' + p[1] + '-' + ('0' + new Date(Number(p[0]), Number(p[1]), 0).getDate()).slice(-2);
+  }
+  var a = _soAddDays(mulai, SO_PERIODE_HARI - 1);
+  return a > SO_ARSIP_SAMPAI ? SO_ARSIP_SAMPAI : a;   // periode lama tidak melewati batas evidence
+}
+function _soPeriodeBerikut(iso) { return _soAddDays(_soPeriodeAkhir(_soPeriodeMulai(iso)), 1); }
 var SO_BULAN_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 function _soTglId(iso) { var p = iso.split('-'); return Number(p[2]) + ' ' + SO_BULAN_ID[Number(p[1]) - 1] + ' ' + p[0]; }
 // Periode (2 minggu) ke-N dalam bulan; bulan ditentukan dari tanggal mulai periode
 function _soMingguKe(startIso) {
-  var ym = startIso.slice(0, 7), n = 0;
-  for (var w = SO_MINGGUAN_MULAI; w <= startIso; w = _soAddDays(w, SO_PERIODE_HARI)) if (w.slice(0, 7) === ym) n++;
-  return n || 1;
+  if (startIso >= SO_MINGGUAN_MULAI) return Number(startIso.split('-')[2]) <= 14 ? 1 : 2;
+  return 1;   // periode lama (evidence)
 }
 // Detail mingguan utk group MINGGUAN: status tiap minggu sejak SO_MINGGUAN_MULAI + peringatan minggu terlambat
 function _soMingguanDetail(m, mine, byLembar, today) {
   var out = { weeks: [], warnings: [], sisaMinggu: 0 }, thisMon = _soPeriodeMulai(today);
-  for (var w = SO_MINGGUAN_MULAI; w <= thisMon; w = _soAddDays(w, SO_PERIODE_HARI)) {
-    var akhir = _soAddDays(w, SO_PERIODE_HARI - 1), l = null;
+  for (var w = SO_LEGACY_MULAI; w <= thisMon; w = _soPeriodeBerikut(w)) {
+    var akhir = _soPeriodeAkhir(w), arsip = akhir <= SO_ARSIP_SAMPAI, l = null;
     mine.forEach(function (x) { if (x.mulai >= w && x.mulai <= akhir) l = x; });   // lembar yang dimulai di dalam periode ini
+    if (arsip && !l) continue;                                                       // periode sebelum perhitungan dimulai & tanpa lembar: dilewati
     var a = l ? (byLembar[l.id] || { total: 0, isi: 0, last: '' }) : null;
     var pr = a && a.total ? Math.round(a.isi / a.total * 10000) / 100 : 0, st;
-    if (!l) st = today > akhir ? 'TERLAMBAT' : 'BELUM MULAI';
+    if (arsip) st = 'EVIDENCE';                                                      // dibekukan: bukti progress, tidak dihitung lagi
+    else if (!l) st = today > akhir ? 'TERLAMBAT' : 'BELUM MULAI';
     else if (pr >= 100) st = (a.last && a.last > akhir) ? 'SELESAI TERLAMBAT' : 'SELESAI';
     else st = today > akhir ? 'TERLAMBAT' : 'ON PROGRESS';
-    var wk = { mulai: w, akhir: akhir, minggu: _soMingguKe(w), bulan: SO_BULAN_ID[Number(w.split('-')[1]) - 1] + ' ' + w.split('-')[0],
+    var wk = { mulai: w, akhir: akhir, minggu: _soMingguKe(w), bulan: SO_BULAN_ID[Number(w.split('-')[1]) - 1] + ' ' + w.split('-')[0], arsip: arsip,
       lembarId: l ? l.id : '', jumlah: a ? a.total : 0, isi: a ? a.isi : 0, progress: pr, status: st,
       tglSelesai: (l && pr >= 100) ? a.last : '', sejak: st === 'TERLAMBAT' ? _soAddDays(akhir, 1) : '' };
     out.weeks.push(wk);
@@ -9911,11 +9926,12 @@ function _soMingguanDetail(m, mine, byLembar, today) {
       minggu: wk.minggu, periode: _soTglId(w) + ' - ' + _soTglId(akhir),
       msg: 'SO ' + m.pic + ' group ' + m.group + ' periode ke-' + wk.minggu + ' (' + _soTglId(w) + ' - ' + _soTglId(akhir) + ') terlambat sejak ' + _soTglId(wk.sejak) + '. Segera selesaikan dan input datanya pada sistem.' });
   }
-  // Rekap per BULAN (bulan ditentukan dari hari Senin tiap minggu): berapa item yang berhasil di-SO PIC dalam sebulan
+  // Rekap per BULAN: berapa item yang berhasil di-SO PIC dalam sebulan (bulan evidence ditandai & tidak dihitung sebagai target berjalan)
   var bm = {}, order = [];
   out.weeks.forEach(function (wk) {
     var key = wk.mulai.slice(0, 7), b = bm[key];
-    if (!b) { b = bm[key] = { key: key, label: wk.bulan, minggu: 0, mingguSelesai: 0, itemTarget: 0, itemSelesai: 0, uniq: {} }; order.push(key); }
+    if (!b) { b = bm[key] = { key: key, label: wk.bulan, minggu: 0, mingguSelesai: 0, itemTarget: 0, itemSelesai: 0, uniq: {}, evidence: true }; order.push(key); }
+    if (!wk.arsip) b.evidence = false;
     b.minggu++; if (wk.status === 'SELESAI' || wk.status === 'SELESAI TERLAMBAT') b.mingguSelesai++;
     b.itemTarget += wk.jumlah; b.itemSelesai += wk.isi;
     var fs = wk.lembarId && _SO_MEM.filled ? _SO_MEM.filled[wk.lembarId] : null;
@@ -9923,12 +9939,12 @@ function _soMingguanDetail(m, mine, byLembar, today) {
   });
   out.bulanan = order.map(function (k) {
     var b = bm[k];
-    return { key: b.key, label: b.label, minggu: b.minggu, mingguSelesai: b.mingguSelesai, itemTarget: b.itemTarget, itemSelesai: b.itemSelesai,
+    return { key: b.key, label: b.label + (b.evidence ? ' · evidence' : ''), evidence: b.evidence, minggu: b.minggu, mingguSelesai: b.mingguSelesai, itemTarget: b.itemTarget, itemSelesai: b.itemSelesai,
       itemUnik: Object.keys(b.uniq).length, progress: b.itemTarget ? Math.round(b.itemSelesai / b.itemTarget * 10000) / 100 : 0,
       rataPerMinggu: b.minggu ? Math.round(b.itemSelesai / b.minggu * 10) / 10 : 0 };
   }).reverse();
   var p2 = today.split('-'), endMonth = p2[0] + '-' + p2[1] + '-' + ('0' + new Date(Number(p2[0]), Number(p2[1]), 0).getDate()).slice(-2);
-  for (var w2 = thisMon; w2 <= endMonth; w2 = _soAddDays(w2, SO_PERIODE_HARI)) out.sisaMinggu++;
+  for (var w2 = thisMon; w2 <= endMonth; w2 = _soPeriodeBerikut(w2)) out.sisaMinggu++;
   return out;
 }
 
@@ -9950,12 +9966,14 @@ function soGetDashboard() {
         var cov = mine.filter(function (l) { return l.mulai <= today && today <= l.akhir; });
         if (cov.length) cur = cov[0];
       }
-      if (!cur && mine.length) cur = mine[0];
+      // lembar periode EVIDENCE (sebelum 1 Nov 2026) tidak lagi jadi periode berjalan: progress dibekukan, bukan 'terlambat'
+      if (m.mode === 'MINGGUAN' && cur && cur.akhir <= SO_ARSIP_SAMPAI && today > cur.akhir) cur = null;
+      if (!cur && mine.length && m.mode !== 'MINGGUAN') cur = mine[0];
       var skuCount = counts ? (counts[_soKey(m.group)] || 0) : null;
       var row = { pic: m.pic, group: m.group, desc: m.desc, targetLabel: m.targetLabel, mode: m.mode,
         totalSku: skuCount, targetItem: 0, telahSo: 0, progress: 0, status: 'BELUM MULAI',
         selisih: '-', open: 0, closed: 0, lembarId: '', mulai: '', akhir: '', sisaHari: null, sejak: '', mingguTelat: 0, berikutnya: (nxt && nxt !== cur) ? nxt.mulai : '' };
-      if (m.mode === 'MINGGUAN') { row.mulai = _soPeriodeMulai(today); row.akhir = _soAddDays(row.mulai, SO_PERIODE_HARI - 1); }
+      if (m.mode === 'MINGGUAN') { row.mulai = _soPeriodeMulai(today); row.akhir = _soPeriodeAkhir(row.mulai); }
       if (cur) {
         var a = byLembar[cur.id] || { total: 0, isi: 0, open: 0, closed: 0 };
         row.lembarId = cur.id; row.targetItem = a.total; row.telahSo = a.isi; row.open = a.open; row.closed = a.closed;
@@ -9971,8 +9989,8 @@ function soGetDashboard() {
       }
       if (m.mode === 'MINGGUAN') {
         // I053: target selesai TIAP MINGGU; minggu sebelum SO_MINGGUAN_MULAI tidak dihitung
-        var wd = _soMingguanDetail(m, mine, byLembar, today), thisMon = _soPeriodeMulai(today), thisEnd = _soAddDays(thisMon, SO_PERIODE_HARI - 1);
-        mingguan.push({ group: m.group, pic: m.pic, desc: m.desc, mulaiHitung: SO_MINGGUAN_MULAI, sisaMinggu: wd.sisaMinggu, weeks: wd.weeks, bulanan: wd.bulanan });
+        var wd = _soMingguanDetail(m, mine, byLembar, today), thisMon = _soPeriodeMulai(today), thisEnd = _soPeriodeAkhir(thisMon);
+        mingguan.push({ group: m.group, pic: m.pic, desc: m.desc, mulaiHitung: SO_MINGGUAN_MULAI, arsipSampai: SO_ARSIP_SAMPAI, sisaMinggu: wd.sisaMinggu, weeks: wd.weeks, bulanan: wd.bulanan });
         row.mingguTelat = wd.weeks.filter(function (x) { return x.status === 'TERLAMBAT'; }).length;
         wd.warnings.forEach(function (x) { warnings.push(x); });
         if (SO_MINGGUAN_MULAI <= thisMon && !mine.some(function (l) { return l.mulai >= thisMon && l.mulai <= thisEnd; }))
@@ -10444,7 +10462,43 @@ function soStatusDariRak(groups) {
       _soUlangRows().forEach(function (u) { if (u.status === 'TERBUKA' && u.lembar === l.id) ulang[_soNorm(u.item)] = { id: u.id, tgl: u.tgl, alasan: u.alasan, oleh: u.oleh, fisikLama: u.fisikLama }; });
       res[g] = { lembarId: l.id, mulai: l.mulai, akhir: l.akhir, total: total, isi: isi, carryBelum: carryBelum, ulang: ulang, items: items };
     });
-    return { success: true, today: _soToday(), data: res };
+    var tdy = _soToday(), pm = _soPeriodeMulai(tdy);
+    return { success: true, today: tdy, periode: { mulai: pm, akhir: _soPeriodeAkhir(pm) }, data: res };
+  } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+
+// ================================================================
+//  PERIODE BARU DARI AKURASI WMS: buat lembar SO periode berjalan dari data QAD Akurasi WMS (bila belum ada) lalu masukkan
+//  progress SO yang SUDAH dikerjakan di Akurasi WMS (item yang semua raknya sudah diisi) ke SO_DETAIL -- supaya terbaca di dashboard.
+//  payload: {group, items:[{item,desc,sistem}], selesai:[{group,item,fisik}], user, nik}
+//  Hak: PIC pemilik group (nama = SO_MASTER.pic), TL, atau Admin. Hanya group SO_RAK_GROUPS (I053).
+//  Lembar dibuat hanya dari item yang terdaftar di sheet group (sama seperti Buat Lembar SO); carry-over periode evidence tidak ditarik.
+// ================================================================
+function soBuatLembarDariRak(payload) {
+  try {
+    payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    var nik = _soActorNik(payload), group = String((payload && payload.group) || '').trim();
+    if (!_soRakGroup(group)) return { success: false, error: 'Belum diaktifkan untuk group ' + group + '.' };
+    var master = soGetMaster().data.filter(function (m) { return _soNorm(m.group) === _soNorm(group); })[0];
+    if (!master) return { success: false, error: 'Group belum terdaftar di SO_MASTER.' };
+    var u = _soUserInfo(nik);
+    if (!_soBolehBuka(nik) && !(u && _soNorm(u.nama) === _soNorm(master.pic))) return { success: false, error: 'Akses ditolak. Hanya PIC group ini, TL, atau Admin.' };
+    var user = (u && u.nama) || payload.user || nik, out = { lembarDibuat: false, tersimpan: 0, sudahAda: 0, dilewati: 0 };
+    var aktif = _soLembarAktif(group);
+    if (!aktif) {
+      var g = _soGroupItemMap(group), hasMap = g.found && Object.keys(g.map).length > 0;
+      var items = (payload.items || []).filter(function (it) {
+        var ok = !hasMap || g.map.hasOwnProperty(_soNorm(it.item)); if (!ok) out.dilewati++; return ok;
+      }).map(function (it) { return { item: it.item, desc: it.desc, um: it.um || '', lokasi: it.lokasi || '', sistem: it.sistem }; });
+      var r = soBuatLembar({ group: group, items: items, user: user });
+      if (!r || r.success === false) return { success: false, error: (r && r.error) || 'Gagal membuat lembar SO.' };
+      out.lembarDibuat = true; out.lembarId = r.id; out.total = r.total; out.mulai = r.mulai; out.akhir = r.akhir;
+      _SO_MEM.lembar = null; _SO_MEM.det = null; _SO_MEM.filled = null;
+    }
+    var sy = soSyncDariRak({ user: user, items: (payload.selesai || []).filter(function (x) { return _soNorm(x.group) === _soNorm(group); }) });
+    if (!sy || sy.success === false) return { success: false, error: (sy && sy.error) || 'Gagal memasukkan progress SO.', data: out };
+    out.tersimpan = sy.data.tersimpan; out.sudahAda = sy.data.sudahAda; out.tidakAda = sy.data.tidakAda;
+    return { success: true, data: out };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
 }
 
