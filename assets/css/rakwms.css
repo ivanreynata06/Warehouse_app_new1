@@ -237,3 +237,7 @@
 .rk .rk-hist{border-top:1px solid rgba(255,255,255,.08);padding-top:14px;display:flex;flex-direction:column;gap:10px}
 .rk .rk-hist .ah-h b{font-family:'Outfit',sans-serif;font-size:13px}
 .rk .rk-hist .ah-r{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px}
+
+/* ---- template adjustment per item (panel item) ---- */
+.rk .rk-iadj{margin-top:12px;padding:12px 14px;border-radius:14px;border:1px solid rgba(34,211,238,.28);background:rgba(34,211,238,.05)}
+.rk .rk-iadj .kh{display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif;font-size:12.5px;margin-bottom:4px}

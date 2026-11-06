@@ -115,7 +115,7 @@
   function canUnlock() { return !!window.IS_TL; }   // TL atau Admin
   function soNote(it) {
     var r = soRec(it); if (!r) return '';
-    var ad = S.adjDone && S.adjDone[it.kode];
+    var ad = adjClaim(it) ? S.adjDone[it.kode] : '';
     var b = 'Item ini telah di-SO pada tanggal ' + soTglF(r.tgl) + (r.oleh ? ' oleh ' + String(r.oleh).replace(/\s*\(Akurasi Rak\)\s*$/, '') : '') + ' dengan fisik ' + fmt(r.fisik) + (ad ? ' dan sudah di-adjustment (template diunduh ' + soTglF(ad) + ')' : '') + '.';
     if (it.sel !== 0) return b + ' Namun pada data terbaru masih terdapat selisih WMS - QAD sebesar ' + (it.sel > 0 ? '+' : '') + fmt(it.sel) + ' (WMS ' + fmt(it.wms) + ' vs QAD ' + fmt(it.qadv) + '). Apakah akan di-SO ulang? ' + (canUnlock() ? 'Jika ya, buka kunci untuk SO ulang.' : 'Jika ya, minta TL atau Admin membuka kunci.');
     return b + ' Pada data terbaru saldo WMS dan QAD sudah sesuai.';
@@ -166,7 +166,7 @@
         var d = r.data || {}, skip = {}; (d.tanpaLembar || []).forEach(function (g) { skip[g] = 1; });
         fresh.forEach(function (x) { if (!skip[x.group]) S.soSent[soKey(x.item)] = x.fisik; });
         saveLocal();
-        if (d.tersimpan) toast('✓ ' + fmt(d.tersimpan) + ' item tercatat ke Stock Opname (progres SO terupdate).');
+        if (d.tersimpan) toast('✓ ' + fmt(d.tersimpan) + ' item tercatat ke Stock Opname (progres SO terupdate). Template Adjustment ada di panel item dan di bagian bawah halaman.');
         ui.soErr = '';   // lembar periode ini belum ada -> banner "Buat lembar & masukkan progress SO" yang menanganinya
       });
     });
@@ -191,7 +191,11 @@
   function idbGet(cb) { idb(function (db) { if (!db) return cb(null); try { var q = db.transaction('kv').objectStore('kv').get(KEY); q.onsuccess = function () { cb(q.result || null); }; q.onerror = function () { cb(null); }; } catch (e) { cb(null); } }); }
   function adopt(j) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; S = j; }
   function toast(m, err) { if (typeof window.toast === 'function') window.toast(m, err); else alert(m); }
-  function recalc() { ui.items = K.items(S, ui.allowed); ui.plan = K.plan(S, ui.items); ui.sum = K.summary(S, ui.items, ui.plan); }
+  function todayIso() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  // Tanggal template otomatis = hari ini. Tanggal yang dipilih manual hanya berlaku di hari itu (tidak basi di hari berikutnya).
+  function fixCfgDate() { var t = todayIso(); if (S.cfg.tglOn !== t) S.cfg.tgl = t; }
+  function recalc() {
+    fixCfgDate(); ui.items = K.items(S, ui.allowed); ui.plan = K.plan(S, ui.items); ui.sum = K.summary(S, ui.items, ui.plan); }
   function tone(p) { return p == null ? 'none' : (p >= 98 ? 'good' : (p >= 90 ? 'warn' : 'bad')); }
   function short(n) { return String(n || '').replace(/^PIPE PPR RUCIKA KELEN GREEN DIA\s*/i, '').replace(/^PIPE PPR\s*/i, '') || n; }
   function pct(p) { return p == null ? '-' : (Math.round(p * 10) / 10).toLocaleString('id-ID', { minimumFractionDigits: p >= 100 ? 0 : 1, maximumFractionDigits: 1 }); }
@@ -295,7 +299,7 @@
     var r = soRec(it); if (!r) return '';
     var u = ulangOf(it);
     if (u) return '<div class="cd" style="text-align:right;margin-top:3px;color:#c4b5fd;font-weight:700">&#9998; SO ulang berjalan &middot; dibuka ' + esc(soTgl(u.tgl)) + '</div>';
-    var ad = S.adjDone && S.adjDone[it.kode];
+    var ad = adjClaim(it) ? S.adjDone[it.kode] : '';
     var h = '<div class="cd" style="text-align:right;margin-top:3px;color:#34d399;font-weight:700" title="Tercatat di Stock Opname' + (r.oleh ? ' oleh ' + esc(r.oleh) : '') + '">&#128274; Terkunci &middot; Sudah SO ' + esc(soTgl(r.tgl)) + ' &middot; fisik ' + fmt(r.fisik) + '</div>';
     if (it.sel !== 0) h += '<div class="cd" style="text-align:right;margin-top:3px;color:#fcd34d;white-space:normal;line-height:1.35" title="' + esc(soNote(it)) + '">Sudah di-SO ' + esc(soTgl(r.tgl)) + (ad ? ' dan sudah di-adjustment' : '') + ', namun data terbaru masih selisih ' + (it.sel > 0 ? '+' : '') + fmt(it.sel) + '. Apakah akan di-SO ulang?</div>';
     else if (ad) h += '<div class="cd" style="text-align:right;margin-top:3px;color:#67e8f9">&#10003; Sudah di-adjustment (' + esc(soTgl(ad)) + ') &middot; saldo WMS = QAD</div>';
@@ -415,11 +419,11 @@
         '<td>' + (l.manual && !ro ? '<button class="btn2 dng sm" onclick="RakUI.delManual(' + l.idx + ')">Hapus</button>' : '') + '</td></tr>';
     }).join('');
     $('rk-dr').innerHTML = '<div class="dh"><div><div class="cd">' + esc(it.kode) + '</div><div style="font-family:Outfit;font-size:16px;font-weight:700;line-height:1.3">' + esc(it.nama) + '</div></div><button class="btn2 sm" onclick="RakUI.close()">Tutup &#10005;</button></div>' +
-      '<div class="db">' + lockBanner(it, ro) +
+      '<div class="db"><div id="rk-lockb">' + lockBanner(it, ro) + '</div>' +
       '<div class="rk-cmp"><div><span>Saldo QAD</span><b style="color:#fcd34d">' + fmt(it.qadv) + '</b></div><div><span>Saldo WMS</span><b style="color:#67e8f9">' + fmt(it.wms) + '</b></div><div><span>Selisih WMS - QAD</span><b>' + sgn(it.sel) + '</b></div><div><span>Aktual (diinput)</span><b id="rk-tA">0</b></div></div>' +
       '<div id="rk-proj" class="infob"></div>' +
       '<div class="rk-tw"><table><thead><tr><th class="l">Rak</th><th>Saldo rak WMS</th><th>Aktual</th><th>Adjustment</th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="5" class="empty">Item ini belum punya rak di WMS. Tambahkan rak manual di bawah.</td></tr>') + '</tbody></table></div>' +
-      koreksiBlock(it, 'dr') +
+      '<div id="rk-iadj" class="rk-iadj"></div>' + koreksiBlock(it, 'dr') +
       (ro ? '' : '<div class="glass" style="border-radius:14px"><div class="gb"><div style="font-family:Outfit;font-weight:700;font-size:12.5px;margin-bottom:4px">+ Tambah rak manual</div><div class="sub" style="margin-bottom:10px">Gunakan bila rak aktual tidak terdaftar di WMS untuk item ini (mis. <span style="font-family:var(--mono)">I-05-02-C</span>).</div>' +
       '<div class="rk-tools"><input type="text" id="rk-newrak" placeholder="Kode rak, mis. I-05-02-C" style="width:220px" onkeydown="if(event.key===\'Enter\')RakUI.addManual()"><button class="btn2 pri" onclick="RakUI.addManual()">Tambah rak</button></div></div></div>') +
       '<div class="sub">Adjustment = aktual &minus; saldo rak WMS. Kelebihan di WMS menjadi <b class="neg">negatif (-)</b>; kekurangan ditulis <b class="pos">angka polos</b>. Qty hanya masuk template jika aktual diisi. Rak <b>TRANSIT</b> yang dibiarkan kosong akan otomatis dikurangi (-) setelah semua rak lain terisi.</div></div>';
@@ -439,6 +443,8 @@
     $('rk-tA').textContent = any ? fmt(ta) : '-';
     var ps = proj - it.qadv;
     $('rk-proj').innerHTML = 'Proyeksi saldo WMS setelah adjustment: <b>' + fmt(proj) + '</b>' + (kq ? ' (termasuk rak koreksi ' + fmt(kq) + ')' : '') + ' vs QAD <b>' + fmt(it.qadv) + '</b> &rarr; ' + (ps === 0 ? '<b class="pos">SESUAI &#10003;</b>' : 'masih selisih <b class="' + (ps > 0 ? 'neg' : 'pos') + '">' + fmt(ps) + '</b> (' + (ps > 0 ? 'WMS lebih besar dari QAD' : 'WMS lebih kecil dari QAD') + ')');
+    var ia = $('rk-iadj'); if (ia) ia.innerHTML = itemAdjInner(it);
+    var lb = $('rk-lockb'); if (lb) lb.innerHTML = lockBanner(it, locked(it));
   }
 
   /* ---------- ADJUSTMENT ---------- */
@@ -450,12 +456,24 @@
   function sig1(p) { return p.step1.map(function (r) { return r.rak + '|' + r.kode + '|' + r.qty; }).join(';'); }
   function adjOff() { return S.adjOff = S.adjOff || {}; }
   function adjDoneOf(kode) { return (S.adjDone && S.adjDone[kode]) || ''; }
+  function hashStr(x) { var h = 5381; for (var i = 0; i < x.length; i++) h = ((h << 5) + h + x.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+  // tanda tangan baris adjustment satu item (Tahap 1 + 2). Dicatat saat template diunduh; bila input item berubah setelahnya, tanda tangan berbeda -> item muncul lagi
+  function itemSig(kode) {
+    var it = itemOf(kode); if (!it) return '';
+    var p = K.plan(S, [it]), a = [];
+    p.step2.forEach(function (r) { a.push('2:' + r.rak + ':' + r.qty); }); p.step1.forEach(function (r) { a.push('1:' + r.rak + ':' + r.kode + ':' + r.qty); });
+    return hashStr(a.sort().join('|'));
+  }
+  // item disembunyikan dari daftar adjustment HANYA bila baris adjustment-nya sama persis dengan yang sudah diunduh
+  function adjHidden(kode) { return !!(S.adjDone && S.adjDone[kode] && S.adjSig && S.adjSig[kode] && S.adjSig[kode] === itemSig(kode)); }
+  // klaim "sudah di-adjustment" hanya bila benar: template sudah diunduh dan tidak ada baris adjustment baru
+  function adjClaim(it) { return !!adjDoneOf(it.kode) && (adjHidden(it.kode) || K.plan(S, [it]).step2.length === 0); }
   // item yang templatenya sudah diunduh (sudah di-adjustment) tidak masuk daftar adjustment lagi -> dicatat di Riwayat Adjustment
-  function adjPlan() { var off = adjOff(); return K.plan(S, ui.items.filter(function (i) { return !off[i.kode] && !adjDoneOf(i.kode); })); }
+  function adjPlan() { var off = adjOff(); return K.plan(S, ui.items.filter(function (i) { return !off[i.kode] && !adjHidden(i.kode); })); }
   // item yang punya baris adjustment (dihitung dari seluruh input) -> daftar pilihan
   function adjCands() {
     var m = {}, p = ui.plan;
-    function get(kode) { var it = itemOf(kode); if (!it || adjDoneOf(kode)) return null; return m[kode] || (m[kode] = { it: it, n2: 0, n1: 0, net: 0, auto: false }); }
+    function get(kode) { var it = itemOf(kode); if (!it || adjHidden(kode)) return null; return m[kode] || (m[kode] = { it: it, n2: 0, n1: 0, net: 0, auto: false }); }
     p.step2.forEach(function (r) { var o = get(r.kode); if (!o) return; o.n2++; o.net += r.qty; if (r.auto) o.auto = true; });
     p.step1.forEach(function (r) { var o = get(r.by); if (o) o.n1++; });
     return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return a.it.nama.localeCompare(b.it.nama, 'id', { numeric: true }); });
@@ -478,16 +496,41 @@
     var h = (S.adjHist || []).slice(0, 40), nd = Object.keys(S.adjDone || {}).length;
     var head = '<div class="rk-hist"><div class="ah-h"><b>Riwayat Adjustment</b><div class="sub">Item yang sudah di-save dan di-adjustment tidak ditampilkan lagi di daftar di atas. Jika data baru di-upload, hanya riwayatnya yang tampil di sini.</div></div>';
     if (!h.length) return head + '<div class="infob">Belum ada riwayat adjustment. Setelah Template Adjustment diunduh, item terkait dipindahkan ke sini.</div></div>';
-    return head + '<div class="rk-tw"><table><thead><tr><th>Tanggal</th><th class="l">Item</th><th>Tahap</th><th class="l">Rak yang di-adjust</th><th>Total</th></tr></thead><tbody>' + h.map(function (e) {
+    return head + '<div class="rk-tw"><table><thead><tr><th>Tanggal</th><th class="l">Item</th><th>Tahap</th><th class="l">Rak yang di-adjust</th><th>Total</th><th></th></tr></thead><tbody>' + h.map(function (e, ix) {
       var net = e.rows.reduce(function (a, r) { return a + r.q; }, 0);
       return '<tr><td class="mono">' + esc(soTglF(e.t)) + '</td><td class="l"><div class="nm" title="' + esc(e.n) + '">' + esc(short(e.n)) + '</div><div class="cd">' + esc(e.k) + (e.u ? ' &middot; ' + esc(e.u) : '') + '</div></td><td><span class="chip2 ' + (e.h === 1 ? 'wr' : 'ok') + '">' + (e.h === 1 ? 'TAHAP 1 &middot; KOSONGKAN' : 'TAHAP 2 &middot; ADJUSTMENT') + '</span></td>' +
-        '<td class="l"><div class="ah-r">' + e.rows.slice(0, 6).map(function (r) { return '<span><b style="font-family:var(--mono)">' + esc(r.r) + '</b> ' + sgn(r.q) + (r.a ? ' <i class="chip2 wr" style="padding:0 5px">TRANSIT</i>' : '') + '</span>'; }).join('') + (e.rows.length > 6 ? '<span class="cd">+' + (e.rows.length - 6) + ' lagi</span>' : '') + '</div></td><td>' + sgn(net) + '</td></tr>';
+        '<td class="l"><div class="ah-r">' + e.rows.slice(0, 6).map(function (r) { return '<span><b style="font-family:var(--mono)">' + esc(r.r) + '</b> ' + sgn(r.q) + (r.a ? ' <i class="chip2 wr" style="padding:0 5px">TRANSIT</i>' : '') + '</span>'; }).join('') + (e.rows.length > 6 ? '<span class="cd">+' + (e.rows.length - 6) + ' lagi</span>' : '') + '</div></td><td>' + sgn(net) + '</td><td style="white-space:nowrap"><button class="btn2 sm" onclick="RakUI.redl(' + ix + ')">&#11015; Unduh ulang</button>' + (e.h === 2 && adjDoneOf(e.k) && adjHidden(e.k) ? '<div style="margin-top:4px"><button class="btn2 sm" data-k="' + esc(e.k) + '" onclick="RakUI.adjRestore(this.dataset.k)">Tampilkan lagi di daftar</button></div>' : '') + '</td></tr>';
     }).join('') + '</tbody></table></div>' + ((S.adjHist || []).length > 40 ? '<div class="sub">Menampilkan 40 riwayat terbaru dari ' + fmt(S.adjHist.length) + '.</div>' : '') + '</div>';
+  }
+  function runDownload(n, rows, suffix) {
+    var d = S.cfg.tgl.replace(/-/g, ''), name = (n === 1 ? 'ADJUST_RAK_TAHAP1_KOSONGKAN_' : 'ADJUST_RAK_TAHAP2_') + d + (suffix || '') + '.xlsx';
+    // riwayat adjustment per item (Tahap 1 dicatat untuk item pemicunya)
+    var byItem = {}, hist = S.adjHist = S.adjHist || [];
+    rows.forEach(function (r) { var k = n === 1 ? r.by : r.kode; (byItem[k] = byItem[k] || []).push({ r: r.rak, q: r.qty, a: r.auto ? 1 : 0, c: r.kode }); });
+    Object.keys(byItem).forEach(function (k) { var it0 = itemOf(k); hist.unshift({ t: S.cfg.tgl, k: k, n: it0 ? it0.nama : k, h: n, rows: byItem[k], u: NAMA, w: new Date().toISOString().slice(0, 16) }); });
+    S.adjHist = hist.slice(0, 200);
+    // Tahap 2: item ditandai sudah di-adjustment (tanggal unduh SEBENARNYA + tanda tangan baris). Tersembunyi dari daftar selama barisnya tidak berubah.
+    if (n === 2) { S.adjDone = S.adjDone || {}; S.adjSig = S.adjSig || {}; Object.keys(byItem).forEach(function (k) { S.adjDone[k] = todayIso(); S.adjSig[k] = itemSig(k); }); }
+    save();
+    loadStyled().then(function (X) {   // X = SheetJS dengan dukungan format sel (rata kiri), sama untuk Tahap 1 & 2
+      var lib = X || XLSX; lib.writeFile(K.buildWorkbook(lib, rows, S.cfg), name);
+      renderAdj(); renderTbl(); if (ui.open) updDrawer();
+      toast(X ? 'Template ' + name + ' diunduh (' + fmt(rows.length) + ' baris). Riwayatnya tersimpan di Riwayat Adjustment dan bisa diunduh ulang.' : 'Template ' + name + ' diunduh, tetapi format rata kiri tidak dapat diterapkan (library gagal dimuat).', !X);
+    });
+  }
+  // blok "Template Adjustment item ini" di panel item
+  function itemAdjInner(it) {
+    var p = K.plan(S, [it]), r2 = p.step2, r1 = p.step1, k = esc(it.kode), L = K.lines(S, it, null), done = adjDoneOf(it.kode);
+    var h = '<div class="kh"><b>Template Adjustment item ini</b>' + (adjHidden(it.kode) ? ' <span class="chip2 ok">SUDAH DIUNDUH ' + esc(soTgl(done)) + '</span>' : '') + '</div>';
+    if (!r2.length && !r1.length) return h + '<div class="sub">Belum ada baris adjustment: aktual belum diisi, atau aktual sama dengan saldo WMS.</div>';
+    h += '<div class="sub">' + fmt(r2.length) + ' baris adjustment (' + fmt(r2.filter(function (r) { return r.qty < 0; }).length) + ' pengurangan, ' + fmt(r2.filter(function (r) { return r.qty > 0; }).length) + ' penambahan)' + (r1.length ? ' dan ' + fmt(r1.length) + ' baris Tahap 1 (kosongkan rak bentrok)' : '') + '.' + (L.complete ? '' : ' <b>Aktual belum lengkap</b> - baris bisa bertambah.') + '</div>' + (r2.length ? miniT(r2) : '') +
+      '<div class="rk-tools" style="margin-top:8px">' + (r1.length ? '<button class="btn2 sm" data-k="' + k + '" onclick="RakUI.dlItem(this.dataset.k,1)">&#11015; Template Tahap 1</button>' : '') + (r2.length ? '<button class="btn2 pri sm" data-k="' + k + '" onclick="RakUI.dlItem(this.dataset.k,2)">&#11015; Unduh Template Adjustment (item ini)</button>' : '') + '</div>';
+    return h;
   }
   function renderAdj() {
     var cand = adjCands(), p = ui.planAdj = adjPlan(), c = S.cfg, has1 = p.step1.length > 0, ok1 = !has1 || (S.step1 && S.step1 === sig1(p)), has2 = p.step2.length > 0;
     var none = cand.length > 0 && !cand.some(function (o) { return !adjOff()[o.it.kode]; });
-    var ndone = ui.items.filter(function (i) { return adjDoneOf(i.kode); }).length;
+    var ndone = ui.items.filter(function (i) { return adjHidden(i.kode); }).length;
     var fa = document.activeElement && document.activeElement.id === 'rk-adjq';
     $('rk-adj').innerHTML = '<div class="gh"><h3>Template Adjustment WMS <em>otomatis dari input aktual</em></h3></div><div class="gb" style="display:flex;flex-direction:column;gap:14px">' +
       '<div class="rk-cfg"><label>Tanggal<input type="date" value="' + esc(c.tgl) + '" onchange="RakUI.cfg(\'tgl\',this.value)"></label><label>Site<input type="number" value="' + esc(c.site) + '" style="width:90px" onchange="RakUI.cfg(\'site\',this.value)"></label>' +
@@ -702,7 +745,7 @@
       m.push({ rak: r, aktual: '' }); save(); recalc(); renderDrawer();
     },
     delManual: function (i) { var it = itemOf(ui.open); if (locked(it)) return; S.manual[it.kode].splice(i, 1); save(); recalc(); renderDrawer(); },
-    cfg: function (k, v) { S.cfg[k] = v; save(); },
+    cfg: function (k, v) { S.cfg[k] = v; if (k === 'tgl') S.cfg.tglOn = todayIso(); save(); },
     backup: function () {
       if (!S.wms.length && !S.qad.length) return toast('Belum ada data untuk dicadangkan.', true);
       S.meta.backupAt = new Date().toLocaleString('id-ID'); save();
@@ -809,20 +852,25 @@
     },
     dl: function (n) {
       var pl = adjPlan(), rows = n === 1 ? pl.step1 : pl.step2; if (!rows.length) return;
-      var d = S.cfg.tgl.replace(/-/g, ''), name = (n === 1 ? 'ADJUST_RAK_TAHAP1_KOSONGKAN_' : 'ADJUST_RAK_TAHAP2_') + d + '.xlsx';
-      // riwayat adjustment per item (Tahap 1 dicatat untuk item pemicunya); Tahap 2 -> item ditandai sudah di-adjustment & hilang dari daftar
-      var byItem = {}, hist = S.adjHist = S.adjHist || [];
-      rows.forEach(function (r) { var k = n === 1 ? r.by : r.kode; (byItem[k] = byItem[k] || []).push({ r: r.rak, q: r.qty, a: r.auto ? 1 : 0 }); });
-      Object.keys(byItem).forEach(function (k) { var it0 = itemOf(k); hist.unshift({ t: S.cfg.tgl, k: k, n: it0 ? it0.nama : k, h: n, rows: byItem[k], u: NAMA, w: new Date().toISOString().slice(0, 16) }); });
-      S.adjHist = hist.slice(0, 200);
-      if (n === 2) { S.adjDone = S.adjDone || {}; pl.step2.forEach(function (r) { S.adjDone[r.kode] = S.cfg.tgl; }); }
-      save();
-      loadStyled().then(function (X) {   // X = SheetJS dengan dukungan format sel (rata kiri), sama untuk Tahap 1 & 2
-        var lib = X || XLSX; lib.writeFile(K.buildWorkbook(lib, rows, S.cfg), name);
-        renderAdj(); renderTbl();
-        toast(X ? 'Template ' + name + ' diunduh (' + fmt(rows.length) + ' baris). Item yang sudah di-adjustment dipindahkan ke Riwayat Adjustment.' : 'Template ' + name + ' diunduh, tetapi format rata kiri tidak dapat diterapkan (library gagal dimuat).', !X);
-      });
-    }
+      runDownload(n, rows, '');
+    },
+    // unduh template adjustment untuk SATU item (dari panel item) -- juga untuk item yang sudah terkunci / sudah pernah diunduh
+    dlItem: function (kode, n) {
+      var it = itemOf(kode); if (!it) return;
+      var pl = K.plan(S, [it]), rows = n === 1 ? pl.step1 : pl.step2;
+      if (!rows.length) return toast('Belum ada baris adjustment untuk item ini.', true);
+      if (n === 2 && pl.step1.length && !confirm('Item ini punya ' + pl.step1.length + ' baris Tahap 1 (mengosongkan rak yang masih dipakai item lain).\n\nSudah di-upload ke WMS?\n\nOK = lanjut unduh Tahap 2')) return;
+      runDownload(n, rows, '_' + kode);
+    },
+    // unduh ulang dari Riwayat Adjustment (isi sama persis dengan yang dulu diunduh)
+    redl: function (i) {
+      var e = (S.adjHist || [])[i]; if (!e) return;
+      var rows = e.rows.map(function (r) { return { rak: r.r, kode: e.h === 1 ? r.c : e.k, qty: r.q }; });
+      if (rows.some(function (r) { return !r.kode; })) return toast('Riwayat lama ini tidak menyimpan kode item. Unduh dari panel item terkait.', true);
+      var name = 'ADJUST_RAK_TAHAP' + e.h + (e.h === 1 ? '_KOSONGKAN_' : '_') + String(e.t).replace(/-/g, '') + '_' + e.k + '_ULANG.xlsx';
+      loadStyled().then(function (X) { var lib = X || XLSX; lib.writeFile(K.buildWorkbook(lib, rows, Object.assign({}, S.cfg, { tgl: e.t })), name); toast('Template ' + name + ' diunduh ulang (' + fmt(rows.length) + ' baris).'); });
+    },
+    adjRestore: function (kode) { if (S.adjDone) delete S.adjDone[kode]; if (S.adjSig) delete S.adjSig[kode]; save(); renderAdj(); renderTbl(); toast('Item ditampilkan kembali di daftar adjustment.'); }
   };
   window.RakUI = API;
 

@@ -83,7 +83,7 @@
   };
 
   /* ================= MODEL ================= */
-  function blank() { return { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: { wmsAt: '', qadAt: '', wmsFile: '', qadFile: '' }, cfg: { tgl: today(), site: SITE, ket: 'Adjustment SO rak', kat: 1 }, koreksi: {}, adjOff: {}, adjDone: {}, adjHist: [], step1: '' }; }
+  function blank() { return { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: { wmsAt: '', qadAt: '', wmsFile: '', qadFile: '' }, cfg: { tgl: today(), site: SITE, ket: 'Adjustment SO rak', kat: 1 }, koreksi: {}, adjOff: {}, adjDone: {}, adjSig: {}, adjHist: [], step1: '' }; }
   NS.blank = blank;
 
   // item = { kode, nama, qad (null bila tak ada di QAD), racks:[{rak,area,onhand}], wms, sel }
