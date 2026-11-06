@@ -56,10 +56,13 @@
       var kd = code(x[c.kode]); if (!kd) { st.noItem++; continue; }
       var nama = c.nama >= 0 ? String(x[c.nama]).replace(/\s+/g, ' ').trim() : '';
       var area = c.area >= 0 ? String(x[c.area]).trim() : '';
-      var rk = rakCode(x[c.rak]);
-      if (!rk || (nama && String(x[c.rak]).replace(/\s+/g, ' ').trim() === nama)) rk = rakCode(area) || rk;   // baris TRANSIT: kolom Rak berisi nama item
+      // Rak yang berisi NAMA ITEM = rak TRANSIT. Nama rak itu DIPERTAHANKAN (tidak diganti area/'TRANSIT'), karena template
+      // adjustment harus memakai nama rak persis seperti di WMS. raw = teks asli kolom Rak (spasi dirapikan).
+      var raw = String(x[c.rak] == null ? '' : x[c.rak]).replace(/\s+/g, ' ').trim();
+      var rk = rakCode(raw) || rakCode(area);
+      if (!raw) raw = rk;
       var key = rk + '|' + kd;
-      if (!map[key]) map[key] = { lok: LOC, area: area, rak: rk, kode: kd, nama: nama, onhand: 0 };
+      if (!map[key]) map[key] = { lok: LOC, area: area, rak: rk, raw: raw, kode: kd, nama: nama, onhand: 0 };
       map[key].onhand += num(x[c.on]); st.kept++;
     }
     return { rows: Object.keys(map).map(function (k) { return map[k]; }), stats: st };
@@ -92,7 +95,7 @@
     S.qad.forEach(function (q) { if (q.grp) grpOf[q.kode] = q.grp; });
     S.wms.forEach(function (r) {
       var it = m[r.kode] || (m[r.kode] = { kode: r.kode, nama: r.nama, qad: null, racks: [], wms: 0 });
-      it.racks.push({ rak: r.rak, area: r.area, onhand: r.onhand }); it.wms += r.onhand; if (!it.nama) it.nama = r.nama;
+      it.racks.push({ rak: r.rak, raw: r.raw, area: r.area, onhand: r.onhand }); it.wms += r.onhand; if (!it.nama) it.nama = r.nama;
     });
     S.qad.forEach(function (q) {
       var it = m[q.kode];
@@ -105,7 +108,18 @@
     a.sort(function (x, y) { return Math.abs(y.sel) - Math.abs(x.sel) || x.nama.localeCompare(y.nama, 'id', { numeric: true }); });
     return a;
   };
-  function isTr(rak) { return /TRANSIT/i.test(String(rak || '')); }
+  // Rak TRANSIT = rak yang namanya NAMA ITEM (mis. "(ECERAN)PIPEPPRRUCIKAKELENGREEN...", "PIPE PPR RUCIKA KELEN ...") atau memuat kata TRANSIT.
+  // Rak reguler berpola kode (I-08-01-E, J-06-01-F, C-CA) tidak pernah dianggap transit.
+  var STD_RAK = /^[A-Z]{1,3}-?\d{1,3}(?:-\d{1,3})?(?:-[A-Z0-9]{1,3})?$/;
+  function alnum(v) { return String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function isTr(rak, nama) {
+    var r = String(rak || '').trim(); if (!r) return false;
+    if (/TRANSIT/i.test(r)) return true;
+    if (STD_RAK.test(r.replace(/\s+/g, ''))) return false;
+    var n = alnum(r), nn = alnum(nama);
+    if (nn.length >= 8 && n.length >= 8 && (n.indexOf(nn.slice(0, Math.min(nn.length, 18))) >= 0 || (n.length >= 14 && nn.indexOf(n) >= 0))) return true;   // nama rak memuat/ sama dengan nama item
+    return n.length >= 14 && /PIPE|PIPA|PPR|RUCIKA|KELEN|ELBOW|TEE|SOCKET|FITTING|DIA\d/.test(n);                                                      // bentuk nama item
+  }
   NS.isTransit = isTr;
   // RAK KOREKSI = rak virtual penyeimbang stok: barang yang sudah keluar (pengiriman) di WMS tetapi saldo QAD belum terpotong.
   // Qty ini dihitung sebagai fisik (supaya tidak muncul selisih di dashboard Stock Opname) dan TIDAK masuk template adjustment WMS.
@@ -127,7 +141,7 @@
         (byRak[mr.rak] || []).forEach(function (o) {
           if (o.kode === it.kode || !o.onhand) return;
           var k = o.rak + '|' + o.kode; if (cleared[k]) return; cleared[k] = 1;
-          step1.push({ rak: o.rak, kode: o.kode, nama: o.nama, qty: -o.onhand, by: it.kode });
+          step1.push({ rak: o.rak, raw: o.raw, kode: o.kode, nama: o.nama, qty: -o.onhand, by: it.kode });
           conflicts.push({ rak: o.rak, pakaiOleh: o.kode, namaLama: o.nama, onhand: o.onhand, itemBaru: it.kode, namaBaru: it.nama });
         });
       });
@@ -138,10 +152,10 @@
         if (cleared[r.rak + '|' + it.kode]) return;
         var a = inVal(S, it.kode, r.rak);
         if (a === null) {   // rak TRANSIT yang tidak diberi nilai (item sudah lengkap diinput) -> dijadikan adjustment pengurangan (-)
-          if (isTr(r.rak) && r.onhand > 0 && NS.lines(S, it, null).complete) step2.push({ rak: r.rak, kode: it.kode, nama: it.nama, qty: -r.onhand, auto: true });
+          if (isTr(r.rak, it.nama) && r.onhand > 0 && NS.lines(S, it, null).complete) step2.push({ rak: r.rak, raw: r.raw, kode: it.kode, nama: it.nama, qty: -r.onhand, auto: true });
           return;
         }
-        var d = a - r.onhand; if (d) step2.push({ rak: r.rak, kode: it.kode, nama: it.nama, qty: d });
+        var d = a - r.onhand; if (d) step2.push({ rak: r.rak, raw: r.raw, kode: it.kode, nama: it.nama, qty: d });
       });
       (S.manual[it.kode] || []).forEach(function (mr) {
         if (mr.aktual === '' || mr.aktual == null) return;
@@ -156,12 +170,12 @@
   NS.lines = function (S, it, plan) {
     var L = it.racks.map(function (r) {
       var cl = !!(plan && plan.cleared[r.rak + '|' + it.kode]);
-      return { rak: r.rak, area: r.area, exist: r.onhand, aktual: inVal(S, it.kode, r.rak), manual: false, cleared: cl };
+      return { rak: r.rak, raw: r.raw, area: r.area, exist: r.onhand, aktual: inVal(S, it.kode, r.rak), manual: false, cleared: cl };
     });
     (S.manual[it.kode] || []).forEach(function (mr, i) { L.push({ rak: mr.rak, area: 'MANUAL', exist: 0, aktual: (mr.aktual === '' || mr.aktual == null) ? null : num(mr.aktual), manual: true, idx: i }); });
     // item lengkap = semua rak selain TRANSIT sudah diisi aktual. Rak TRANSIT kosong pada item lengkap = otomatis dikurangi (-)
-    var req = L.filter(function (l) { return !isTr(l.rak); }), comp = req.length > 0 && req.every(function (l) { return l.aktual !== null; });
-    L.forEach(function (l) { if (isTr(l.rak) && l.aktual === null && l.exist > 0 && comp) l.auto = true; });
+    var req = L.filter(function (l) { return !isTr(l.rak, it.nama); }), comp = req.length > 0 && req.every(function (l) { return l.aktual !== null; });
+    L.forEach(function (l) { l.transit = isTr(l.rak, it.nama); if (l.transit && l.aktual === null && l.exist > 0 && comp) l.auto = true; });
     L.complete = comp;
     return L;
   };
@@ -187,7 +201,7 @@
   /* ================= TEMPLATE XLSX ================= */
   NS.templateRows = function (rows, cfg) {
     var parts = String(cfg.tgl || today()).split('-'), d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-    return rows.map(function (r) { return [d, Number(cfg.site) || SITE, LOC, r.rak, /^\d+$/.test(r.kode) ? Number(r.kode) : r.kode, cfg.ket || '', r.qty, Number(cfg.kat) || 1]; });
+    return rows.map(function (r) { return [d, Number(cfg.site) || SITE, LOC, r.raw || r.rak, /^\d+$/.test(r.kode) ? Number(r.kode) : r.kode, cfg.ket || '', r.qty, Number(cfg.kat) || 1]; });
   };
   NS.buildWorkbook = function (XLSX, rows, cfg) {
     var aoa = [HEAD].concat(NS.templateRows(rows, cfg)), ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });

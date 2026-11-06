@@ -6,7 +6,7 @@
  */
 (function () {
   'use strict';
-  var K = window.RakWmsCore, esc = K.esc, fmt = K.fmt;
+  var K = window.RakWmsCore, esc = K.esc, fmt = K.fmt, BS = window.BelumSusunCore;
   var USER = (sessionStorage.getItem('wh_nama') || 'anon').trim().toLowerCase();
   var KEY = 'rakwms_v1::' + USER;
   var S = load(), ui = { allowed: [], g: 'all', q: '', f: 'all', open: null, items: [], plan: null, sum: null, soStat: {}, soErr: '' };
@@ -113,7 +113,8 @@
   function clearItem(kode) { if (S.adjDone) delete S.adjDone[kode]; delete S.inputs[kode]; delete S.manual[kode]; if (S.koreksi) delete S.koreksi[kode]; if (S.soSent) delete S.soSent[soKey(kode)]; }
   // keterangan resmi untuk item yang sudah di-SO (terkunci); bila data terbaru masih selisih, diberi catatan khusus
   function canUnlock() { return !!window.IS_TL; }   // TL atau Admin
-  function soNote(it) {
+  function soNote(it) { return soNote0(it) + (it.sel !== 0 && soRec(it) ? bsNote(it) : ''); }
+  function soNote0(it) {
     var r = soRec(it); if (!r) return '';
     var ad = adjClaim(it) ? S.adjDone[it.kode] : '';
     var b = 'Item ini telah di-SO pada tanggal ' + soTglF(r.tgl) + (r.oleh ? ' oleh ' + String(r.oleh).replace(/\s*\(Akurasi Rak\)\s*$/, '') : '') + ' dengan fisik ' + fmt(r.fisik) + (ad ? ' dan sudah di-adjustment (template diunduh ' + soTglF(ad) + ')' : '') + '.';
@@ -125,7 +126,7 @@
   function completeItems() {
     var out = [];
     ui.items.forEach(function (it) {
-      if (!inSOG(it) || !K.lines(S, it, ui.plan).complete) return;
+      if (!inSOG(it) || !K.lines(S, it, ui.plan).complete || !soOk(it)) return;   // acuan QAD: hanya item yang total aktualnya = saldo QAD yang disimpan
       out.push({ group: it.grp, item: it.kode, fisik: K.fisik(S, it) });
     });
     return out;
@@ -223,7 +224,7 @@
       '<linearGradient id="rk-g-good" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>' +
       '<linearGradient id="rk-g-warn" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#fb923c"/></linearGradient>' +
       '<linearGradient id="rk-g-bad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fb7185"/><stop offset="1" stop-color="#e879f9"/></linearGradient></defs></svg>' +
-      '<div id="rk-hero"></div><div id="rk-prog"></div><div class="glass" id="rk-up"></div><div class="glass" id="rk-chart"></div><div class="glass" id="rk-rep"></div><div class="glass" id="rk-tbl"></div><div class="glass" id="rk-adj"></div>' +
+      '<div id="rk-hero"></div><div id="rk-prog"></div><div class="glass" id="rk-up"></div><div class="glass" id="rk-chart"></div><div class="glass" id="rk-bs"></div><div class="glass" id="rk-rep"></div><div class="glass" id="rk-tbl"></div><div class="glass" id="rk-adj"></div>' +
       '<div class="rk-ov" id="rk-ov" onclick="RakUI.close()"></div><div class="rk-dr" id="rk-dr"></div><div class="rk-so" id="rk-so"></div></div>';
   }
 
@@ -373,7 +374,7 @@
       '<div class="gb">' + soBanner() + '<div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>Group</th><th class="l">Nama Rak</th><th>Jml Rak</th><th>Saldo QAD</th><th>Saldo WMS</th><th>Selisih</th><th>Status</th><th>Progres input</th></tr></thead><tbody>' +
       (a.length ? a.slice(0, lim).map(function (i) {
         var c = soCount(i), pc = c.t ? c.n / c.t * 100 : 0;
-        return '<tr class="it' + (locked(i) ? ' lk' + (i.sel !== 0 ? ' lksel' : '') : '') + (ulangOf(i) ? ' ul' : '') + '" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div></td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td class="l" title="' + esc(i.racks.map(function (r) { return r.rak; }).join(', ')) + '"><div class="cd" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)">' + (i.racks.length ? esc(i.racks.slice(0, 2).map(function (r) { return r.rak; }).join(', ')) + (i.racks.length > 2 ? ' +' + (i.racks.length - 2) : '') : '-') + '</div></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
+        return '<tr class="it' + (locked(i) ? ' lk' + (i.sel !== 0 ? ' lksel' : '') : '') + (ulangOf(i) ? ' ul' : '') + '" onclick="RakUI.open(\'' + i.kode + '\')"><td class="l"><div class="nm" title="' + esc(i.nama) + '">' + esc(i.nama) + '</div><div class="cd">' + esc(i.kode) + '</div>' + bsChip(i) + '</td><td><span class="chip2 nt">' + esc(i.grp) + '</span></td><td class="l" title="' + esc(i.racks.map(function (r) { return r.rak; }).join(', ')) + '"><div class="cd" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)">' + (i.racks.length ? esc(i.racks.slice(0, 2).map(function (r) { return r.rak; }).join(', ')) + (i.racks.length > 2 ? ' +' + (i.racks.length - 2) : '') : '-') + '</div></td><td>' + i.racks.length + '</td><td>' + fmt(i.qadv) + '</td><td>' + fmt(i.wms) + '</td><td>' + sgn(i.sel) + '</td>' +
           '<td><span class="chip2 ' + (i.sel === 0 ? 'ok' : 'bd') + '">' + (i.sel === 0 ? 'SESUAI' : 'SELISIH') + '</span></td>' +
           '<td style="min-width:120px"><div class="prg"><i style="width:' + pc + '%"></i></div><div class="cd" style="text-align:right;margin-top:3px">' + c.n + '/' + c.t + ' rak</div>' + soChip(i) + '</td></tr>';
       }).join('') : '<tr><td colspan="10" class="empty">' + (ui.items.length ? 'Tidak ada item yang cocok dengan filter.' : 'Belum ada data. Upload saldo QAD dan Informasi Rak WMS di atas.') + '</td></tr>') +
@@ -409,7 +410,7 @@
     var it = itemOf(ui.open); if (!it) return;
     var ro = locked(it), dis = ro ? ' disabled' : '';
     var L = K.lines(S, it, ui.plan), rows = L.map(function (l, i) {
-      var hl = l.manual ? holders(it.kode, l.rak) : [], tr = K.isTransit(l.rak);
+      var hl = l.manual ? holders(it.kode, l.rak) : [], tr = K.isTransit(l.rak, it.nama);
       return '<tr class="' + (l.manual ? 'man' : '') + '"><td class="l"><b style="font-family:var(--mono)">' + esc(l.rak) + '</b>' + (l.manual ? ' <span class="chip2 nt">MANUAL</span>' : '') + (tr ? ' <span class="chip2 nt">TRANSIT</span>' : '') +
         '<div class="cd">' + esc(l.area || '') + (hl.length ? ' - <span class="neg">dipakai item lain di WMS</span>' : '') + '</div>' +
         (hl.length ? '<div class="warnb" style="margin-top:6px">Rak ini di WMS masih berisi <b>' + hl.map(function (h) { return esc(short(h.nama)) + ' (' + fmt(h.onhand) + ')'; }).join(', ') + '</b>. Saat aktual diisi, stok tersebut otomatis masuk <b>Template Tahap 1</b> (dikeluarkan dengan tanda -) dan harus di-upload ke WMS lebih dulu.</div>' : '') + '</td>' +
@@ -421,7 +422,7 @@
     $('rk-dr').innerHTML = '<div class="dh"><div><div class="cd">' + esc(it.kode) + '</div><div style="font-family:Outfit;font-size:16px;font-weight:700;line-height:1.3">' + esc(it.nama) + '</div></div><button class="btn2 sm" onclick="RakUI.close()">Tutup &#10005;</button></div>' +
       '<div class="db"><div id="rk-lockb">' + lockBanner(it, ro) + '</div>' +
       '<div class="rk-cmp"><div><span>Saldo QAD</span><b style="color:#fcd34d">' + fmt(it.qadv) + '</b></div><div><span>Saldo WMS</span><b style="color:#67e8f9">' + fmt(it.wms) + '</b></div><div><span>Selisih WMS - QAD</span><b>' + sgn(it.sel) + '</b></div><div><span>Aktual (diinput)</span><b id="rk-tA">0</b></div></div>' +
-      '<div id="rk-proj" class="infob"></div>' +
+      bsDrawer(it) + '<div id="rk-proj" class="infob"></div>' +
       '<div class="rk-tw"><table><thead><tr><th class="l">Rak</th><th>Saldo rak WMS</th><th>Aktual</th><th>Adjustment</th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="5" class="empty">Item ini belum punya rak di WMS. Tambahkan rak manual di bawah.</td></tr>') + '</tbody></table></div>' +
       '<div id="rk-iadj" class="rk-iadj"></div>' + koreksiBlock(it, 'dr') +
       (ro ? '' : '<div class="glass" style="border-radius:14px"><div class="gb"><div style="font-family:Outfit;font-weight:700;font-size:12.5px;margin-bottom:4px">+ Tambah rak manual</div><div class="sub" style="margin-bottom:10px">Gunakan bila rak aktual tidak terdaftar di WMS untuk item ini (mis. <span style="font-family:var(--mono)">I-05-02-C</span>).</div>' +
@@ -469,11 +470,12 @@
   // klaim "sudah di-adjustment" hanya bila benar: template sudah diunduh dan tidak ada baris adjustment baru
   function adjClaim(it) { return !!adjDoneOf(it.kode) && (adjHidden(it.kode) || K.plan(S, [it]).step2.length === 0); }
   // item yang templatenya sudah diunduh (sudah di-adjustment) tidak masuk daftar adjustment lagi -> dicatat di Riwayat Adjustment
-  function adjPlan() { var off = adjOff(); return K.plan(S, ui.items.filter(function (i) { return !off[i.kode] && !adjHidden(i.kode); })); }
+  function adjPlan() { var off = adjOff(); return K.plan(S, ui.items.filter(function (i) { return !off[i.kode] && !adjHidden(i.kode) && soOk(i); })); }
   // item yang punya baris adjustment (dihitung dari seluruh input) -> daftar pilihan
   function adjCands() {
     var m = {}, p = ui.plan;
-    function get(kode) { var it = itemOf(kode); if (!it || adjHidden(kode)) return null; return m[kode] || (m[kode] = { it: it, n2: 0, n1: 0, net: 0, auto: false }); }
+    ui.adjBlk = {};
+    function get(kode) { var it = itemOf(kode); if (!it || adjHidden(kode)) return null; if (!soOk(it)) { ui.adjBlk[kode] = it; return null; } return m[kode] || (m[kode] = { it: it, n2: 0, n1: 0, net: 0, auto: false }); }
     p.step2.forEach(function (r) { var o = get(r.kode); if (!o) return; o.n2++; o.net += r.qty; if (r.auto) o.auto = true; });
     p.step1.forEach(function (r) { var o = get(r.by); if (o) o.n1++; });
     return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return a.it.nama.localeCompare(b.it.nama, 'id', { numeric: true }); });
@@ -535,6 +537,7 @@
     $('rk-adj').innerHTML = '<div class="gh"><h3>Template Adjustment WMS <em>otomatis dari input aktual</em></h3></div><div class="gb" style="display:flex;flex-direction:column;gap:14px">' +
       '<div class="rk-cfg"><label>Tanggal<input type="date" value="' + esc(c.tgl) + '" onchange="RakUI.cfg(\'tgl\',this.value)"></label><label>Site<input type="number" value="' + esc(c.site) + '" style="width:90px" onchange="RakUI.cfg(\'site\',this.value)"></label>' +
       '<label>Keterangan<input type="text" value="' + esc(c.ket) + '" style="width:240px" onchange="RakUI.cfg(\'ket\',this.value)"></label><label>Kode Kategori<input type="number" value="' + esc(c.kat) + '" style="width:90px" onchange="RakUI.cfg(\'kat\',this.value)"></label><label>Location<input type="text" value="' + K.LOC + '" disabled style="width:100px;opacity:.6"></label></div>' +
+      (Object.keys(ui.adjBlk || {}).length ? '<div class="warnb"><b>' + fmt(Object.keys(ui.adjBlk).length) + ' item belum dimasukkan ke template</b> karena total aktual belum sama dengan saldo QAD (acuan SO): ' + Object.keys(ui.adjBlk).slice(0, 6).map(function (k) { return esc(short(ui.adjBlk[k].nama)); }).join(', ') + (Object.keys(ui.adjBlk).length > 6 ? ', ...' : '') + '. Koreksi input melalui Form Stock Opname.</div>' : '') +
       (ndone ? '<div class="infob">&#10003; ' + fmt(ndone) + ' item sudah di-adjustment dan tidak ditampilkan lagi di daftar. Lihat <b>Riwayat Adjustment</b> di bawah.</div>' : '') +
       adjPick(cand) +
       (p.dup.length ? '<div class="warnb">Rak manual yang sama dipakai oleh lebih dari satu item: <b>' + p.dup.map(function (d) { return esc(d.rak); }).join(', ') + '</b>. Pastikan hanya satu item per rak.</div>' : '') +
@@ -632,13 +635,22 @@
     var q = so.q.toUpperCase(), pk = picks();
     return ui.items.filter(function (i) { return inSOG(i) && !pk[i.kode] && !locked(i) && (!so.sel || i.sel !== 0) && (!q || (i.nama + ' ' + i.kode).toUpperCase().indexOf(q) >= 0); });
   }
+  /* Status hasil hitung SO per item. ACUAN = saldo QAD: item hanya boleh disimpan / masuk template bila total aktual = saldo QAD. */
+  function soSt(it) {
+    var L = K.lines(S, it, ui.plan), n = L.filter(function (l) { return l.aktual !== null; }).length;
+    var miss = L.filter(function (l) { return l.aktual === null && !l.transit && !l.auto; }).length;
+    var tot = K.fisik(S, it), diff = Math.round((tot - it.qadv) * 1000) / 1000;
+    var st = n === 0 ? 'empty' : (!L.complete ? 'part' : (diff === 0 ? 'ok' : 'bad'));
+    return { st: st, n: n, miss: miss, tot: tot, diff: diff, rows: L.length };
+  }
+  function soOk(it) { return soSt(it).st === 'ok'; }
   function soLine(it, l, i) {
     var hl = l.manual ? holders(it.kode, l.rak) : [], id = esc(it.kode);
-    return '<tr class="' + (l.manual ? 'man' : '') + '"><td class="l"><b style="font-family:var(--mono)">' + esc(l.rak) + '</b>' + (l.manual ? ' <span class="chip2 nt">RAK TAMBAHAN</span>' : '') +
+    return '<tr class="' + (l.manual ? 'man' : '') + '"><td class="l"><b style="font-family:var(--mono)">' + esc(l.rak) + '</b>' + (l.manual ? ' <span class="chip2 nt">RAK TAMBAHAN</span>' : '') + (l.transit ? ' <span class="chip2 nt" title="Rak bernama item = rak transit. Nama rak ini tetap dipakai apa adanya di template adjustment.">RAK TRANSIT</span>' : '') +
       '<div class="cd">' + esc(l.area || '') + '</div>' +
       (hl.length ? '<div class="warnb" style="margin-top:6px">Di WMS rak ini masih terbaca <b>' + hl.map(function (h) { return esc(short(h.nama)) + ' (' + fmt(h.onhand) + ')'; }).join(', ') + '</b>. Stok itu otomatis dikosongkan (<b>-' + hl.map(function (h) { return fmt(h.onhand); }).join(', -') + '</b>) di Template Tahap 1 saat aktual diisi.</div>' : '') + '</td>' +
       '<td>' + fmt(l.exist) + '</td>' +
-      '<td><input type="number" min="0" step="any" class="aq" placeholder="aktual" value="' + (l.aktual === null ? '' : l.aktual) + '" oninput="RakUI.soAkt(this,' + i + ')" data-k="' + id + '"></td>' +
+      '<td><input type="number" min="0" step="any" class="aq" placeholder="' + (l.transit ? 'kosong = 0' : 'aktual') + '" value="' + (l.aktual === null ? '' : l.aktual) + '" oninput="RakUI.soAkt(this,' + i + ')" data-k="' + id + '"></td>' +
       '<td id="so-d-' + id + '-' + i + '" style="min-width:120px"></td>' +
       '<td>' + (l.manual ? '<button class="btn2 dng sm" onclick="RakUI.soDel(this.dataset.k,' + l.idx + ')" data-k="' + id + '">Hapus</button>' : '') + '</td></tr>';
   }
@@ -649,7 +661,8 @@
       '<div class="rk-cmp" style="grid-template-columns:repeat(3,auto);gap:8px"><div><span>Saldo QAD</span><b style="font-size:16px;color:#fcd34d">' + fmt(it.qadv) + '</b></div><div><span>Saldo WMS</span><b style="font-size:16px;color:#67e8f9">' + fmt(it.wms) + '</b></div><div><span>Selisih</span><b style="font-size:16px">' + sgn(it.sel) + '</b></div></div></div>' +
       '<div class="rk-tw" style="margin-top:10px"><table><thead><tr><th class="l">Rak</th><th>Saldo WMS</th><th>Aktual (lapangan)</th><th>Adjustment</th><th></th></tr></thead><tbody>' +
       (L.map(function (l, i) { return soLine(it, l, i); }).join('') || '<tr><td colspan="5" class="empty">Item ini belum punya rak di WMS. Tambahkan rak di bawah.</td></tr>') + '</tbody></table></div>' + koreksiBlock(it, 'so') +
-      '<div class="rk-tools" style="margin-top:10px"><input type="text" id="so-n-' + id + '" placeholder="+ Tambah rak (mis. I-03-01-C)" style="width:230px" data-k="' + id + '" onkeydown="if(event.key===\'Enter\')RakUI.soAdd(this.dataset.k)"><button class="btn2 pri sm" data-k="' + id + '" onclick="RakUI.soAdd(this.dataset.k)">Tambah rak</button><span class="cd" id="so-p-' + id + '"></span></div>' +
+      '<div class="rk-tools" style="margin-top:10px"><input type="text" id="so-n-' + id + '" placeholder="+ Tambah rak (mis. I-03-01-C)" style="width:230px" data-k="' + id + '" onkeydown="if(event.key===\'Enter\')RakUI.soAdd(this.dataset.k)"><button class="btn2 pri sm" data-k="' + id + '" onclick="RakUI.soAdd(this.dataset.k)">Tambah rak</button></div>' +
+      '<div class="so-tot" id="so-p-' + id + '"></div>' +
       '</div></div>';
   }
   function soRefresh() {
@@ -663,10 +676,18 @@
         c.innerHTML = l.cleared ? '<span class="chip2 wr">DIKOSONGKAN T1</span>' : (d === 0 ? '<span class="chip2 ok">SESUAI</span>' : (d < 0 ? '<span class="neg" style="font-family:var(--mono);font-weight:700">' + fmt(d) + '</span> <span class="cd">kurangi</span>' : '<span class="pos" style="font-family:var(--mono);font-weight:700">' + fmt(d) + '</span> <span class="cd">tambah</span>'));
       });
       proj += (K.koreksiOf(S, it.kode).q || 0);
-      var p = $('so-p-' + it.kode), n = L.filter(function (l) { return l.aktual !== null; }).length;
-      if (p) p.innerHTML = n ? 'Proyeksi WMS: <b>' + fmt(proj) + '</b> vs QAD <b>' + fmt(it.qadv) + '</b> ' + (proj === it.qadv ? '<span class="pos">sesuai &#10003;</span>' : '<span class="neg">selisih ' + fmt(proj - it.qadv) + '</span>') : '';
+      var p = $('so-p-' + it.kode), q = soSt(it), kq = K.koreksiOf(S, it.kode).q || 0;
+      if (p) {
+        var tone = q.st === 'ok' ? 'ok' : (q.st === 'bad' ? 'bad' : 'wr'), stT = { empty: 'Belum diisi', part: 'Belum lengkap', ok: 'Sesuai QAD', bad: (q.diff > 0 ? 'Lebih ' : 'Kurang ') + fmt(Math.abs(q.diff)) + ' dari QAD' }[q.st],
+          dt = { empty: 'Isi aktual tiap rak', part: fmt(q.miss) + ' rak belum diisi', ok: 'Total input = saldo QAD', bad: 'Belum dapat disimpan - koreksi input' }[q.st];
+        p.innerHTML = '<div class="tt"><span>Total input</span><b>' + (q.n ? fmt(q.tot) : '-') + '</b><i>' + fmt(q.n) + ' dari ' + fmt(q.rows) + ' rak terisi' + (kq ? ' &middot; termasuk koreksi ' + fmt(kq) : '') + '</i></div>' +
+          '<div class="tt"><span>Saldo WMS</span><b>' + fmt(it.wms) + '</b><i>' + (q.n ? 'proyeksi setelah adjust: ' + fmt(proj) : 'data sistem WMS') + '</i></div>' +
+          '<div class="tt"><span>Saldo QAD (acuan)</span><b>' + fmt(it.qadv) + '</b><i>nilai pembanding SO</i></div>' +
+          '<div class="tt st ' + tone + '"><span>Status</span><b>' + stT + '</b><i>' + dt + '</i></div>';
+      }
     });
-    var t = $('so-sum'); if (t) { var m = K.summary(S, ui.items, ui.plan); t.innerHTML = 'Rak terinput: <b>' + fmt(m.rin) + '</b> &middot; Template Tahap 1: <b>' + fmt(ui.plan.step1.length) + '</b> baris &middot; Tahap 2: <b>' + fmt(ui.plan.step2.length) + '</b> baris'; }
+    var t = $('so-sum'); if (t) { var ss = soItems().map(soSt), nOk = ss.filter(function (x) { return x.st === 'ok'; }).length, nBad = ss.filter(function (x) { return x.st === 'bad'; }).length, nPart = ss.filter(function (x) { return x.st === 'part' || x.st === 'empty'; }).length;
+      t.innerHTML = 'Item dipilih: <b>' + fmt(ss.length) + '</b> &middot; <span class="pos">Sesuai QAD: <b>' + fmt(nOk) + '</b></span> &middot; <span class="neg">Selisih: <b>' + fmt(nBad) + '</b></span> &middot; Belum lengkap: <b>' + fmt(nPart) + '</b>'; }
   }
   function renderSO() {
     var el = $('rk-so'); if (!el) return;
@@ -693,6 +714,92 @@
     soRefresh();
     var sc1 = el.querySelector('.db'), pl1 = el.querySelector('.so-pick'); if (sc1) sc1.scrollTop = st0; if (pl1) pl1.scrollTop = pt0;
     if (keep) { var q = $('so-q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  }
+  /* ---------- VOUCHER BELUM TERSUSUN / BELUM DIRELOKASI ----------
+     Acuan: input QAD (Document). Dibandingkan dengan Voucher WMS, Laporan Susun Voucher, dan Laporan Relokasi
+     (nomor voucher WAJIB ada di kolom Keterangan relokasi). Logika murni: belumsusun-core.js */
+  var bs = { raw: null, at: 0, busy: false, err: '', f: 'belum', q: '', lim: 60 };
+  function bsMake() {
+    if (!bs.raw || !BS) return null;
+    var items = {}; ui.items.forEach(function (i) { if (i.grp === 'I053') items[i.kode] = 1; });
+    return BS.analyze(bs.raw, { items: items, sinceDays: 60 });
+  }
+  function bsOf(it) { var r = ui.bsRes; return r && r.by[it.kode] && r.by[it.kode].belumVoucher.length ? r.by[it.kode] : null; }
+  function bsChip(it) { var o = bsOf(it); return o ? '<div class="cd" style="margin-top:3px"><span class="chip2 wr" title="Voucher QAD yang belum tersusun / belum direlokasi">' + fmt(o.belumVoucher.length) + ' voucher belum tersusun &middot; ' + fmt(o.belum) + '</span></div>' : ''; }
+  function bsVList(o, n) { return o.belumVoucher.slice(0, n || 6).map(function (v) { return '<span><b style="font-family:var(--mono)">' + esc(v.v) + '</b> ' + fmt(v.belum) + (v.noWms ? ' <i class="chip2 bd" style="padding:0 5px">belum di WMS</i>' : '') + '</span>'; }).join(''); }
+  function bsDrawer(it) {
+    var o = bsOf(it); if (!o) return '';
+    return '<div class="warnb"><b>Voucher QAD belum tersusun: ' + fmt(o.belumVoucher.length) + ' voucher, total ' + fmt(o.belum) + '.</b><div class="ah-r" style="margin-top:6px">' + bsVList(o, 8) + '</div><div class="sub" style="margin-top:4px">Voucher sudah ada di QAD tetapi belum tercatat di Laporan Susun Voucher maupun Laporan Relokasi (nomor voucher di keterangan). Barang ini kemungkinan belum berada di rak sehingga memengaruhi saldo rak WMS.</div></div>';
+  }
+  function bsNote(it) {
+    var o = bsOf(it); if (!o) return '';
+    var tx = ' Kemungkinan penyebab selisih: terdapat <b>' + fmt(o.belumVoucher.length) + ' voucher QAD yang belum tersusun/direlokasi</b> (' + o.belumVoucher.slice(0, 4).map(function (v) { return esc(v.v) + ': ' + fmt(v.belum); }).join(', ') + (o.belumVoucher.length > 4 ? ', ...' : '') + ') dengan total <b>' + fmt(o.belum) + '</b>';
+    if (it.sel < 0) tx += ', yang dapat menjelaskan ' + (o.belum >= -it.sel ? 'seluruh' : 'sebagian (' + fmt(o.belum) + ' dari ' + fmt(-it.sel) + ')') + ' selisih tersebut. Selesaikan penyusunan/relokasi voucher tersebut sebelum melakukan SO ulang.';
+    else tx += '. Periksa penyusunan voucher tersebut terlebih dahulu.';
+    return tx;
+  }
+  function loadBs(force) {
+    if (!BS || bs.busy) return;
+    if (!force && bs.raw && Date.now() - bs.at < 300000) return;
+    bs.busy = true; bs.err = ''; if (force) renderBs();
+    Promise.all([gs('getWmsQadData', []), gs('getSusunData', [])]).then(function (r) {
+      var a = r[0] || {}, b = r[1] || {};
+      if (a.success === false) throw new Error(a.error || 'Data voucher WMS/QAD gagal dimuat');
+      if (b.success === false) throw new Error(b.error || 'Data susun/relokasi gagal dimuat');
+      bs.raw = { qad: a.qad || [], wms: a.wms || [], susun: b.master || [], relok: b.relok || [] }; bs.at = Date.now();
+    }).catch(function (e) { bs.err = String((e && e.message) || e || 'gagal'); })
+      .then(function () { bs.busy = false; renderBs(); if (!ui.open && !ui.soOpen) renderTbl(); });
+  }
+  function renderBs() {
+    var el = $('rk-bs'); if (!el) return;
+    var head = '<div class="gh"><h3>Voucher Belum Tersusun <em>QAD (acuan) vs Voucher WMS &middot; Laporan Susun &middot; Laporan Relokasi</em></h3><div class="rk-tools"><button class="btn2 sm" onclick="RakUI.bsRefresh()">' + (bs.busy ? 'Memuat...' : '&#8635; Muat ulang data') + '</button></div></div>';
+    if (!BS) { el.innerHTML = head + '<div class="gb"><div class="empty">Modul pembanding belum termuat. Muat ulang halaman.</div></div>'; return; }
+    if (bs.err) { el.innerHTML = head + '<div class="gb"><div class="warnb">Gagal memuat data: ' + esc(bs.err) + '</div></div>'; return; }
+    if (!bs.raw) { el.innerHTML = head + '<div class="gb"><div class="sub">' + (bs.busy ? 'Memuat data voucher WMS/QAD, laporan susun, dan laporan relokasi...' : 'Belum dimuat.') + '</div></div>'; return; }
+    var r = ui.bsRes = bsMake(), m = r.sum, d = r.data;
+    var miss = [];
+    if (!d.qad) miss.push('data QAD (upload di menu Akurasi QAD vs WMS dengan kolom Document)');
+    if (!d.susun && !d.relok) miss.push('Laporan Susun Voucher / Laporan Relokasi (upload di menu Monitoring Susun WMS)');
+    var kpi = function (l, v, c, sub) { return '<div class="rk-kpi" style="--c:' + c + '"><span>' + l + '</span><b>' + v + '</b>' + (sub ? '<em class="cd">' + sub + '</em>' : '') + '</div>'; };
+    var top = r.items.filter(function (x) { return x.belum > 0; }).slice(0, 10), mx = Math.max.apply(null, top.map(function (x) { return x.belum; }).concat([1]));
+    var list = r.rows.filter(function (o) { return (bs.f === 'all' || o.belum > 0) && (!bs.q || (o.n + ' ' + o.i + ' ' + o.v).toUpperCase().indexOf(bs.q.toUpperCase()) >= 0); });
+    el.innerHTML = head + '<div class="gb" style="display:flex;flex-direction:column;gap:14px">' +
+      (miss.length ? '<div class="warnb">Data pembanding belum lengkap: ' + miss.join('; ') + '. Hasil di bawah dapat menampilkan voucher "belum tersusun" yang belum akurat.</div>' : '') +
+      '<div class="rk-kpis">' + kpi('Voucher QAD diperiksa', fmt(m.voucher), '#a78bfa', 'acuan perbandingan') + kpi('Sudah tersusun', fmt(m.tersusun), '#34d399', 'susun / relokasi sesuai') + kpi('Sebagian', fmt(m.sebagian), '#fbbf24', 'qty tersusun kurang') + kpi('Belum tersusun', fmt(m.belum), '#fb7185', fmt(m.itemBelum) + ' item') + kpi('Qty belum tersusun', fmt(m.belumQty), '#22d3ee', 'total semua voucher') + '</div>' +
+      '<div class="sub">Periode pembanding: ' + (r.coverage ? 'mulai ' + esc(soTglF(r.coverage)) + ' (awal data Laporan Susun/Relokasi), ' : '') + 'maksimal 60 hari terakhir' + (m.skipped ? ' &middot; ' + fmt(m.skipped) + ' voucher lebih lama tidak dibandingkan' : '') + '. Qty QAD dihitung bersih setelah revisi (pengurangan berpasangan). Relokasi dihitung bila <b>nomor voucher tertulis di Keterangan</b> dan rak tujuan adalah rak reguler.</div>' +
+      (top.length ? '<div class="bs-chart"><div class="cd" style="margin-bottom:6px">10 item dengan qty belum tersusun terbesar</div>' + top.map(function (x) { return '<div class="bs-r"><span class="nm" title="' + esc(x.n) + '">' + esc(short(x.n)) + '</span><div class="bs-b"><i style="width:' + Math.max(2, x.belum / mx * 100) + '%"></i></div><b>' + fmt(x.belum) + '</b><span class="cd">' + fmt(x.belumVoucher.length) + ' vch</span></div>'; }).join('') + '</div>' : '<div class="infob">&#10003; Seluruh voucher QAD pada periode pembanding sudah tersusun atau direlokasi.</div>') +
+      (m.tanpaVoucher ? '<div class="warnb"><b>' + fmt(m.tanpaVoucher) + ' data relokasi tidak mencantumkan nomor voucher di Keterangan</b> sehingga tidak dapat dicocokkan dengan QAD (contoh ID: ' + r.tanpaVoucher.slice(0, 5).map(function (x) { return esc(x.id || '-'); }).join(', ') + '). Lengkapi nomor voucher pada keterangan relokasi.</div>' : '') +
+      '<div class="rk-tools"><input type="text" placeholder="Cari voucher / item..." value="' + esc(bs.q) + '" style="width:220px" oninput="RakUI.bsSearch(this.value)"><div class="rk-seg">' + [['belum', 'Belum tersusun'], ['all', 'Semua voucher']].map(function (x) { return '<button class="' + (bs.f === x[0] ? 'on' : '') + '" onclick="RakUI.bsFilter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div><span class="cd">' + fmt(list.length) + ' voucher</span></div>' +
+      '<div class="rk-tw"><table><thead><tr><th class="l">Item</th><th>No. Voucher</th><th>Tgl QAD</th><th>Umur</th><th>Qty QAD</th><th>Voucher WMS</th><th>Tersusun</th><th>Relokasi</th><th>Belum tersusun</th><th>Status</th></tr></thead><tbody>' +
+      (list.length ? list.slice(0, bs.lim).map(function (o) {
+        var chip = o.status === 'tersusun' ? '<span class="chip2 ok">TERSUSUN</span>' : (o.noWms ? '<span class="chip2 bd">BELUM DI WMS</span>' : (o.status === 'sebagian' ? '<span class="chip2 wr">SEBAGIAN</span>' : '<span class="chip2 bd">BELUM DISUSUN</span>'));
+        return '<tr><td class="l"><div class="nm" title="' + esc(o.n) + '">' + esc(short(o.n)) + '</div><div class="cd">' + esc(o.i) + '</div></td><td class="mono">' + esc(o.v) + '</td><td class="mono">' + esc(soTglF(o.t)) + '</td><td>' + (o.umur == null ? '-' : o.umur + ' hr') + '</td><td>' + fmt(o.qad) + '</td><td>' + fmt(o.wms) + '</td><td>' + fmt(o.susun) + '</td><td>' + fmt(o.relok) + '</td><td>' + (o.belum ? '<span class="neg">' + fmt(o.belum) + '</span>' : '<span class="zero">0</span>') + '</td><td>' + chip + '</td></tr>';
+      }).join('') : '<tr><td colspan="10" class="empty">Tidak ada voucher yang cocok.</td></tr>') + '</tbody></table></div>' +
+      (list.length > bs.lim ? '<button class="btn2 sm" onclick="RakUI.bsMore()">Tampilkan lebih banyak (sisa ' + fmt(list.length - bs.lim) + ')</button>' : '') + '</div>';
+  }
+  /* ---------- KARTU NOTIFIKASI saat klik "Selesai" ---------- */
+  function soDlg(c) {
+    var el = $('rk-sodlg'); if (!el) { el = document.createElement('div'); el.id = 'rk-sodlg'; el.className = 'so-dlg'; document.body.appendChild(el); }
+    el.innerHTML = '<div class="so-dlg-b ' + c.tone + '"><div class="ic">' + c.icon + '</div><h3>' + c.title + '</h3><p>' + c.msg + '</p>' + (c.list || '') + '<div class="bt">' + c.btns.map(function (b) { return '<button class="btn2 ' + (b.pri ? 'pri' : '') + '" onclick="RakUI.soDlgAct(\'' + b.a + '\')">' + b.t + '</button>'; }).join('') + '</div></div>';
+    el.classList.add('on');
+  }
+  var soFirstBad = null;
+  function soDlgClose() { var el = $('rk-sodlg'); if (el) el.classList.remove('on'); }
+  function soFinish() {
+    var a = soItems();
+    if (!a.length) return soDlg({ tone: 'info', icon: '&#8505;', title: 'Belum Ada Item yang Dipilih', msg: 'Pilih minimal satu item pada langkah 1, kemudian isi hasil hitung fisik pada setiap rak sebelum menyelesaikan Stock Opname.', btns: [{ t: 'Kembali', a: 'close', pri: 1 }] });
+    var rs = a.map(function (it) { return { it: it, s: soSt(it) }; }), bad = rs.filter(function (x) { return x.s.st !== 'ok'; });
+    if (!bad.length) return soDlg({ tone: 'ok', icon: '&#10003;', title: 'Hasil Stock Opname Telah Sesuai',
+      msg: 'Seluruh <b>' + fmt(a.length) + ' item</b> yang dihitung telah sesuai dengan saldo QAD. Anda dapat melanjutkan ke penyusunan Template Adjustment WMS.',
+      btns: [{ t: 'Tinjau Kembali', a: 'close' }, { t: 'Lanjutkan ke Template Adjustment &darr;', a: 'go', pri: 1 }] });
+    soFirstBad = bad[0].it.kode;
+    soDlg({ tone: 'bad', icon: '!', title: 'Hasil Stock Opname Belum Sesuai',
+      msg: 'Terdapat <b>' + fmt(bad.length) + ' dari ' + fmt(a.length) + ' item</b> yang total hasil hitungnya belum sama dengan saldo QAD. Template Adjustment baru dapat disusun setelah seluruh item sesuai. Mohon lakukan penghitungan ulang atau koreksi input pada item berikut.',
+      list: '<div class="so-dlg-l">' + bad.slice(0, 12).map(function (x) {
+        var d = x.s.st === 'bad' ? (x.s.diff > 0 ? 'lebih ' : 'kurang ') + fmt(Math.abs(x.s.diff)) : (x.s.st === 'empty' ? 'belum diisi' : fmt(x.s.miss) + ' rak belum diisi');
+        return '<div><span class="nm" title="' + esc(x.it.nama) + '">' + esc(short(x.it.nama)) + '</span><span class="cd">input ' + (x.s.n ? fmt(x.s.tot) : '-') + ' &middot; QAD ' + fmt(x.it.qadv) + '</span><b class="neg">' + d + '</b></div>';
+      }).join('') + (bad.length > 12 ? '<div class="cd">+' + fmt(bad.length - 12) + ' item lainnya</div>' : '') + '</div>',
+      btns: [{ t: 'Kembali &amp; Koreksi', a: 'back', pri: 1 }] });
   }
   /* ---------- cetak LEMBAR STOCK OPNAME (format lembar SO: sistem diganti QAD & WMS, ada Fisik & Rak Aktual) ---------- */
   function printSO() {
@@ -765,7 +872,16 @@
     },
     openSO: function () { recalc(); so.lim = 30; renderSO(); $('rk-ov').classList.add('on'); $('rk-so').classList.add('on'); ui.soOpen = true; },
     closeSO: function () { scheduleSo(true); ui.soOpen = false; $('rk-so').classList.remove('on'); $('rk-ov').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
-    soDone: function () { API.closeSO(); var a = $('rk-adj'); if (a && a.scrollIntoView) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    soDone: function () { soFinish(); },
+    bsRefresh: function () { loadBs(true); },
+    bsFilter: function (f) { bs.f = f; bs.lim = 60; renderBs(); },
+    bsSearch: function (v) { bs.q = v; bs.lim = 60; var el = document.activeElement, id = el && el.tagName === 'INPUT'; renderBs(); var i = $('rk-bs').querySelector('input[type=text]'); if (i && id) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } },
+    bsMore: function () { bs.lim += 100; renderBs(); },
+    soDlgAct: function (a) {
+      soDlgClose();
+      if (a === 'go') { API.closeSO(); var t = $('rk-adj'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      else if (a === 'back' && soFirstBad) { var c = $('so-c-' + soFirstBad); if (c && c.scrollIntoView) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('so-flash'); setTimeout(function () { c.classList.remove('so-flash'); }, 2200); } }
+    },
     soSearch: function (v) { so.q = v; renderSO(); },
     soSelOnly: function (on) { so.sel = !!on; renderSO(); },
     soSetN: function (v) { so.n = Math.max(1, Math.min(500, Math.floor(Number(v)) || 10)); renderSO(); },
@@ -858,6 +974,7 @@
     dlItem: function (kode, n) {
       var it = itemOf(kode); if (!it) return;
       var pl = K.plan(S, [it]), rows = n === 1 ? pl.step1 : pl.step2;
+      if (!soOk(it)) return toast('Template belum dapat diunduh: total input item ini belum sama dengan saldo QAD. Koreksi di Form Stock Opname terlebih dahulu.', true);
       if (!rows.length) return toast('Belum ada baris adjustment untuk item ini.', true);
       if (n === 2 && pl.step1.length && !confirm('Item ini punya ' + pl.step1.length + ' baris Tahap 1 (mengosongkan rak yang masih dipakai item lain).\n\nSudah di-upload ke WMS?\n\nOK = lanjut unduh Tahap 2')) return;
       runDownload(n, rows, '_' + kode);
@@ -877,10 +994,10 @@
   function render() {
     if (!ui.allowed.length) {
       $('rk-hero').innerHTML = '<div class="glass"><div class="gb empty">Akurasi Rak WMS saat ini hanya untuk PIC / TL group <b>I053</b> (Pipa PPR) dan <b>Q055</b> (Fitting).<br><span class="sub">Jika Anda PIC salah satu group tersebut, tunggu data group selesai dimuat lalu buka ulang tab ini.</span></div></div>';
-      ['rk-prog', 'rk-up', 'rk-chart', 'rk-rep', 'rk-tbl', 'rk-adj'].forEach(function (id) { if ($(id)) $(id).innerHTML = ''; });
+      ['rk-prog', 'rk-up', 'rk-chart', 'rk-bs', 'rk-rep', 'rk-tbl', 'rk-adj'].forEach(function (id) { if ($(id)) $(id).innerHTML = ''; });
       return;
     }
-    recalc(); renderHero(); try { if (typeof window.soRenderRakProgress === 'function') window.soRenderRakProgress(); } catch (e) {} renderUp(); renderChart(); renderRep(); renderTbl(); renderAdj(); animate(); }
+    recalc(); renderHero(); try { if (typeof window.soRenderRakProgress === 'function') window.soRenderRakProgress(); } catch (e) {} renderUp(); renderChart(); renderBs(); loadBs(false); renderRep(); renderTbl(); renderAdj(); animate(); }
   /* ---------- akses: SEMENTARA hanya group I053 & Q055 ---------- */
   function applyAccess() {
     var P = window.S || {}, m = P.master || [];
