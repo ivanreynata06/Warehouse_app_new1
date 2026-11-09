@@ -9630,7 +9630,9 @@ function soSimpanIsi(payload) {
       if (String(cur[0]) !== payload.id) return; // pengaman: baris harus milik lembar ini
       if (String(cur[17]) === 'HOLD') { ditahanKunci.push(row); return; } // terkunci sampai item sisa periode lalu selesai
       if (r.fisik === '' || r.fisik === null || r.fisik === undefined) return;
-      var fisik = Number(r.fisik), sistem = Number(cur[5]) || 0, sel = fisik - sistem, konf = String(cur[15]);
+      var fisik = Number(r.fisik), sistem = Number(cur[5]) || 0, konf = String(cur[15]);
+      if (r.sistem !== undefined && r.sistem !== null && r.sistem !== '' && !isNaN(Number(r.sistem))) { sistem = Number(r.sistem); cur[5] = sistem; }   // sistem = saldo QAD dari Akurasi WMS
+      var sel = fisik - sistem;
       if (sel !== 0 && !r.konfirmasi) { ditahan.push(row); return; }
       if (sel === 0) konf = '';
       else konf = 'DIKONFIRMASI ' + today + ' ' + (payload.user || '');
@@ -9644,7 +9646,7 @@ function soSimpanIsi(payload) {
       cur[6] = fisik; cur[7] = sel; cur[8] = today; cur[9] = payload.user || ''; cur[10] = status; cur[15] = konf;
       if (!minR || row < minR) minR = row; if (row > maxR) maxR = row; n++;
     });
-    if (n) sd.getRange(minR, 7, maxR - minR + 1, 10).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(6, 16); }));
+    if (n) sd.getRange(minR, 6, maxR - minR + 1, 11).setValues(all.slice(minR - 1, maxR).map(function (c) { return c.slice(5, 16); }));
     var terbuka = n ? _soBukaHold(payload.id) : 0; // semua item sisa selesai -> item terkunci terbuka otomatis
     if (revLog.length) {
       var sr = _soSheet('SO_REVISI_LOG', SO_REVLOG_HDR);
@@ -10420,32 +10422,64 @@ function _soRakGroup(g) { return SO_RAK_GROUPS.indexOf(String(g || '').trim().to
 function soSyncDariRak(payload) {
   try {
     payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
-    var user = String((payload && payload.user) || '').trim(), by = {}, out = { tersimpan: 0, diperbarui: 0, sudahAda: 0, tidakAda: 0, ditahan: 0, tanpaLembar: [], gagal: [] };
+    var user = String((payload && payload.user) || '').trim(), by = {}, out = { tersimpan: 0, diperbarui: 0, sistemDiperbarui: 0, sudahAda: 0, tidakAda: 0, ditahan: 0, tanpaLembar: [], gagal: [] };
     ((payload && payload.items) || []).slice(0, 3000).forEach(function (x) {
-      var g = String(x.group || '').trim(); if (!g || x.item == null || x.fisik === '' || x.fisik == null || isNaN(Number(x.fisik))) return;
-      (by[g] = by[g] || []).push({ item: _soNorm(x.item), fisik: Number(x.fisik) });
+      var g = String(x.group || '').trim(); if (!g || x.item == null) return;
+      var hasF = !(x.fisik === '' || x.fisik == null || isNaN(Number(x.fisik))), hasQ = !(x.qad === '' || x.qad == null || isNaN(Number(x.qad)));
+      if (!hasF && !hasQ) return;
+      (by[g] = by[g] || []).push({ item: _soNorm(x.item), fisik: hasF ? Number(x.fisik) : null, qad: hasQ ? Number(x.qad) : null, selaras: !!x.selaras });
     });
     Object.keys(by).forEach(function (g) {
       if (!_soRakGroup(g)) { out.tidakAda += by[g].length; return; }   // belum diaktifkan untuk group ini
       var l = _soLembarAktif(g);
-      if (!l) { out.tanpaLembar.push(g); return; }
+      if (!l) { out.tanpaLembar.push(g); return; }   // periode berakhir / belum ada lembar: tidak ada yang diubah (terkunci)
       var map = {}; _soDetailRows().forEach(function (d) { if (d.lembar === l.id) map[_soNorm(d.item)] = d; });
-      var rows = [];
+      var rows = [], sisOnly = [];
       by[g].forEach(function (it) {
         var d = map[it.item];
         if (!d) { out.tidakAda++; return; }
         if (d.mode === 'HOLD') { out.ditahan++; return; }
-        if (d.fisik !== null && Number(d.fisik) === it.fisik) { out.sudahAda++; return; }   // sama persis -> tidak ada yang perlu diperbarui
-        if (d.fisik !== null) out.diperbarui++; else out.tersimpan++;   // beda -> periode berjalan: dashboard ikut diperbarui
-        rows.push({ row: d.row, fisik: it.fisik, konfirmasi: true, perbarui: d.fisik !== null });
+        var same = function (a, b) { return Math.abs(Number(a) - Number(b)) < 0.0005; };
+        if (d.fisik === null) {   // belum di-SO: sistem selalu mengikuti QAD terbaru dari Akurasi WMS; fisik ikut bila item sudah lengkap
+          if (it.fisik !== null) { out.tersimpan++; rows.push({ row: d.row, fisik: it.fisik, sistem: it.qad, konfirmasi: true }); }
+          else if (it.qad !== null && !same(d.sistem, it.qad)) sisOnly.push({ row: d.row, qad: it.qad, fisik: null });
+        } else if (it.selaras) {   // sudah di-SO & datanya masih selaras dengan Akurasi WMS: samakan sistem (fisik tidak berubah)
+          if (it.fisik !== null && same(d.fisik, it.fisik) && it.qad !== null && !same(d.sistem, it.qad)) sisOnly.push({ row: d.row, qad: it.qad, fisik: Number(d.fisik) });
+          else out.sudahAda++;
+        } else if (it.fisik !== null && !same(d.fisik, it.fisik)) {   // nilai fisik berubah di Akurasi WMS selama periode berjalan -> dashboard ikut
+          out.diperbarui++; rows.push({ row: d.row, fisik: it.fisik, sistem: it.qad, konfirmasi: true, perbarui: true });
+        } else out.sudahAda++;   // sudah di-SO dan terkunci terhadap upload baru
       });
-      if (!rows.length) return;
-      var r = soSimpanIsi({ id: l.id, user: (user || 'PIC') + ' (Akurasi Rak)', rows: rows, perbarui: rows.some(function (x) { return x.perbarui; }) });
-      if (!r || r.success === false) out.gagal.push(g + ': ' + ((r && r.error) || 'gagal'));
+      if (rows.length) {
+        var r = soSimpanIsi({ id: l.id, user: (user || 'PIC') + ' (Akurasi Rak)', rows: rows, perbarui: rows.some(function (x) { return x.perbarui; }) });
+        if (!r || r.success === false) out.gagal.push(g + ': ' + ((r && r.error) || 'gagal'));
+      }
+      if (sisOnly.length) { var rs = _soSetSistem(sisOnly); if (rs) out.sistemDiperbarui += rs; }
     });
     if (out.gagal.length) return { success: false, error: out.gagal.join(' | '), data: out };
     return { success: true, data: out };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
+}
+// samakan kolom Sistem (dan Selisih bila sudah ada Fisik) dengan QAD Akurasi WMS tanpa mengubah info pengisi/tanggal/fisik
+function _soSetSistem(list) {
+  var lock = LockService.getScriptLock(), n = 0;
+  try {
+    lock.waitLock(25000);
+    var sd = _soSheet('SO_DETAIL', SO_DETAIL_HDR), last = sd.getLastRow(); if (last < 2) return 0;
+    list.forEach(function (x) {
+      if (!x.row || x.row < 2 || x.row > last) return;
+      sd.getRange(x.row, 6).setValue(x.qad);
+      if (x.fisik !== null) {
+        var sel = x.fisik - x.qad; sd.getRange(x.row, 8).setValue(sel);
+        var st = String(sd.getRange(x.row, 11).getValue() || '');
+        sd.getRange(x.row, 11).setValue(sel === 0 ? '' : (st === 'CLOSED' ? 'CLOSED' : 'OPEN'));
+      }
+      n++;
+    });
+    _SO_MEM.det = null;
+    return n;
+  } catch (e) { return n; }
+  finally { try { lock.releaseLock(); } catch (x) {} }
 }
 function soStatusDariRak(groups) {
   try {
@@ -10585,10 +10619,10 @@ function soUlangSelesai(payload) {
         _SO_MEM.det = null;
         var dd = null; _soDetailRows().forEach(function (x) { if (x.lembar === u.lembar && _soNorm(x.item) === _soNorm(u.item)) dd = x; });
         if (!dd || dd.mode === 'HOLD') dash = 'tidakada';
-        else if (dd.fisik !== null && Number(dd.fisik) === fisik) dash = 'sama';
+        else if (dd.fisik !== null && Number(dd.fisik) === fisik && Number(dd.sistem) === Number(payload.qad)) dash = 'sama';
         else {
           try { lock.releaseLock(); } catch (x) {}   // soSimpanIsi mengambil lock sendiri
-          var rs = soSimpanIsi({ id: u.lembar, user: nama + ' (Akurasi Rak)', rows: [{ row: dd.row, fisik: fisik, konfirmasi: true, perbarui: dd.fisik !== null }], perbarui: dd.fisik !== null });
+          var rs = soSimpanIsi({ id: u.lembar, user: nama + ' (Akurasi Rak)', rows: [{ row: dd.row, fisik: fisik, sistem: (payload.qad === '' || payload.qad == null || isNaN(Number(payload.qad))) ? null : Number(payload.qad), konfirmasi: true, perbarui: dd.fisik !== null }], perbarui: dd.fisik !== null });
           dash = (rs && rs.success !== false) ? 'diperbarui' : 'gagal';
           _SO_MEM.det = null;
         }

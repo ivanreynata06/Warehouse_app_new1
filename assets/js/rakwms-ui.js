@@ -152,12 +152,17 @@
     clearTimeout(soTimer); soTimer = null; soDue = 0; if (soBusy || !ui.items.length) return Promise.resolve();
     if (ui.open || ui.soOpen) return Promise.resolve();   // jangan mengunci item saat PIC masih mengetik
     S.soSent = S.soSent || {};
-    var fresh = [], rep = [];
-    completeItems().forEach(function (x) {
-      var it = itemOf(x.item); if (!it) return;
-      var u = ulangOf(it);
-      if (u) rep.push({ u: u, x: x, it: it });                                                // SO ulang selesai -> dicatat + memperbarui Dashboard SO bila lembar masih periode berjalan (server)
-      else if (!soRec(it) && S.soSent[soKey(x.item)] !== x.fisik) fresh.push(x);              // SO pertama periode ini -> masuk SO_DETAIL
+    var fresh = [], rep = [], sig = {}; S.soSentQ = S.soSentQ || {};
+    var done = {}; completeItems().forEach(function (x) { done[x.item] = x; });
+    ui.items.forEach(function (it) {
+      if (!inSOG(it)) return;
+      var x = done[it.kode], k = soKey(it.kode), rec = soRec(it), u = ulangOf(it), tag = (x ? x.fisik : '') + '|' + it.qadv;
+      if (u) { if (x) rep.push({ u: u, x: x, it: it }); return; }                           // SO ulang selesai -> dicatat + memperbarui Dashboard SO bila lembar masih periode berjalan (server)
+      if (!rec) {                                                                             // belum di-SO: sistem mengikuti QAD terbaru, fisik ikut bila item lengkap
+        if (S.soSentQ[k] !== tag) { fresh.push({ group: it.grp, item: it.kode, fisik: x ? x.fisik : '', qad: it.qadv }); sig[k] = tag; }
+      } else if (x && Math.abs(x.fisik - rec.fisik) < 0.0005 && S.soSentQ[k] !== 's' + tag) {   // sudah di-SO & masih selaras dengan QAD terbaru: samakan sistem. Bila QAD berubah dan tidak selaras -> BEKU (tidak mengikuti upload baru)
+        fresh.push({ group: it.grp, item: it.kode, fisik: x.fisik, qad: it.qadv, selaras: true }); sig[k] = 's' + tag;
+      }
     });
     var nl1 = needLembar(); fresh = fresh.filter(function (x) { return nl1.indexOf(x.group) < 0; });   // lembar periode ini belum ada: tunggu 'Buat lembar & masukkan progress SO'
     if (!fresh.length && !rep.length) return Promise.resolve();
@@ -167,9 +172,10 @@
       return gs('soSyncDariRak', [JSON.stringify({ user: NAMA, items: fresh })]).then(function (r) {
         if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
         var d = r.data || {}, skip = {}; (d.tanpaLembar || []).forEach(function (g) { skip[g] = 1; });
-        fresh.forEach(function (x) { if (!skip[x.group]) S.soSent[soKey(x.item)] = x.fisik; });
+        fresh.forEach(function (x) { if (!skip[x.group]) { S.soSent[soKey(x.item)] = x.fisik; S.soSentQ[soKey(x.item)] = sig[soKey(x.item)]; } });
         saveLocal();
         if (d.diperbarui) toast('✓ ' + fmt(d.diperbarui) + ' item di Dashboard Stock Opname diperbarui sesuai data terbaru Akurasi WMS (periode berjalan).');
+        if (d.sistemDiperbarui) toast('✓ Saldo sistem ' + fmt(d.sistemDiperbarui) + ' item di Dashboard Stock Opname disamakan dengan QAD terbaru Akurasi WMS.');
         if (d.tersimpan) toast('✓ ' + fmt(d.tersimpan) + ' item tercatat ke Stock Opname (progres SO terupdate). Template Adjustment ada di panel item dan di bagian bawah halaman.');
         ui.soErr = '';   // lembar periode ini belum ada -> banner "Buat lembar & masukkan progress SO" yang menanganinya
       });
