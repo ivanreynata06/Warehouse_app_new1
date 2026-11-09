@@ -105,7 +105,7 @@
   // group SO terhubung yang lembar periode berjalannya belum dibuat (hasil SO di Akurasi WMS belum bisa tercatat di Stock Opname)
   function needLembar() { return sogAllowed().filter(function (g) { return ui.soStat && Object.prototype.hasOwnProperty.call(ui.soStat, g) && ui.soStat[g] === null; }); }
   function soTglF(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
-  // SO ulang: item yang sudah di-SO tetapi kuncinya dibuka PIC (hanya di Akurasi WMS; Dashboard SO tidak berubah)
+  // SO ulang: item yang sudah di-SO tetapi kuncinya dibuka PIC (hasilnya memperbarui Dashboard SO selama periode berjalan; periode lampau terkunci)
   function soGrp(it) { return ui.soStat && ui.soStat[it.grp]; }
   function ulangOf(it) { var g = soGrp(it); return (g && g.ulang && g.ulang[soKey(it.kode)]) || null; }
   function carryN(it) { var g = soGrp(it); return g ? (g.carryBelum || 0) : 0; }
@@ -156,7 +156,7 @@
     completeItems().forEach(function (x) {
       var it = itemOf(x.item); if (!it) return;
       var u = ulangOf(it);
-      if (u) rep.push({ u: u, x: x, it: it });                                                // SO ulang selesai -> dicatat terpisah, TIDAK menyentuh Dashboard SO
+      if (u) rep.push({ u: u, x: x, it: it });                                                // SO ulang selesai -> dicatat + memperbarui Dashboard SO bila lembar masih periode berjalan (server)
       else if (!soRec(it) && S.soSent[soKey(x.item)] !== x.fisik) fresh.push(x);              // SO pertama periode ini -> masuk SO_DETAIL
     });
     var nl1 = needLembar(); fresh = fresh.filter(function (x) { return nl1.indexOf(x.group) < 0; });   // lembar periode ini belum ada: tunggu 'Buat lembar & masukkan progress SO'
@@ -169,6 +169,7 @@
         var d = r.data || {}, skip = {}; (d.tanpaLembar || []).forEach(function (g) { skip[g] = 1; });
         fresh.forEach(function (x) { if (!skip[x.group]) S.soSent[soKey(x.item)] = x.fisik; });
         saveLocal();
+        if (d.diperbarui) toast('✓ ' + fmt(d.diperbarui) + ' item di Dashboard Stock Opname diperbarui sesuai data terbaru Akurasi WMS (periode berjalan).');
         if (d.tersimpan) toast('✓ ' + fmt(d.tersimpan) + ' item tercatat ke Stock Opname (progres SO terupdate). Template Adjustment ada di panel item dan di bagian bawah halaman.');
         ui.soErr = '';   // lembar periode ini belum ada -> banner "Buat lembar & masukkan progress SO" yang menanganinya
       });
@@ -177,7 +178,7 @@
       p = p.then(function () {
         return gs('soUlangSelesai', [JSON.stringify({ id: o.u.id, fisik: o.x.fisik, qad: o.it.qadv, nik: NIK, user: NAMA })]).then(function (r) {
           if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
-          toast('✓ SO ulang ' + short(o.it.nama) + ' selesai dan tercatat (fisik ' + fmt(o.x.fisik) + '). Dashboard Stock Opname tidak berubah.');
+          var ds = r.dashboard; toast('✓ SO ulang ' + short(o.it.nama) + ' selesai dan tercatat (fisik ' + fmt(o.x.fisik) + '). ' + (ds === 'diperbarui' ? 'Dashboard Stock Opname ikut diperbarui.' : (ds === 'sama' ? 'Dashboard Stock Opname sudah sama.' : (ds === 'terkunci' ? 'Periode SO sudah berakhir, Dashboard Stock Opname terkunci dan tidak diubah.' : (ds === 'gagal' ? 'Dashboard Stock Opname gagal diperbarui, hubungi Admin.' : 'Item tidak ada/ditahan di lembar aktif, Dashboard tidak diubah.')))));
         });
       });
     });

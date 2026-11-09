@@ -9635,9 +9635,10 @@ function soSimpanIsi(payload) {
       if (sel === 0) konf = '';
       else konf = 'DIKONFIRMASI ' + today + ' ' + (payload.user || '');
       var changedRev = !!rev && (String(cur[6]) === '' || Number(cur[6]) !== fisik);
-      var status = sel === 0 ? '' : ((String(cur[10]) === 'CLOSED' && !changedRev) ? 'CLOSED' : 'OPEN');
-      if (changedRev) {
-        revLog.push([rev.id, _soNow(), payload.user || '', String(cur[1]), String(cur[6]), fisik, String(cur[7]), sel]);
+      var changedVal = !!payload.perbarui && String(cur[6]) !== '' && Number(cur[6]) !== fisik;   // pembaruan dari Akurasi WMS pada periode berjalan
+      var status = sel === 0 ? '' : ((String(cur[10]) === 'CLOSED' && !changedRev && !changedVal) ? 'CLOSED' : 'OPEN');
+      if (changedRev || changedVal) {
+        if (changedRev) revLog.push([rev.id, _soNow(), payload.user || '', String(cur[1]), String(cur[6]), fisik, String(cur[7]), sel]);
         cur[12] = ''; cur[13] = ''; cur[14] = ''; // nilai berubah -> info close lama tidak berlaku lagi (jejaknya ada di log revisi)
       }
       cur[6] = fisik; cur[7] = sel; cur[8] = today; cur[9] = payload.user || ''; cur[10] = status; cur[15] = konf;
@@ -10409,8 +10410,8 @@ function hapusRakWmsData(key) {
 //  LINK Akurasi Rak WMS <-> Stock Opname
 //  - soSyncDariRak : item yang SEMUA raknya sudah diisi aktual di Akurasi Rak WMS -> Fisik di SO_DETAIL
 //                    lembar aktif group itu terisi otomatis (progres Monitoring SO ikut naik).
-//                    Fisik = total aktual semua rak. Item yang sudah punya Fisik di periode ini TIDAK PERNAH ditimpa (aturan
-//                    dashboard SO: 2 minggu sekali, SO pertama terkunci). SO ulang/perbaikan dicatat di RAKWMS_SO_ULANG.
+//                    Fisik = total aktual semua rak. Selama periode (lembar aktif) masih berjalan, nilai yang berubah di Akurasi WMS
+//                    ikut memperbarui Dashboard SO. Begitu periode berikutnya mulai, lembar lama TERKUNCI (soSimpanIsi menolak). SO ulang dicatat di RAKWMS_SO_ULANG.
 //  - soStatusDariRak: status SO per item (lembar aktif) untuk ditandai "SUDAH SO" di Akurasi Rak WMS & saat cetak.
 //  payload: {user, items:[{group, item, fisik}]}
 // ================================================================
@@ -10434,12 +10435,12 @@ function soSyncDariRak(payload) {
         var d = map[it.item];
         if (!d) { out.tidakAda++; return; }
         if (d.mode === 'HOLD') { out.ditahan++; return; }
-        if (d.fisik !== null) { out.sudahAda++; return; }   // nilai SO pertama periode ini terkunci - SO ulang dicatat terpisah (soUlangSelesai), tidak menimpa SO_DETAIL
-        out.tersimpan++;
-        rows.push({ row: d.row, fisik: it.fisik, konfirmasi: true });
+        if (d.fisik !== null && Number(d.fisik) === it.fisik) { out.sudahAda++; return; }   // sama persis -> tidak ada yang perlu diperbarui
+        if (d.fisik !== null) out.diperbarui++; else out.tersimpan++;   // beda -> periode berjalan: dashboard ikut diperbarui
+        rows.push({ row: d.row, fisik: it.fisik, konfirmasi: true, perbarui: d.fisik !== null });
       });
       if (!rows.length) return;
-      var r = soSimpanIsi({ id: l.id, user: (user || 'PIC') + ' (Akurasi Rak)', rows: rows });
+      var r = soSimpanIsi({ id: l.id, user: (user || 'PIC') + ' (Akurasi Rak)', rows: rows, perbarui: rows.some(function (x) { return x.perbarui; }) });
       if (!r || r.success === false) out.gagal.push(g + ': ' + ((r && r.error) || 'gagal'));
     });
     if (out.gagal.length) return { success: false, error: out.gagal.join(' | '), data: out };
@@ -10557,7 +10558,7 @@ function soUlangBuka(payload) {
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
-// payload: {id, fisik, qad, batal, nik, user}  -- selesai: catat hasil hitung ulang (TIDAK menyentuh SO_DETAIL); batal: tutup tanpa hasil
+// payload: {id, fisik, qad, batal, nik, user}  -- selesai: catat hasil hitung ulang + (bila lembar masih periode berjalan) perbarui SO_DETAIL; lembar periode lampau terkunci; batal: tutup tanpa hasil
 function soUlangSelesai(payload) {
   var lock = LockService.getScriptLock();
   try {
@@ -10576,7 +10577,24 @@ function soUlangSelesai(payload) {
     var sh = _soSheet('RAKWMS_SO_ULANG', SO_ULANG_HDR);
     sh.getRange(u.row, 15, 1, 5).setNumberFormat('@').setValues([[batal ? 'BATAL' : 'SELESAI', _soNow(), fisik === null ? '' : fisik, sel === null ? '' : sel, nama]]);
     _SO_MEM.ulang = null;
-    return { success: true, status: batal ? 'BATAL' : 'SELESAI' };
+    var dash = '';
+    if (!batal) {   // dashboard SO ikut diperbarui hanya selama lembar ini masih periode berjalan
+      var aktif = _soLembarAktif(u.group);
+      if (!aktif || aktif.id !== u.lembar) dash = 'terkunci';
+      else {
+        _SO_MEM.det = null;
+        var dd = null; _soDetailRows().forEach(function (x) { if (x.lembar === u.lembar && _soNorm(x.item) === _soNorm(u.item)) dd = x; });
+        if (!dd || dd.mode === 'HOLD') dash = 'tidakada';
+        else if (dd.fisik !== null && Number(dd.fisik) === fisik) dash = 'sama';
+        else {
+          try { lock.releaseLock(); } catch (x) {}   // soSimpanIsi mengambil lock sendiri
+          var rs = soSimpanIsi({ id: u.lembar, user: nama + ' (Akurasi Rak)', rows: [{ row: dd.row, fisik: fisik, konfirmasi: true, perbarui: dd.fisik !== null }], perbarui: dd.fisik !== null });
+          dash = (rs && rs.success !== false) ? 'diperbarui' : 'gagal';
+          _SO_MEM.det = null;
+        }
+      }
+    }
+    return { success: true, status: batal ? 'BATAL' : 'SELESAI', dashboard: dash };
   } catch (e) { return { success: false, error: String(e.message || e) }; }
   finally { try { lock.releaseLock(); } catch (x) {} }
 }
