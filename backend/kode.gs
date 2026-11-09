@@ -10427,7 +10427,7 @@ function soSyncDariRak(payload) {
       var g = String(x.group || '').trim(); if (!g || x.item == null) return;
       var hasF = !(x.fisik === '' || x.fisik == null || isNaN(Number(x.fisik))), hasQ = !(x.qad === '' || x.qad == null || isNaN(Number(x.qad)));
       if (!hasF && !hasQ) return;
-      (by[g] = by[g] || []).push({ item: _soNorm(x.item), fisik: hasF ? Number(x.fisik) : null, qad: hasQ ? Number(x.qad) : null, selaras: !!x.selaras });
+      (by[g] = by[g] || []).push({ item: _soNorm(x.item), fisik: hasF ? Number(x.fisik) : null, qad: hasQ ? Number(x.qad) : null, selaras: !!x.selaras, sistemSaja: !!x.sistemSaja });
     });
     Object.keys(by).forEach(function (g) {
       if (!_soRakGroup(g)) { out.tidakAda += by[g].length; return; }   // belum diaktifkan untuk group ini
@@ -10443,6 +10443,8 @@ function soSyncDariRak(payload) {
         if (d.fisik === null) {   // belum di-SO: sistem selalu mengikuti QAD terbaru dari Akurasi WMS; fisik ikut bila item sudah lengkap
           if (it.fisik !== null) { out.tersimpan++; rows.push({ row: d.row, fisik: it.fisik, sistem: it.qad, konfirmasi: true }); }
           else if (it.qad !== null && !same(d.sistem, it.qad)) sisOnly.push({ row: d.row, qad: it.qad, fisik: null });
+        } else if (it.sistemSaja) {   // sudah di-SO: Fisik beku, Sistem disamakan dengan saldo QAD Akurasi WMS (upload QAD Akurasi = satu-satunya sumber), Selisih dihitung ulang
+          if (it.qad !== null && !same(d.sistem, it.qad)) sisOnly.push({ row: d.row, qad: it.qad, fisik: Number(d.fisik) }); else out.sudahAda++;
         } else if (it.selaras) {   // sudah di-SO & datanya masih selaras dengan Akurasi WMS: samakan sistem (fisik tidak berubah)
           if (it.fisik !== null && same(d.fisik, it.fisik) && it.qad !== null && !same(d.sistem, it.qad)) sisOnly.push({ row: d.row, qad: it.qad, fisik: Number(d.fisik) });
           else out.sudahAda++;

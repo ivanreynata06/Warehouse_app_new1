@@ -160,8 +160,8 @@
       if (u) { if (x) rep.push({ u: u, x: x, it: it }); return; }                           // SO ulang selesai -> dicatat + memperbarui Dashboard SO bila lembar masih periode berjalan (server)
       if (!rec) {                                                                             // belum di-SO: sistem mengikuti QAD terbaru, fisik ikut bila item lengkap
         if (S.soSentQ[k] !== tag) { fresh.push({ group: it.grp, item: it.kode, fisik: x ? x.fisik : '', qad: it.qadv }); sig[k] = tag; }
-      } else if (x && Math.abs(x.fisik - rec.fisik) < 0.0005 && S.soSentQ[k] !== 's' + tag) {   // sudah di-SO & masih selaras dengan QAD terbaru: samakan sistem. Bila QAD berubah dan tidak selaras -> BEKU (tidak mengikuti upload baru)
-        fresh.push({ group: it.grp, item: it.kode, fisik: x.fisik, qad: it.qadv, selaras: true }); sig[k] = 's' + tag;
+      } else if (S.soSentQ[k] !== 'q' + it.qadv) {   // sudah di-SO: Fisik BEKU (tidak ikut input/upload baru), tetapi Sistem tetap disamakan dengan saldo QAD Akurasi WMS
+        fresh.push({ group: it.grp, item: it.kode, fisik: '', qad: it.qadv, sistemSaja: true }); sig[k] = 'q' + it.qadv;
       }
     });
     var nl1 = needLembar(); fresh = fresh.filter(function (x) { return nl1.indexOf(x.group) < 0; });   // lembar periode ini belum ada: tunggu 'Buat lembar & masukkan progress SO'
@@ -172,7 +172,7 @@
       return gs('soSyncDariRak', [JSON.stringify({ user: NAMA, items: fresh })]).then(function (r) {
         if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
         var d = r.data || {}, skip = {}; (d.tanpaLembar || []).forEach(function (g) { skip[g] = 1; });
-        fresh.forEach(function (x) { if (!skip[x.group]) { S.soSent[soKey(x.item)] = x.fisik; S.soSentQ[soKey(x.item)] = sig[soKey(x.item)]; } });
+        fresh.forEach(function (x) { if (!skip[x.group]) { if (!x.sistemSaja) S.soSent[soKey(x.item)] = x.fisik; S.soSentQ[soKey(x.item)] = sig[soKey(x.item)]; } });
         saveLocal();
         if (d.diperbarui) toast('✓ ' + fmt(d.diperbarui) + ' item di Dashboard Stock Opname diperbarui sesuai data terbaru Akurasi WMS (periode berjalan).');
         if (d.sistemDiperbarui) toast('✓ Saldo sistem ' + fmt(d.sistemDiperbarui) + ' item di Dashboard Stock Opname disamakan dengan QAD terbaru Akurasi WMS.');
@@ -628,7 +628,7 @@
           S.qad = res.rows; S.qadSkip = res.stats.skip || []; S.meta.qadAt = now; S.meta.qadFile = f.name;
           toast('Saldo QAD: ' + fmt(res.rows.length) + ' item dibaca' + (res.stats.otherGroup ? ', ' + fmt(res.stats.otherGroup) + ' baris group selain I053/Q055 dibuang' : '') + '. Kolom lain dihapus.');
         }
-        S.step1 = ''; save(); syncNow(); render(); loadSoStat().then(renderTbl);
+        S.step1 = ''; save(); syncNow(); render(); loadSoStat().then(function () { renderTbl(); scheduleSo(true); });
       } catch (x) { toast(x.message || String(x), true); }
     };
     rd.readAsArrayBuffer(f);
