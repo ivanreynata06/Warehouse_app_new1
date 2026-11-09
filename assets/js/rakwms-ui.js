@@ -110,7 +110,7 @@
   function ulangOf(it) { var g = soGrp(it); return (g && g.ulang && g.ulang[soKey(it.kode)]) || null; }
   function carryN(it) { var g = soGrp(it); return g ? (g.carryBelum || 0) : 0; }
   function locked(it) { return !!soRec(it) && !ulangOf(it); }
-  function clearItem(kode) { if (S.adjDone) delete S.adjDone[kode]; delete S.inputs[kode]; delete S.manual[kode]; if (S.koreksi) delete S.koreksi[kode]; if (S.soSent) delete S.soSent[soKey(kode)]; }
+  function clearItem(kode) { if (S.soConfirm) delete S.soConfirm[kode]; if (S.adjDone) delete S.adjDone[kode]; delete S.inputs[kode]; delete S.manual[kode]; if (S.koreksi) delete S.koreksi[kode]; if (S.soSent) delete S.soSent[soKey(kode)]; }
   // keterangan resmi untuk item yang sudah di-SO (terkunci); bila data terbaru masih selisih, diberi catatan khusus
   function canUnlock() { return !!window.IS_TL; }   // TL atau Admin
   function soNote(it) { return soNote0(it) + (it.sel !== 0 && soRec(it) ? bsNote(it) : ''); }
@@ -118,6 +118,8 @@
     var r = soRec(it); if (!r) return '';
     var ad = adjClaim(it) ? S.adjDone[it.kode] : '';
     var b = 'Item ini telah di-SO pada tanggal ' + soTglF(r.tgl) + (r.oleh ? ' oleh ' + String(r.oleh).replace(/\s*\(Akurasi Rak\)\s*$/, '') : '') + ' dengan fisik ' + fmt(r.fisik) + (ad ? ' dan sudah di-adjustment (template diunduh ' + soTglF(ad) + ')' : '') + '.';
+    var cf = S.soConfirm && S.soConfirm[it.kode];
+    if (cf && Math.abs(cf.tot - r.fisik) < 0.0005) b += ' Hasil SO dikonfirmasi sesuai kondisi aktual dengan selisih terhadap QAD ' + selTx(Math.round((cf.tot - cf.qad) * 1000) / 1000) + ' (QAD ' + fmt(cf.qad) + ') dan terhadap sistem WMS ' + selTx(Math.round((cf.tot - cf.wms) * 1000) / 1000) + ' (WMS ' + fmt(cf.wms) + ').';
     if (it.sel !== 0) return b + ' Namun pada data terbaru masih terdapat selisih WMS - QAD sebesar ' + (it.sel > 0 ? '+' : '') + fmt(it.sel) + ' (WMS ' + fmt(it.wms) + ' vs QAD ' + fmt(it.qadv) + '). Apakah akan di-SO ulang? ' + (canUnlock() ? 'Jika ya, buka kunci untuk SO ulang.' : 'Jika ya, minta TL atau Admin membuka kunci.');
     return b + ' Pada data terbaru saldo WMS dan QAD sudah sesuai.';
   }
@@ -509,13 +511,15 @@
     // riwayat adjustment per item (Tahap 1 dicatat untuk item pemicunya)
     var byItem = {}, hist = S.adjHist = S.adjHist || [];
     rows.forEach(function (r) { var k = n === 1 ? r.by : r.kode; (byItem[k] = byItem[k] || []).push({ r: r.rak, q: r.qty, a: r.auto ? 1 : 0, c: r.kode }); });
-    Object.keys(byItem).forEach(function (k) { var it0 = itemOf(k); hist.unshift({ t: S.cfg.tgl, k: k, n: it0 ? it0.nama : k, h: n, rows: byItem[k], u: NAMA, w: new Date().toISOString().slice(0, 16) }); });
+    var ketOf = {}; if (n === 2) Object.keys(byItem).forEach(function (k) { var it1 = itemOf(k); ketOf[k] = it1 ? confKet(it1) : ''; });
+    Object.keys(byItem).forEach(function (k) { var it0 = itemOf(k), e0 = { t: S.cfg.tgl, k: k, n: it0 ? it0.nama : k, h: n, rows: byItem[k], u: NAMA, w: new Date().toISOString().slice(0, 16) }; if (ketOf[k]) e0.s = ketOf[k]; hist.unshift(e0); });
     S.adjHist = hist.slice(0, 200);
     // Tahap 2: item ditandai sudah di-adjustment (tanggal unduh SEBENARNYA + tanda tangan baris). Tersembunyi dari daftar selama barisnya tidak berubah.
     if (n === 2) { S.adjDone = S.adjDone || {}; S.adjSig = S.adjSig || {}; Object.keys(byItem).forEach(function (k) { S.adjDone[k] = todayIso(); S.adjSig[k] = itemSig(k); }); }
     save();
     loadStyled().then(function (X) {   // X = SheetJS dengan dukungan format sel (rata kiri), sama untuk Tahap 1 & 2
-      var lib = X || XLSX; lib.writeFile(K.buildWorkbook(lib, rows, S.cfg), name);
+      var lib = X || XLSX, rowsK = rows.map(function (r) { var kt = n === 2 ? ketOf[r.kode] : ''; return kt ? Object.assign({}, r, { ket: kt }) : r; });
+      lib.writeFile(K.buildWorkbook(lib, rowsK, S.cfg), name);
       renderAdj(); renderTbl(); if (ui.open) updDrawer();
       toast(X ? 'Template ' + name + ' diunduh (' + fmt(rows.length) + ' baris). Riwayatnya tersimpan di Riwayat Adjustment dan bisa diunduh ulang.' : 'Template ' + name + ' diunduh, tetapi format rata kiri tidak dapat diterapkan (library gagal dimuat).', !X);
     });
@@ -643,7 +647,22 @@
     var st = n === 0 ? 'empty' : (!L.complete ? 'part' : (diff === 0 ? 'ok' : 'bad'));
     return { st: st, n: n, miss: miss, tot: tot, diff: diff, rows: L.length };
   }
-  function soOk(it) { return soSt(it).st === 'ok'; }
+  /* KONFIRMASI SELISIH: bila total input memang berbeda dari saldo QAD secara aktual (fisik di lapangan), PIC bisa memilih
+     Koreksi (ubah input) atau Konfirmasi. Konfirmasi hanya berlaku selama total input & saldo QAD sama dengan saat dikonfirmasi;
+     bila input diubah, konfirmasi gugur dan harus dikonfirmasi ulang. Adjustment tetap mengikuti input. */
+  function soConf(it) { var c = S.soConfirm && S.soConfirm[it.kode]; return c || null; }
+  function soConfOk(it, st) {
+    var c = soConf(it); if (!c) return false; st = st || soSt(it);
+    return st.st === 'bad' && Math.abs(c.tot - st.tot) < 0.0005 && Math.abs(c.qad - it.qadv) < 0.0005;
+  }
+  function soOk(it) { var s = soSt(it); return s.st === 'ok' || soConfOk(it, s); }
+  // keterangan selisih terhadap QAD & sistem (WMS) untuk item yang dikonfirmasi; dipakai di kolom Keterangan template adjustment
+  function selTx(d) { return d === 0 ? 'sama' : (d > 0 ? 'lebih ' : 'kurang ') + fmt(Math.abs(d)); }
+  function confKet(it) {
+    var s = soSt(it); if (!soConfOk(it, s)) return '';
+    var dq = Math.round((s.tot - it.qadv) * 1000) / 1000, dw = Math.round((s.tot - it.wms) * 1000) / 1000;
+    return (S.cfg.ket || 'Adjustment SO rak') + ' | Konfirmasi aktual: input ' + fmt(s.tot) + ', selisih QAD ' + selTx(dq) + ' (QAD ' + fmt(it.qadv) + '), selisih sistem WMS ' + selTx(dw) + ' (WMS ' + fmt(it.wms) + ')';
+  }
   function soLine(it, l, i) {
     var hl = l.manual ? holders(it.kode, l.rak) : [], id = esc(it.kode);
     return '<tr class="' + (l.manual ? 'man' : '') + '"><td class="l"><b style="font-family:var(--mono)">' + esc(l.rak) + '</b>' + (l.manual ? ' <span class="chip2 nt">RAK TAMBAHAN</span>' : '') + (l.transit ? ' <span class="chip2 nt" title="Rak bernama item = rak transit. Nama rak ini tetap dipakai apa adanya di template adjustment.">RAK TRANSIT</span>' : '') +
@@ -678,15 +697,15 @@
       proj += (K.koreksiOf(S, it.kode).q || 0);
       var p = $('so-p-' + it.kode), q = soSt(it), kq = K.koreksiOf(S, it.kode).q || 0;
       if (p) {
-        var tone = q.st === 'ok' ? 'ok' : (q.st === 'bad' ? 'bad' : 'wr'), stT = { empty: 'Belum diisi', part: 'Belum lengkap', ok: 'Sesuai QAD', bad: (q.diff > 0 ? 'Lebih ' : 'Kurang ') + fmt(Math.abs(q.diff)) + ' dari QAD' }[q.st],
-          dt = { empty: 'Isi aktual tiap rak', part: fmt(q.miss) + ' rak belum diisi', ok: 'Total input = saldo QAD', bad: 'Belum dapat disimpan - koreksi input' }[q.st];
+        var cOk = soConfOk(it, q), tone = q.st === 'ok' ? 'ok' : (cOk ? 'wr' : (q.st === 'bad' ? 'bad' : 'wr')), stT = { empty: 'Belum diisi', part: 'Belum lengkap', ok: 'Sesuai QAD', bad: (cOk ? 'Dikonfirmasi: ' : '') + (q.diff > 0 ? 'Lebih ' : 'Kurang ') + fmt(Math.abs(q.diff)) + ' dari QAD' }[q.st],
+          dt = { empty: 'Isi aktual tiap rak', part: fmt(q.miss) + ' rak belum diisi', ok: 'Total input = saldo QAD', bad: cOk ? 'Selisih dikonfirmasi, adjustment sesuai input' : 'Koreksi input atau konfirmasi saat klik Selesai' }[q.st];
         p.innerHTML = '<div class="tt"><span>Total input</span><b>' + (q.n ? fmt(q.tot) : '-') + '</b><i>' + fmt(q.n) + ' dari ' + fmt(q.rows) + ' rak terisi' + (kq ? ' &middot; termasuk koreksi ' + fmt(kq) : '') + '</i></div>' +
           '<div class="tt"><span>Saldo WMS</span><b>' + fmt(it.wms) + '</b><i>' + (q.n ? 'proyeksi setelah adjust: ' + fmt(proj) : 'data sistem WMS') + '</i></div>' +
           '<div class="tt"><span>Saldo QAD (acuan)</span><b>' + fmt(it.qadv) + '</b><i>nilai pembanding SO</i></div>' +
           '<div class="tt st ' + tone + '"><span>Status</span><b>' + stT + '</b><i>' + dt + '</i></div>';
       }
     });
-    var t = $('so-sum'); if (t) { var ss = soItems().map(soSt), nOk = ss.filter(function (x) { return x.st === 'ok'; }).length, nBad = ss.filter(function (x) { return x.st === 'bad'; }).length, nPart = ss.filter(function (x) { return x.st === 'part' || x.st === 'empty'; }).length;
+    var t = $('so-sum'); if (t) { var ss = soItems().map(soSt), nOk = soItems().filter(function (i) { return soOk(i); }).length, nBad = soItems().filter(function (i) { return !soOk(i) && soSt(i).st === 'bad'; }).length, nPart = ss.filter(function (x) { return x.st === 'part' || x.st === 'empty'; }).length;
       t.innerHTML = 'Item dipilih: <b>' + fmt(ss.length) + '</b> &middot; <span class="pos">Sesuai QAD: <b>' + fmt(nOk) + '</b></span> &middot; <span class="neg">Selisih: <b>' + fmt(nBad) + '</b></span> &middot; Belum lengkap: <b>' + fmt(nPart) + '</b>'; }
   }
   function renderSO() {
@@ -788,18 +807,28 @@
   function soFinish() {
     var a = soItems();
     if (!a.length) return soDlg({ tone: 'info', icon: '&#8505;', title: 'Belum Ada Item yang Dipilih', msg: 'Pilih minimal satu item pada langkah 1, kemudian isi hasil hitung fisik pada setiap rak sebelum menyelesaikan Stock Opname.', btns: [{ t: 'Kembali', a: 'close', pri: 1 }] });
-    var rs = a.map(function (it) { return { it: it, s: soSt(it) }; }), bad = rs.filter(function (x) { return x.s.st !== 'ok'; });
+    var rs = a.map(function (it) { return { it: it, s: soSt(it) }; }), bad = rs.filter(function (x) { return !soOk(x.it); }), nConf = rs.filter(function (x) { return x.s.st === 'bad' && soOk(x.it); }).length;
     if (!bad.length) return soDlg({ tone: 'ok', icon: '&#10003;', title: 'Hasil Stock Opname Telah Sesuai',
-      msg: 'Seluruh <b>' + fmt(a.length) + ' item</b> yang dihitung telah sesuai dengan saldo QAD. Anda dapat melanjutkan ke penyusunan Template Adjustment WMS.',
+      msg: 'Seluruh <b>' + fmt(a.length) + ' item</b> yang dihitung telah sesuai dengan saldo QAD' + (nConf ? ' atau telah dikonfirmasi (<b>' + fmt(nConf) + ' item</b> dikonfirmasi dengan selisih terhadap QAD; selisih terhadap QAD dan sistem WMS dicantumkan pada keterangan template adjustment)' : '') + '. Anda dapat melanjutkan ke penyusunan Template Adjustment WMS.',
       btns: [{ t: 'Tinjau Kembali', a: 'close' }, { t: 'Lanjutkan ke Template Adjustment &darr;', a: 'go', pri: 1 }] });
     soFirstBad = bad[0].it.kode;
     soDlg({ tone: 'bad', icon: '!', title: 'Hasil Stock Opname Belum Sesuai',
-      msg: 'Terdapat <b>' + fmt(bad.length) + ' dari ' + fmt(a.length) + ' item</b> yang total hasil hitungnya belum sama dengan saldo QAD. Template Adjustment baru dapat disusun setelah seluruh item sesuai. Mohon lakukan penghitungan ulang atau koreksi input pada item berikut.',
+      msg: 'Terdapat <b>' + fmt(bad.length) + ' dari ' + fmt(a.length) + ' item</b> yang total hasil hitungnya belum sama dengan saldo QAD. Template Adjustment baru dapat disusun setelah seluruh item sesuai atau dikonfirmasi. Mohon lakukan penghitungan ulang atau koreksi input pada item berikut.' + (bad.some(function (x) { return x.s.st === 'bad'; }) ? '<br><br>Jika selisih tersebut memang sesuai kondisi aktual di lapangan, pilih <b>Konfirmasi</b>: adjustment tetap mengikuti input, dan selisih terhadap QAD serta sistem WMS dicatat pada keterangan template.' : ''),
       list: '<div class="so-dlg-l">' + bad.slice(0, 12).map(function (x) {
         var d = x.s.st === 'bad' ? (x.s.diff > 0 ? 'lebih ' : 'kurang ') + fmt(Math.abs(x.s.diff)) : (x.s.st === 'empty' ? 'belum diisi' : fmt(x.s.miss) + ' rak belum diisi');
-        return '<div><span class="nm" title="' + esc(x.it.nama) + '">' + esc(short(x.it.nama)) + '</span><span class="cd">input ' + (x.s.n ? fmt(x.s.tot) : '-') + ' &middot; QAD ' + fmt(x.it.qadv) + '</span><b class="neg">' + d + '</b></div>';
+        return '<div><span class="nm" title="' + esc(x.it.nama) + '">' + esc(short(x.it.nama)) + '</span><span class="cd">input ' + (x.s.n ? fmt(x.s.tot) : '-') + ' &middot; QAD ' + fmt(x.it.qadv) + ' &middot; WMS ' + fmt(x.it.wms) + '</span><b class="neg">' + d + '</b></div>';
       }).join('') + (bad.length > 12 ? '<div class="cd">+' + fmt(bad.length - 12) + ' item lainnya</div>' : '') + '</div>',
-      btns: [{ t: 'Kembali &amp; Koreksi', a: 'back', pri: 1 }] });
+      btns: bad.some(function (x) { return x.s.st === 'bad'; }) ? [{ t: 'Kembali &amp; Koreksi', a: 'back', pri: 1 }, { t: 'Konfirmasi Sesuai Aktual', a: 'confirm' }] : [{ t: 'Kembali &amp; Koreksi', a: 'back', pri: 1 }] });
+  }
+  // PIC menegaskan bahwa total input memang kondisi aktual walau berbeda dari QAD (hanya item yang sudah lengkap diisi)
+  function soConfirmAll() {
+    var n = 0;
+    soItems().forEach(function (it) {
+      var s = soSt(it); if (s.st !== 'bad' || soConfOk(it, s)) return;
+      (S.soConfirm = S.soConfirm || {})[it.kode] = { tot: s.tot, qad: it.qadv, wms: it.wms, at: todayIso(), by: NAMA }; n++;
+    });
+    if (n) { save(); soRefresh(); renderAdj(); renderTbl(); toast(fmt(n) + ' item dikonfirmasi sesuai aktual. Adjustment tetap sesuai input; selisih QAD dan sistem WMS dicatat di keterangan template.'); }
+    soFinish();
   }
   /* ---------- cetak LEMBAR STOCK OPNAME (format lembar SO: sistem diganti QAD & WMS, ada Fisik & Rak Aktual) ---------- */
   function printSO() {
@@ -880,6 +909,7 @@
     soDlgAct: function (a) {
       soDlgClose();
       if (a === 'go') { API.closeSO(); var t = $('rk-adj'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      else if (a === 'confirm') { soConfirmAll(); }
       else if (a === 'back' && soFirstBad) { var c = $('so-c-' + soFirstBad); if (c && c.scrollIntoView) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('so-flash'); setTimeout(function () { c.classList.remove('so-flash'); }, 2200); } }
     },
     soSearch: function (v) { so.q = v; renderSO(); },
@@ -982,7 +1012,7 @@
     // unduh ulang dari Riwayat Adjustment (isi sama persis dengan yang dulu diunduh)
     redl: function (i) {
       var e = (S.adjHist || [])[i]; if (!e) return;
-      var rows = e.rows.map(function (r) { return { rak: r.r, kode: e.h === 1 ? r.c : e.k, qty: r.q }; });
+      var rows = e.rows.map(function (r) { return { rak: r.r, kode: e.h === 1 ? r.c : e.k, qty: r.q, ket: e.h === 2 && e.s ? e.s : '' }; });
       if (rows.some(function (r) { return !r.kode; })) return toast('Riwayat lama ini tidak menyimpan kode item. Unduh dari panel item terkait.', true);
       var name = 'ADJUST_RAK_TAHAP' + e.h + (e.h === 1 ? '_KOSONGKAN_' : '_') + String(e.t).replace(/-/g, '') + '_' + e.k + '_ULANG.xlsx';
       loadStyled().then(function (X) { var lib = X || XLSX; lib.writeFile(K.buildWorkbook(lib, rows, Object.assign({}, S.cfg, { tgl: e.t })), name); toast('Template ' + name + ' diunduh ulang (' + fmt(rows.length) + ' baris).'); });

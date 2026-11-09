@@ -10321,11 +10321,12 @@ function _rakSanitize(o) {
   function t(v, n) { return String(v == null ? '' : v).slice(0, n || 200); }
   o = o || {};
   var out = { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: {}, cfg: {}, soPick: {}, step1: t(o.step1, 20000) };
-  out.koreksi = {}; out.adjOff = {}; out.adjDone = {}; out.adjSig = {};   // rak koreksi per item {q, ket} & item yang tidak ikut template adjustment
+  out.koreksi = {}; out.adjOff = {}; out.adjDone = {}; out.adjSig = {}; out.soConfirm = {};   // rak koreksi per item {q, ket} & item yang tidak ikut template adjustment
+  var nc = 0; Object.keys(o.soConfirm || {}).forEach(function (k) { var v = o.soConfirm[k] || {}; if (nc++ < 3000) out.soConfirm[t(k, 40)] = { tot: Number(v.tot) || 0, qad: Number(v.qad) || 0, wms: Number(v.wms) || 0, at: t(v.at, 10), by: t(v.by, 60) }; });   // konfirmasi selisih SO (input aktual != saldo QAD)
   var nk = 0; Object.keys(o.koreksi || {}).forEach(function (k) { var v = o.koreksi[k] || {}; if (nk++ < 3000) out.koreksi[t(k, 40)] = { q: t(v.q, 20), ket: t(v.ket, 120) }; });
   var nd = 0; Object.keys(o.adjDone || {}).forEach(function (k) { var v = String(o.adjDone[k] || ''); if (/^\d{4}-\d{2}-\d{2}$/.test(v) && nd++ < 5000) out.adjDone[t(k, 40)] = v; });   // tanggal template adjustment diunduh
   out.adjHist = (o.adjHist || []).slice(0, 200).map(function (e) {   // riwayat adjustment (template diunduh)
-    return { t: t(e.t, 10), k: t(e.k, 40), n: t(e.n, 120), h: Number(e.h) === 1 ? 1 : 2, u: t(e.u, 60), w: t(e.w, 16),
+    return { t: t(e.t, 10), k: t(e.k, 40), n: t(e.n, 120), h: Number(e.h) === 1 ? 1 : 2, u: t(e.u, 60), w: t(e.w, 16), s: t(e.s, 300),
       rows: (e.rows || []).slice(0, 60).map(function (r) { return { r: t(r.r, 30), q: Number(r.q) || 0, a: r.a ? 1 : 0, c: t(r.c, 40) }; }) };
   }).filter(function (e) { return e.k && e.rows.length; });
   var ns = 0; Object.keys(o.adjSig || {}).forEach(function (k) { var v = String(o.adjSig[k] || ''); if (/^[0-9a-z]{1,16}$/.test(v) && ns++ < 5000) out.adjSig[t(k, 40)] = v; });   // tanda tangan baris adjustment saat template diunduh

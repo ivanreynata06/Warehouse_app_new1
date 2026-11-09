@@ -427,6 +427,11 @@ table.preview-table tr.row-valid td{color:var(--txt);}
       .su-form input,.su-form select,.su-sel{background:var(--bg-card2);border:1px solid var(--border2);border-radius:9px;padding:9px 11px;color:var(--txt);font-size:12px;font-family:inherit;width:100%;}
       .su-form input:focus,.su-form select:focus{outline:2px solid rgba(52,211,153,.5);}
       @media (max-width:900px){.su-form{grid-template-columns:1fr 1fr;}}
+      .su-sys{display:none;margin-top:10px;padding:10px 12px;border-radius:10px;border:1px dashed var(--border2);background:var(--bg-card2);font-size:11.5px;color:var(--txt);align-items:center;gap:10px;flex-wrap:wrap;}
+      .su-sys.on{display:flex;}
+      .su-sys b.rk{font-family:'JetBrains Mono',monospace;font-size:13px;color:#6ee7b7;}
+      .su-sys .su-same{color:#6ee7b7;font-weight:700;}
+      .su-sys .su-diff{color:#fbbf24;font-weight:700;}
       .su-chips{display:flex;gap:8px;flex-wrap:wrap;}
       .su-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid;animation:suPop .45s cubic-bezier(.2,.8,.2,1) both;}
       .su-chip.ok{color:#6ee7b7;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.4);}
@@ -2043,6 +2048,40 @@ window.SusunUpload = (function(){
       c.list.map(function(x){ return '<option value="' + esc(x.v) + '">' + esc(x.v) + ' · ' + esc(C.fmtDate(x.t)) + ' · qty ' + n(x.q) + '</option>'; }).join('');
     sel.value = has ? prev : c.pick;
     var h = document.getElementById('su-vhint'); if (h) h.textContent = !it.value ? 'Otomatis setelah item dipilih' : (c.note || (sel.value ? 'Terisi otomatis' + (c.many > 1 ? ' (' + c.many + ' kandidat serupa, bisa diganti)' : '') : (c.list.length > 1 ? 'Isi qty agar terisi otomatis' : '')));
+    refreshSysRak();
+  }
+  // rak yang saat ini tercatat/diinput di sistem (WMS) untuk voucher terpilih, ditampilkan di bawah "Rak di kertas".
+  // Bila sama dengan kertas -> langsung cocokkan sekali klik; bila beda -> isi rak aktual dari kertas secara manual.
+  function sysRow(){
+    var v = ((document.getElementById('su-v') || {}).value || '').trim(), i = (document.getElementById('su-i') || {}).value;
+    if (!v) return null;
+    var rows = susunRows().filter(function(x){ return x.v === v && (!i || x.i === i); });
+    return rows.length ? rows[0] : null;
+  }
+  function refreshSysRak(){
+    var box = document.getElementById('su-sys'), inp = document.getElementById('su-r'); if (!box || !inp) return;
+    var x = sysRow();
+    if (!x) { box.className = 'su-sys'; box.innerHTML = ''; inp.placeholder = 'J-15-01-G'; return; }
+    var transit = S.kategori(x.r) === 'transit', rl = S.rakLabel(x.r), cur = (inp.value || '').trim();
+    inp.placeholder = transit ? 'Rak aktual di kertas' : x.r;
+    var same = !!cur && S.rakKey(cur) === S.rakKey(x.r), dis = busy ? 'disabled' : '';
+    box.className = 'su-sys on';
+    box.innerHTML = '<span>Rak saat ini di sistem (WMS) untuk voucher <b>' + esc(x.v) + '</b>: <b class="rk">' + esc(rl) + '</b> · qty ' + n(x.q) + '</span>' +
+      (transit
+        ? '<span class="su-diff">Masih di area transit — isi rak tujuan aktual dari kertas secara manual.</span>'
+        : (same
+          ? '<span class="su-same">✓ Rak kertas sama dengan sistem</span><button class="btn btn-primary" ' + dis + ' onclick="SusunUpload.useSys(true)">Cocokkan sekarang</button>'
+          : (cur ? '<span class="su-diff">Rak kertas berbeda dari sistem — akan dicatat tidak sesuai bila dilanjutkan.</span>' : '') +
+            '<button class="btn btn-primary" ' + dis + ' onclick="SusunUpload.useSys(true)">✓ Sesuai, langsung cocokkan</button>' +
+            '<button class="btn" onclick="SusunUpload.useSys(false)">Beda — input rak aktual manual</button>'));
+  }
+  function useSys(direct){
+    var x = sysRow(), inp = document.getElementById('su-r'); if (!x || !inp) return;
+    if (direct) {
+      if (S.kategori(x.r) === 'transit') { inp.focus(); return; }
+      if (!inp.value || S.rakKey(inp.value) !== S.rakKey(x.r)) inp.value = x.r;   // kertas dinyatakan sama dengan rak sistem
+      submit();
+    } else { inp.value = ''; refreshSysRak(); inp.focus(); }
   }
   function chipsHtml(res){
     var f = res.flags, c = res.rec;
@@ -2081,6 +2120,7 @@ window.SusunUpload = (function(){
       '<label>Rak di kertas<input id="su-r" placeholder="J-15-01-G" autocomplete="off" style="text-transform:uppercase"></label>' +
       '<label>Voucher (otomatis)<select id="su-v" disabled><option value="">Pilih item dulu</option></select><span id="su-vhint" style="font-size:10px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--txt3)"></span></label>' +
       '<button class="btn btn-primary" ' + (busy ? 'disabled' : '') + ' onclick="SusunUpload.submit()">Cocokkan</button></div>' +
+      '<div class="su-sys" id="su-sys"></div>' +
       '<div class="wq-rng"><button class="btn" onclick="SusunUpload.ocr()" title="Opsional: baca foto kertas juru lokasi">📷 Foto kertas (OCR, opsional)</button><span id="su-ocr" style="color:var(--txt3)">Tulisan tangan belum tentu terbaca. Hasil hanya mengisi form, periksa dulu sebelum Cocokkan.</span></div>' + res +
       '<div class="wq-rng"><b>Daftar voucher</b><select class="su-sel" style="width:auto" onchange="SusunUpload.setDate(this.value)">' + ds.map(function(d){ return '<option value="' + d + '"' + (d === selDate ? ' selected' : '') + '>' + esc(C.fmtDate(d)) + '</option>'; }).join('') + '</select><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" ' + (onlyPending ? 'checked' : '') + ' onchange="SusunUpload.togglePending(this.checked)"> belum dicocokkan saja</label><span style="color:var(--txt3)">klik baris untuk memilih item &amp; voucher</span></div>' +
       '<div style="max-height:300px;overflow:auto;border:1px solid var(--border2);border-radius:10px"><table class="su-tbl"><thead><tr><th>Voucher</th><th>Item</th><th>Qty</th><th>Status</th></tr></thead><tbody>' +
@@ -2089,7 +2129,7 @@ window.SusunUpload = (function(){
     ['su-i', 'su-q', 'su-r'].forEach(function(id){ var e = document.getElementById(id); if (e && keep[id]) e.value = keep[id]; });
     refreshVoucher(keep['su-v']);
     function dropDecision(){ if (decision) { decision = null; var d = document.getElementById('su-dec'); if (d) d.remove(); } }
-    document.getElementById('su-v').onchange = function(){ dropDecision(); vManual = true; var h = document.getElementById('su-vhint'); if (h) h.textContent = 'Dipilih manual'; };
+    document.getElementById('su-v').onchange = function(){ dropDecision(); vManual = true; var h = document.getElementById('su-vhint'); if (h) h.textContent = 'Dipilih manual'; refreshSysRak(); };
     ['su-i'].forEach(function(id){ document.getElementById(id).onchange = function(){ dropDecision(); vManual = false; refreshVoucher(''); }; });
     ['su-q', 'su-r'].forEach(function(id){ var e = document.getElementById(id); e.oninput = function(){ dropDecision(); vManual = false; refreshVoucher(); }; e.onkeydown = function(ev){ if (ev.key === 'Enter') submit(); }; });
   }
@@ -2274,7 +2314,7 @@ window.SusunUpload = (function(){
   function init(){ if (!loaded) refresh(); else draw(); }
   var h = (location.hash || '').replace('#', '');
   if (h === 'susun') setTimeout(function(){ if (typeof switchTab === 'function') switchTab('susun'); }, 500);
-  return { init: init, pick: pick, remove: remove, ocr: ocr, pickRel: pickRel, removeRel: removeRel, submit: submit, decide: decide, fill: fill, setDate: setDate, togglePending: togglePending };
+  return { init: init, pick: pick, remove: remove, ocr: ocr, pickRel: pickRel, removeRel: removeRel, submit: submit, useSys: useSys, decide: decide, fill: fill, setDate: setDate, togglePending: togglePending };
 })();
 </script>
 <script>

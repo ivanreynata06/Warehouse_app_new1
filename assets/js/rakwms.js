@@ -86,7 +86,7 @@
   };
 
   /* ================= MODEL ================= */
-  function blank() { return { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: { wmsAt: '', qadAt: '', wmsFile: '', qadFile: '' }, cfg: { tgl: today(), site: SITE, ket: 'Adjustment SO rak', kat: 1 }, koreksi: {}, adjOff: {}, adjDone: {}, adjSig: {}, adjHist: [], step1: '' }; }
+  function blank() { return { wms: [], qad: [], qadSkip: [], inputs: {}, manual: {}, meta: { wmsAt: '', qadAt: '', wmsFile: '', qadFile: '' }, cfg: { tgl: today(), site: SITE, ket: 'Adjustment SO rak', kat: 1 }, koreksi: {}, adjOff: {}, adjDone: {}, adjSig: {}, adjHist: [], soConfirm: {}, step1: '' }; }
   NS.blank = blank;
 
   // item = { kode, nama, qad (null bila tak ada di QAD), racks:[{rak,area,onhand}], wms, sel }
@@ -201,7 +201,7 @@
   /* ================= TEMPLATE XLSX ================= */
   NS.templateRows = function (rows, cfg) {
     var parts = String(cfg.tgl || today()).split('-'), d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-    return rows.map(function (r) { return [d, Number(cfg.site) || SITE, LOC, r.raw || r.rak, /^\d+$/.test(r.kode) ? Number(r.kode) : r.kode, cfg.ket || '', r.qty, Number(cfg.kat) || 1]; });
+    return rows.map(function (r) { return [d, Number(cfg.site) || SITE, LOC, r.raw || r.rak, /^\d+$/.test(r.kode) ? Number(r.kode) : r.kode, r.ket || cfg.ket || '', r.qty, Number(cfg.kat) || 1]; });
   };
   NS.buildWorkbook = function (XLSX, rows, cfg) {
     var aoa = [HEAD].concat(NS.templateRows(rows, cfg)), ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
@@ -211,7 +211,7 @@
     }
     // semua sel (termasuk judul kolom) rata kiri -- format ini sama untuk Template Tahap 1 dan Tahap 2
     Object.keys(ws).forEach(function (k) { if (k.charAt(0) !== '!') ws[k].s = { alignment: { horizontal: 'left', vertical: 'center' } }; });
-    ws['!cols'] = [{ wch: 12.1 }, { wch: 8.1 }, { wch: 11.1 }, { wch: 14.1 }, { wch: 17.1 }, { wch: 26.1 }, { wch: 8.1 }, { wch: 14.1 }];
+    ws['!cols'] = [{ wch: 12.1 }, { wch: 8.1 }, { wch: 11.1 }, { wch: 14.1 }, { wch: 17.1 }, { wch: 60.1 }, { wch: 8.1 }, { wch: 14.1 }];
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Area Rak'); return wb;
   };
 
