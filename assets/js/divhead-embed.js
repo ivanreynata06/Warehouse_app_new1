@@ -68,7 +68,34 @@
     setTimeout(function () { items.forEach(function (el) { if (el.classList.contains('dh-pre')) { el.classList.add('dh-show'); el.classList.remove('dh-pre'); } }); }, 2500);
   }
 
+  // Izin data dari Super Admin (Kelola User > Divisi Head): sembunyikan KPI & bagian dashboard yang tidak diizinkan
+  function applyPerms() {
+    var iz = null; try { iz = JSON.parse(sessionStorage.getItem('wh_dh_izin') || 'null'); } catch (e) {}
+    if (!iz || !iz.length) return;
+    function can(k) { return iz.indexOf(k) !== -1; }
+    function hideEl(el) { if (el) el.style.display = 'none'; }
+    function kpi(id) { var e = document.getElementById(id); hideEl(e && e.closest('.kpi-card')); }
+    function section(label) {   // sembunyikan 1 bagian: dari judul bagian sampai judul bagian berikutnya
+      var divs = Array.prototype.slice.call(document.querySelectorAll('.content .sec-divider'));
+      divs.forEach(function (d) {
+        if ((d.textContent || '').indexOf(label) === -1) return;
+        var start = d.parentElement && d.parentElement.id && d.parentElement !== document.querySelector('.content') ? d.parentElement : d;
+        var n = start; hideEl(n); n = n.nextElementSibling;
+        while (n && !n.matches('.sec-divider') && !n.querySelector('.sec-divider') && !(n.id && /^section-/.test(n.id))) { hideEl(n); n = n.nextElementSibling; }
+      });
+    }
+    if (!can('stock')) { kpi('kpi-stok-pipa'); kpi('kpi-stok-fitting'); section('Stock Hari Ini'); }
+    if (!can('outbound')) kpi('kpi-out');
+    if (!can('inbound')) kpi('kpi-in');
+    if (!can('outbound') && !can('inbound')) section('Outbound vs Inbound');
+    if (!can('kanban')) { kpi('kpi-rak-pipa'); kpi('kpi-rak-fit'); section('Kapasitas Rak'); }
+    if (!can('loading')) { var lt = document.querySelector('.kpi-card.c-red'); hideEl(lt); section('Loading Time'); }
+    if (!can('rekap')) hideEl(document.getElementById('section-rekap-muatan'));
+    if (!can('akurasi')) { var ak = document.getElementById('section-akurasi'); if (ak) { ak.setAttribute('hidden', ''); ak.style.display = 'none'; ak.removeAttribute('data-show'); new MutationObserver(function () { ak.setAttribute('hidden', ''); ak.style.display = 'none'; }).observe(ak, { attributes: true, attributeFilter: ['hidden', 'style'] }); } }
+  }
+
   ready(function () {
+    applyPerms();
     var tries = 0; (function t() { if (!tuneCharts() && tries++ < 20) setTimeout(t, 150); })();
     bindTilt(); bindReveal();
   });

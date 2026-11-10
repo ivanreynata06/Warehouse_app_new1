@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261110a"></script>
+<script src="./assets/js/auth-guard.js?v=20261111a"></script>
 <script src="./assets/js/config.js?v=20261030a"></script>
-<script src="./assets/js/api-shim.js?v=20261110a"></script>
+<script src="./assets/js/api-shim.js?v=20261111a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="./assets/js/sb-storage-card.js?v=20261021a"></script>
@@ -449,6 +449,8 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           </div>
           <label class="chk-row" style="margin:8px 0 4px;"><input type="checkbox" id="dh-all" checked onchange="onDivheadAllChange()"> Semua plant &amp; departemen (termasuk yang ditambahkan nanti)</label>
           <div id="dh-ws-list" style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0;opacity:.5;pointer-events:none;"></div>
+          <div style="font-size:11px;margin:10px 0 4px;font-weight:600;">Data yang boleh ditampilkan di akun ini</div>
+          <div id="dh-izin" style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:8px;"></div>
           <label class="chk-row" style="margin:4px 0 8px;"><input type="checkbox" id="dh-aktif" checked> Akun aktif</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn-flat btn-flat-accent" onclick="simpanDivisiHead()"><i data-lucide="save" style="width:11px;"></i> Simpan Divisi Head</button>
@@ -1120,6 +1122,7 @@ function isiDropdownHapus(){
   }
   loadCrossWorkspaceTLList();
   buildDivheadWsList();
+  buildDivheadIzin();
   loadDivisiHeadList();
 }
 
@@ -1183,6 +1186,17 @@ function hapusCrossWorkspaceTL(nik){
 
 // ---- Divisi Head: akun lintas semua plant/departemen (khusus Super Admin) ----
 var divheadCache = [];
+var DH_IZIN = [
+  ['overview','Halaman Semua Plant'],['ct','Dashboard Control Tower per departemen'],['log','Log Aktivitas & pengingat WA'],
+  ['stock','Stock'],['outbound','Outbound'],['inbound','Inbound'],['kanban','Kapasitas Rak / Kanban'],
+  ['rekap','Rekap Muatan per PIC'],['loading','Loading Time'],['akurasi','Akurasi Scan']
+];
+function buildDivheadIzin(sel){
+  var w = document.getElementById('dh-izin'); if (!w) return;
+  w.innerHTML = DH_IZIN.map(function(x){
+    return '<label class="chk-row"><input type="checkbox" class="chk-dh-izin" value="'+x[0]+'"'+((!sel||sel.indexOf(x[0])!==-1)?' checked':'')+'>'+x[1]+'</label>';
+  }).join('');
+}
 function buildDivheadWsList(){
   var wrap = document.getElementById('dh-ws-list');
   if (!wrap) return;
@@ -1207,7 +1221,7 @@ function loadDivisiHeadList(){
         var cakupan = (a.ws||[]).map(wsLabel).join(', ');
         var n = escHtml(a.nik).replace(/'/g,'');
         return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-color);flex-wrap:wrap;">'+
-          '<span><b>'+escHtml(a.nik)+'</b> — '+escHtml(a.nama)+(a.aktif?'':' <span style="color:var(--accent-red);">(nonaktif)</span>')+'<br><span style="opacity:.7;">'+escHtml(cakupan)+'</span></span>'+
+          '<span><b>'+escHtml(a.nik)+'</b> — '+escHtml(a.nama)+(a.aktif?'':' <span style="color:var(--accent-red);">(nonaktif)</span>')+'<br><span style="opacity:.7;">'+escHtml(cakupan)+'</span><br><span style="opacity:.55;">Data: '+(a.izin&&a.izin.length<DH_IZIN.length?escHtml(a.izin.map(function(k){var m=DH_IZIN.find(function(x){return x[0]===k;});return m?m[1]:k;}).join(', ')):'semua')+'</span></span>'+
           '<span style="display:flex;gap:6px;flex-shrink:0;">'+
             '<button class="btn-flat btn-flat-info" onclick="editDivisiHead(\''+n+'\')">Edit</button>'+
             '<button class="btn-flat btn-flat-ghost" onclick="toggleDivheadAktif(\''+n+'\')">'+(a.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
@@ -1223,6 +1237,7 @@ function resetFormDivhead(){
   document.getElementById('dh-nik').disabled = false;
   document.getElementById('dh-all').checked = true; document.getElementById('dh-aktif').checked = true;
   document.querySelectorAll('.chk-dh-ws').forEach(function(c){ c.checked=false; });
+  buildDivheadIzin();
   document.getElementById('dh-batal').style.display = 'none';
   document.getElementById('dh-pwd-hint').textContent = '(min. 6 karakter)';
   onDivheadAllChange();
@@ -1232,6 +1247,7 @@ function editDivisiHead(nik){
   document.getElementById('dh-nik').value = a.nik; document.getElementById('dh-nik').disabled = true;
   document.getElementById('dh-nama').value = a.nama; document.getElementById('dh-pwd').value = '';
   document.getElementById('dh-aktif').checked = !!a.aktif;
+  buildDivheadIzin(a.izin);
   var all = (a.ws||[]).indexOf('*') !== -1;
   document.getElementById('dh-all').checked = all;
   document.querySelectorAll('.chk-dh-ws').forEach(function(c){ c.checked = !all && a.ws.indexOf(c.value) !== -1; });
@@ -1247,6 +1263,8 @@ function simpanDivisiHead(){
   var all = document.getElementById('dh-all').checked;
   var keys = all ? ['*'] : Array.prototype.slice.call(document.querySelectorAll('.chk-dh-ws:checked')).map(function(c){ return c.value; });
   if (!keys.length){ st.textContent = 'Pilih minimal 1 plant/departemen, atau centang "Semua".'; return; }
+  var izin = Array.prototype.slice.call(document.querySelectorAll('.chk-dh-izin:checked')).map(function(c){ return c.value; });
+  if (!izin.length){ st.textContent = 'Pilih minimal 1 data/halaman yang boleh ditampilkan.'; return; }
   st.textContent = 'Menyimpan...';
   google.script.run
     .withSuccessHandler(function(res){
@@ -1256,7 +1274,7 @@ function simpanDivisiHead(){
       resetFormDivhead(); loadDivisiHeadList();
     })
     .withFailureHandler(function(err){ st.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
-    .adminSetDivisiHead(actorNik, nik, nama, pwd, keys, document.getElementById('dh-aktif').checked);
+    .adminSetDivisiHead(actorNik, nik, nama, pwd, keys, document.getElementById('dh-aktif').checked, izin);
 }
 function toggleDivheadAktif(nik){
   var a = divheadCache.find(function(x){ return x.nik===nik; }); if (!a) return;

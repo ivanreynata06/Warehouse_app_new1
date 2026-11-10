@@ -100,6 +100,8 @@ Akun khusus pimpinan divisi yang **hanya melihat** (tidak bisa mengubah data) se
   - Wajib: Stock, Outbound & Inbound di semua departemen, selama menu **Upload Data Harian** dicentang untuk departemen itu di Kelola User > Kelola Menu (kalau tidak dicentang, tidak ada yang diwajibkan).
   - Pengingat per departemen dibatasi 1x/3 menit; daftar kekurangan dihitung ulang di server.
 
+**Izin data per akun:** di form Divisi Head (Kelola User) Super Admin mencentang data/halaman yang boleh tampil: Semua Plant, Control Tower per departemen, Log Aktivitas, Stock, Outbound, Inbound, Kanban, Rekap Muatan, Loading Time, Akurasi. Dicek juga di server (`DIVHEAD_PERM_ACTIONS`), bukan hanya disembunyikan di layar. Akun lama tanpa izin tersimpan = semua izin.
+
 **Pengaturan (Super Admin):** Kelola User -> *Kelola Departemen Lain* -> **Divisi Head**: tambah/edit/nonaktifkan/hapus akun, ganti kata sandi, akses *Semua* atau plant/departemen tertentu. Disimpan di Script Properties (`DIVHEAD_ACC_<NIK>`).
 
 **Keamanan:** token Divisi Head hanya boleh aksi baca di `DIVHEAD_ALLOWED_ACTIONS` (kode.gs) pada workspace yang diizinkan. Jalankan `aktifkanAuthEnforce()` agar penolakan benar-benar berlaku (mode `log` hanya mencatat).

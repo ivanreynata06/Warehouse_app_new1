@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rucika — Control Tower Divisi Head</title>
-<script src="./assets/js/auth-guard.js?v=20261110a"></script>
-<script src="./assets/js/config.js?v=20261110a"></script>
+<script src="./assets/js/auth-guard.js?v=20261111a"></script>
+<script src="./assets/js/config.js?v=20261111a"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261110a"></script>
+<script src="./assets/js/api-shim.js?v=20261111a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -188,11 +188,37 @@ button{font:inherit;color:inherit;cursor:pointer}
   .top .ibtn span.lbl{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.dcard{transform:none!important}}
+/* ---------- scrollbar premium (emas-biru tipis, transparan) ---------- */
+html{color-scheme:dark}
+*{scrollbar-width:thin;scrollbar-color:rgba(243,185,77,.5) transparent}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(243,185,77,.6),rgba(145,165,255,.45));border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#f3b94d,#9aa9ff);background-clip:padding-box;border:2px solid transparent}
+*::-webkit-scrollbar-corner{background:transparent}
+/* tab departemen: tanpa scrollbar, ada tepi memudar + tombol panah */
+.tabs-wrap{position:relative;display:flex;align-items:center}
+.tabs-wrap[hidden]{display:none}
+.tabs{flex:1;min-width:0;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 30px,#000 calc(100% - 30px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 30px,#000 calc(100% - 30px),transparent 100%)}
+.tabs::-webkit-scrollbar{display:none}
+.tarrow{position:absolute;top:2px;z-index:3;width:34px;height:34px;border-radius:50%;border:1px solid var(--line2);background:rgba(13,20,40,.92);color:var(--text);display:none;align-items:center;justify-content:center;box-shadow:0 8px 20px -8px #000;transition:transform .15s,border-color .2s}
+.tarrow:hover{border-color:var(--gold);transform:scale(1.06)}
+.tarrow.l{left:14px}.tarrow.r{right:14px}
+.tabs-wrap.ov-l .tarrow.l,.tabs-wrap.ov-r .tarrow.r{display:flex}
+/* sembunyikan sidebar */
+.app{transition:grid-template-columns .28s cubic-bezier(.2,.8,.2,1)}
+.rail{overflow-x:hidden;transition:opacity .2s}
+.app.collapsed{grid-template-columns:0 minmax(0,1fr)}
+.app.collapsed .rail{opacity:0;pointer-events:none;padding-left:0;padding-right:0;border-right:0}
+.menu-btn{display:inline-flex!important;padding:9px 11px}
+/* view tidak aktif tidak boleh menangkap scroll/klik (mencegah iframe yang tertinggal menutupi halaman) */
+.view:not(.on){pointer-events:none}
+.view:not(.on) *{pointer-events:none!important}
 </style>
 </head>
 <body>
 <div class="bgfx" aria-hidden="true"><i></i><i></i><i></i></div>
-<div class="app">
+<div class="app" id="app">
   <aside class="rail" id="rail">
     <div class="brand">
       <img src="./assets/img/rucika-logo.png" alt="Rucika">
@@ -200,7 +226,7 @@ button{font:inherit;color:inherit;cursor:pointer}
     </div>
     <button class="nav-item" id="navAll" data-go="all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Semua plant</button>
     <button class="nav-item" id="navLog" data-go="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Log aktivitas<span class="badge" id="logBadge"></span></button>
-    <div class="nav-sep">Pilih plant</div>
+    <div class="nav-sep" id="navSep">Pilih plant</div>
     <div id="navPlants"></div>
     <div class="me">
       <div class="av" id="meAv">D</div>
@@ -211,12 +237,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 
   <div class="main">
     <header class="top">
-      <button class="ibtn menu-btn" id="btnMenu" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
+      <button class="ibtn menu-btn" id="btnMenu" aria-label="Sembunyikan/tampilkan menu samping" title="Sembunyikan/tampilkan menu samping"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
       <div><h2 id="title">Semua plant</h2><p id="subtitle"></p></div>
       <div class="sp"></div>
       <button class="ibtn" id="btnRefresh"><svg id="icoRef" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg><span class="lbl">Muat ulang</span></button>
     </header>
-    <nav class="tabs" id="tabs" aria-label="Pilih dashboard"></nav>
+    <div class="tabs-wrap" id="tabsWrap"><button class="tarrow l" id="tabL" aria-label="Geser ke kiri"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="15 6 9 12 15 18"/></svg></button><nav class="tabs" id="tabs" aria-label="Pilih dashboard"></nav><button class="tarrow r" id="tabR" aria-label="Geser ke kanan"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="9 6 15 12 9 18"/></svg></button></div>
     <div class="content">
       <section class="view" id="viewAll">
         <div class="hero">
@@ -273,7 +299,11 @@ button{font:inherit;color:inherit;cursor:pointer}
   var $ = function (id) { return document.getElementById(id); };
 
   var WS = []; try { WS = JSON.parse(SS.getItem('wh_dh_workspaces') || '[]'); } catch (e) {}
-  var DATA = {};      // key -> {stock,out,inn}
+  var IZIN = null; try { IZIN = JSON.parse(SS.getItem('wh_dh_izin') || 'null'); } catch (e) {}
+  var ALLP = ['overview','ct','log','stock','outbound','inbound','kanban','rekap','loading','akurasi'];
+  if (!IZIN || !IZIN.length) IZIN = ALLP;
+  function can(k) { return IZIN.indexOf(k) !== -1; }
+  var DATA = {};      // key -> {st,out,inn} (kg) -- ringkas, disimpan ke localStorage utk tampil instan
   var ACT = {};       // 'tanggal|key' -> hasil log aktivitas | {loading:true} | {err:'..'}
   var state = { view: 'all', plant: '', ws: '' };
   var logDate = today(), logFilter = 'all';
@@ -345,9 +375,14 @@ button{font:inherit;color:inherit;cursor:pointer}
     $('meName').textContent = NAMA; $('meAv').textContent = (NAMA.trim().charAt(0) || 'D').toUpperCase();
   }
   function buildTabs() {
-    var h = '<button class="tab" data-go="all">Ringkasan</button>';
-    plants().forEach(function (p) { p.items.forEach(function (w) { h += '<button class="tab" data-ws-go="' + esc(w.key) + '">' + esc(w.deptLabel) + ' <small>' + esc(p.name) + '</small></button>'; }); });
-    $('tabs').innerHTML = h;
+    var h = '', n = 0;
+    if (can('overview')) { h += '<button class="tab" data-go="all">Ringkasan</button>'; n++; }
+    if (can('ct')) plants().forEach(function (p) { p.items.forEach(function (w) { n++; h += '<button class="tab" data-ws-go="' + esc(w.key) + '">' + esc(w.deptLabel) + ' <small>' + esc(p.name) + '</small></button>'; }); });
+    $('tabs').innerHTML = h; $('tabs').setAttribute('data-n', n); setTimeout(tabArrows, 50);
+  }
+  function tabArrows() {
+    var t = $('tabs'), w = $('tabsWrap'); if (!t) return;
+    w.classList.toggle('ov-l', t.scrollLeft > 8); w.classList.toggle('ov-r', t.scrollLeft + t.clientWidth < t.scrollWidth - 8);
   }
   function markNav() {
     document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.toggle('on', b.dataset.go === state.view); });
@@ -362,12 +397,17 @@ button{font:inherit;color:inherit;cursor:pointer}
 
   /* ---------- kartu departemen (3D) ---------- */
   function cardHtml(w) {
-    return '<button class="dcard" data-card="' + esc(w.key) + '" data-ws-go="' + esc(w.key) + '"><span class="dc-in"><span class="glare"></span>' +
-      '<span class="dc-top"><span class="dc-plant">' + esc(w.plantLabel) + '</span><span class="pill" data-f="pill">Memuat…</span></span>' +
+    var ms = [];
+    if (can('stock')) ms.push(['stock', 'Stock (ton)']); if (can('outbound')) ms.push(['out', 'Outbound']); if (can('inbound')) ms.push(['inn', 'Inbound']);
+    var open = can('ct') ? ' data-ws-go="' + esc(w.key) + '"' : ' style="cursor:default"';
+    var live = can('log');
+    return '<button class="dcard" data-card="' + esc(w.key) + '"' + open + '><span class="dc-in"><span class="glare"></span>' +
+      '<span class="dc-top"><span class="dc-plant">' + esc(w.plantLabel) + '</span>' + (live ? '<span class="pill" data-f="pill">Memuat…</span>' : '') + '</span>' +
       '<span class="dc-name">' + esc(w.deptLabel) + '</span>' +
-      '<span class="dc-mid"><span data-f="ring">' + ringSvg(0, 64, 7) + '</span><span class="dc-metrics">' +
-      '<span class="m"><b data-f="stock" class="skel">0000</b><i>Stock (ton)</i></span><span class="m"><b data-f="out" class="skel">0000</b><i>Outbound</i></span><span class="m"><b data-f="inn" class="skel">0000</b><i>Inbound</i></span></span></span>' +
-      '<span class="dc-foot" data-f="foot">Menunggu data…</span></span></button>';
+      '<span class="dc-mid">' + (live ? '<span data-f="ring">' + ringSvg(0, 64, 7) + '</span>' : '') +
+      '<span class="dc-metrics" style="grid-template-columns:repeat(' + Math.max(1, ms.length) + ',minmax(0,1fr))">' +
+      ms.map(function (m) { return '<span class="m"><b data-f="' + m[0] + '" class="skel">0000</b><i>' + m[1] + '</i></span>'; }).join('') + '</span></span>' +
+      (live ? '<span class="dc-foot" data-f="foot">Menunggu data…</span>' : (can('ct') ? '<span class="dc-foot">Klik untuk membuka dashboard</span>' : '')) + '</span></button>';
   }
   function bindTilt(root) {
     if (REDUCE) return;
@@ -388,16 +428,15 @@ button{font:inherit;color:inherit;cursor:pointer}
     var d = DATA[key] || {}, a = ACT[today() + '|' + key];
     document.querySelectorAll('[data-card="' + key + '"]').forEach(function (c) {
       function f(n) { return c.querySelector('[data-f="' + n + '"]'); }
-      var st = d.stock && d.stock.stock && d.stock.stock.tonase ? d.stock.stock.tonase.total : null;
-      [['stock', st], ['out', d.out ? d.out.total : null], ['inn', d.inn ? d.inn.total : null]].forEach(function (p) {
-        var el = f(p[0]); if (p[1] == null) return; el.classList.remove('skel'); el.textContent = tonTxt(p[1]);
+      [['stock', d.st], ['out', d.out], ['inn', d.inn]].forEach(function (p) {
+        var el = f(p[0]); if (!el || p[1] == null) return; el.classList.remove('skel'); el.textContent = tonTxt(p[1]);
       });
-      var pill = f('pill'), foot = f('foot');
+      var pill = f('pill'), foot = f('foot'); if (!pill || !foot) return;
       if (a && a.success) {
         setRing(f('ring'), a.persen);
         pill.className = 'pill ' + (a.lengkap ? 'ok' : (a.persen >= 50 ? 'warn' : 'bad')); pill.textContent = a.lengkap ? 'Input lengkap' : 'Belum lengkap';
-        var last = lastData(a);
-        foot.textContent = a.lengkap ? 'Data hari ini lengkap · terakhir ' + fmtTgl(last) : 'Belum diinput: ' + a.items.filter(function (i) { return i.wajib && !i.ada; }).map(function (i) { return i.label; }).join(', ');
+        var last = lastData(a), kurang = a.items.filter(function (i) { return i.wajib && !i.ada; }).map(function (i) { return i.label; });
+        foot.textContent = a.lengkap ? (last ? 'Data hari ini lengkap · terakhir ' + fmtTgl(last) : 'Tidak ada input wajib') : 'Belum diinput: ' + kurang.join(', ');
       } else if (a && a.err) { pill.className = 'pill'; pill.textContent = 'Gagal cek'; foot.textContent = 'Status input belum bisa dicek'; }
     });
     var dot = document.querySelector('[data-dot="' + key + '"]');
@@ -408,12 +447,17 @@ button{font:inherit;color:inherit;cursor:pointer}
   /* ---------- ringkasan all plant ---------- */
   var chBar = null, chDonut = null, renderTimer = 0;
   function scheduleSummary() { if (renderTimer) return; renderTimer = setTimeout(function () { renderTimer = 0; renderSummary(); }, 250); }
+  function saveCache() {
+    try {
+      var act = {}; Object.keys(ACT).forEach(function (k) { if (k.indexOf(today() + '|') === 0 && ACT[k].success) act[k] = ACT[k]; });
+      localStorage.setItem('dh_cache::' + NIK, JSON.stringify({ day: today(), data: DATA, act: act }));
+    } catch (e) {}
+  }
   function renderSummary() {
     var s = 0, o = 0, i = 0, ok = 0, bad = 0, known = 0;
     WS.forEach(function (w) {
       var d = DATA[w.key] || {}, a = ACT[today() + '|' + w.key];
-      if (d.stock && d.stock.stock && d.stock.stock.tonase) s += +d.stock.stock.tonase.total || 0;
-      if (d.out) o += +d.out.total || 0; if (d.inn) i += +d.inn.total || 0;
+      s += +d.st || 0; o += +d.out || 0; i += +d.inn || 0;
       if (a && a.success) { known++; if (a.lengkap) ok++; else bad++; }
     });
     countTo($('kStock'), ton(s), 1); countTo($('kOut'), ton(o), 1); countTo($('kIn'), ton(i), 1);
@@ -423,22 +467,35 @@ button{font:inherit;color:inherit;cursor:pointer}
     $('heroT1').textContent = known ? (bad ? bad + ' departemen belum lengkap' : 'Semua input lengkap') : 'Memuat status…';
     $('heroT2').textContent = 'Input hari ini · ' + fmtTgl(today());
     $('logBadge').textContent = bad ? bad : '';
+    saveCache();
     if (!window.Chart) return;
     var labels = WS.map(function (w) { return w.deptLabel.replace(/^Warehouse /, 'WH ') + ' · ' + w.plantLabel.replace(/^Plant /, ''); });
-    var outs = WS.map(function (w) { return +ton(((DATA[w.key] || {}).out || {}).total).toFixed(1); });
-    var ins = WS.map(function (w) { return +ton(((DATA[w.key] || {}).inn || {}).total).toFixed(1); });
-    var stk = WS.map(function (w) { var d = DATA[w.key] || {}; return +ton(d.stock && d.stock.stock && d.stock.stock.tonase ? d.stock.stock.tonase.total : 0).toFixed(1); });
+    var outs = WS.map(function (w) { return +ton((DATA[w.key] || {}).out).toFixed(1); });
+    var ins = WS.map(function (w) { return +ton((DATA[w.key] || {}).inn).toFixed(1); });
+    var stk = WS.map(function (w) { return +ton((DATA[w.key] || {}).st).toFixed(1); });
     var grid = 'rgba(150,172,255,.1)', tick = '#8d9aba';
     if (!chBar) {
       Chart.defaults.font.family = "'Plus Jakarta Sans',system-ui,sans-serif"; Chart.defaults.color = tick;
-      chBar = new Chart($('chBar'), { type: 'bar', data: { labels: labels, datasets: [{ label: 'Outbound', data: outs, backgroundColor: '#f3b94d', borderRadius: 8, barPercentage: .7 }, { label: 'Inbound', data: ins, backgroundColor: '#35d6c3', borderRadius: 8, barPercentage: .7 }] },
+      var ds = []; if (can('outbound')) ds.push({ label: 'Outbound', data: outs, backgroundColor: '#f3b94d', borderRadius: 8, barPercentage: .7, _k: 'o' }); if (can('inbound')) ds.push({ label: 'Inbound', data: ins, backgroundColor: '#35d6c3', borderRadius: 8, barPercentage: .7, _k: 'i' });
+      if (ds.length) chBar = new Chart($('chBar'), { type: 'bar', data: { labels: labels, datasets: ds },
         options: { responsive: true, maintainAspectRatio: false, animation: { duration: REDUCE ? 0 : 900, easing: 'easeOutQuart' }, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } }, tooltip: { callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + nf(c.parsed.y, 1) + ' ton'; } } } }, scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: false, font: { size: 10 } } }, y: { grid: { color: grid }, ticks: { callback: function (v) { return nf(v); } } } } } });
-      chDonut = new Chart($('chDonut'), { type: 'doughnut', data: { labels: labels, datasets: [{ data: stk, backgroundColor: PALETTE, borderColor: '#0d1426', borderWidth: 3, hoverOffset: 10 }] },
+      if (can('stock')) chDonut = new Chart($('chDonut'), { type: 'doughnut', data: { labels: labels, datasets: [{ data: stk, backgroundColor: PALETTE, borderColor: '#0d1426', borderWidth: 3, hoverOffset: 10 }] },
         options: { responsive: true, maintainAspectRatio: false, cutout: '64%', animation: { duration: REDUCE ? 0 : 1000 }, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } }, tooltip: { callbacks: { label: function (c) { return ' ' + c.label + ': ' + nf(c.parsed, 1) + ' ton'; } } } } } });
     } else {
-      chBar.data.labels = labels; chBar.data.datasets[0].data = outs; chBar.data.datasets[1].data = ins; chBar.update();
-      chDonut.data.labels = labels; chDonut.data.datasets[0].data = stk; chDonut.update();
+      chBar.data.labels = labels; chBar.data.datasets.forEach(function (x) { x.data = x._k === 'o' ? outs : ins; }); chBar.update();
+      if (chDonut) { chDonut.data.labels = labels; chDonut.data.datasets[0].data = stk; chDonut.update(); }
     }
+  }
+  // Sembunyikan bagian ringkasan yang tidak diizinkan Super Admin utk akun ini
+  function applyPerms() {
+    function hide(el, on) { if (el) el.style.display = on ? 'none' : ''; }
+    hide($('kStock').closest('.kpi'), !can('stock')); hide($('kOut').closest('.kpi'), !can('outbound')); hide($('kIn').closest('.kpi'), !can('inbound')); hide($('kBad').closest('.kpi'), !can('log'));
+    var vis = ['stock', 'outbound', 'inbound', 'log'].filter(can).length; $('viewAll').querySelector('.kpis').style.gridTemplateColumns = 'repeat(' + Math.max(1, vis) + ',minmax(0,1fr))';
+    hide($('chBar').closest('.card'), !(can('outbound') || can('inbound'))); hide($('chDonut').closest('.card'), !can('stock'));
+    var both = (can('outbound') || can('inbound')) && can('stock'); $('viewAll').querySelector('.charts').style.gridTemplateColumns = both ? '' : '1fr';
+    hide($('viewAll').querySelector('.charts'), !(can('outbound') || can('inbound') || can('stock')));
+    hide($('heroRing'), !can('log')); hide($('heroT1').parentNode, !can('log'));
+    hide($('navAll'), !can('overview')); hide($('navLog'), !can('log')); hide($('navSep'), !can('ct')); hide($('navPlants'), !can('ct'));
   }
   function buildOverview() {
     $('deptGrid').innerHTML = plants().map(function (p) {
@@ -454,23 +511,27 @@ button{font:inherit;color:inherit;cursor:pointer}
   }
 
   /* ---------- pemuatan data (paralel terbatas) ---------- */
-  var loadQ = [], loading = 0, MAXLOAD = 3;
+  var loadQ = [], loading = 0, MAXLOAD = 4;
   function loadWs(w, force) {
     loadQ.push({ w: w, force: force }); pump();
+  }
+  function prioritize(keys) {
+    keys.forEach(function (k) { for (var i = 0; i < loadQ.length; i++) if (loadQ[i].w.key === k) { loadQ.unshift(loadQ.splice(i, 1)[0]); break; } });
   }
   function pump() {
     while (loading < MAXLOAD && loadQ.length) {
       (function (job) {
-        loading++;
         var w = job.w, k = w.key, d = DATA[k] = DATA[k] || {}, n = new Date(), p = { bulan: String(n.getMonth() + 1), tahun: String(n.getFullYear()) };
-        var marks = {}, finished = 0;
+        var need = []; if (can('stock')) need.push('s'); if (can('outbound')) need.push('o'); if (can('inbound')) need.push('i'); if (can('log')) need.push('a');
+        if (!need.length) return;
+        loading++;
+        var marks = {}, finished = 0, guard = setTimeout(function () { need.forEach(mark); }, 25000);
         // Tiap sumber ditandai selesai SEKALI (shim bisa memanggil handler 2x: cache lalu data segar); gagal/timeout tidak menahan antrean.
-        function mark(name) { if (marks[name]) return; marks[name] = 1; if (++finished === 4) { clearTimeout(guard); loading--; pump(); } }
-        var guard = setTimeout(function () { ['s', 'o', 'i', 'a'].forEach(mark); }, 25000);
-        run(k, 'getDashboardData', ['harian', { dari: today(), sampai: today() }], function (r) { d.stock = r; updateCard(k); scheduleSummary(); mark('s'); }, function () { mark('s'); });
-        run(k, 'getOutboundData', [p], function (r) { d.out = r; updateCard(k); scheduleSummary(); mark('o'); }, function () { mark('o'); });
-        run(k, 'getInboundData', [p], function (r) { d.inn = r; updateCard(k); scheduleSummary(); mark('i'); }, function () { mark('i'); });
-        loadAct(w, today(), !!job.force, function () { mark('a'); });
+        function mark(x) { if (marks[x]) return; marks[x] = 1; if (++finished >= need.length) { clearTimeout(guard); loading--; pump(); } }
+        if (can('stock')) run(k, 'getDashboardData', ['harian', { dari: today(), sampai: today() }], function (r) { if (r && r.stock && r.stock.tonase) d.st = +r.stock.tonase.total || 0; updateCard(k); scheduleSummary(); mark('s'); }, function () { mark('s'); });
+        if (can('outbound')) run(k, 'getOutboundData', [p], function (r) { if (r && r.total != null) d.out = +r.total || 0; updateCard(k); scheduleSummary(); mark('o'); }, function () { mark('o'); });
+        if (can('inbound')) run(k, 'getInboundData', [p], function (r) { if (r && r.total != null) d.inn = +r.total || 0; updateCard(k); scheduleSummary(); mark('i'); }, function () { mark('i'); });
+        if (can('log')) loadAct(w, today(), !!job.force, function () { mark('a'); });
       })(loadQ.shift());
     }
   }
@@ -505,6 +566,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   function prewarm(key, delay) { if (frames[key] || !byKey(key)) return; clearTimeout(warmTimer); warmTimer = setTimeout(function () { if (Object.keys(frames).length < MAX_FRAMES) ensureFrame(key); }, delay || 0); }
   function warmNext() {
     if (Object.keys(frames).length >= 3) return;
+    if (loading || loadQ.length) { setTimeout(warmNext, 2500); return; }
     var cur = byKey(state.ws), order = [];
     if (cur) WS.forEach(function (w) { if (w.plantLabel === cur.plantLabel) order.push(w.key); });
     WS.forEach(function (w) { if (order.indexOf(w.key) === -1) order.push(w.key); });
@@ -569,9 +631,17 @@ button{font:inherit;color:inherit;cursor:pointer}
   /* ---------- routing ---------- */
   function parseHash() {
     var h = decodeURIComponent((location.hash || '').replace(/^#/, ''));
-    if (h.indexOf('dept=') === 0 && byKey(h.slice(5))) return { view: 'dept', ws: h.slice(5), plant: byKey(h.slice(5)).plantLabel };
-    if (h.indexOf('plant=') === 0) return { view: 'plant', plant: h.slice(6) };
-    if (h === 'log') return { view: 'log' };
+    if (h.indexOf('dept=') === 0 && byKey(h.slice(5))) return guardView({ view: 'dept', ws: h.slice(5), plant: byKey(h.slice(5)).plantLabel });
+    if (h.indexOf('plant=') === 0) return guardView({ view: 'plant', plant: h.slice(6) });
+    if (h === 'log') return guardView({ view: 'log' });
+    return guardView({ view: 'all' });
+  }
+  function guardView(r) {
+    var bad = (r.view === 'all' && !can('overview')) || ((r.view === 'dept' || r.view === 'plant') && !can('ct')) || (r.view === 'log' && !can('log'));
+    if (!bad) return r;
+    if (can('overview')) return { view: 'all' };
+    if (can('ct')) { var p = plants()[0]; return p ? { view: 'plant', plant: p.name } : { view: 'all' }; }
+    if (can('log')) return { view: 'log' };
     return { view: 'all' };
   }
   function go(h) { if (decodeURIComponent((location.hash || '').replace(/^#/, '')) === h) route(); else location.hash = encodeURIComponent(h).replace(/%3D/g, '='); }
@@ -579,7 +649,11 @@ button{font:inherit;color:inherit;cursor:pointer}
     var s = parseHash(); state.view = s.view; state.plant = s.plant || state.plant; state.ws = s.ws || '';
     if (s.view === 'all') state.plant = '';
     ['All', 'Plant', 'Dept', 'Log'].forEach(function (n) { $('view' + n).classList.toggle('on', n.toLowerCase() === s.view); });
-    $('tabs').hidden = !(s.view === 'all' || s.view === 'dept');
+    $('tabsWrap').hidden = !(s.view === 'all' || s.view === 'dept') || +$('tabs').getAttribute('data-n') <= 1;
+    if (s.view !== 'dept') Object.keys(frames).forEach(function (k) { frames[k].classList.remove('on'); });
+    if (s.view === 'plant') { var pp = plants().filter(function (x) { return x.name === s.plant; })[0]; if (pp) prioritize(pp.items.map(function (x) { return x.key; })); }
+    if (s.view === 'dept') prioritize([s.ws]);
+    setTimeout(tabArrows, 60);
     var t = 'Semua plant', sub = 'Pantau seluruh plant dan departemen dari satu tempat';
     if (s.view === 'plant') { t = s.plant; sub = 'Pilih departemen yang ingin dilihat'; buildPlantView(s.plant); }
     if (s.view === 'dept') { var w = byKey(s.ws); t = w.deptLabel; sub = w.plantLabel + ' · Control Tower'; showDept(s.ws); }
@@ -603,7 +677,14 @@ button{font:inherit;color:inherit;cursor:pointer}
     }
     if ((t = e.target.closest('[data-recheck]'))) { var w2 = byKey(t.dataset.recheck); loadAct(w2, logDate, true); renderLog(); return; }
   });
-  $('btnMenu').onclick = function () { $('rail').classList.toggle('open'); };
+  $('btnMenu').onclick = function () {
+    if (window.innerWidth <= 860) { $('rail').classList.toggle('open'); return; }
+    var c = $('app').classList.toggle('collapsed'); try { localStorage.setItem('dh_rail', c ? '1' : '0'); } catch (e) {}
+    setTimeout(function () { try { if (chBar) chBar.resize(); if (chDonut) chDonut.resize(); } catch (e) {} tabArrows(); }, 330);
+  };
+  $('tabs').addEventListener('scroll', tabArrows, { passive: true }); window.addEventListener('resize', tabArrows);
+  $('tabL').onclick = function () { $('tabs').scrollBy({ left: -280, behavior: 'smooth' }); };
+  $('tabR').onclick = function () { $('tabs').scrollBy({ left: 280, behavior: 'smooth' }); };
   $('btnLogout').onclick = function () { try { SS.clear(); } catch (e) {} location.href = './login.html'; };
   $('btnRefresh').onclick = function () {
     var ic = $('icoRef'); ic.classList.add('spin'); setTimeout(function () { ic.classList.remove('spin'); }, 1200);
@@ -631,15 +712,19 @@ button{font:inherit;color:inherit;cursor:pointer}
   /* ---------- mulai ---------- */
   function start() {
     if (!WS.length) { $('deptGrid').innerHTML = '<div class="empty">Akun ini belum punya plant/departemen aktif. Hubungi Super Admin.</div>'; return; }
-    buildRail(); buildTabs(); buildOverview(); syncQuick(); route();
+    try { if (localStorage.getItem('dh_rail') === '1' && window.innerWidth > 860) $('app').classList.add('collapsed'); } catch (e) {}
+    try { var c = JSON.parse(localStorage.getItem('dh_cache::' + NIK) || 'null'); if (c && c.data) { DATA = c.data; if (c.day === today() && c.act) Object.keys(c.act).forEach(function (k) { ACT[k] = c.act[k]; }); } } catch (e) {}
+    buildRail(); buildTabs(); buildOverview(); applyPerms(); syncQuick(); route();
+    WS.forEach(function (w) { updateCard(w.key); }); renderSummary();   // tampil instan dari data sesi sebelumnya, lalu disegarkan
     WS.forEach(function (w) { loadWs(w, false); });
-    setTimeout(warmNext, 5000);
+    var cur = parseHash(); if (cur.view === 'dept') prioritize([cur.ws]); else if (cur.view === 'plant') { var pp = plants().filter(function (x) { return x.name === cur.plant; })[0]; if (pp) prioritize(pp.items.map(function (x) { return x.key; })); }
+    setTimeout(warmNext, 4000);
   }
   // Muat ulang daftar plant yang diizinkan (kalau Super Admin mengubah akses sejak login)
   var firstWs = SS.getItem('wh_workspace') || (WS[0] && WS[0].key) || '';
   if (firstWs) {
     run(firstWs, 'divheadGetWorkspaces', [NIK], function (r) {
-      if (r && r.success && r.data && r.data.length) { try { SS.setItem('wh_dh_workspaces', JSON.stringify(r.data)); } catch (e) {} WS = r.data; }
+      if (r && r.success && r.data && r.data.length) { try { SS.setItem('wh_dh_workspaces', JSON.stringify(r.data)); if (r.izin) SS.setItem('wh_dh_izin', JSON.stringify(r.izin)); } catch (e) {} WS = r.data; if (r.izin && r.izin.length) IZIN = r.izin; }
       start();
     }, function () { start(); });
   } else start();

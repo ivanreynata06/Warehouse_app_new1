@@ -21,8 +21,13 @@ html.dh-embed{
   --e2:0 1px 0 rgba(255,255,255,.08) inset,0 34px 60px -26px rgba(0,0,0,.9),0 8px 20px rgba(0,0,0,.35);
 }
 html.dh-embed,html.dh-embed body{font-family:'Plus Jakarta Sans','Inter',system-ui,sans-serif;font-size:13.5px;line-height:1.5}
-html.dh-embed ::-webkit-scrollbar{width:9px;height:9px}
-html.dh-embed ::-webkit-scrollbar-thumb{background:rgba(150,172,255,.22);border-radius:9px}
+html.dh-embed{color-scheme:dark}
+html.dh-embed *{scrollbar-width:thin;scrollbar-color:rgba(243,185,77,.5) transparent}
+html.dh-embed ::-webkit-scrollbar{width:10px;height:10px}
+html.dh-embed ::-webkit-scrollbar-track{background:transparent}
+html.dh-embed ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(243,185,77,.6),rgba(145,165,255,.45));border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+html.dh-embed ::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#f3b94d,#9aa9ff);background-clip:padding-box}
+html.dh-embed ::-webkit-scrollbar-corner{background:transparent}
 /* rapikan kepala halaman: sembunyikan yang tidak relevan utk Divisi Head */
 html.dh-embed .theme-toggle,
 html.dh-embed #user-session-badge,

@@ -349,7 +349,7 @@
   </div>
 
   <script src="./assets/js/config.js?v=20261030a"></script>
-  <script src="./assets/js/api-shim.js?v=20261110a"></script>
+  <script src="./assets/js/api-shim.js?v=20261111a"></script>
   <script>function escL(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}</script>
 <script>
     // ============================================================
@@ -576,6 +576,7 @@
               sessionStorage.setItem('wh_token', res.token || '');
               sessionStorage.setItem('wh_menu_keys', '[]');
               sessionStorage.setItem('wh_dh_workspaces', JSON.stringify(res.workspaces || []));
+              sessionStorage.setItem('wh_dh_izin', JSON.stringify(res.izin || []));
             } catch (err) {}
             window.location.href = './divisi_head.html';
           })
