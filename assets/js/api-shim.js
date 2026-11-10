@@ -38,8 +38,15 @@
   // (lihat login.html). Disimpan di sessionStorage supaya bertahan selama
   // 1 sesi browser, dan disertakan di SETIAP request backend + cache key
   // supaya data antar departemen tidak pernah tercampur/ketuker.
-  function getWorkspace() {
+  function getWorkspace(ws) {
+    if (ws) return ws; // dipakai google.script.runFor(ws): panggilan eksplisit ke 1 workspace
     try {
+      // Divisi Head: halaman Control Tower di dalam iframe dibuka dgn ?dhws=<workspace> supaya tiap iframe
+      // membaca departemen-nya sendiri (sessionStorage dipakai bersama semua iframe di 1 tab).
+      if (sessionStorage.getItem('wh_role') === 'Divisi Head') {
+        var m = /[?&]dhws=([a-z0-9_]+)/i.exec(global.location.search || '');
+        if (m) return m[1];
+      }
       return sessionStorage.getItem('wh_workspace') || 'cibitung_fitting_import';
     } catch (e) {
       return 'cibitung_fitting_import';
@@ -47,8 +54,8 @@
   }
   global.getWorkspace = getWorkspace;
 
-  function cacheKey(fn, args) {
-    return 'apicache::' + getWorkspace() + '::' + fn + '::' + JSON.stringify(args || []);
+  function cacheKey(fn, args, ws) {
+    return 'apicache::' + getWorkspace(ws) + '::' + fn + '::' + JSON.stringify(args || []);
   }
 
   // Whitelist fungsi yang AMAN di-cache -- data dashboard read-only yang
@@ -161,8 +168,8 @@
     }
     return res;
   }
-  function callBackend(fnName, args) {
-    var payload = { action: fnName, params: args || [], workspace: getWorkspace(), token: getToken() };
+  function callBackend(fnName, args, ws) {
+    var payload = { action: fnName, params: args || [], workspace: getWorkspace(ws), token: getToken() };
 
     // Content-Type "text/plain" sengaja dipakai supaya browser menganggap
     // ini "simple request" dan TIDAK mengirim preflight OPTIONS (Apps
@@ -192,13 +199,13 @@
     var url = BASE_URL + sep +
       'action=' + encodeURIComponent(fnName) +
       '&params=' + encodeURIComponent(JSON.stringify(args || [])) +
-      '&workspace=' + encodeURIComponent(getWorkspace()) +
+      '&workspace=' + encodeURIComponent(getWorkspace(ws)) +
       '&token=' + encodeURIComponent(getToken());
 
     return fetchWithTimeout(url, { method: 'GET' }, 45000).then(parseJsonSafe).then(cekAuth);
   }
 
-  function makeRunner() {
+  function makeRunner(wsOverride) {
     var successCb = null;
     var failureCb = null;
     var proxy;
@@ -225,13 +232,13 @@
           // upload, dll, atau getResidenceTimeData mode real-time) --
           // SELALU fresh, tidak pernah baca/tulis cache sama sekali.
           if (!isCacheableCall(prop, args)) {
-            callBackend(prop, args)
+            callBackend(prop, args, wsOverride)
               .then(function (data) { if (successCb) successCb(data); })
               .catch(function (err) { if (failureCb) failureCb(err); });
             return proxy;
           }
 
-          var key = cacheKey(prop, args);
+          var key = cacheKey(prop, args, wsOverride);
           var cached = readCache(key);
           var isFresh = cached && (Date.now() - cached.t < TTL);
 
@@ -242,7 +249,7 @@
           if (isFresh) return proxy; // cache masih segar, tidak perlu fetch lagi
 
           function fallbackToAppsScript() {
-            callBackend(prop, args)
+            callBackend(prop, args, wsOverride)
               .then(function (data) {
                 writeCache(key, data);
                 if (successCb) successCb(data);
@@ -260,7 +267,7 @@
           // lambat sedikit).
           var sb = global.__supabaseSnapshot;
           var sbKey = sb ? sb.buildKey(prop, args) : null;
-          if (sbKey) sbKey = getWorkspace() + '::' + sbKey; // pisahkan snapshot per departemen
+          if (sbKey) sbKey = getWorkspace(wsOverride) + '::' + sbKey; // pisahkan snapshot per departemen
           if (sbKey) {
             sb.fetchSnapshot(sbKey).then(function (payload) {
               // PENTING: kalau snapshot yang tersimpan di Supabase ternyata
@@ -306,6 +313,9 @@
   // beberapa pemanggilan paralel (mis. wh_control_tower.html yang
   // memanggil 5 fungsi backend sekaligus) saling menimpa
   // successHandler satu sama lain kalau runner-nya dipakai bersama.
+  // Panggil backend utk workspace TERTENTU (dipakai halaman Divisi Head: banyak plant/departemen dlm 1 halaman,
+  // mis. google.script.runFor('plant_gresik_warehouse_pipa').withSuccessHandler(...).getDashboardData(...)).
+  global.google.script.runFor = function (ws) { return makeRunner(ws); };
   Object.defineProperty(global.google.script, 'run', {
     get: function () { return makeRunner(); },
     configurable: true

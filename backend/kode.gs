@@ -116,6 +116,14 @@ var API_FUNCTIONS = {
   adminSetMenuConfig      : adminSetMenuConfig,
   adminGetCrossWorkspaceTL: adminGetCrossWorkspaceTL,
   adminSetCrossWorkspaceTL: adminSetCrossWorkspaceTL,
+  // Divisi Head (akun lintas semua plant/departemen, login tanpa pilih plant)
+  loginDivisiHead: loginDivisiHead,
+  divheadGetWorkspaces: divheadGetWorkspaces,
+  divheadGetActivity: divheadGetActivity,
+  divheadKirimReminder: divheadKirimReminder,
+  adminGetDivisiHead: adminGetDivisiHead,
+  adminSetDivisiHead: adminSetDivisiHead,
+  adminHapusDivisiHead: adminHapusDivisiHead,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -221,7 +229,7 @@ var CACHE_TTL_DEFAULT = 90;
 //    Darurat: matikanAuth() (kembali ke 'off').
 // ================================================================
 var AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
-var AUTH_PUBLIC_ACTIONS = { loginUser: 1, getAvailablePlantsForLogin: 1 };
+var AUTH_PUBLIC_ACTIONS = { loginUser: 1, getAvailablePlantsForLogin: 1, loginDivisiHead: 1 };
 var AUTH_ACTOR_BOUND = {
   auditProduktivitasFTE: 1, getSupabaseStorageStats: 1, setSupabaseDbLimitMB: 1, bersihkanPengajuanDitolakLama: 1, getAkunList: 1,
   adminTambahUser: 1, adminResetPassword: 1, adminSetAktif: 1, adminEditUser: 1, adminHapusUser: 1, adminSetFonnteToken: 1, adminGetFonnteStatus: 1,
@@ -230,9 +238,21 @@ var AUTH_ACTOR_BOUND = {
   getWorkspaceListForAdmin: 1, adminProvisionNewDepartment: 1, adminRepairWorkspaceSheets: 1, adminHapusDepartemen: 1, adminHapusPlant: 1, adminGetMenuConfig: 1,
   adminSetMenuConfig: 1, adminGetCrossWorkspaceTL: 1, adminSetCrossWorkspaceTL: 1, getPendingApprovals: 1, adminGetSplSignatures: 1, adminUploadSplSignature: 1,
   adminGetSplJobBagian: 1, adminSetSplJobBagian: 1, adminHapusSplSignature: 1, adminSetSplTtdCutoff: 1, adminSetSplTtdUkuran: 1,
-  adminSetJadwalPengirimanSumber: 1, adminGetJadwalPengirimanSumberStatus: 1
+  adminSetJadwalPengirimanSumber: 1, adminGetJadwalPengirimanSumberStatus: 1,
+  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1, adminGetDivisiHead: 1, adminSetDivisiHead: 1, adminHapusDivisiHead: 1
 };
 var CURRENT_AUTH = null;   // diisi handleApiRequest: { w, n, r } bila token valid
+
+// Aksi yang boleh dipanggil token Divisi Head -- HANYA baca data dashboard + fitur Divisi Head sendiri.
+// (Tidak ada save*/set*/delete*/approve*/upload* -> Divisi Head tidak bisa mengubah data plant mana pun.)
+var DIVHEAD_ALLOWED_ACTIONS = {
+  getAvailablePlantsForLogin: 1, getGroupList: 1, getDashboardData: 1, getOutboundData: 1, getInboundData: 1,
+  getKanbanData: 1, getRekapMuatanData: 1, getResidenceTimeData: 1, getLoadingTimeAnalytics: 1,
+  getStockTrendBatch: 1, getIOTrendBatch: 1, getPhotos: 1, getAbsensiFTEData: 1, getOvertimeTrend6Bulan: 1,
+  getLemburKategoriTrend6Bulan: 1, getFTETrendTahunan: 1, getAkurasiData: 1, getAkurasiDataGabungan: 1,
+  soGetDashboard: 1, soGetRekapPIC: 1, soGetSkuCounts: 1, soListLembar: 1,
+  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1
+};
 
 function _b64u(bytes) { return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, ''); }
 function _authSecret() {
@@ -268,6 +288,17 @@ function _authCheck(action, args, workspaceKey, token) {
   if (AUTH_PUBLIC_ACTIONS[action]) return { ok: true, why: 'public', who: null };
   var who = _authVerify(token);
   if (!who) return { ok: false, why: 'token tidak ada / tidak valid / kedaluwarsa', who: null };
+  // Divisi Head: token terikat NIK (w='*'), bukan 1 workspace. Hanya boleh memanggil aksi BACA
+  // (DIVHEAD_ALLOWED_ACTIONS) pada workspace yang memang diizinkan Super Admin untuk akun itu.
+  if (String(who.r || '').toUpperCase() === 'DIVISI HEAD') {
+    if (!DIVHEAD_ALLOWED_ACTIONS[action]) return { ok: false, why: 'aksi "' + action + '" tidak diizinkan untuk Divisi Head', who: who };
+    if (!_divheadCanAccess(who.n, workspaceKey)) return { ok: false, why: 'Divisi Head tidak diizinkan di workspace ' + workspaceKey, who: who };
+    if (AUTH_ACTOR_BOUND[action]) {
+      var ad = String((args && args[0]) || '').trim().toUpperCase();
+      if (ad !== who.n) return { ok: false, why: 'actorNik (' + ad + ') != NIK token (' + who.n + ')', who: who };
+    }
+    return { ok: true, why: 'ok-divhead', who: who };
+  }
   if (who.w !== workspaceKey) return { ok: false, why: 'workspace token (' + who.w + ') != workspace request (' + workspaceKey + ')', who: who };
   if (AUTH_ACTOR_BOUND[action]) {
     var a = String((args && args[0]) || '').trim().toUpperCase();
@@ -11371,4 +11402,232 @@ function aktifkanNotifHarian(jam) {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'ringkasanHarianWA') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('ringkasanHarianWA').timeBased().everyDays(1).atHour(Number(jam) || 17).create();
   return 'Ringkasan WhatsApp akan dikirim setiap hari pukul ' + (Number(jam) || 17) + ':00.';
+}
+
+
+// ================================================================
+//  DIVISI HEAD -- akun lintas SEMUA plant/departemen (hanya BACA)
+// ----------------------------------------------------------------
+//  - Login TANPA pilih plant/departemen: cukup NIK + kata sandi (loginDivisiHead).
+//  - Akun disimpan di Script Properties ('DIVHEAD_ACC_<NIK>'), diatur Super Admin lewat
+//    Kelola User > Divisi Head. Tidak bergantung pada AKUN_LOGIN departemen mana pun.
+//  - Token sesi terikat NIK (w='*', r='DIVISI HEAD'); hanya boleh aksi baca (DIVHEAD_ALLOWED_ACTIONS)
+//    pada workspace yang diizinkan akun tsb ('*' = semua plant/departemen).
+//  - Log aktivitas: cek per workspace apakah Stock/Outbound/Inbound sudah diinput utk tanggal tertentu,
+//    kapan terakhir update, dan kirim pengingat WhatsApp (Fonnte) ke nomor TL plant tsb.
+// ================================================================
+var DIVHEAD_PREFIX = 'DIVHEAD_ACC_';
+
+function _divheadGetAccount(nik) {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(DIVHEAD_PREFIX + String(nik || '').trim().toUpperCase());
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function _divheadSaveAccount(nik, acc) {
+  PropertiesService.getScriptProperties().setProperty(DIVHEAD_PREFIX + String(nik).trim().toUpperCase(), JSON.stringify(acc));
+}
+
+// Daftar workspace {key,label,plantLabel,deptLabel} yang boleh dilihat akun ini (hanya yang sudah di-provision).
+function _divheadWorkspaceList(acc) {
+  var all = (getAvailablePlantsForLogin().data || []);
+  var allowAll = !acc || !acc.ws || acc.ws.indexOf('*') !== -1;
+  var out = [];
+  all.forEach(function (x) {
+    if (allowAll || acc.ws.indexOf(x.workspaceKey) !== -1) {
+      out.push({ key: x.workspaceKey, label: (WORKSPACE_LABELS[x.workspaceKey] || (x.plantLabel + ' — ' + x.deptLabel)), plantLabel: x.plantLabel, deptLabel: x.deptLabel });
+    }
+  });
+  return out;
+}
+function _divheadCanAccess(nik, workspaceKey) {
+  var acc = _divheadGetAccount(nik);
+  if (!acc || acc.aktif === false) return false;
+  if (!WORKSPACE_MAP.hasOwnProperty(workspaceKey) || !WORKSPACE_MAP[workspaceKey]) return false;
+  return !acc.ws || acc.ws.indexOf('*') !== -1 || acc.ws.indexOf(workspaceKey) !== -1;
+}
+
+function loginDivisiHead(nik, password) {
+  try {
+    var nikIn = String(nik || '').trim().toUpperCase();
+    if (!nikIn || !password) return { success: false, error: 'NIK dan kata sandi wajib diisi.' };
+    if (_loginTerkunci('DIVHEAD', nikIn)) return { success: false, error: 'Terlalu banyak percobaan login gagal. Coba lagi dalam 10 menit.' };
+    var acc = _divheadGetAccount(nikIn);
+    if (!acc || acc.aktif === false || String(acc.hash) !== _hashPassword(password)) {
+      _loginCatatGagal('DIVHEAD', nikIn);
+      return { success: false, error: 'NIK atau kata sandi salah.' };
+    }
+    _loginResetGagal('DIVHEAD', nikIn);
+    var list = _divheadWorkspaceList(acc);
+    if (!list.length) return { success: false, error: 'Akun Divisi Head ini belum punya plant/departemen aktif. Hubungi Super Admin.' };
+    return { success: true, workspace: list[0].key, nik: nikIn, nama: acc.nama || nikIn, role: 'Divisi Head', menuKeys: [], workspaces: list, token: _authIssue('*', nikIn, 'DIVISI HEAD') };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Daftar workspace terbaru utk akun yang sedang login (dipanggil ulang halaman Divisi Head).
+function divheadGetWorkspaces(actorNik) {
+  try {
+    var acc = _divheadGetAccount(actorNik);
+    if (!acc || acc.aktif === false) return { success: false, error: 'Akun Divisi Head tidak aktif.' };
+    return { success: true, data: _divheadWorkspaceList(acc) };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ---- Super Admin: kelola akun Divisi Head ----
+function adminGetDivisiHead(actorNik) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var props = PropertiesService.getScriptProperties().getProperties(), out = [];
+    Object.keys(props).forEach(function (k) {
+      if (k.indexOf(DIVHEAD_PREFIX) !== 0) return;
+      try {
+        var a = JSON.parse(props[k]);
+        out.push({ nik: k.substring(DIVHEAD_PREFIX.length), nama: a.nama || '', aktif: a.aktif !== false, ws: a.ws || ['*'] });
+      } catch (e) {}
+    });
+    out.sort(function (x, y) { return x.nik < y.nik ? -1 : 1; });
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+// password kosong = pertahankan password lama (edit). Akun baru WAJIB password (min 6).
+// workspaceKeys: ['*'] = semua plant/departemen, atau daftar key tertentu.
+function adminSetDivisiHead(actorNik, targetNik, nama, password, workspaceKeys, aktif) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var nik = String(targetNik || '').trim().toUpperCase();
+    if (!nik) return { success: false, error: 'NIK wajib diisi.' };
+    var keys = (workspaceKeys || []).map(function (k) { return String(k).trim(); }).filter(Boolean);
+    if (!keys.length) return { success: false, error: 'Pilih minimal 1 plant/departemen (atau Semua).' };
+    if (keys.indexOf('*') !== -1) keys = ['*'];
+    else {
+      var invalid = keys.filter(function (k) { return !WORKSPACE_MAP.hasOwnProperty(k); });
+      if (invalid.length) return { success: false, error: 'Departemen/plant tidak dikenali: ' + invalid.join(', ') };
+    }
+    var old = _divheadGetAccount(nik), acc = old || { dibuat: new Date().toISOString() };
+    if (password) {
+      if (String(password).length < 6) return { success: false, error: 'Kata sandi minimal 6 karakter.' };
+      acc.hash = _hashPassword(password);
+    } else if (!old) return { success: false, error: 'Kata sandi wajib diisi untuk akun baru.' };
+    acc.nama = String(nama || (old && old.nama) || nik).trim();
+    acc.ws = keys;
+    acc.aktif = (aktif === false) ? false : true;
+    acc.diubah = new Date().toISOString();
+    _divheadSaveAccount(nik, acc);
+    return { success: true, baru: !old };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+function adminHapusDivisiHead(actorNik, targetNik) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    PropertiesService.getScriptProperties().deleteProperty(DIVHEAD_PREFIX + String(targetNik || '').trim().toUpperCase());
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ---- Log aktivitas input data (per workspace = ACTIVE_WORKSPACE dari request) ----
+// Dataset yg diwajibkan: Outbound & Inbound semua departemen; Stock hanya Fitting Import & Fitting Rucika
+// (sama dgn aturan tab Upload Data Harian -- tab Stock disembunyikan utk departemen lain).
+function _divheadDatasetDefs() {
+  var stockWajib = (ACTIVE_WORKSPACE === 'cibitung_fitting_import' || ACTIVE_WORKSPACE === 'cibitung_fitting_rucika');
+  return [
+    { key: 'stock',    label: 'Stock',    sheet: SH_STOCK,    col: 10, wajib: stockWajib },
+    { key: 'outbound', label: 'Outbound', sheet: SH_KIRIM,    col: 5,  wajib: true },
+    { key: 'inbound',  label: 'Inbound',  sheet: SH_PRODUKSI, col: 5,  wajib: true }
+  ];
+}
+// Baca kolom tanggal (jendela baris terakhir dulu; kalau tanggal yg dicari lebih lama dari jendela -> baca penuh).
+function _divheadScanTanggal(sheet, col, targetKey, tz) {
+  var last = sheet.getLastRow();
+  if (last < 2) return { count: 0, lastKey: '' };
+  function scan(from) {
+    var vals = sheet.getRange(from, col, last - from + 1, 1).getValues(), maxKey = '', minKey = '', cnt = 0;
+    for (var i = 0; i < vals.length; i++) {
+      var v = vals[i][0];
+      if (v === '' || v === null) continue;
+      var d = (v instanceof Date) ? v : _parseTanggalFleksibel(v);
+      if (!(d instanceof Date) || isNaN(d.getTime())) continue;
+      var k = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+      if (k > maxKey) maxKey = k;
+      if (!minKey || k < minKey) minKey = k;
+      if (k === targetKey) cnt++;
+    }
+    return { count: cnt, lastKey: maxKey, minKey: minKey };
+  }
+  var win = Math.max(2, last - 7999);
+  var r = scan(win);
+  if (win > 2 && r.minKey && r.minKey > targetKey) r = scan(2); // tanggal yg dicari di luar jendela -> baca semua
+  return r;
+}
+function _divheadHitungAktivitas(tanggal, force) {
+  var tz = Session.getScriptTimeZone();
+  var targetKey = /^\d{4}-\d{2}-\d{2}$/.test(String(tanggal || '')) ? String(tanggal) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var cache = CacheService.getScriptCache(), ck = 'dhact::' + ACTIVE_WORKSPACE + '::' + targetKey;
+  if (!force) { try { var hit = cache.get(ck); if (hit) return JSON.parse(hit); } catch (e) {} }
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), items = [], wajibTotal = 0, wajibOk = 0;
+  _divheadDatasetDefs().forEach(function (def) {
+    var it = { key: def.key, label: def.label, wajib: def.wajib, ada: false, jumlah: 0, terakhir: '', selisihHari: null, error: '' };
+    try {
+      var sh = ss.getSheetByName(def.sheet);
+      if (!sh) it.error = 'Sheet ' + def.sheet + ' tidak ada';
+      else {
+        var r = _divheadScanTanggal(sh, def.col, targetKey, tz);
+        it.jumlah = r.count; it.ada = r.count > 0; it.terakhir = r.lastKey;
+        if (r.lastKey) it.selisihHari = Math.round((new Date(targetKey + 'T00:00:00Z') - new Date(r.lastKey + 'T00:00:00Z')) / 86400000);
+      }
+    } catch (e) { it.error = e.message; }
+    if (def.wajib) { wajibTotal++; if (it.ada) wajibOk++; }
+    items.push(it);
+  });
+  var terakhirEdit = '';
+  try { terakhirEdit = Utilities.formatDate(DriveApp.getFileById(SPREADSHEET_ID).getLastUpdated(), tz, 'yyyy-MM-dd HH:mm'); } catch (e) {}
+  var res = {
+    workspace: ACTIVE_WORKSPACE, label: WORKSPACE_LABELS[ACTIVE_WORKSPACE] || ACTIVE_WORKSPACE, tanggal: targetKey, items: items,
+    persen: wajibTotal ? Math.round(wajibOk * 100 / wajibTotal) : 100, lengkap: wajibOk === wajibTotal,
+    terakhirEdit: terakhirEdit, dicek: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm:ss')
+  };
+  try { cache.put(ck, JSON.stringify(res), 60); } catch (e) {}
+  return res;
+}
+function divheadGetActivity(actorNik, tanggal, force) {
+  try {
+    if (!_isSuperAdmin(actorNik) && !_divheadCanAccess(actorNik, ACTIVE_WORKSPACE)) return { success: false, error: 'Akses ditolak.' };
+    var res = _divheadHitungAktivitas(tanggal, force === true || force === 'true' || force === 1);
+    var props = PropertiesService.getScriptProperties();
+    var last = null; try { last = JSON.parse(props.getProperty('DH_REMIND_' + ACTIVE_WORKSPACE) || 'null'); } catch (e) {}
+    res.reminderTerakhir = last;
+    res.waSiap = !!(_fonnteTl() && _fonnteCariToken(''));
+    res.success = true;
+    return res;
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Kirim pengingat WhatsApp ke TL plant/departemen ini. Daftar inputan yg belum masuk DIHITUNG ULANG di server
+// (tidak percaya kiriman browser), lalu pesan dikirim lewat Fonnte ke nomor TL (FONNTE_TL_WA_<ws> -> umum -> approver).
+function divheadKirimReminder(actorNik, tanggal) {
+  try {
+    if (!_divheadCanAccess(actorNik, ACTIVE_WORKSPACE)) return { success: false, error: 'Akses ditolak.' };
+    var cache = CacheService.getScriptCache(), tk = 'dhrem::' + ACTIVE_WORKSPACE;
+    if (cache.get(tk)) return { success: false, error: 'Pengingat untuk departemen ini baru saja dikirim. Tunggu 3 menit sebelum mengirim lagi.' };
+    var act = _divheadHitungAktivitas(tanggal, true);
+    var kurang = act.items.filter(function (i) { return i.wajib && !i.ada; });
+    if (!kurang.length) return { success: true, terkirim: false, info: 'Semua inputan wajib sudah masuk — tidak ada yang perlu diingatkan.' };
+    var acc = _divheadGetAccount(actorNik), nama = (acc && acc.nama) || actorNik;
+    var tglTampil = act.tanggal.split('-').reverse().join('/');
+    var pesan = '⚠️ *PENGINGAT DIVISI HEAD*\n\n' +
+      'Segera upload data laporan dashboard (inputan yang belum di input).\n\n' +
+      'Plant/Departemen: ' + act.label + '\nTanggal data: ' + tglTampil + '\n\nYang belum diinput:\n' +
+      kurang.map(function (i) { return '• ' + i.label + (i.terakhir ? ' (terakhir ' + i.terakhir.split('-').reverse().join('/') + ')' : ' (belum pernah ada data)'); }).join('\n') +
+      '\n\nDikirim oleh: ' + nama + '\nTerima kasih.';
+    var r = _fonnteKirim('', pesan, _fonnteTl());
+    if (r.ok) {
+      cache.put(tk, '1', 180);
+      try {
+        PropertiesService.getScriptProperties().setProperty('DH_REMIND_' + ACTIVE_WORKSPACE, JSON.stringify({
+          t: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), oleh: nama, tanggal: act.tanggal,
+          item: kurang.map(function (i) { return i.label; })
+        }));
+      } catch (e) {}
+    }
+    return { success: true, terkirim: !!r.ok, pesan: r.pesan || '', saran: r.saran || '', item: kurang.map(function (i) { return i.label; }) };
+  } catch (err) { return { success: false, error: err.message }; }
 }

@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261030a"></script>
+<script src="./assets/js/auth-guard.js?v=20261110a"></script>
 <script src="./assets/js/config.js?v=20261030a"></script>
-<script src="./assets/js/api-shim.js?v=20261030a"></script>
+<script src="./assets/js/api-shim.js?v=20261110a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="./assets/js/sb-storage-card.js?v=20261021a"></script>
@@ -431,6 +431,33 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           <div style="margin-top:12px;">
             <div style="font-size:10.5px;opacity:.7;margin-bottom:4px;">Daftar TL Lintas Departemen saat ini:</div>
             <div id="list-cross-tl" style="font-size:11px;"></div>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);" id="divhead-section">
+          <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="eye" style="width:11px;color:var(--accent-gold);"></i>Divisi Head (Akses Lintas Semua Plant/Departemen)</div>
+          <div class="modal-note" style="margin:0 0 8px;font-size:11px;opacity:.8;">
+            Akun Divisi Head masuk lewat opsi <b>Divisi Head</b> di halaman login &mdash; cukup NIK dan kata sandi, <b>tanpa memilih plant/departemen</b>. Akun ini hanya bisa <b>melihat</b> Control Tower semua plant, dashboard All Plant, dan Log Aktivitas input (tidak bisa mengubah data apa pun). Pengingat WhatsApp dikirim ke <b>Nomor WA TL</b> tiap departemen (atur di bagian Notifikasi WhatsApp setelah memilih departemennya).
+          </div>
+          <div class="modal-field two-col">
+            <div><label for="dh-nik">NIK</label><input type="text" id="dh-nik" placeholder="Contoh: PEG12345678" autocomplete="off"></div>
+            <div><label for="dh-nama">Nama</label><input type="text" id="dh-nama" placeholder="Nama lengkap" autocomplete="off"></div>
+          </div>
+          <div class="modal-field">
+            <label for="dh-pwd">Kata sandi <span id="dh-pwd-hint" style="opacity:.6;font-weight:400;">(min. 6 karakter)</span></label>
+            <input type="password" id="dh-pwd" autocomplete="new-password" placeholder="Isi untuk akun baru / ganti kata sandi">
+          </div>
+          <label class="chk-row" style="margin:8px 0 4px;"><input type="checkbox" id="dh-all" checked onchange="onDivheadAllChange()"> Semua plant &amp; departemen (termasuk yang ditambahkan nanti)</label>
+          <div id="dh-ws-list" style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0;opacity:.5;pointer-events:none;"></div>
+          <label class="chk-row" style="margin:4px 0 8px;"><input type="checkbox" id="dh-aktif" checked> Akun aktif</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-flat btn-flat-accent" onclick="simpanDivisiHead()"><i data-lucide="save" style="width:11px;"></i> Simpan Divisi Head</button>
+            <button class="btn-flat btn-flat-ghost" id="dh-batal" style="display:none;" onclick="resetFormDivhead()">Batal edit</button>
+          </div>
+          <div id="dh-status" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
+          <div style="margin-top:12px;">
+            <div style="font-size:10.5px;opacity:.7;margin-bottom:4px;">Daftar akun Divisi Head saat ini:</div>
+            <div id="dh-list" style="font-size:11px;"></div>
           </div>
         </div>
       </div>
@@ -1092,6 +1119,8 @@ function isiDropdownHapus(){
     }).join('');
   }
   loadCrossWorkspaceTLList();
+  buildDivheadWsList();
+  loadDivisiHeadList();
 }
 
 // ---- TL Lintas Departemen: load & render daftar yang sudah diatur ----
@@ -1149,6 +1178,105 @@ function hapusCrossWorkspaceTL(nik){
     })
     .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message?err.message:'cek koneksi'),'error'); })
     .adminSetCrossWorkspaceTL(actorNik, nik, []);
+}
+
+
+// ---- Divisi Head: akun lintas semua plant/departemen (khusus Super Admin) ----
+var divheadCache = [];
+function buildDivheadWsList(){
+  var wrap = document.getElementById('dh-ws-list');
+  if (!wrap) return;
+  wrap.innerHTML = workspaceListCache.filter(function(w){ return w.provisioned !== false; }).map(function(w){
+    return '<label class="chk-row"><input type="checkbox" class="chk-dh-ws" value="'+escHtml(w.key)+'">'+escHtml(w.label)+'</label>';
+  }).join('');
+}
+function onDivheadAllChange(){
+  var all = document.getElementById('dh-all').checked, wrap = document.getElementById('dh-ws-list');
+  wrap.style.opacity = all ? '.5' : '1'; wrap.style.pointerEvents = all ? 'none' : 'auto';
+}
+function wsLabel(k){ if (k==='*') return 'Semua plant & departemen'; var w = workspaceListCache.find(function(x){ return x.key===k; }); return w ? w.label : k; }
+function loadDivisiHeadList(){
+  var box = document.getElementById('dh-list');
+  if (!box) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ box.innerHTML = '<span style="opacity:.6;">Gagal memuat.</span>'; return; }
+      divheadCache = res.data || [];
+      if (!divheadCache.length){ box.innerHTML = '<span style="opacity:.6;">Belum ada akun Divisi Head.</span>'; return; }
+      box.innerHTML = divheadCache.map(function(a){
+        var cakupan = (a.ws||[]).map(wsLabel).join(', ');
+        var n = escHtml(a.nik).replace(/'/g,'');
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-color);flex-wrap:wrap;">'+
+          '<span><b>'+escHtml(a.nik)+'</b> — '+escHtml(a.nama)+(a.aktif?'':' <span style="color:var(--accent-red);">(nonaktif)</span>')+'<br><span style="opacity:.7;">'+escHtml(cakupan)+'</span></span>'+
+          '<span style="display:flex;gap:6px;flex-shrink:0;">'+
+            '<button class="btn-flat btn-flat-info" onclick="editDivisiHead(\''+n+'\')">Edit</button>'+
+            '<button class="btn-flat btn-flat-ghost" onclick="toggleDivheadAktif(\''+n+'\')">'+(a.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
+            '<button class="btn-flat btn-flat-danger" onclick="hapusDivisiHead(\''+n+'\')">Hapus</button>'+
+          '</span></div>';
+      }).join('');
+    })
+    .withFailureHandler(function(){ box.innerHTML = '<span style="opacity:.6;">Gagal terhubung.</span>'; })
+    .adminGetDivisiHead(actorNik);
+}
+function resetFormDivhead(){
+  ['dh-nik','dh-nama','dh-pwd'].forEach(function(id){ document.getElementById(id).value=''; });
+  document.getElementById('dh-nik').disabled = false;
+  document.getElementById('dh-all').checked = true; document.getElementById('dh-aktif').checked = true;
+  document.querySelectorAll('.chk-dh-ws').forEach(function(c){ c.checked=false; });
+  document.getElementById('dh-batal').style.display = 'none';
+  document.getElementById('dh-pwd-hint').textContent = '(min. 6 karakter)';
+  onDivheadAllChange();
+}
+function editDivisiHead(nik){
+  var a = divheadCache.find(function(x){ return x.nik===nik; }); if (!a) return;
+  document.getElementById('dh-nik').value = a.nik; document.getElementById('dh-nik').disabled = true;
+  document.getElementById('dh-nama').value = a.nama; document.getElementById('dh-pwd').value = '';
+  document.getElementById('dh-aktif').checked = !!a.aktif;
+  var all = (a.ws||[]).indexOf('*') !== -1;
+  document.getElementById('dh-all').checked = all;
+  document.querySelectorAll('.chk-dh-ws').forEach(function(c){ c.checked = !all && a.ws.indexOf(c.value) !== -1; });
+  document.getElementById('dh-batal').style.display = '';
+  document.getElementById('dh-pwd-hint').textContent = '(kosongkan jika tidak diganti)';
+  onDivheadAllChange();
+  document.getElementById('divhead-section').scrollIntoView({behavior:'smooth', block:'center'});
+}
+function simpanDivisiHead(){
+  var nik = document.getElementById('dh-nik').value.trim(), nama = document.getElementById('dh-nama').value.trim(), pwd = document.getElementById('dh-pwd').value;
+  var st = document.getElementById('dh-status');
+  if (!nik){ st.textContent = 'Isi NIK dulu.'; return; }
+  var all = document.getElementById('dh-all').checked;
+  var keys = all ? ['*'] : Array.prototype.slice.call(document.querySelectorAll('.chk-dh-ws:checked')).map(function(c){ return c.value; });
+  if (!keys.length){ st.textContent = 'Pilih minimal 1 plant/departemen, atau centang "Semua".'; return; }
+  st.textContent = 'Menyimpan...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ st.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+      st.textContent = '✅ Tersimpan.';
+      showToast('Akun Divisi Head '+nik+(res.baru?' dibuat':' diperbarui'),'success');
+      resetFormDivhead(); loadDivisiHeadList();
+    })
+    .withFailureHandler(function(err){ st.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
+    .adminSetDivisiHead(actorNik, nik, nama, pwd, keys, document.getElementById('dh-aktif').checked);
+}
+function toggleDivheadAktif(nik){
+  var a = divheadCache.find(function(x){ return x.nik===nik; }); if (!a) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error||''),'error'); return; }
+      showToast('Akun '+nik+(a.aktif?' dinonaktifkan':' diaktifkan'),'success'); loadDivisiHeadList();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message||'cek koneksi'),'error'); })
+    .adminSetDivisiHead(actorNik, nik, a.nama, '', a.ws, !a.aktif);
+}
+function hapusDivisiHead(nik){
+  if (!confirm('Hapus akun Divisi Head '+nik+'? Akun ini tidak bisa login lagi.')) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ showToast('Gagal: '+(res&&res.error||''),'error'); return; }
+      showToast('Akun Divisi Head dihapus','success'); loadDivisiHeadList();
+    })
+    .withFailureHandler(function(err){ showToast('Gagal: '+(err&&err.message||'cek koneksi'),'error'); })
+    .adminHapusDivisiHead(actorNik, nik);
 }
 
 function hapusDepartemenTerpilih(){

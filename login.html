@@ -253,6 +253,13 @@
     animation: spin 0.7s linear infinite; display: none;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+    .mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+    .mode-btn{border:0;background:transparent;color:inherit;opacity:.7;font:inherit;font-size:13px;font-weight:600;padding:9px 8px;border-radius:9px;cursor:pointer;transition:background .2s,opacity .2s,transform .15s}
+    .mode-btn:hover{opacity:1}
+    .mode-btn.active{opacity:1;background:linear-gradient(135deg,#d4af37,#b8912a);color:#1a1405;box-shadow:0 4px 14px rgba(212,175,55,.35)}
+    .mode-btn:active{transform:scale(.97)}
+    .head-note{display:none;font-size:12px;line-height:1.5;opacity:.75;margin:-2px 0 4px}
 </style>
 </head>
 <body>
@@ -279,6 +286,13 @@
 
       <form id="loginForm" autocomplete="off">
         <div class="field">
+          <label for="loginMode">Masuk sebagai</label>
+          <div class="mode-switch" id="loginMode" role="tablist" aria-label="Jenis akun">
+            <button type="button" class="mode-btn active" id="modeStaff" role="tab" aria-selected="true">Plant / Departemen</button>
+            <button type="button" class="mode-btn" id="modeHead" role="tab" aria-selected="false">Divisi Head</button>
+          </div>
+        </div>
+        <div class="field" id="plantField">
           <label for="plant">Plant</label>
           <div class="input-wrap">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg>
@@ -335,7 +349,7 @@
   </div>
 
   <script src="./assets/js/config.js?v=20261030a"></script>
-  <script src="./assets/js/api-shim.js?v=20261030a"></script>
+  <script src="./assets/js/api-shim.js?v=20261110a"></script>
   <script>function escL(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}</script>
 <script>
     // ============================================================
@@ -443,6 +457,23 @@
     }
     muatDaftarPlant();
 
+    // ---- Pilihan jenis akun: Plant/Departemen (biasa) atau Divisi Head (tanpa plant/departemen) ----
+    let loginAsHead = false;
+    function setLoginMode(head) {
+      loginAsHead = !!head;
+      document.getElementById('modeStaff').classList.toggle('active', !head);
+      document.getElementById('modeHead').classList.toggle('active', !!head);
+      document.getElementById('modeStaff').setAttribute('aria-selected', String(!head));
+      document.getElementById('modeHead').setAttribute('aria-selected', String(!!head));
+      document.getElementById('plantField').style.display = head ? 'none' : '';
+      plantSel.required = !head;
+      if (head) { deptField.style.display = 'none'; deptSel.required = false; }
+      else if (currentDeptOptions.length) { deptField.style.display = 'block'; deptSel.required = true; }
+      clearLoginError();
+    }
+    document.getElementById('modeStaff').addEventListener('click', function () { setLoginMode(false); });
+    document.getElementById('modeHead').addEventListener('click', function () { setLoginMode(true); });
+
     plantSel.addEventListener('change', () => {
       var plantLabel = plantSel.value;
       currentDeptOptions = PLANT_ENTRIES.filter(function (x) { return x.plantLabel === plantLabel; });
@@ -527,6 +558,34 @@
       const deptIdx = deptSel.value;
       const nik = document.getElementById('nik').value.trim();
       const pwd = document.getElementById('pwd').value;
+
+      // ---- Mode Divisi Head: tanpa pilih plant/departemen, cukup NIK + kata sandi ----
+      if (loginAsHead) {
+        if (!nik || !pwd) { showLoginError('NIK dan kata sandi wajib diisi.'); return; }
+        setLoading(true);
+        google.script.run
+          .withSuccessHandler(function (res) {
+            setLoading(false);
+            if (!res || !res.success) { showLoginError((res && res.error) ? res.error : 'Login gagal, coba lagi.'); return; }
+            try {
+              sessionStorage.clear();
+              sessionStorage.setItem('wh_workspace', res.workspace);
+              sessionStorage.setItem('wh_nik', res.nik);
+              sessionStorage.setItem('wh_nama', res.nama);
+              sessionStorage.setItem('wh_role', 'Divisi Head');
+              sessionStorage.setItem('wh_token', res.token || '');
+              sessionStorage.setItem('wh_menu_keys', '[]');
+              sessionStorage.setItem('wh_dh_workspaces', JSON.stringify(res.workspaces || []));
+            } catch (err) {}
+            window.location.href = './divisi_head.html';
+          })
+          .withFailureHandler(function (err) {
+            setLoading(false);
+            showLoginError('Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi'));
+          })
+          .loginDivisiHead(nik, pwd);
+        return;
+      }
 
       if (!plantLabel) { showLoginError('Pilih Plant terlebih dahulu.'); return; }
       if (deptIdx === '' || deptIdx == null || !currentDeptOptions[deptIdx]) { showLoginError('Pilih departemen terlebih dahulu.'); return; }

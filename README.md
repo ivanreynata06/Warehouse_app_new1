@@ -87,6 +87,25 @@ halaman tujuan yang terbaru dari GitHub, bukan versi lama yang
 mungkin masih tersimpan di cache. Jadi pindah menu dijamin selalu
 dapat versi terbaru, tanpa perlu hard refresh.
 
+## Divisi Head (akses lintas semua plant/departemen)
+
+Akun khusus pimpinan divisi yang **hanya melihat** (tidak bisa mengubah data) seluruh plant & departemen.
+
+**Login:** di `login.html` pilih tab **Divisi Head** -> cukup NIK + kata sandi (tanpa pilih plant/departemen). Setelah login masuk ke `divisi_head.html`.
+
+**Isi `divisi_head.html`:**
+- **Semua plant** -- ringkasan All Plant (total stock, outbound & inbound bulan ini, kelengkapan input hari ini, grafik per departemen) + kartu 3D per departemen. Tab di atas = pindah cepat ke dashboard tiap departemen.
+- **Pilih plant -> pilih departemen** -- klik plant di menu kiri, lalu pilih departemen. Dashboard = Control Tower yang sama dengan TL (`index.html?embed=1&dhws=<workspace>`), disimpan & dipanaskan di belakang layar (maks. 4 iframe) agar pindah terasa instan.
+- **Log aktivitas** -- per tanggal: Stock / Outbound / Inbound sudah diinput atau belum, jumlah baris, tanggal data terakhir, waktu spreadsheet terakhir diubah, persen kelengkapan. Tombol **Ingatkan via WA** (per departemen / semua yang belum lengkap) mengirim pesan Fonnte "Segera upload data laporan dashboard (inputan yang belum di input)" + daftar yang kurang ke **Nomor WA TL** departemen itu.
+  - Wajib: Outbound & Inbound semua departemen; Stock hanya Fitting Import & Fitting Rucika.
+  - Pengingat per departemen dibatasi 1x/3 menit; daftar kekurangan dihitung ulang di server.
+
+**Pengaturan (Super Admin):** Kelola User -> *Kelola Departemen Lain* -> **Divisi Head**: tambah/edit/nonaktifkan/hapus akun, ganti kata sandi, akses *Semua* atau plant/departemen tertentu. Disimpan di Script Properties (`DIVHEAD_ACC_<NIK>`).
+
+**Keamanan:** token Divisi Head hanya boleh aksi baca di `DIVHEAD_ALLOWED_ACTIONS` (kode.gs) pada workspace yang diizinkan. Jalankan `aktifkanAuthEnforce()` agar penolakan benar-benar berlaku (mode `log` hanya mencatat).
+
+**Setelah update:** paste `backend/kode.gs` ke Apps Script -> Deploy -> New version. Pastikan token Fonnte & Nomor WA TL tiap departemen terisi.
+
 ## Supabase (percepat loading dashboard harian)
 
 Repo ini terhubung ke Supabase untuk mempercepat loading 4 halaman

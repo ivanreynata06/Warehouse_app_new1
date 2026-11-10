@@ -33,6 +33,27 @@ window.whEsc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']
     return;
   }
 
+  // ================================================================
+  //  DIVISI HEAD -- akun lintas semua plant/departemen (hanya baca).
+  //  Hanya boleh membuka: divisi_head.html (dashboard utama), index.html di dalam iframe
+  //  (?embed=1&dhws=...) milik halaman itu, dan login.html. Selain itu -> dialihkan ke divisi_head.html.
+  //  (Sisi server TETAP memvalidasi token + workspace + daftar aksi -- ini cuma lapisan tampilan.)
+  // ================================================================
+  if ((sessionStorage.getItem('wh_role') || '') === 'Divisi Head') {
+    var hereDH = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    var embedDH = /[?&]embed=1\b/.test(window.location.search) && /[?&]dhws=/.test(window.location.search);
+    if (hereDH !== 'divisi_head.html' && !(hereDH === 'index.html' && embedDH)) {
+      window.location.replace('./divisi_head.html');
+      return;
+    }
+    window.WH_SESSION = {
+      workspace: workspace, nik: nik, nama: sessionStorage.getItem('wh_nama') || '', role: 'Divisi Head', fullAccess: false, isTL: false,
+      isSerahTerima: false, roleLabel: 'Divisi Head', canUploadData: false, isDivisiHead: true, isFittingImport: false, menuKeys: [], hasRekapMuatan: true
+    };
+    window.whLogout = window.whLogout || function () { try { sessionStorage.clear(); } catch (e) {} (window.top || window).location.href = './login.html'; };
+    return;
+  }
+
   // Klasifikasi akses berdasarkan Role (kolom Role di sheet AKUN_LOGIN):
   //  - TL / Admin (mengandung kata "Admin", mis. "Admin Wh Fitting") -> FULL ACCESS
   //  - Role lain (Technician I, dst) -> AKSES TERBATAS, cuma boleh menu
