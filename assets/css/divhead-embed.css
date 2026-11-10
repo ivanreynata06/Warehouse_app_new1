@@ -1,0 +1,72 @@
+/* ================================================================
+   divhead-embed.css -- tampilan Control Tower (index.html) KHUSUS Divisi Head.
+   Hanya aktif bila <html class="dh-embed"> (auth-guard.js menambahkannya saat
+   halaman dibuka di iframe ?embed=1&dhws=...). Tampilan TL tidak berubah.
+   Isi grafik/data SAMA dgn Control Tower TL; yang berbeda: tipografi, warna,
+   kartu kaca 3D, animasi masuk, dan keterbacaan (label lebih besar, tanpa huruf kapital semua).
+================================================================ */
+html.dh-embed{
+  --bg-page:radial-gradient(900px 520px at 8% -8%,rgba(42,88,255,.26),transparent 60%),radial-gradient(800px 500px at 100% 100%,rgba(24,182,163,.2),transparent 60%),#090e1b;
+  --bg-page-solid:#090e1b;
+  --bg-card:linear-gradient(160deg,rgba(26,40,76,.82),rgba(13,20,40,.9));
+  --bg-card2:rgba(22,34,64,.7);
+  --bg-sunken:#070b16;
+  --bg-header:rgba(9,14,27,.72);
+  --border:rgba(150,172,255,.12);
+  --border2:rgba(150,172,255,.24);
+  --txt:#eaf0fe; --txt2:#a3b0cf; --txt3:#8d9aba;
+  --radius:22px; --radius-sm:12px;
+  --font-disp:'Sora','Plus Jakarta Sans',system-ui,sans-serif;
+  --e1:0 1px 0 rgba(255,255,255,.06) inset,0 24px 44px -26px rgba(0,0,0,.85),0 4px 12px rgba(0,0,0,.3);
+  --e2:0 1px 0 rgba(255,255,255,.08) inset,0 34px 60px -26px rgba(0,0,0,.9),0 8px 20px rgba(0,0,0,.35);
+}
+html.dh-embed,html.dh-embed body{font-family:'Plus Jakarta Sans','Inter',system-ui,sans-serif;font-size:13.5px;line-height:1.5}
+html.dh-embed ::-webkit-scrollbar{width:9px;height:9px}
+html.dh-embed ::-webkit-scrollbar-thumb{background:rgba(150,172,255,.22);border-radius:9px}
+/* rapikan kepala halaman: sembunyikan yang tidak relevan utk Divisi Head */
+html.dh-embed .theme-toggle,
+html.dh-embed #user-session-badge,
+html.dh-embed #greeting-badge,
+html.dh-embed .btn-icon[title="Logout"],
+html.dh-embed .btn-icon[title^="Cetak"],
+html.dh-embed .tb-clock{display:none!important}
+html.dh-embed .topbar{background:var(--bg-header);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);box-shadow:none;padding:0 26px}
+html.dh-embed .tb-title{font-size:18px;font-weight:700;background:none;-webkit-text-fill-color:currentColor;color:var(--txt)}
+html.dh-embed .tb-badge{font-size:12px;font-weight:600;padding:4px 12px;box-shadow:none}
+html.dh-embed .content{padding:22px 26px 40px;gap:18px;perspective:1400px;scroll-behavior:smooth}
+/* kartu kaca 3D */
+html.dh-embed .card,html.dh-embed .kpi-card{
+  position:relative;transform-style:preserve-3d;
+  transform:perspective(1100px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateZ(0);
+  border:1px solid var(--border2);backdrop-filter:blur(8px);
+  transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s,border-color .3s;will-change:transform}
+html.dh-embed .card.moving,html.dh-embed .kpi-card.moving{transition:transform .06s linear,box-shadow .3s,border-color .3s}
+html.dh-embed .card:hover,html.dh-embed .kpi-card:hover{box-shadow:var(--e2);border-color:rgba(243,185,77,.45)}
+html.dh-embed .card::after,html.dh-embed .kpi-card::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(300px circle at var(--gx,50%) var(--gy,0%),rgba(255,255,255,.1),transparent 62%)}
+html.dh-embed .card:hover::after,html.dh-embed .kpi-card:hover::after{opacity:1}
+/* keterbacaan */
+html.dh-embed .kpi-card{padding:18px 20px}
+html.dh-embed .kpi-label{font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--txt2);margin-bottom:9px}
+html.dh-embed .kpi-val{font-size:30px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;margin-bottom:7px}
+html.dh-embed .kpi-sub,html.dh-embed .kpi-delta{font-size:12px}
+html.dh-embed .card-header{padding:16px 20px;border-bottom:1px solid var(--border)}
+html.dh-embed .card-title{font-size:15px;font-weight:600}
+html.dh-embed .card-body{padding:18px 20px}
+html.dh-embed .card-badge{font-size:11.5px;font-weight:600;padding:3px 11px}
+html.dh-embed .sec-divider{margin-top:10px;gap:14px}
+html.dh-embed .sec-divider-label{font-family:var(--font-disp);font-size:15px!important;font-weight:600!important;text-transform:none!important;letter-spacing:0!important;color:var(--txt)!important}
+html.dh-embed .leg-item{font-size:12.5px}
+html.dh-embed .stock-mini-lbl,html.dh-embed .lt-mini-lbl,html.dh-embed .gauge-stat-lbl,html.dh-embed .pic-stat-lbl,html.dh-embed .gt-label{font-size:12px;text-transform:none;letter-spacing:0}
+html.dh-embed .stock-mini-val,html.dh-embed .lt-mini-val,html.dh-embed .gauge-stat-val,html.dh-embed .pic-stat-val{font-size:19px;font-variant-numeric:tabular-nums}
+html.dh-embed .gt-card{border-radius:16px;padding:14px;background:var(--bg-card2);border-color:var(--border2)}
+html.dh-embed .grid-2{gap:16px}
+html.dh-embed .fsel,html.dh-embed .filter-group select,html.dh-embed select{border-radius:12px;font-size:13px}
+html.dh-embed .btn-icon{border-radius:12px}
+/* animasi masuk -- satu rangkaian saat dashboard dibuka */
+html.dh-embed .dh-pre{opacity:0;transform:perspective(1100px) translateY(26px) rotateX(9deg) scale(.98)}
+html.dh-embed .dh-show{opacity:1;transform:perspective(1100px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
+  transition:opacity .6s ease var(--d,0ms),transform .75s cubic-bezier(.2,.9,.2,1) var(--d,0ms),box-shadow .3s,border-color .3s}
+html.dh-embed .dh-show.moving{transition:transform .06s linear,box-shadow .3s,border-color .3s}
+@media (max-width:900px){html.dh-embed .content{padding:16px 14px 30px}html.dh-embed .grid-2{grid-template-columns:1fr}html.dh-embed .kpi-val{font-size:25px}}
+@media (prefers-reduced-motion:reduce){html.dh-embed *{animation:none!important;transition:none!important}html.dh-embed .dh-pre{opacity:1;transform:none}html.dh-embed .card,html.dh-embed .kpi-card{transform:none!important}}

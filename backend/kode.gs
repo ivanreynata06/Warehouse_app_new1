@@ -11525,14 +11525,16 @@ function adminHapusDivisiHead(actorNik, targetNik) {
 }
 
 // ---- Log aktivitas input data (per workspace = ACTIVE_WORKSPACE dari request) ----
-// Dataset yg diwajibkan: Outbound & Inbound semua departemen; Stock hanya Fitting Import & Fitting Rucika
-// (sama dgn aturan tab Upload Data Harian -- tab Stock disembunyikan utk departemen lain).
+// Dataset yg diwajibkan: SAMA utk semua departemen (Stock, Outbound, Inbound -- seperti Fitting Import/Rucika),
+// tetapi hanya bila menu "Upload Data Harian" dicentang utk departemen itu di Kelola User > Kelola Menu.
+// Departemen yg menu Upload-nya tidak dicentang tidak punya cara menginput data -> tidak ada yg diwajibkan.
 function _divheadDatasetDefs() {
-  var stockWajib = (ACTIVE_WORKSPACE === 'cibitung_fitting_import' || ACTIVE_WORKSPACE === 'cibitung_fitting_rucika');
+  var wajib = false;
+  try { wajib = _resolveMenuKeysForWorkspace(ACTIVE_WORKSPACE).indexOf('upload') !== -1; } catch (e) { wajib = false; }
   return [
-    { key: 'stock',    label: 'Stock',    sheet: SH_STOCK,    col: 10, wajib: stockWajib },
-    { key: 'outbound', label: 'Outbound', sheet: SH_KIRIM,    col: 5,  wajib: true },
-    { key: 'inbound',  label: 'Inbound',  sheet: SH_PRODUKSI, col: 5,  wajib: true }
+    { key: 'stock',    label: 'Stock',    sheet: SH_STOCK,    col: 10, wajib: wajib },
+    { key: 'outbound', label: 'Outbound', sheet: SH_KIRIM,    col: 5,  wajib: wajib },
+    { key: 'inbound',  label: 'Inbound',  sheet: SH_PRODUKSI, col: 5,  wajib: wajib }
   ];
 }
 // Baca kolom tanggal (jendela baris terakhir dulu; kalau tanggal yg dicari lebih lama dari jendela -> baca penuh).

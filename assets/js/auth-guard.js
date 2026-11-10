@@ -46,6 +46,16 @@ window.whEsc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']
       window.location.replace('./divisi_head.html');
       return;
     }
+    if (embedDH) {
+      // Tampilan khusus Divisi Head utk Control Tower di dalam iframe (modern, 3D, animasi) -- lihat assets/css/divhead-embed.css
+      document.documentElement.classList.add('dh-embed');
+      var _l = document.createElement('link'); _l.rel = 'stylesheet'; _l.href = './assets/css/divhead-embed.css?v=20261110b';
+      (document.head || document.documentElement).appendChild(_l);
+      var _f = document.createElement('link'); _f.rel = 'stylesheet'; _f.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap';
+      (document.head || document.documentElement).appendChild(_f);
+      var _s = document.createElement('script'); _s.src = './assets/js/divhead-embed.js?v=20261110b'; _s.defer = true;
+      (document.head || document.documentElement).appendChild(_s);
+    }
     window.WH_SESSION = {
       workspace: workspace, nik: nik, nama: sessionStorage.getItem('wh_nama') || '', role: 'Divisi Head', fullAccess: false, isTL: false,
       isSerahTerima: false, roleLabel: 'Divisi Head', canUploadData: false, isDivisiHead: true, isFittingImport: false, menuKeys: [], hasRekapMuatan: true

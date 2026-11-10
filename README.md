@@ -97,7 +97,7 @@ Akun khusus pimpinan divisi yang **hanya melihat** (tidak bisa mengubah data) se
 - **Semua plant** -- ringkasan All Plant (total stock, outbound & inbound bulan ini, kelengkapan input hari ini, grafik per departemen) + kartu 3D per departemen. Tab di atas = pindah cepat ke dashboard tiap departemen.
 - **Pilih plant -> pilih departemen** -- klik plant di menu kiri, lalu pilih departemen. Dashboard = Control Tower yang sama dengan TL (`index.html?embed=1&dhws=<workspace>`), disimpan & dipanaskan di belakang layar (maks. 4 iframe) agar pindah terasa instan.
 - **Log aktivitas** -- per tanggal: Stock / Outbound / Inbound sudah diinput atau belum, jumlah baris, tanggal data terakhir, waktu spreadsheet terakhir diubah, persen kelengkapan. Tombol **Ingatkan via WA** (per departemen / semua yang belum lengkap) mengirim pesan Fonnte "Segera upload data laporan dashboard (inputan yang belum di input)" + daftar yang kurang ke **Nomor WA TL** departemen itu.
-  - Wajib: Outbound & Inbound semua departemen; Stock hanya Fitting Import & Fitting Rucika.
+  - Wajib: Stock, Outbound & Inbound di semua departemen, selama menu **Upload Data Harian** dicentang untuk departemen itu di Kelola User > Kelola Menu (kalau tidak dicentang, tidak ada yang diwajibkan).
   - Pengingat per departemen dibatasi 1x/3 menit; daftar kekurangan dihitung ulang di server.
 
 **Pengaturan (Super Admin):** Kelola User -> *Kelola Departemen Lain* -> **Divisi Head**: tambah/edit/nonaktifkan/hapus akun, ganti kata sandi, akses *Semua* atau plant/departemen tertentu. Disimpan di Script Properties (`DIVHEAD_ACC_<NIK>`).

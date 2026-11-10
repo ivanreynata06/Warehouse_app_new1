@@ -535,7 +535,7 @@ button{font:inherit;color:inherit;cursor:pointer}
       if (a.err) return '<div class="logrow bad">' + nm + '<div class="chips"><span class="chip miss">Gagal memeriksa</span></div><div class="upd"><span>' + esc(a.err) + '</span></div><div></div><div class="act"><button class="ibtn" data-recheck="' + esc(w.key) + '">Coba lagi</button></div></div>';
       var chips = a.items.map(function (i) {
         if (i.error) return '<span class="chip miss" title="' + esc(i.error) + '">' + esc(i.label) + ' · error</span>';
-        if (!i.wajib) return '<span class="chip na" title="Tidak diwajibkan di departemen ini">' + esc(i.label) + ' · tidak wajib</span>';
+        if (!i.wajib) return '<span class="chip na" title="Menu Upload Data Harian tidak dicentang untuk departemen ini (Kelola User > Kelola Menu)">' + esc(i.label) + ' · tidak wajib</span>';
         return i.ada ? '<span class="chip ok">✓ ' + esc(i.label) + ' · ' + nf(i.jumlah) + ' baris</span>' : '<span class="chip miss">✕ ' + esc(i.label) + ' · belum' + (i.terakhir ? ', terakhir ' + fmtTgl(i.terakhir).replace(/ \d{4}$/, '') : '') + '</span>';
       }).join('');
       var last = lastData(a), gap = last ? Math.round((new Date(logDate + 'T00:00:00Z') - new Date(last + 'T00:00:00Z')) / 86400000) : null;
