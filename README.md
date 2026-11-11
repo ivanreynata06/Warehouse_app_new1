@@ -102,6 +102,8 @@ Akun khusus pimpinan divisi yang **hanya melihat** (tidak bisa mengubah data) se
 
 **Cache Supabase Divisi Head:** snapshot `<workspace>::divhead:summary` (stock hari ini, outbound/inbound bulan ini, status input 21 hari) diisi `syncWorkspaceToSupabase` (tiap edit + harian). Halaman Divisi Head membaca semua departemen dalam 1 request ke Supabase; departemen tanpa snapshot otomatis memakai jalur Apps Script. Untuk mengisi pertama kali jalankan `divheadSyncSummaryAll()` di editor Apps Script. Tombol *Muat ulang* = cek langsung (Apps Script).
 
+**Log aktivitas realtime:** tiap batch upload Stock/Outbound/Inbound yang sukses dicatat (`DH_UPL_<workspace>`, waktu + jumlah baris per hari upload) dan langsung didorong ke Supabase (`<ws>::divhead:upl`). Dataset dianggap sudah diinput untuk tanggal T bila ada data ber-tanggal T **atau** ada upload pada hari T. Halaman Divisi Head polling Supabase tiap 12 dtk dan memperbarui hanya baris yang berubah (tanpa kedip).
+
 **Izin data per akun:** di form Divisi Head (Kelola User) Super Admin mencentang data/halaman yang boleh tampil: Semua Plant, Control Tower per departemen, Log Aktivitas, Stock, Outbound, Inbound, Kanban, Rekap Muatan, Loading Time, Akurasi. Dicek juga di server (`DIVHEAD_PERM_ACTIONS`), bukan hanya disembunyikan di layar. Akun lama tanpa izin tersimpan = semua izin.
 
 **Pengaturan (Super Admin):** Kelola User -> *Kelola Departemen Lain* -> **Divisi Head**: tambah/edit/nonaktifkan/hapus akun, ganti kata sandi, akses *Semua* atau plant/departemen tertentu. Disimpan di Script Properties (`DIVHEAD_ACC_<NIK>`).

@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rucika — Control Tower Divisi Head</title>
-<script src="./assets/js/auth-guard.js?v=20261111b"></script>
-<script src="./assets/js/config.js?v=20261111b"></script>
+<script src="./assets/js/auth-guard.js?v=20261111c"></script>
+<script src="./assets/js/config.js?v=20261111c"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261111b"></script>
+<script src="./assets/js/api-shim.js?v=20261111c"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,9 +34,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 @keyframes drift1{to{transform:translate3d(9vmax,7vmax,0) scale(1.12)}}
 @keyframes drift2{to{transform:translate3d(-8vmax,-6vmax,0) scale(1.08)}}
 
-.app{position:relative;z-index:1;display:grid;grid-template-columns:272px minmax(0,1fr);height:100vh}
+.app{position:relative;z-index:1;height:100vh;overflow:hidden}
 /* ---------- rail ---------- */
-.rail{display:flex;flex-direction:column;gap:6px;padding:18px 14px;border-right:1px solid var(--line);background:linear-gradient(180deg,rgba(17,26,48,.92),rgba(10,15,30,.94));backdrop-filter:blur(14px);overflow-y:auto}
+.rail{position:absolute;left:0;top:0;bottom:0;width:272px;z-index:5;display:flex;flex-direction:column;gap:6px;padding:18px 14px;will-change:transform;transition:transform .55s cubic-bezier(.22,1,.36,1);border-right:1px solid var(--line);background:linear-gradient(180deg,rgba(17,26,48,.92),rgba(10,15,30,.94));backdrop-filter:blur(14px);overflow-y:auto}
 .brand{display:flex;align-items:center;gap:11px;padding:4px 8px 16px}
 .brand img{width:38px;height:38px;object-fit:contain;border-radius:10px;background:#fff;padding:4px}
 .brand b{display:block;font-family:var(--disp);font-size:15px;letter-spacing:.2px}
@@ -64,7 +64,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .me button{margin-left:auto;border:1px solid var(--line2);background:transparent;border-radius:10px;padding:6px 8px;color:var(--muted)}
 .me button:hover{color:var(--coral);border-color:var(--coral)}
 /* ---------- main ---------- */
-.main{display:flex;flex-direction:column;min-width:0;height:100vh}
+.main{display:flex;flex-direction:column;min-width:0;height:100vh;margin-left:272px;will-change:transform}
+.main.slide{transition:transform .55s cubic-bezier(.22,1,.36,1)}
 .top{display:flex;align-items:center;gap:14px;padding:16px 26px 10px}
 .top h2{margin:0;font-family:var(--disp);font-size:19px;font-weight:600;letter-spacing:.1px}
 .top p{margin:0;font-size:12.5px;color:var(--muted)}
@@ -119,7 +120,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .dc-in{position:relative;display:block;padding:20px 20px 17px;border-radius:24px;border:1px solid var(--line2);background:linear-gradient(155deg,rgba(38,56,104,.82),rgba(20,30,58,.88));box-shadow:0 30px 50px -30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06);transform-style:preserve-3d;overflow:hidden;backdrop-filter:blur(8px)}
 .dcard{animation:cardin .7s cubic-bezier(.2,.9,.2,1) both;animation-delay:calc(var(--i,0)*70ms)}
 @keyframes cardin{from{opacity:0;transform:perspective(900px) translateY(22px) rotateX(10deg)}}
-.dcard:not(.moving) .dc-in{animation:floaty 8s ease-in-out infinite;animation-delay:calc(var(--i,0)*-1.1s)}
+.dc-in{animation:floaty 8s ease-in-out infinite;animation-delay:calc(var(--i,0)*-1.1s)}
+.dcard.moving .dc-in{animation-play-state:paused}
 @keyframes floaty{50%{translate:0 -4px}}
 .dcard:hover .dc-in{border-color:rgba(243,185,77,.5)}
 .glare{position:absolute;inset:0;border-radius:22px;pointer-events:none;opacity:0;transition:opacity .25s;background:radial-gradient(260px circle at var(--gx,50%) var(--gy,0%),rgba(255,255,255,.16),transparent 60%);z-index:2}
@@ -157,7 +159,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .seg button{border:0;background:transparent;padding:7px 12px;border-radius:9px;color:var(--muted);font-weight:600;font-size:13px}
 .seg button.on{background:rgba(243,185,77,.2);color:#fff3d6}
 .sumbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
-.logrow{display:grid;grid-template-columns:minmax(180px,1.1fr) minmax(220px,1.7fr) minmax(150px,1fr) 64px auto;gap:16px;align-items:center;padding:14px 18px;margin-bottom:10px;border-radius:18px;border:1px solid var(--line);background:linear-gradient(160deg,rgba(23,34,64,.8),rgba(14,21,40,.84));animation:fadeUp .3s ease both}
+.logrow{display:grid;grid-template-columns:minmax(180px,1.1fr) minmax(220px,1.7fr) minmax(150px,1fr) 64px auto;gap:16px;align-items:center;padding:14px 18px;margin-bottom:10px;border-radius:18px;border:1px solid var(--line);background:linear-gradient(160deg,rgba(32,48,90,.6),rgba(20,30,58,.7));transition:border-color .4s,background .4s}
+.logrow.enter{animation:fadeUp .4s ease both}
 .logrow.bad{border-color:rgba(255,111,97,.38)}
 .logrow .nm b{display:block;font-family:var(--disp);font-size:14.5px}
 .logrow .nm span{font-size:12px;color:var(--muted)}
@@ -184,7 +187,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* ---------- responsif ---------- */
 @media (max-width:1100px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.charts{grid-template-columns:1fr}.logrow{grid-template-columns:1fr 1fr;gap:12px}.logrow .act{flex-direction:row;flex-wrap:wrap}}
 @media (max-width:860px){
-  .app{grid-template-columns:1fr}
+  .main{margin-left:0!important}
   .rail{position:fixed;left:0;top:0;bottom:0;width:286px;z-index:40;transform:translateX(-102%);transition:transform .25s;box-shadow:20px 0 50px -20px #000}
   .rail.open{transform:none}
   .menu-btn{display:inline-flex}
@@ -212,10 +215,9 @@ html{color-scheme:dark}
 .tarrow.l{left:14px}.tarrow.r{right:14px}
 .tabs-wrap.ov-l .tarrow.l,.tabs-wrap.ov-r .tarrow.r{display:flex}
 /* sembunyikan sidebar */
-.app{transition:grid-template-columns .28s cubic-bezier(.2,.8,.2,1)}
-.rail{overflow-x:hidden;transition:opacity .2s}
-.app.collapsed{grid-template-columns:0 minmax(0,1fr)}
-.app.collapsed .rail{opacity:0;pointer-events:none;padding-left:0;padding-right:0;border-right:0}
+.rail{overflow-x:hidden}
+.app.collapsed .rail{transform:translateX(-102%);visibility:hidden;transition:transform .55s cubic-bezier(.22,1,.36,1),visibility 0s .55s}
+.app.collapsed .main{margin-left:0}
 .menu-btn{display:inline-flex!important;padding:9px 11px}
 /* view tidak aktif tidak boleh menangkap scroll/klik (mencegah iframe yang tertinggal menutupi halaman) */
 .view:not(.on){pointer-events:none}
@@ -340,16 +342,17 @@ html{color-scheme:dark}
     } catch (e) { if (fail) fail(e); }
   }
   function ringSvg(p, size, stroke) {
-    var r = (size - stroke) / 2, c = 2 * Math.PI * r, h = size / 2;
+    var r = (size - stroke) / 2, c = 2 * Math.PI * r, h = size / 2, has = p != null && p > 0;
+    var off = c * (1 - (has ? p / 100 : 0)), col = !has ? '#65729a' : p >= 100 ? '#7fd9cc' : p >= 50 ? '#f0cb88' : '#ff9e92';
     return '<svg class="ring" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" data-c="' + c.toFixed(2) + '">' +
       '<circle class="rb" cx="' + h + '" cy="' + h + '" r="' + r + '" stroke-width="' + stroke + '"/>' +
-      '<circle class="rf" cx="' + h + '" cy="' + h + '" r="' + r + '" stroke-width="' + stroke + '" stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + c.toFixed(2) + '" transform="rotate(-90 ' + h + ' ' + h + ')" stroke="#5f6c8c"/>' +
-      '<text x="' + h + '" y="' + h + '" font-size="' + Math.round(size * .27) + '">—</text></svg>';
+      '<circle class="rf" cx="' + h + '" cy="' + h + '" r="' + r + '" stroke-width="' + stroke + '" stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + off.toFixed(2) + '" transform="rotate(-90 ' + h + ' ' + h + ')" stroke="' + col + '"/>' +
+      '<text x="' + h + '" y="' + h + '" font-size="' + Math.round(size * .27) + '">' + (p == null ? '—' : p + '%') + '</text></svg>';
   }
   function setRing(host, p, label) {
     var svg = host && host.querySelector('svg.ring'); if (!svg) return;
     var c = parseFloat(svg.getAttribute('data-c')), f = svg.querySelector('.rf'), t = svg.querySelector('text');
-    var col = p == null ? '#5f6c8c' : p >= 100 ? '#35d6c3' : p >= 50 ? '#f3b94d' : '#ff6f61';
+    var col = p == null ? '#65729a' : p >= 100 ? '#7fd9cc' : p >= 50 ? '#f0cb88' : '#ff9e92';
     requestAnimationFrame(function () { f.style.strokeDashoffset = (c * (1 - (p == null ? 0 : p / 100))).toFixed(2); f.setAttribute('stroke', col); });
     t.textContent = label != null ? label : (p == null ? '—' : p + '%');
   }
@@ -411,7 +414,7 @@ html{color-scheme:dark}
     return '<button class="dcard" style="--i:' + idx + '" data-card="' + esc(w.key) + '"' + open + '><span class="dc-in"><span class="glare"></span>' +
       '<span class="dc-top"><span class="dc-plant">' + esc(w.plantLabel) + '</span>' + (live ? '<span class="pill" data-f="pill">Memuat…</span>' : '') + '</span>' +
       '<span class="dc-name">' + esc(w.deptLabel) + '</span>' +
-      '<span class="dc-mid">' + (live ? '<span data-f="ring">' + ringSvg(0, 64, 7) + '</span>' : '') +
+      '<span class="dc-mid">' + (live ? '<span data-f="ring">' + ringSvg(null, 64, 7) + '</span>' : '') +
       '<span class="dc-metrics" style="grid-template-columns:repeat(' + Math.max(1, ms.length) + ',minmax(0,1fr))">' +
       ms.map(function (m) { return '<span class="m"><b data-f="' + m[0] + '" class="skel">0000</b><i>' + m[1] + '</i></span>'; }).join('') + '</span></span>' +
       (live ? '<span class="dc-foot" data-f="foot">Menunggu data…</span>' : (can('ct') ? '<span class="dc-foot">Klik untuk membuka dashboard</span>' : '')) + '</span></button>';
@@ -523,7 +526,7 @@ html{color-scheme:dark}
     $('deptGrid').innerHTML = plants().map(function (p) {
       return '<div class="plant-title"><h3>' + esc(p.name) + '</h3><span>' + p.items.length + ' departemen</span></div><div class="grid">' + p.items.map(cardHtml).join('') + '</div>';
     }).join('');
-    $('heroRing').innerHTML = ringSvg(0, 84, 9);
+    $('heroRing').innerHTML = ringSvg(null, 84, 9);
     bindTilt($('deptGrid'));
   }
   function buildPlantView(name) {
@@ -532,40 +535,75 @@ html{color-scheme:dark}
     bindTilt($('viewPlant')); p.items.forEach(updateCard);
   }
 
-  /* ---------- Supabase: ringkasan semua departemen (1 request) ---------- */
-  var SNAP = {}, snapTime = '';
-  function sbSummaries() {
+  /* ---------- Supabase: ringkasan + catatan upload semua departemen (1 request) ---------- */
+  var SNAP = {}, UPL = {}, snapTime = '', snapReady = false;
+  function sbFetch() {
     var U = window.SUPABASE_URL, K = window.SUPABASE_ANON_KEY;
-    if (!U || !K || U.indexOf('xxxxx') !== -1 || typeof fetch !== 'function') return Promise.resolve({});
-    var keys = WS.map(function (w) { return '"' + w.key + '::divhead:summary"'; });
+    if (!U || !K || U.indexOf('xxxxx') !== -1 || typeof fetch !== 'function') return Promise.resolve({ sum: {}, upl: {} });
+    var keys = []; WS.forEach(function (w) { keys.push('"' + w.key + '::divhead:summary"'); keys.push('"' + w.key + '::divhead:upl"'); });
     var url = U.replace(/\/$/, '') + '/rest/v1/dashboard_snapshots?snapshot_key=in.(' + encodeURIComponent(keys.join(',')) + ')&select=snapshot_key,payload';
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null, t = ctrl ? setTimeout(function () { ctrl.abort(); }, 7000) : null;
     return fetch(url, { headers: { apikey: K, Authorization: 'Bearer ' + K }, signal: ctrl ? ctrl.signal : undefined })
       .then(function (r) { if (t) clearTimeout(t); return r.ok ? r.json() : []; })
-      .then(function (rows) { var m = {}; (rows || []).forEach(function (x) { if (x && x.payload && x.payload.success) m[x.snapshot_key.replace('::divhead:summary', '')] = x.payload; }); return m; })
-      .catch(function () { if (t) clearTimeout(t); return {}; });
+      .then(function (rows) {
+        var m = { sum: {}, upl: {} };
+        (rows || []).forEach(function (x) {
+          if (!x || !x.payload || !x.payload.success) return;
+          if (x.snapshot_key.indexOf('::divhead:upl') > 0) m.upl[x.snapshot_key.replace('::divhead:upl', '')] = x.payload.upl || {};
+          else m.sum[x.snapshot_key.replace('::divhead:summary', '')] = x.payload;
+        }); return m;
+      }).catch(function () { if (t) clearTimeout(t); return { sum: {}, upl: {} }; });
   }
+  function uplMax(u) { var m = ''; Object.keys(u || {}).forEach(function (k) { if (u[k] && u[k].t && u[k].t > m) m = u[k].t; }); return m; }
+  // Kelengkapan utk tanggal tertentu dari snapshot (jumlah baris per tanggal data) + catatan upload realtime
   function actFromSnap(sn, tgl, w) {
     var a = sn && sn.aktivitas; if (!a || !a.items || tgl < (a.valid || '9999')) return null;
-    var items = a.items.map(function (i) { var c = (i.byDate && i.byDate[tgl]) || 0; return { key: i.key, label: i.label, wajib: i.wajib, ada: c > 0, jumlah: c, terakhir: i.last || '', error: '' }; });
-    var wj = 0, ok = 0; items.forEach(function (i) { if (i.wajib) { wj++; if (i.ada) ok++; } });
-    return { success: true, workspace: w.key, label: a.label || w.label, tanggal: tgl, items: items, persen: wj ? Math.round(ok * 100 / wj) : 100, lengkap: ok === wj, terakhirEdit: a.terakhirEdit || '', dicek: sn.dibuat, dariCache: true, reminderTerakhir: null };
-  }
-  // Muat dari Supabase; departemen yang belum punya snapshot -> jalur biasa (Apps Script) di loadWs
-  function loadFromSnapshots(done) {
-    sbSummaries().then(function (m) {
-      var miss = [];
-      WS.forEach(function (w) {
-        var sn = m[w.key]; if (!sn) { miss.push(w); return; }
-        SNAP[w.key] = sn; var d = DATA[w.key] = DATA[w.key] || {};
-        if (sn.st != null) d.st = sn.st; if (sn.out != null) d.out = sn.out; if (sn.inn != null) d.inn = sn.inn;
-        var a = actFromSnap(sn, today(), w); if (a) ACT[today() + '|' + w.key] = a;
-        if (sn.dibuat && sn.dibuat > snapTime) snapTime = sn.dibuat;
-        updateCard(w.key);
-      });
-      scheduleSummary(); if (state.view === 'log') renderLog();
-      done(miss);
+    var up = UPL[w.key] || {};
+    var items = a.items.map(function (i) {
+      var c = (i.byDate && i.byDate[tgl]) || 0, u = (up[i.key] && up[i.key].days && up[i.key].days[tgl]) || 0;
+      return { key: i.key, label: i.label, wajib: i.wajib, ada: c > 0 || u > 0, jumlah: Math.max(c, u), terakhir: i.last || '', uploadTerakhir: (up[i.key] && up[i.key].t) || '', error: '' };
     });
+    var wj = 0, ok = 0; items.forEach(function (i) { if (i.wajib) { wj++; if (i.ada) ok++; } });
+    var up_t = uplMax(up), dc = (sn.dibuat || '') > up_t ? (sn.dibuat || '') : up_t;
+    return { success: true, workspace: w.key, label: a.label || w.label, tanggal: tgl, items: items, persen: wj ? Math.round(ok * 100 / wj) : 100, lengkap: ok === wj, terakhirEdit: a.terakhirEdit || '', dicek: dc, dariCache: true, reminderTerakhir: null };
+  }
+  // Terapkan hasil Supabase ke state; kembalikan daftar departemen yg belum punya snapshot
+  function applySnapshots(m, dates) {
+    var miss = [], changed = false;
+    WS.forEach(function (w) {
+      if (m.upl[w.key]) UPL[w.key] = m.upl[w.key];
+      var sn = m.sum[w.key]; if (!sn) { miss.push(w); return; }
+      SNAP[w.key] = sn; var d = DATA[w.key] = DATA[w.key] || {};
+      if (sn.st != null && d.st !== sn.st) { d.st = sn.st; changed = true; } if (sn.out != null && d.out !== sn.out) { d.out = sn.out; changed = true; } if (sn.inn != null && d.inn !== sn.inn) { d.inn = sn.inn; changed = true; }
+      if (sn.dibuat && sn.dibuat > snapTime) snapTime = sn.dibuat;
+      dates.forEach(function (tgl) {
+        var k = tgl + '|' + w.key, cur = ACT[k], n = actFromSnap(sn, tgl, w);
+        if (n && (!cur || !cur.success || cur.dariCache || (cur.dicek || '') < (n.dicek || ''))) {
+          if (!cur || !cur.success || cur.persen !== n.persen || JSON.stringify(cur.items) !== JSON.stringify(n.items)) changed = true;
+          ACT[k] = n;
+        }
+      });
+      updateCard(w.key);
+    });
+    return { miss: miss, changed: changed };
+  }
+  function loadFromSnapshots(done) {
+    sbFetch().then(function (m) {
+      var r = applySnapshots(m, [today(), logDate]); snapReady = true;
+      scheduleSummary();
+      if (state.view === 'log') loadLog(false);     // hanya departemen tanpa snapshot yg dicek langsung (Apps Script)
+      if (done) done(r.miss);
+    });
+  }
+  // Polling ringan: perubahan upload plant tampil dalam hitungan detik tanpa memuat ulang halaman
+  var polling = false;
+  function pollSnapshots() {
+    if (polling || document.visibilityState !== 'visible' || (state.view !== 'log' && state.view !== 'all' && state.view !== 'plant')) return;
+    polling = true;
+    sbFetch().then(function (m) {
+      polling = false; var r = applySnapshots(m, [today(), logDate]);
+      if (r.changed) { scheduleSummary(); if (state.view === 'log') renderLog(); }
+    }, function () { polling = false; });
   }
 
   /* ---------- pemuatan data (paralel terbatas) ---------- */
@@ -596,7 +634,8 @@ html{color-scheme:dark}
   function loadAct(w, tgl, force, cb) {
     var key = tgl + '|' + w.key; if (!ACT[key] || !ACT[key].success) ACT[key] = { loading: true };
     run(w.key, 'divheadGetActivity', [NIK, tgl, !!force], function (r) {
-      ACT[key] = (r && r.success) ? r : { err: (r && r.error) || 'Gagal memuat' };
+      ACT[key] = (r && r.success && Array.isArray(r.items)) ? r : { err: (r && r.error) || 'Gagal memuat' };
+      if (ACT[key].success) ACT[key].dariCache = false;
       if (tgl === today()) { updateCard(w.key); scheduleSummary(); }
       if (state.view === 'log' && tgl === logDate) renderLog();
       if (cb) cb();
@@ -638,40 +677,62 @@ html{color-scheme:dark}
   }
 
   /* ---------- log aktivitas ---------- */
-  function renderLog() {
+  var rlT = 0, rowHtml = {}, rowOrder = '', sumHtml = '', logEntered = false;
+  function renderLog() { if (rlT) return; rlT = setTimeout(function () { rlT = 0; doRenderLog(); }, 60); }
+  function rowFor(w, a) {
+    var nm = '<div class="nm"><b>' + esc(w.deptLabel) + '</b><span>' + esc(w.plantLabel) + '</span></div>';
+    if (!a || a.loading) return '<div class="logrow">' + nm + '<div class="chips"><span class="chip na">Memeriksa…</span></div><div class="upd"><b class="skel">memuat</b></div><div></div><div></div></div>';
+    if (a.err) return '<div class="logrow bad">' + nm + '<div class="chips"><span class="chip miss">Gagal memeriksa</span></div><div class="upd"><span>' + esc(a.err) + '</span></div><div></div><div class="act"><button class="ibtn" data-recheck="' + esc(w.key) + '">Coba lagi</button></div></div>';
+    var chips = a.items.map(function (i) {
+      if (i.error) return '<span class="chip miss" title="' + esc(i.error) + '">' + esc(i.label) + ' · error</span>';
+      if (!i.wajib) return '<span class="chip na" title="Menu Upload Data Harian tidak dicentang untuk departemen ini (Kelola User > Kelola Menu)">' + esc(i.label) + ' · tidak wajib</span>';
+      return i.ada ? '<span class="chip ok">✓ ' + esc(i.label) + ' · ' + nf(i.jumlah) + ' baris' + (i.uploadTerakhir && i.uploadTerakhir.slice(0, 10) === logDate ? ' · ' + i.uploadTerakhir.slice(11, 16) : '') + '</span>'
+        : '<span class="chip miss">✕ ' + esc(i.label) + ' · belum' + (i.terakhir ? ', terakhir ' + fmtTgl(i.terakhir).replace(/ \d{4}$/, '') : '') + '</span>';
+    }).join('');
+    var last = lastData(a), gap = last ? Math.round((new Date(logDate + 'T00:00:00Z') - new Date(last + 'T00:00:00Z')) / 86400000) : null;
+    var ago = !last ? 'Belum pernah ada data' : (gap <= 0 ? 'Sama dengan tanggal dipilih' : gap + ' hari sebelum tanggal dipilih');
+    var ups = ''; (a.items || []).forEach(function (i) { if (i.uploadTerakhir && i.uploadTerakhir > ups) ups = i.uploadTerakhir; });
+    var rem = a.reminderTerakhir ? 'Diingatkan ' + esc(a.reminderTerakhir.t) + ' oleh ' + esc(a.reminderTerakhir.oleh) : '';
+    return '<div class="logrow ' + (a.lengkap ? '' : 'bad') + '">' + nm + '<div class="chips">' + chips + '</div>' +
+      '<div class="upd"><b>Data terakhir: ' + fmtTgl(last) + '</b><span>' + esc(ago) + '</span>' + (ups ? '<span>Upload terakhir ' + esc(ups.slice(0, 16)) + '</span>' : '') + '<span>Spreadsheet diubah ' + esc(a.terakhirEdit || '—') + '</span>' + (rem ? '<span>' + rem + '</span>' : '') + '</div>' +
+      ringSvg(a.persen, 56, 6) +
+      '<div class="act">' + (a.lengkap ? '<span class="pill ok" style="text-align:center">Lengkap</span>' : '<button class="ibtn gold" data-remind="' + esc(w.key) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 20l1.2-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>Ingatkan via WA</button>') +
+      '<button class="ibtn" data-ws-go="' + esc(w.key) + '">Buka dashboard</button></div></div>';
+  }
+  // Render per baris: hanya baris yang isinya berubah yang diganti (tanpa animasi ulang) -> tidak berkedip saat refresh/polling
+  function doRenderLog() {
     var rows = WS.map(function (w) { return { w: w, a: ACT[logDate + '|' + w.key] }; });
     var done = rows.filter(function (r) { return r.a && r.a.success; }), okN = done.filter(function (r) { return r.a.lengkap; }).length, badN = done.length - okN;
-    var overall = done.length ? Math.round(done.reduce(function (s, r) { return s + r.a.persen; }, 0) / done.length) : null;
-    $('logSum').innerHTML =
-      '<div class="kpi" style="--kc:var(--teal)"><span>Input lengkap</span><b>' + (done.length ? okN : '—') + '<em>dari ' + WS.length + ' departemen</em></b></div>' +
+    var overall = done.length ? Math.round(done.reduce(function (x, r) { return x + r.a.persen; }, 0) / done.length) : null;
+    var sh = '<div class="kpi" style="--kc:var(--teal)"><span>Input lengkap</span><b>' + (done.length ? okN : '—') + '<em>dari ' + WS.length + ' departemen</em></b></div>' +
       '<div class="kpi" style="--kc:var(--coral)"><span>Belum lengkap</span><b>' + (done.length ? badN : '—') + '<em>perlu diingatkan</em></b></div>' +
       '<div class="kpi" style="--kc:var(--gold)"><span>Rata-rata kelengkapan</span><b>' + (overall == null ? '—' : overall + '%') + '<em>' + fmtTgl(logDate) + '</em></b></div>';
+    if (sh !== sumHtml) { sumHtml = sh; $('logSum').innerHTML = sh; }
     $('btnRemindAll').disabled = !badN;
     var list = rows.filter(function (r) { return logFilter === 'all' || (r.a && r.a.success && !r.a.lengkap); });
-    if (!list.length) { $('logList').innerHTML = '<div class="empty">' + (logFilter === 'bad' ? 'Tidak ada departemen yang belum lengkap pada ' + fmtTgl(logDate) + '.' : 'Belum ada data.') + '</div>'; return; }
-    $('logList').innerHTML = list.map(function (r, idx) {
-      var w = r.w, a = r.a, nm = '<div class="nm"><b>' + esc(w.deptLabel) + '</b><span>' + esc(w.plantLabel) + '</span></div>';
-      if (!a || a.loading) return '<div class="logrow" style="animation-delay:' + idx * 30 + 'ms">' + nm + '<div class="chips"><span class="chip na">Memeriksa…</span></div><div class="upd"><b class="skel">memuat</b></div><div></div><div></div></div>';
-      if (a.err) return '<div class="logrow bad">' + nm + '<div class="chips"><span class="chip miss">Gagal memeriksa</span></div><div class="upd"><span>' + esc(a.err) + '</span></div><div></div><div class="act"><button class="ibtn" data-recheck="' + esc(w.key) + '">Coba lagi</button></div></div>';
-      var chips = a.items.map(function (i) {
-        if (i.error) return '<span class="chip miss" title="' + esc(i.error) + '">' + esc(i.label) + ' · error</span>';
-        if (!i.wajib) return '<span class="chip na" title="Menu Upload Data Harian tidak dicentang untuk departemen ini (Kelola User > Kelola Menu)">' + esc(i.label) + ' · tidak wajib</span>';
-        return i.ada ? '<span class="chip ok">✓ ' + esc(i.label) + ' · ' + nf(i.jumlah) + ' baris</span>' : '<span class="chip miss">✕ ' + esc(i.label) + ' · belum' + (i.terakhir ? ', terakhir ' + fmtTgl(i.terakhir).replace(/ \d{4}$/, '') : '') + '</span>';
-      }).join('');
-      var last = lastData(a), gap = last ? Math.round((new Date(logDate + 'T00:00:00Z') - new Date(last + 'T00:00:00Z')) / 86400000) : null;
-      var ago = last == null || last === '' ? 'Belum pernah ada data' : (gap <= 0 ? 'Sama dengan tanggal dipilih' : gap + ' hari sebelum tanggal dipilih');
-      var rem = a.reminderTerakhir ? 'Diingatkan ' + esc(a.reminderTerakhir.t) + ' oleh ' + esc(a.reminderTerakhir.oleh) : '';
-      var ring = '<span data-logring="' + esc(w.key) + '">' + ringSvg(0, 56, 6) + '</span>';
-      return '<div class="logrow ' + (a.lengkap ? '' : 'bad') + '" style="animation-delay:' + idx * 30 + 'ms">' + nm + '<div class="chips">' + chips + '</div>' +
-        '<div class="upd"><b>Data terakhir: ' + fmtTgl(last) + '</b><span>' + esc(ago) + '</span><span>Spreadsheet diubah ' + esc(a.terakhirEdit || '—') + '</span>' + (rem ? '<span>' + rem + '</span>' : '') + '</div>' + ring +
-        '<div class="act">' + (a.lengkap ? '<span class="pill ok" style="text-align:center">Lengkap</span>' : '<button class="ibtn gold" data-remind="' + esc(w.key) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 20l1.2-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>Ingatkan via WA</button>') +
-        '<button class="ibtn" data-ws-go="' + esc(w.key) + '">Buka dashboard</button></div></div>';
-    }).join('');
-    list.forEach(function (r) { if (r.a && r.a.success) setRing(document.querySelector('[data-logring="' + r.w.key + '"]'), r.a.persen); });
+    var host = $('logList');
+    if (!list.length) { host.innerHTML = '<div class="empty">' + (logFilter === 'bad' ? 'Tidak ada departemen yang belum lengkap pada ' + fmtTgl(logDate) + '.' : 'Belum ada data.') + '</div>'; rowOrder = ''; rowHtml = {}; return; }
+    var order = list.map(function (r) { return r.w.key; }).join('|');
+    if (order !== rowOrder || !host.querySelector('[data-k]')) {      // susunan berubah (filter/tanggal) -> bangun ulang sekali
+      host.innerHTML = list.map(function (r) { var h = rowFor(r.w, r.a); rowHtml[r.w.key] = h; return '<div data-k="' + r.w.key + '">' + h + '</div>'; }).join('');
+      if (!logEntered) { logEntered = true; host.querySelectorAll('.logrow').forEach(function (el, i) { el.classList.add('enter'); el.style.animationDelay = i * 40 + 'ms'; }); }
+      rowOrder = order; return;
+    }
+    list.forEach(function (r) {
+      var h = rowFor(r.w, r.a); if (rowHtml[r.w.key] === h) return;
+      rowHtml[r.w.key] = h; var el = host.querySelector('[data-k="' + r.w.key + '"]'); if (el) el.innerHTML = h;
+    });
   }
-  function loadLog(force) {
+  function loadLog(force, cb) {
     $('logDate').value = logDate; $('logDate').max = today();
-    WS.forEach(function (w) { var k = logDate + '|' + w.key; if (!force && (!ACT[k] || !ACT[k].success) && SNAP[w.key]) { var a = actFromSnap(SNAP[w.key], logDate, w); if (a) { ACT[k] = a; return; } } if (force || !ACT[k] || !ACT[k].success) loadAct(w, logDate, force); });
+    var pending = 0, fin = function () { if (--pending <= 0 && cb) cb(); };
+    if (!snapReady && !force) { renderLog(); return; }   // tunggu Supabase dulu (cepat) agar tidak memicu pengecekan Apps Script yg lambat
+    WS.forEach(function (w) {
+      var k = logDate + '|' + w.key;
+      if (!force && (!ACT[k] || !ACT[k].success) && SNAP[w.key]) { var a = actFromSnap(SNAP[w.key], logDate, w); if (a) { ACT[k] = a; return; } }
+      if (force || !ACT[k] || !ACT[k].success) { pending++; loadAct(w, logDate, force, fin); }
+    });
+    if (!pending && cb) cb();
     renderLog();
   }
   function remind(key, silent) {
@@ -737,19 +798,27 @@ html{color-scheme:dark}
   });
   $('btnMenu').onclick = function () {
     if (window.innerWidth <= 860) { $('rail').classList.toggle('open'); return; }
-    var c = $('app').classList.toggle('collapsed'); try { localStorage.setItem('dh_rail', c ? '1' : '0'); } catch (e) {}
-    setTimeout(function () { try { if (chBar) chBar.resize(); if (chDonut) chDonut.resize(); } catch (e) {} tabArrows(); }, 330);
+    // Tata letak berubah SEKALI (instan), lalu yang tampak bergerak hanya transform (GPU) -> tidak ada reflow/resize grafik tiap frame.
+    var app = $('app'), main = document.querySelector('.main'), w = 272, c = !app.classList.contains('collapsed');
+    app.classList.toggle('collapsed', c); try { localStorage.setItem('dh_rail', c ? '1' : '0'); } catch (e) {}
+    if (!REDUCE) {
+      main.classList.remove('slide'); main.style.transform = 'translateX(' + (c ? w : -w) + 'px)';   // posisi awal = posisi visual sebelumnya
+      void main.offsetWidth;
+      main.classList.add('slide'); main.style.transform = 'translateX(0)';
+      setTimeout(function () { main.classList.remove('slide'); main.style.transform = ''; }, 600);
+    }
+    requestAnimationFrame(function () { try { if (chBar) chBar.resize(); if (chDonut) chDonut.resize(); } catch (e) {} tabArrows(); });
   };
   $('tabs').addEventListener('scroll', tabArrows, { passive: true }); window.addEventListener('resize', tabArrows);
   $('tabL').onclick = function () { $('tabs').scrollBy({ left: -280, behavior: 'smooth' }); };
   $('tabR').onclick = function () { $('tabs').scrollBy({ left: 280, behavior: 'smooth' }); };
   $('btnLogout').onclick = function () { try { SS.clear(); } catch (e) {} location.href = './login.html'; };
   $('btnRefresh').onclick = function () {
-    var ic = $('icoRef'); ic.classList.add('spin'); setTimeout(function () { ic.classList.remove('spin'); }, 1200);
+    var ic = $('icoRef'); ic.classList.add('spin'); setTimeout(function () { ic.classList.remove('spin'); }, 1200);   // (log: spinner sampai cek langsung selesai)
     if (typeof window.clearApiCache === 'function') window.clearApiCache();
     if (state.view === 'dept') { var f = frames[state.ws]; if (f) { f.dataset.ready = ''; $('cover').classList.remove('off'); f.src = f.src; } return; }
-    if (state.view === 'log') { loadLog(true); return; }
-    SNAP = {}; loadFromSnapshots(function (miss) { miss.forEach(function (w) { loadWs(w, true); }); });
+    if (state.view === 'log') { ic.classList.add('spin'); loadLog(true, function () { ic.classList.remove('spin'); }); return; }
+    loadFromSnapshots(function (miss) { miss.forEach(function (w) { loadWs(w, true); }); });
     WS.forEach(function (w) { loadAct(w, today(), true); });
   };
   $('logDate').addEventListener('change', function (e) { if (e.target.value) { logDate = e.target.value; syncQuick(); loadLog(false); } });
@@ -770,7 +839,8 @@ html{color-scheme:dark}
   }, { passive: true });
   window.addEventListener('hashchange', route);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { $('modalBg').classList.remove('on'); $('rail').classList.remove('open'); } });
-  setInterval(function () { if (document.visibilityState === 'visible' && state.view === 'log') WS.forEach(function (w) { loadAct(w, logDate, true); }); }, 90000);
+  setInterval(pollSnapshots, 12000);   // perubahan upload plant masuk dlm <= ~12 dtk (tanpa kedip)
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pollSnapshots(); });
 
   /* ---------- mulai ---------- */
   function start() {

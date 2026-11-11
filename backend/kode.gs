@@ -2661,7 +2661,9 @@ function hapusDataUploadByTanggal(tab, dariDDMMYYYY, sampaiDDMMYYYY) {
   };
   var cfg = MAP[tab];
   if (!cfg) return { success: false, error: 'Tab tidak dikenali: ' + tab };
-  return _hapusDataByTanggalRange(cfg.sheet, cfg.kolom, dariDDMMYYYY, sampaiDDMMYYYY);
+  var hr = _hapusDataByTanggalRange(cfg.sheet, cfg.kolom, dariDDMMYYYY, sampaiDDMMYYYY);
+  if (hr && hr.success) _divheadHapusCatatan(tab, dariDDMMYYYY, sampaiDDMMYYYY);
+  return hr;
 }
 
 // Cek apakah tanggal-tanggal yang AKAN diupload sudah ada di sheet (peringatan upload ganda).
@@ -2771,7 +2773,9 @@ function _parseAngkaFleksibel(v) {
 }
 
 function appendStockData(rows, tanggal, batchKey) {
-  return _uploadIdempotent(SH_STOCK, batchKey, function () { return _appendStockDataImpl(rows, tanggal); });
+  var r = _uploadIdempotent(SH_STOCK, batchKey, function () { return _appendStockDataImpl(rows, tanggal); });
+  if (r && r.success && !r.diulang) _divheadCatatUpload('stock', r.jumlah);
+  return r;
 }
 function _appendStockDataImpl(rows, tanggal) {
   try {
@@ -2873,7 +2877,9 @@ function appendOutboundData(rows, batchKey) {
   // KIRIM (Outbound): konvensi sumbernya MINUS = kiriman normal,
   // POSITIF = retur/koreksi -> NEGASIKAN (lihat komentar di
   // _appendKirimProduksi) supaya totalnya benar.
-  return _uploadIdempotent(SH_KIRIM, batchKey, function () { return _appendKirimProduksi(rows, SH_KIRIM, true, batchKey); });
+  var r = _uploadIdempotent(SH_KIRIM, batchKey, function () { return _appendKirimProduksi(rows, SH_KIRIM, true, batchKey); });
+  if (r && r.success && !r.diulang) _divheadCatatUpload('outbound', r.jumlah);
+  return r;
 }
 
 // Sama seperti appendOutboundData, tapi target sheetnya DASHBOARD_PRODUKSI
@@ -2884,7 +2890,9 @@ function appendInboundData(rows, batchKey) {
   // tetap minus supaya mengurangi total dgn benar. Makanya di sini
   // TIDAK dinegasikan sama sekali -- disimpan APA ADANYA sesuai file
   // sumber. (Ini beda dgn Outbound! Jangan disamakan lagi.)
-  return _uploadIdempotent(SH_PRODUKSI, batchKey, function () { return _appendKirimProduksi(rows, SH_PRODUKSI, false, batchKey); });
+  var r = _uploadIdempotent(SH_PRODUKSI, batchKey, function () { return _appendKirimProduksi(rows, SH_PRODUKSI, false, batchKey); });
+  if (r && r.success && !r.diulang) _divheadCatatUpload('inbound', r.jumlah);
+  return r;
 }
 
 function _appendKirimProduksi(rows, sheetName, negasikan, batchKey) {
@@ -11605,6 +11613,7 @@ function _divheadHitungAktivitas(tanggal, force) {
   var targetKey = /^\d{4}-\d{2}-\d{2}$/.test(String(tanggal || '')) ? String(tanggal) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   var cache = CacheService.getScriptCache(), ck = 'dhact::' + ACTIVE_WORKSPACE + '::' + targetKey;
   if (!force) { try { var hit = cache.get(ck); if (hit) return JSON.parse(hit); } catch (e) {} }
+  var upl = _divheadUplGet(ACTIVE_WORKSPACE);
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID), items = [], wajibTotal = 0, wajibOk = 0;
   _divheadDatasetDefs().forEach(function (def) {
     var it = { key: def.key, label: def.label, wajib: def.wajib, ada: false, jumlah: 0, terakhir: '', selisihHari: null, error: '' };
@@ -11617,6 +11626,10 @@ function _divheadHitungAktivitas(tanggal, force) {
         if (r.lastKey) it.selisihHari = Math.round((new Date(targetKey + 'T00:00:00Z') - new Date(r.lastKey + 'T00:00:00Z')) / 86400000);
       }
     } catch (e) { it.error = e.message; }
+    var ul = (upl[def.key] || {});
+    it.uploadTerakhir = ul.t || '';
+    var uh = (ul.days && ul.days[targetKey]) || 0;
+    if (uh > 0) { it.ada = true; it.jumlah = Math.max(it.jumlah, uh); }   // ada upload pada tanggal itu = sudah diinput
     if (def.wajib) { wajibTotal++; if (it.ada) wajibOk++; }
     items.push(it);
   });
@@ -11627,7 +11640,7 @@ function _divheadHitungAktivitas(tanggal, force) {
     persen: wajibTotal ? Math.round(wajibOk * 100 / wajibTotal) : 100, lengkap: wajibOk === wajibTotal,
     terakhirEdit: terakhirEdit, dicek: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm:ss')
   };
-  try { cache.put(ck, JSON.stringify(res), 120); } catch (e) {}
+  try { cache.put(ck, JSON.stringify(res), 30); } catch (e) {}
   return res;
 }
 function divheadGetActivity(actorNik, tanggal, force) {
@@ -11733,7 +11746,7 @@ function _divheadBuildSummary(workspaceKey, pre) {
   try { terakhirEdit = Utilities.formatDate(DriveApp.getFileById(SPREADSHEET_ID).getLastUpdated(), tz, 'yyyy-MM-dd HH:mm'); } catch (e) {}
   return { success: true, tanggal: todayStr, st: st, out: out, inn: inn,
     aktivitas: { items: items, valid: valid, terakhirEdit: terakhirEdit, label: WORKSPACE_LABELS[workspaceKey] || workspaceKey },
-    dibuat: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm') };
+    dibuat: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss') };
 }
 // Jalankan SEKALI dari editor Apps Script (atau biarkan syncAllToSupabase/onEdit yang mengisi) utk mengisi
 // ringkasan Divisi Head semua departemen tanpa menunggu sync penuh.
@@ -11748,4 +11761,43 @@ function divheadSyncSummaryAll() {
     } catch (err) { log.push('GAGAL ' + k + ': ' + err.message); }
   });
   Logger.log(log.join('\n')); return log;
+}
+
+
+// ----------------------------------------------------------------
+//  Catatan upload realtime (Divisi Head): tiap batch upload Stock/Outbound/Inbound yg sukses dicatat
+//  (waktu, jumlah baris per HARI upload, NIK) di Script Properties 'DH_UPL_<workspace>' dan langsung
+//  didorong ke Supabase ('<ws>::divhead:upl', kecil, tanpa scan sheet) -> Log Aktivitas berubah dlm hitungan detik.
+//  Dataset dianggap "sudah diinput" utk tanggal T bila ada data ber-tanggal T ATAU ada upload yg dilakukan pada hari T.
+// ----------------------------------------------------------------
+function _divheadUplGet(ws) {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('DH_UPL_' + ws) || '{}') || {}; } catch (e) { return {}; }
+}
+function _divheadUplSimpan(ws, log) {
+  PropertiesService.getScriptProperties().setProperty('DH_UPL_' + ws, JSON.stringify(log));
+  try { _supabaseUpsertSnapshot(ws + '::divhead:upl', { success: true, upl: log, dibuat: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss') }); } catch (e) {}
+}
+function _divheadCatatUpload(dsKey, jumlah) {
+  try {
+    var tz = Session.getScriptTimeZone(), now = new Date(), day = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+    var log = _divheadUplGet(ACTIVE_WORKSPACE), it = log[dsKey] || { days: {} };
+    it.days = it.days || {};
+    it.t = Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss');
+    it.by = (CURRENT_AUTH && CURRENT_AUTH.n) || '';
+    it.days[day] = (it.days[day] || 0) + (+jumlah || 0);
+    var ks = Object.keys(it.days).sort(); while (ks.length > 30) delete it.days[ks.shift()];
+    log[dsKey] = it;
+    CacheService.getScriptCache().remove('dhact::' + ACTIVE_WORKSPACE + '::' + day);
+    _divheadUplSimpan(ACTIVE_WORKSPACE, log);
+  } catch (e) { Logger.log('catatUpload: ' + e.message); }
+}
+// Data dihapus lewat Upload Data Harian -> hapus catatan hari2 yg dirangkum (rentang dd/MM/yyyy).
+function _divheadHapusCatatan(tab, dari, sampai) {
+  try {
+    var log = _divheadUplGet(ACTIVE_WORKSPACE), it = log[tab]; if (!it || !it.days) return;
+    var tz = Session.getScriptTimeZone(), a = _parseTanggalFleksibel(dari), b = _parseTanggalFleksibel(sampai || dari);
+    if (!(a instanceof Date) || !(b instanceof Date)) return;
+    for (var t = a.getTime(); t <= b.getTime() && t - a.getTime() < 40 * 86400000; t += 86400000) delete it.days[Utilities.formatDate(new Date(t), tz, 'yyyy-MM-dd')];
+    _divheadUplSimpan(ACTIVE_WORKSPACE, log);
+  } catch (e) {}
 }
