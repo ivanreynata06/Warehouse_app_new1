@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rucika — Control Tower Divisi Head</title>
-<script src="./assets/js/auth-guard.js?v=20261111c"></script>
-<script src="./assets/js/config.js?v=20261111c"></script>
+<script src="./assets/js/auth-guard.js?v=20261111d"></script>
+<script src="./assets/js/config.js?v=20261111d"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261111c"></script>
+<script src="./assets/js/api-shim.js?v=20261111d"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -222,6 +222,63 @@ html{color-scheme:dark}
 /* view tidak aktif tidak boleh menangkap scroll/klik (mencegah iframe yang tertinggal menutupi halaman) */
 .view:not(.on){pointer-events:none}
 .view:not(.on) *{pointer-events:none!important}
+/* ---------- filter, panel, kartu rincian ---------- */
+.filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0 4px}
+.fgroup{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 14px;border-radius:14px;border:1px solid var(--line2);background:rgba(160,180,255,.06)}
+.fgroup label{font-size:12px;font-weight:700;color:var(--muted);margin-right:2px}
+.fgroup span{color:var(--dim)}
+.fgroup select,.fgroup input{border:0;background:rgba(160,180,255,.09);color:var(--text);font:inherit;font-size:13px;padding:7px 10px;border-radius:10px;color-scheme:dark;outline-offset:2px}
+.fnote{flex:1;min-width:220px;text-align:right;font-size:12.5px;color:var(--muted)}
+.fnote b{color:var(--text);font-weight:600}
+.panel{margin:18px 0 20px;padding:22px 24px 26px;border-radius:28px;border:1px solid var(--line2);background:linear-gradient(160deg,rgba(32,48,90,.5),rgba(20,30,58,.62));backdrop-filter:blur(10px);box-shadow:0 40px 80px -52px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.05)}
+.panel-h{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.panel-h h3{margin:0;font-family:var(--disp);font-size:19px}
+.panel-h p{margin:0;color:var(--muted);font-size:13px}
+.panel .plant-title:first-of-type{margin-top:12px}
+.kpi.click{cursor:pointer;user-select:none}
+.kpi.click u{position:absolute;right:16px;bottom:12px;font-size:11.5px;text-decoration:none;color:var(--muted);opacity:0;transform:translateX(-6px);transition:opacity .25s,transform .25s}
+.kpi.click:hover u,.kpi.click:focus-visible u{opacity:1;transform:none}
+.kpi.click:active{transform:scale(.985)}
+.chart-box{min-height:260px}
+/* kartu rincian (modal kaca) */
+@property --ang{syntax:'<angle>';initial-value:0deg;inherits:false}
+.dm-bg{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(6,10,22,.55);backdrop-filter:blur(0px);opacity:0;visibility:hidden;transition:opacity .35s,backdrop-filter .35s,visibility 0s .35s}
+.dm-bg.on{opacity:1;visibility:visible;backdrop-filter:blur(10px);transition:opacity .35s,backdrop-filter .35s}
+.dm{position:relative;width:min(880px,100%);max-height:calc(100vh - 44px);overflow:auto;padding:28px 30px 30px;border-radius:30px;background:linear-gradient(160deg,rgba(40,60,112,.92),rgba(18,27,52,.96));box-shadow:0 60px 120px -40px #000,inset 0 1px 0 rgba(255,255,255,.08);transform:perspective(1300px) translateY(46px) rotateX(10deg) scale(.95);opacity:0;transition:transform .6s cubic-bezier(.2,1.1,.3,1),opacity .4s}
+.dm-bg.on .dm{transform:none;opacity:1}
+.dm::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;background:conic-gradient(from var(--ang),transparent 0deg,rgba(143,208,255,.75) 70deg,rgba(240,203,136,.75) 150deg,transparent 230deg);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:angspin 7s linear infinite}
+@keyframes angspin{to{--ang:360deg}}
+.dm-x{position:absolute;right:18px;top:18px;width:38px;height:38px;border-radius:50%;border:1px solid var(--line2);background:rgba(160,180,255,.08);color:var(--text);display:grid;place-items:center;transition:transform .25s,background .2s}
+.dm-x:hover{background:rgba(255,158,146,.18);transform:rotate(90deg)}
+.dm-head{display:flex;align-items:center;gap:16px;margin-bottom:22px;padding-right:50px}
+.dm-ico{width:54px;height:54px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(135deg,var(--dc,var(--sky)),rgba(255,255,255,.1));color:#0d1426;box-shadow:0 16px 30px -12px var(--dc,var(--sky))}
+.dm-head h3{margin:0;font-family:var(--disp);font-size:22px}
+.dm-head p{margin:3px 0 0;color:var(--muted);font-size:13px}
+.dm-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.dm-stat{position:relative;padding:18px 20px;border-radius:22px;border:1px solid var(--line2);background:rgba(160,180,255,.06);overflow:hidden;opacity:0;transform:translateY(18px) scale(.96);transition:opacity .5s,transform .6s cubic-bezier(.2,1.1,.3,1);transition-delay:calc(var(--i,0)*90ms + 160ms)}
+.dm-bg.on .dm-stat{opacity:1;transform:none}
+.dm-stat::after{content:"";position:absolute;right:-26px;top:-26px;width:100px;height:100px;border-radius:50%;background:var(--c);opacity:.18;filter:blur(10px)}
+.dm-stat span{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-weight:600}
+.dm-stat span::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 12px var(--c)}
+.dm-stat b{display:block;margin-top:6px;font-family:var(--disp);font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+.dm-stat b em{font-style:normal;font-size:13px;color:var(--muted);font-weight:500;margin-left:5px;font-family:var(--font)}
+.dm-stat small{color:var(--muted);font-size:12px}
+.dm-split{margin:18px 0 6px}
+.dm-bar{display:flex;height:14px;border-radius:99px;overflow:hidden;background:rgba(160,180,255,.1)}
+.dm-bar i{display:block;width:0;transition:width 1.1s cubic-bezier(.2,.9,.2,1) .45s}
+.dm-leg{display:flex;gap:18px;flex-wrap:wrap;margin-top:9px;font-size:12.5px;color:#cfd8f0}
+.dm-leg b{font-weight:700}
+.dm h4{margin:22px 0 10px;font-family:var(--disp);font-size:15px}
+.dm-row{display:grid;grid-template-columns:minmax(150px,1.1fr) minmax(120px,1.6fr) minmax(130px,auto);gap:14px;align-items:center;padding:11px 14px;border-radius:16px;opacity:0;transform:translateX(-12px);transition:opacity .45s,transform .5s cubic-bezier(.2,.9,.2,1),background .2s;transition-delay:calc(var(--i,0)*45ms + 350ms)}
+.dm-bg.on .dm-row{opacity:1;transform:none}
+.dm-row:hover{background:rgba(160,180,255,.07)}
+.dm-row.plant{margin-top:8px;background:rgba(160,180,255,.08);font-weight:700}
+.dm-row .nm{font-size:13.5px}.dm-row .nm small{display:block;font-weight:500;color:var(--muted);font-size:11.5px}
+.dm-row .v{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+.dm-row .v small{display:block;color:var(--muted);font-size:11.5px;font-weight:500}
+.dm-row.dept{margin-left:14px}
+@media (max-width:860px){.dm{padding:22px 18px}.dm-row{grid-template-columns:1fr auto}.dm-row .dm-bar{grid-column:1/-1;order:3}.fnote{text-align:left}}
+@media (prefers-reduced-motion:reduce){.dm,.dm-stat,.dm-row{transition:none!important;opacity:1;transform:none}.dm::before{animation:none}}
 </style>
 </head>
 <body>
@@ -257,17 +314,27 @@ html{color-scheme:dark}
           <div><h1>Ringkasan semua plant</h1><p id="heroSub">Stock, outbound, inbound, dan kelengkapan input dari seluruh plant dan departemen dalam satu layar.</p></div>
           <div class="hero-ring"><div id="heroRing"></div><div class="t"><b id="heroT1">Memuat…</b><span id="heroT2">Input hari ini</span></div></div>
         </div>
-        <div class="kpis">
-          <div class="kpi" style="--kc:var(--sky)"><span>Total stock</span><b><i id="kStock">—</i><em>ton</em></b></div>
-          <div class="kpi" style="--kc:var(--gold)"><span>Outbound bulan ini</span><b><i id="kOut">—</i><em>ton</em></b></div>
-          <div class="kpi" style="--kc:var(--teal)"><span>Inbound bulan ini</span><b><i id="kIn">—</i><em>ton</em></b></div>
-          <div class="kpi" style="--kc:var(--coral)"><span>Departemen belum lengkap</span><b><i id="kBad">—</i><em id="kBadOf"></em></b></div>
+        <div class="filters" id="filters">
+          <div class="fgroup"><label for="fMonth">Bulan</label><select id="fMonth"></select><select id="fYear" aria-label="Tahun"></select></div>
+          <div class="fgroup"><label for="fFrom">Periode</label><input type="date" id="fFrom" aria-label="Dari tanggal"><span>–</span><input type="date" id="fTo" aria-label="Sampai tanggal"></div>
+          <div class="fgroup"><label for="fStock">Tanggal stock</label><input type="date" id="fStock"></div>
+          <button class="ibtn" id="fReset" type="button">Reset</button>
+          <div class="fnote" id="fNote"></div>
         </div>
+        <div class="kpis">
+          <div class="kpi click" data-detail="st" role="button" tabindex="0" style="--kc:var(--sky)"><span>Total stock</span><b><i id="kStock">—</i><em>ton</em></b><u>Lihat rincian</u></div>
+          <div class="kpi click" data-detail="out" role="button" tabindex="0" style="--kc:var(--gold)"><span>Outbound</span><b><i id="kOut">—</i><em>ton</em></b><u>Lihat rincian</u></div>
+          <div class="kpi click" data-detail="inn" role="button" tabindex="0" style="--kc:var(--teal)"><span>Inbound</span><b><i id="kIn">—</i><em>ton</em></b><u>Lihat rincian</u></div>
+          <div class="kpi click" data-go="log" role="button" tabindex="0" style="--kc:var(--coral)"><span>Departemen belum lengkap</span><b><i id="kBad">—</i><em id="kBadOf"></em></b><u>Buka log aktivitas</u></div>
+        </div>
+        <section class="panel" id="deptPanel">
+          <div class="panel-h"><h3>Monitor departemen</h3><p>Status input hari ini dan ringkasan angka tiap departemen — klik kartu untuk membuka dashboard</p></div>
+        <div id="deptGrid"></div>
+        </section>
         <div class="charts">
-          <div class="card"><h3>Outbound dan inbound bulan ini per departemen (ton)</h3><div class="chart-box"><canvas id="chBar"></canvas></div></div>
+          <div class="card"><h3>Outbound dan inbound per departemen (ton)</h3><div class="chart-box" id="barBox"><canvas id="chBar"></canvas></div></div>
           <div class="card"><h3>Porsi stock per departemen</h3><div class="chart-box"><canvas id="chDonut"></canvas></div></div>
         </div>
-        <div id="deptGrid"></div>
       </section>
 
       <section class="view" id="viewPlant"></section>
@@ -292,6 +359,7 @@ html{color-scheme:dark}
   </div>
 </div>
 <div id="toasts" aria-live="polite"></div>
+<div class="dm-bg" id="dmBg"><div class="dm" id="dm" role="dialog" aria-modal="true" aria-labelledby="dmTitle"><button class="dm-x" id="dmX" aria-label="Tutup"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><div id="dmBody"></div></div></div>
 <div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true"><h4 id="mTitle"></h4><p id="mText"></p><div class="row"><button class="ibtn" id="mNo">Batal</button><button class="ibtn gold" id="mYes">Kirim</button></div></div></div>
 
 <script>
@@ -311,7 +379,11 @@ html{color-scheme:dark}
   var ALLP = ['overview','ct','log','stock','outbound','inbound','kanban','rekap','loading','akurasi'];
   if (!IZIN || !IZIN.length) IZIN = ALLP;
   function can(k) { return IZIN.indexOf(k) !== -1; }
-  var DATA = {};      // key -> {st,out,inn} (kg) -- ringkas, disimpan ke localStorage utk tampil instan
+  var DATA = {};      // key -> {st,stP,stF,out,outP,outF,inn,inP,inF} (kg) bulan berjalan -- ringkas, disimpan ke localStorage
+  var CUS = {}, fvId = 0;   // data utk filter non-default (bulan/periode/tanggal stock lain)
+  var NOW = new Date(), FV = { bulan: String(NOW.getMonth() + 1), tahun: String(NOW.getFullYear()), dari: '', sampai: '', stock: '' };
+  function isDefault() { return FV.bulan === String(NOW.getMonth() + 1) && FV.tahun === String(NOW.getFullYear()) && !FV.dari && !FV.sampai && (!FV.stock || FV.stock === today()); }
+  function cur(k) { return isDefault() ? (DATA[k] || {}) : (CUS[k] || {}); }
   var ACT = {};       // 'tanggal|key' -> hasil log aktivitas | {loading:true} | {err:'..'}
   var state = { view: 'all', plant: '', ws: '' };
   var logDate = today(), logFilter = 'all';
@@ -362,6 +434,86 @@ html{color-scheme:dark}
     var t0 = performance.now(), dur = 900;
     (function step(t) { var k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = nf(from + (to - from) * e, dec); if (k < 1) requestAnimationFrame(step); })(t0);
   }
+
+  /* ---------- filter periode ---------- */
+  function monthBounds() { var y = +FV.tahun, m = +FV.bulan, last = new Date(y, m, 0).getDate(); return { a: y + '-' + pad(m) + '-01', b: y + '-' + pad(m) + '-' + pad(last) }; }
+  function periodText() {
+    var bl = BLN_FULL[+FV.bulan - 1] + ' ' + FV.tahun, dflt = isDefault();
+    var io = FV.dari || FV.sampai ? fmtTgl(FV.dari || monthBounds().a) + ' – ' + fmtTgl(FV.sampai || monthBounds().b) : (+FV.bulan === NOW.getMonth() + 1 && FV.tahun === String(NOW.getFullYear()) ? 'bulan berjalan (' + bl + ')' : bl);
+    return { io: io, stock: fmtTgl(FV.stock || today()), dflt: dflt };
+  }
+  function buildFilters() {
+    $('fMonth').innerHTML = BLN_FULL.map(function (n, i) { return '<option value="' + (i + 1) + '">' + n + '</option>'; }).join('');
+    var y = NOW.getFullYear(); $('fYear').innerHTML = [y - 2, y - 1, y].map(function (v) { return '<option value="' + v + '">' + v + '</option>'; }).join('');
+    syncFilters();
+    ['fMonth', 'fYear'].forEach(function (id) { $(id).addEventListener('change', function () { FV.bulan = $('fMonth').value; FV.tahun = $('fYear').value; FV.dari = FV.sampai = ''; applyFilters(); }); });
+    ['fFrom', 'fTo'].forEach(function (id) { $(id).addEventListener('change', function () { FV.dari = $('fFrom').value; FV.sampai = $('fTo').value; if (FV.dari && FV.sampai && FV.dari > FV.sampai) { var t = FV.dari; FV.dari = FV.sampai; FV.sampai = t; } applyFilters(); }); });
+    $('fStock').addEventListener('change', function () { FV.stock = $('fStock').value || today(); applyFilters(); });
+    $('fReset').onclick = function () { FV = { bulan: String(NOW.getMonth() + 1), tahun: String(NOW.getFullYear()), dari: '', sampai: '', stock: '' }; applyFilters(); };
+  }
+  function syncFilters() {
+    var b = monthBounds(); $('fMonth').value = FV.bulan; $('fYear').value = FV.tahun;
+    $('fFrom').min = $('fTo').min = b.a; $('fFrom').max = $('fTo').max = b.b; $('fFrom').value = FV.dari; $('fTo').value = FV.sampai;
+    $('fStock').max = today(); $('fStock').value = FV.stock || today();
+    var t = periodText(); $('fNote').innerHTML = 'Outbound &amp; inbound: <b>' + esc(t.io) + '</b> · Stock per <b>' + esc(t.stock) + '</b>' + (t.dflt ? '' : ' · <b>filter aktif</b>');
+    $('fReset').style.visibility = t.dflt ? 'hidden' : 'visible';
+  }
+  function applyFilters() {
+    syncFilters(); var id = ++fvId; CUS = {};
+    if (isDefault()) { renderSummary._sig = ''; WS.forEach(function (w) { updateCard(w.key); }); scheduleSummary(); return; }
+    var q = WS.slice(), busy = 0; $('fNote').insertAdjacentHTML('beforeend', ' · <span id="fBusy" style="color:var(--gold)">memuat…</span>');
+    var ioP = (FV.dari || FV.sampai) ? { dari: FV.dari || monthBounds().a, sampai: FV.sampai || monthBounds().b } : { bulan: FV.bulan, tahun: FV.tahun }, sd = FV.stock || today();
+    function next() {
+      while (busy < 4 && q.length) (function (w) {
+        busy++; var k = w.key, d = CUS[k] = {}, left = 0, finish = function () { if (--left <= 0) { busy--; next(); if (!busy && !q.length && id === fvId && $('fBusy')) $('fBusy').remove(); } };
+        function go(fn, args, ok) { left++; run(k, fn, args, function (r) { if (id !== fvId) { finish(); return; } ok(r); updateCard(k); scheduleSummary(); finish(); }, finish); }
+        if (can('stock')) go('getDashboardData', ['harian', { dari: sd, sampai: sd }], function (r) { parseStock(r, d); });
+        if (can('outbound')) go('getOutboundData', [ioP], function (r) { parseIO(r, d, 'out', 'outP', 'outF'); });
+        if (can('inbound')) go('getInboundData', [ioP], function (r) { parseIO(r, d, 'inn', 'inP', 'inF'); });
+        if (!left) { busy--; }
+      })(q.shift());
+    }
+    renderSummary._sig = ''; WS.forEach(function (w) { updateCard(w.key); }); scheduleSummary(); next();
+  }
+
+  /* ---------- kartu rincian (stock / outbound / inbound) ---------- */
+  var DM = { st: { t: 'Stock', ttl: 'Rincian stock', c: '#8fd0ff', ico: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>' },
+             out: { t: 'Outbound', ttl: 'Rincian outbound', c: '#f0cb88', ico: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>' },
+             inn: { t: 'Inbound', ttl: 'Rincian inbound', c: '#7fd9cc', ico: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/>' } };
+  var dmLast = null;
+  function openDetail(kind) {
+    var m = DM[kind]; if (!m) return; dmLast = document.activeElement;
+    var kp = kind + 'P', kf = kind === 'inn' ? 'inF' : kind + 'F', kpp = kind === 'inn' ? 'inP' : kind + 'P';
+    var tot = 0, P = 0, F = 0, rows = [];
+    plants().forEach(function (pl) {
+      var pt = 0, pp = 0, pf = 0, dep = [];
+      pl.items.forEach(function (w) { var d = cur(w.key), t = +d[kind] || 0, a = +d[kpp] || 0, f = +d[kf] || 0; pt += t; pp += a; pf += f; dep.push({ w: w, t: t, p: a, f: f }); });
+      tot += pt; P += pp; F += pf; rows.push({ pl: pl, t: pt, p: pp, f: pf, dep: dep });
+    });
+    var oth = Math.max(0, tot - P - F); if (oth < 1) oth = 0;
+    var per = periodText(), when = kind === 'st' ? 'Per ' + per.stock : per.io, mx = 0; rows.forEach(function (r) { r.dep.forEach(function (d) { if (d.t > mx) mx = d.t; }); });
+    function pct(v) { return tot ? Math.round(v * 100 / tot) : 0; }
+    function bar(t, a, f, base) { var o = Math.max(0, t - a - f); return '<div class="dm-bar" data-bar><i style="background:#8fd0ff" data-w="' + (base ? a * 100 / base : 0) + '"></i><i style="background:#f0cb88" data-w="' + (base ? f * 100 / base : 0) + '"></i><i style="background:#aaa3ff" data-w="' + (base ? o * 100 / base : 0) + '"></i></div>'; }
+    var h = '<div class="dm-head" style="--dc:' + m.c + '"><span class="dm-ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + m.ico + '</svg></span><div><h3 id="dmTitle">' + m.ttl + '</h3><p>' + esc(when) + ' · seluruh plant dan departemen</p></div></div>';
+    h += '<div class="dm-stats"><div class="dm-stat" style="--c:' + m.c + ';--i:0"><span>Total ' + m.t.toLowerCase() + '</span><b><i data-cnt="' + ton(tot) + '">0</i><em>ton</em></b><small>' + WS.length + ' departemen</small></div>' +
+      '<div class="dm-stat" style="--c:#8fd0ff;--i:1"><span>Pipa</span><b><i data-cnt="' + ton(P) + '">0</i><em>ton</em></b><small>' + pct(P) + '% dari total</small></div>' +
+      '<div class="dm-stat" style="--c:#f0cb88;--i:2"><span>Fitting</span><b><i data-cnt="' + ton(F) + '">0</i><em>ton</em></b><small>' + pct(F) + '% dari total</small></div>' +
+      (oth ? '<div class="dm-stat" style="--c:#aaa3ff;--i:3"><span>Lainnya</span><b><i data-cnt="' + ton(oth) + '">0</i><em>ton</em></b><small>' + pct(oth) + '% dari total</small></div>' : '') + '</div>';
+    h += '<div class="dm-split">' + bar(tot, P, F, tot) + '<div class="dm-leg"><span>Pipa <b>' + pct(P) + '%</b></span><span>Fitting <b>' + pct(F) + '%</b></span>' + (oth ? '<span>Lainnya <b>' + pct(oth) + '%</b></span>' : '') + '</div></div>';
+    h += '<h4>Per plant dan departemen</h4>'; var ix = 0;
+    rows.forEach(function (r) {
+      h += '<div class="dm-row plant" style="--i:' + (ix++) + '"><div class="nm">' + esc(r.pl.name) + '<small>' + r.pl.items.length + ' departemen</small></div>' + bar(r.t, r.p, r.f, r.t || 1) + '<div class="v">' + nf(ton(r.t), 1) + ' ton<small>Pipa ' + nf(ton(r.p), 1) + ' · Fitting ' + nf(ton(r.f), 1) + '</small></div></div>';
+      r.dep.forEach(function (d) { h += '<div class="dm-row dept" style="--i:' + (ix++) + '"><div class="nm">' + esc(d.w.deptLabel) + '</div>' + bar(d.t, d.p, d.f, mx || 1) + '<div class="v">' + nf(ton(d.t), 1) + ' ton<small>Pipa ' + nf(ton(d.p), 1) + ' · Fitting ' + nf(ton(d.f), 1) + '</small></div></div>'; });
+    });
+    if (!tot) h += '<div class="empty" style="margin-top:14px">Belum ada data untuk periode ini.</div>';
+    $('dmBody').innerHTML = h; $('dmBg').classList.add('on');
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      $('dmBody').querySelectorAll('[data-w]').forEach(function (e) { e.style.width = Math.min(100, +e.dataset.w) + '%'; });
+      $('dmBody').querySelectorAll('[data-cnt]').forEach(function (e) { e.dataset.v = 0; countTo(e, +e.dataset.cnt, 1); });
+    }); });
+    $('dmX').focus();
+  }
+  function closeDetail() { $('dmBg').classList.remove('on'); if (dmLast && dmLast.focus) try { dmLast.focus(); } catch (e) {} }
 
   /* ---------- struktur plant ---------- */
   function plants() {
@@ -435,7 +587,7 @@ html{color-scheme:dark}
     });
   }
   function updateCard(key) {
-    var d = DATA[key] || {}, a = ACT[today() + '|' + key];
+    var d = cur(key), a = ACT[today() + '|' + key];
     document.querySelectorAll('[data-card="' + key + '"]').forEach(function (c) {
       function f(n) { return c.querySelector('[data-f="' + n + '"]'); }
       [['stock', d.st], ['out', d.out], ['inn', d.inn]].forEach(function (p) {
@@ -455,7 +607,7 @@ html{color-scheme:dark}
   function lastData(a) { var m = ''; (a.items || []).forEach(function (i) { if (i.terakhir && i.terakhir > m) m = i.terakhir; }); return m; }
 
   /* ---------- ringkasan all plant ---------- */
-  var chBar = null, chDonut = null, renderTimer = 0;
+  var chBar = null, chDonut = null, renderTimer = 0, chartsInit = false;
   function scheduleSummary() { if (renderTimer) return; renderTimer = setTimeout(function () { renderTimer = 0; renderSummary(); }, 250); }
   function saveCache() {
     try {
@@ -466,7 +618,7 @@ html{color-scheme:dark}
   function renderSummary() {
     var s = 0, o = 0, i = 0, ok = 0, bad = 0, known = 0;
     WS.forEach(function (w) {
-      var d = DATA[w.key] || {}, a = ACT[today() + '|' + w.key];
+      var d = cur(w.key), a = ACT[today() + '|' + w.key];
       s += +d.st || 0; o += +d.out || 0; i += +d.inn || 0;
       if (a && a.success) { known++; if (a.lengkap) ok++; else bad++; }
     });
@@ -479,19 +631,23 @@ html{color-scheme:dark}
     $('logBadge').textContent = bad ? bad : '';
     saveCache();
     if (!window.Chart) return;
-    var labels = WS.map(function (w) { return w.deptLabel.replace(/^Warehouse /, 'WH ') + ' · ' + w.plantLabel.replace(/^Plant /, ''); });
-    var outs = WS.map(function (w) { return +ton((DATA[w.key] || {}).out).toFixed(1); });
-    var ins = WS.map(function (w) { return +ton((DATA[w.key] || {}).inn).toFixed(1); });
-    var stk = WS.map(function (w) { return +ton((DATA[w.key] || {}).st).toFixed(1); });
-    var grid = 'rgba(160,180,255,.07)', tick = '#94a1c0';
-    if (!chBar) {
+    var labels = WS.map(function (w) { return [w.deptLabel.replace(/^Warehouse /, 'WH '), w.plantLabel]; });
+    var lblShort = WS.map(function (w) { return w.deptLabel.replace(/^Warehouse /, 'WH ') + ' · ' + w.plantLabel.replace(/^Plant /, ''); });
+    var outs = WS.map(function (w) { return +ton(cur(w.key).out).toFixed(1); });
+    var ins = WS.map(function (w) { return +ton(cur(w.key).inn).toFixed(1); });
+    var stk = WS.map(function (w) { return +ton(cur(w.key).st).toFixed(1); });
+    var sig = JSON.stringify([outs, ins, stk]); if (sig === renderSummary._sig && chartsInit) return; renderSummary._sig = sig;
+    var grid = 'rgba(160,180,255,.08)', tick = '#a9b5d3';
+    if (!chartsInit) {
+      chartsInit = true;
       Chart.defaults.animation = { duration: REDUCE ? 0 : 1300, easing: 'easeOutQuart', delay: function (c) { return (!REDUCE && c.type === 'data' && c.mode === 'default') ? c.dataIndex * 90 + c.datasetIndex * 140 : 0; } };
       Chart.register({ id: 'dhPremium',
         beforeDatasetsDraw: function (ch) {
           if (ch.config.type !== 'bar' || !ch.chartArea) return; var a = ch.chartArea;
           ch.data.datasets.forEach(function (ds, di) {
             var base = ds._base || (ds._base = ds.backgroundColor); if (typeof base !== 'string') return;
-            var g = ch.ctx.createLinearGradient(0, a.top, 0, a.bottom); g.addColorStop(0, base); g.addColorStop(1, base + '33');
+            var hz = ch.options.indexAxis === 'y', g = hz ? ch.ctx.createLinearGradient(a.left, 0, a.right, 0) : ch.ctx.createLinearGradient(0, a.top, 0, a.bottom);
+            if (hz) { g.addColorStop(0, base + '55'); g.addColorStop(1, base); } else { g.addColorStop(0, base); g.addColorStop(1, base + '33'); }
             ch.getDatasetMeta(di).data.forEach(function (el) { el.options.backgroundColor = g; });
           });
         },
@@ -502,13 +658,20 @@ html{color-scheme:dark}
         } });
       Chart.defaults.font.family = "'Plus Jakarta Sans',system-ui,sans-serif"; Chart.defaults.color = tick;
       var ds = []; if (can('outbound')) ds.push({ label: 'Outbound', data: outs, backgroundColor: '#f0cb88', borderRadius: 12, borderSkipped: false, barPercentage: .62, _k: 'o' }); if (can('inbound')) ds.push({ label: 'Inbound', data: ins, backgroundColor: '#7fd9cc', borderRadius: 12, borderSkipped: false, barPercentage: .62, _k: 'i' });
-      if (ds.length) chBar = new Chart($('chBar'), { type: 'bar', data: { labels: labels, datasets: ds },
-        options: { responsive: true, maintainAspectRatio: false, animation: { duration: REDUCE ? 0 : 900, easing: 'easeOutQuart' }, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } }, tooltip: { callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + nf(c.parsed.y, 1) + ' ton'; } } } }, scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: false, font: { size: 10 } } }, y: { grid: { color: grid }, ticks: { callback: function (v) { return nf(v); } } } } } });
-      if (can('stock')) chDonut = new Chart($('chDonut'), { type: 'doughnut', data: { labels: labels, datasets: [{ data: stk, backgroundColor: PALETTE, borderWidth: 0, spacing: 5, borderRadius: 12, hoverOffset: 14 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } }, tooltip: { callbacks: { label: function (c) { return ' ' + c.label + ': ' + nf(c.parsed, 1) + ' ton'; } } } } } });
+      if (ds.length) {
+        $('barBox').style.height = Math.max(300, WS.length * 66 + 96) + 'px';
+        chBar = new Chart($('chBar'), { type: 'bar', data: { labels: labels, datasets: ds },
+          options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, layout: { padding: { right: 8 } },
+            plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 9, padding: 18, color: '#d7dff3', font: { size: 13, weight: '600' } } },
+              tooltip: { padding: 12, cornerRadius: 12, titleFont: { size: 13, weight: '700' }, bodyFont: { size: 12.5 }, callbacks: { title: function (it) { return (it[0].label || '').split(',').join(' · '); }, label: function (c) { return ' ' + c.dataset.label + ': ' + nf(c.parsed.x, 1) + ' ton'; } } } },
+            scales: { y: { grid: { display: false }, border: { display: false }, ticks: { color: '#e3e9f8', font: { size: 12.5, weight: '600' }, padding: 8 } },
+              x: { grid: { color: grid }, border: { display: false }, ticks: { color: tick, font: { size: 12 }, callback: function (v) { return nf(v); } }, title: { display: true, text: 'ton', color: '#94a1c0', font: { size: 12 } } } } } });
+      }
+      if (can('stock')) chDonut = new Chart($('chDonut'), { type: 'doughnut', data: { labels: lblShort, datasets: [{ data: stk, backgroundColor: PALETTE, borderWidth: 0, spacing: 5, borderRadius: 12, hoverOffset: 14 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 9, padding: 12, color: '#d7dff3', font: { size: 12 } } }, tooltip: { padding: 12, cornerRadius: 12, callbacks: { label: function (c) { return ' ' + c.label + ': ' + nf(c.parsed, 1) + ' ton'; } } } } } });
     } else {
-      chBar.data.labels = labels; chBar.data.datasets.forEach(function (x) { x.data = x._k === 'o' ? outs : ins; }); chBar.update();
-      if (chDonut) { chDonut.data.labels = labels; chDonut.data.datasets[0].data = stk; chDonut.update(); }
+      if (chBar) { chBar.data.labels = labels; chBar.data.datasets.forEach(function (x) { x.data = x._k === 'o' ? outs : ins; }); chBar.update(); }
+      if (chDonut) { chDonut.data.labels = lblShort; chDonut.data.datasets[0].data = stk; chDonut.update(); }
     }
   }
   // Sembunyikan bagian ringkasan yang tidak diizinkan Super Admin utk akun ini
@@ -520,6 +683,7 @@ html{color-scheme:dark}
     var both = (can('outbound') || can('inbound')) && can('stock'); $('viewAll').querySelector('.charts').style.gridTemplateColumns = both ? '' : '1fr';
     hide($('viewAll').querySelector('.charts'), !(can('outbound') || can('inbound') || can('stock')));
     hide($('heroRing'), !can('log')); hide($('heroT1').parentNode, !can('log'));
+    hide($('filters'), !(can('stock') || can('outbound') || can('inbound')));
     hide($('navAll'), !can('overview')); hide($('navLog'), !can('log')); hide($('navSep'), !can('ct')); hide($('navPlants'), !can('ct'));
   }
   function buildOverview() {
@@ -559,9 +723,13 @@ html{color-scheme:dark}
   function actFromSnap(sn, tgl, w) {
     var a = sn && sn.aktivitas; if (!a || !a.items || tgl < (a.valid || '9999')) return null;
     var up = UPL[w.key] || {};
+    var prev = addDays(tgl, -1);
+    if (prev < (a.valid || '9999')) return null;
     var items = a.items.map(function (i) {
-      var c = (i.byDate && i.byDate[tgl]) || 0, u = (up[i.key] && up[i.key].days && up[i.key].days[tgl]) || 0;
-      return { key: i.key, label: i.label, wajib: i.wajib, ada: c > 0 || u > 0, jumlah: Math.max(c, u), terakhir: i.last || '', uploadTerakhir: (up[i.key] && up[i.key].t) || '', error: '' };
+      var tol = (i.key === 'outbound' || i.key === 'inbound'), by = i.byDate || {}, ud = (up[i.key] && up[i.key].days) || {};
+      var c = by[tgl] || 0, u = ud[tgl] || 0, via = '', jml = Math.max(c, u), ada = jml > 0;
+      if (!ada && tol) { var cp = Math.max(by[prev] || 0, ud[prev] || 0); if (cp > 0) { ada = true; jml = cp; via = 'H-1'; } }   // data H-1 tetap dianggap sudah diupload
+      return { key: i.key, label: i.label, wajib: i.wajib, ada: ada, jumlah: jml, via: via, terakhir: i.last || '', uploadTerakhir: (up[i.key] && up[i.key].t) || '', error: '' };
     });
     var wj = 0, ok = 0; items.forEach(function (i) { if (i.wajib) { wj++; if (i.ada) ok++; } });
     var up_t = uplMax(up), dc = (sn.dibuat || '') > up_t ? (sn.dibuat || '') : up_t;
@@ -574,7 +742,7 @@ html{color-scheme:dark}
       if (m.upl[w.key]) UPL[w.key] = m.upl[w.key];
       var sn = m.sum[w.key]; if (!sn) { miss.push(w); return; }
       SNAP[w.key] = sn; var d = DATA[w.key] = DATA[w.key] || {};
-      if (sn.st != null && d.st !== sn.st) { d.st = sn.st; changed = true; } if (sn.out != null && d.out !== sn.out) { d.out = sn.out; changed = true; } if (sn.inn != null && d.inn !== sn.inn) { d.inn = sn.inn; changed = true; }
+      ['st', 'stP', 'stF', 'out', 'outP', 'outF', 'inn', 'inP', 'inF'].forEach(function (f) { if (sn[f] != null && d[f] !== sn[f]) { d[f] = sn[f]; changed = true; } });
       if (sn.dibuat && sn.dibuat > snapTime) snapTime = sn.dibuat;
       dates.forEach(function (tgl) {
         var k = tgl + '|' + w.key, cur = ACT[k], n = actFromSnap(sn, tgl, w);
@@ -611,6 +779,11 @@ html{color-scheme:dark}
   function loadWs(w, force) {
     loadQ.push({ w: w, force: force }); pump();
   }
+  function parseStock(r, d) {
+    var t = r && r.stock && r.stock.tonase; if (!t) return;
+    d.st = +t.total || 0; d.stP = (+t.pipaGreen || 0) + (+t.pipaGrey || 0); d.stF = (+t.fittingGreen || 0) + (+t.fittingGrey || 0);
+  }
+  function parseIO(r, d, kt, kp, kf) { if (r && r.total != null) { d[kt] = +r.total || 0; d[kp] = +r.pipa || 0; d[kf] = +r.fitting || 0; } }
   function prioritize(keys) {
     keys.forEach(function (k) { for (var i = 0; i < loadQ.length; i++) if (loadQ[i].w.key === k) { loadQ.unshift(loadQ.splice(i, 1)[0]); break; } });
   }
@@ -624,9 +797,9 @@ html{color-scheme:dark}
         var marks = {}, finished = 0, guard = setTimeout(function () { need.forEach(mark); }, 25000);
         // Tiap sumber ditandai selesai SEKALI (shim bisa memanggil handler 2x: cache lalu data segar); gagal/timeout tidak menahan antrean.
         function mark(x) { if (marks[x]) return; marks[x] = 1; if (++finished >= need.length) { clearTimeout(guard); loading--; pump(); } }
-        if (can('stock')) run(k, 'getDashboardData', ['harian', { dari: today(), sampai: today() }], function (r) { if (r && r.stock && r.stock.tonase) d.st = +r.stock.tonase.total || 0; updateCard(k); scheduleSummary(); mark('s'); }, function () { mark('s'); });
-        if (can('outbound')) run(k, 'getOutboundData', [p], function (r) { if (r && r.total != null) d.out = +r.total || 0; updateCard(k); scheduleSummary(); mark('o'); }, function () { mark('o'); });
-        if (can('inbound')) run(k, 'getInboundData', [p], function (r) { if (r && r.total != null) d.inn = +r.total || 0; updateCard(k); scheduleSummary(); mark('i'); }, function () { mark('i'); });
+        if (can('stock')) run(k, 'getDashboardData', ['harian', { dari: today(), sampai: today() }], function (r) { parseStock(r, d); updateCard(k); scheduleSummary(); mark('s'); }, function () { mark('s'); });
+        if (can('outbound')) run(k, 'getOutboundData', [p], function (r) { parseIO(r, d, 'out', 'outP', 'outF'); updateCard(k); scheduleSummary(); mark('o'); }, function () { mark('o'); });
+        if (can('inbound')) run(k, 'getInboundData', [p], function (r) { parseIO(r, d, 'inn', 'inP', 'inF'); updateCard(k); scheduleSummary(); mark('i'); }, function () { mark('i'); });
         if (can('log')) loadAct(w, today(), !!job.force, function () { mark('a'); });
       })(loadQ.shift());
     }
@@ -686,7 +859,7 @@ html{color-scheme:dark}
     var chips = a.items.map(function (i) {
       if (i.error) return '<span class="chip miss" title="' + esc(i.error) + '">' + esc(i.label) + ' · error</span>';
       if (!i.wajib) return '<span class="chip na" title="Menu Upload Data Harian tidak dicentang untuk departemen ini (Kelola User > Kelola Menu)">' + esc(i.label) + ' · tidak wajib</span>';
-      return i.ada ? '<span class="chip ok">✓ ' + esc(i.label) + ' · ' + nf(i.jumlah) + ' baris' + (i.uploadTerakhir && i.uploadTerakhir.slice(0, 10) === logDate ? ' · ' + i.uploadTerakhir.slice(11, 16) : '') + '</span>'
+      return i.ada ? '<span class="chip ok"' + (i.via ? ' title="Data tanggal sebelumnya (H-1) dianggap sudah diupload"' : '') + '>✓ ' + esc(i.label) + (i.via ? ' (H-1)' : '') + ' · ' + nf(i.jumlah) + ' baris' + (i.uploadTerakhir && i.uploadTerakhir.slice(0, 10) === logDate ? ' · ' + i.uploadTerakhir.slice(11, 16) : '') + '</span>'
         : '<span class="chip miss">✕ ' + esc(i.label) + ' · belum' + (i.terakhir ? ', terakhir ' + fmtTgl(i.terakhir).replace(/ \d{4}$/, '') : '') + '</span>';
     }).join('');
     var last = lastData(a), gap = last ? Math.round((new Date(logDate + 'T00:00:00Z') - new Date(last + 'T00:00:00Z')) / 86400000) : null;
@@ -784,6 +957,8 @@ html{color-scheme:dark}
   /* ---------- event ---------- */
   document.addEventListener('click', function (e) {
     var t;
+    if ((t = e.target.closest('[data-detail]'))) { openDetail(t.dataset.detail); return; }
+    if (e.target === $('dmBg') || e.target.closest('#dmX')) { closeDetail(); return; }
     if ((t = e.target.closest('[data-go]'))) { go(t.dataset.go === 'all' ? 'all' : t.dataset.go); return; }
     if ((t = e.target.closest('[data-plant-go]'))) { go('plant=' + t.dataset.plantGo); return; }
     if ((t = e.target.closest('[data-ws-go]'))) { go('dept=' + t.dataset.wsGo); return; }
@@ -818,6 +993,7 @@ html{color-scheme:dark}
     if (typeof window.clearApiCache === 'function') window.clearApiCache();
     if (state.view === 'dept') { var f = frames[state.ws]; if (f) { f.dataset.ready = ''; $('cover').classList.remove('off'); f.src = f.src; } return; }
     if (state.view === 'log') { ic.classList.add('spin'); loadLog(true, function () { ic.classList.remove('spin'); }); return; }
+    if (!isDefault()) applyFilters();
     loadFromSnapshots(function (miss) { miss.forEach(function (w) { loadWs(w, true); }); });
     WS.forEach(function (w) { loadAct(w, today(), true); });
   };
@@ -838,7 +1014,10 @@ html{color-scheme:dark}
     b.style.setProperty('--px', ((e.clientX / window.innerWidth) - .5).toFixed(3)); b.style.setProperty('--py', ((e.clientY / window.innerHeight) - .5).toFixed(3));
   }, { passive: true });
   window.addEventListener('hashchange', route);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { $('modalBg').classList.remove('on'); $('rail').classList.remove('open'); } });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeDetail(); $('modalBg').classList.remove('on'); $('rail').classList.remove('open'); }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('click')) { e.preventDefault(); e.target.click(); }
+  });
   setInterval(pollSnapshots, 12000);   // perubahan upload plant masuk dlm <= ~12 dtk (tanpa kedip)
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pollSnapshots(); });
 
@@ -847,7 +1026,7 @@ html{color-scheme:dark}
     if (!WS.length) { $('deptGrid').innerHTML = '<div class="empty">Akun ini belum punya plant/departemen aktif. Hubungi Super Admin.</div>'; return; }
     try { if (localStorage.getItem('dh_rail') === '1' && window.innerWidth > 860) $('app').classList.add('collapsed'); } catch (e) {}
     try { var c = JSON.parse(localStorage.getItem('dh_cache::' + NIK) || 'null'); if (c && c.data) { DATA = c.data; if (c.day === today() && c.act) Object.keys(c.act).forEach(function (k) { ACT[k] = c.act[k]; }); } } catch (e) {}
-    buildRail(); buildTabs(); buildOverview(); applyPerms(); syncQuick(); route();
+    buildRail(); buildTabs(); buildOverview(); buildFilters(); applyPerms(); syncQuick(); route();
     WS.forEach(function (w) { updateCard(w.key); }); renderSummary();   // tampil instan dari data sesi sebelumnya, lalu disegarkan
     loadFromSnapshots(function (miss) { miss.forEach(function (w) { loadWs(w, false); }); });
     var cur = parseHash(); if (cur.view === 'dept') prioritize([cur.ws]); else if (cur.view === 'plant') { var pp = plants().filter(function (x) { return x.name === cur.plant; })[0]; if (pp) prioritize(pp.items.map(function (x) { return x.key; })); }

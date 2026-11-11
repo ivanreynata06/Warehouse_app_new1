@@ -11581,16 +11581,16 @@ function _divheadDatasetDefs() {
   try { wajib = _resolveMenuKeysForWorkspace(ACTIVE_WORKSPACE).indexOf('upload') !== -1; } catch (e) { wajib = false; }
   return [
     { key: 'stock',    label: 'Stock',    sheet: SH_STOCK,    col: 10, wajib: wajib },
-    { key: 'outbound', label: 'Outbound', sheet: SH_KIRIM,    col: 5,  wajib: wajib },
-    { key: 'inbound',  label: 'Inbound',  sheet: SH_PRODUKSI, col: 5,  wajib: wajib }
+    { key: 'outbound', label: 'Outbound', sheet: SH_KIRIM,    col: 5,  wajib: wajib, tol: 1 },   // tol: data H-1 tetap dianggap sudah diupload
+    { key: 'inbound',  label: 'Inbound',  sheet: SH_PRODUKSI, col: 5,  wajib: wajib, tol: 1 }
   ];
 }
 // Baca kolom tanggal (jendela baris terakhir dulu; kalau tanggal yg dicari lebih lama dari jendela -> baca penuh).
-function _divheadScanTanggal(sheet, col, targetKey, tz) {
+function _divheadScanTanggal(sheet, col, targetKey, tz, prevKey) {
   var last = sheet.getLastRow();
-  if (last < 2) return { count: 0, lastKey: '' };
+  if (last < 2) return { count: 0, countPrev: 0, lastKey: '' };
   function scan(from) {
-    var vals = sheet.getRange(from, col, last - from + 1, 1).getValues(), maxKey = '', minKey = '', cnt = 0;
+    var vals = sheet.getRange(from, col, last - from + 1, 1).getValues(), maxKey = '', minKey = '', cnt = 0, cntPrev = 0;
     for (var i = 0; i < vals.length; i++) {
       var v = vals[i][0];
       if (v === '' || v === null) continue;
@@ -11599,13 +11599,13 @@ function _divheadScanTanggal(sheet, col, targetKey, tz) {
       var k = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
       if (k > maxKey) maxKey = k;
       if (!minKey || k < minKey) minKey = k;
-      if (k === targetKey) cnt++;
+      if (k === targetKey) cnt++; else if (prevKey && k === prevKey) cntPrev++;
     }
-    return { count: cnt, lastKey: maxKey, minKey: minKey };
+    return { count: cnt, countPrev: cntPrev, lastKey: maxKey, minKey: minKey };
   }
   var win = Math.max(2, last - 7999);
   var r = scan(win);
-  if (win > 2 && r.minKey && r.minKey > targetKey) r = scan(2); // tanggal yg dicari di luar jendela -> baca semua
+  if (win > 2 && r.minKey && r.minKey > (prevKey || targetKey)) r = scan(2); // tanggal yg dicari di luar jendela -> baca semua
   return r;
 }
 function _divheadHitungAktivitas(tanggal, force) {
@@ -11613,6 +11613,7 @@ function _divheadHitungAktivitas(tanggal, force) {
   var targetKey = /^\d{4}-\d{2}-\d{2}$/.test(String(tanggal || '')) ? String(tanggal) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   var cache = CacheService.getScriptCache(), ck = 'dhact::' + ACTIVE_WORKSPACE + '::' + targetKey;
   if (!force) { try { var hit = cache.get(ck); if (hit) return JSON.parse(hit); } catch (e) {} }
+  var prevKey = new Date(Date.parse(targetKey + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
   var upl = _divheadUplGet(ACTIVE_WORKSPACE);
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID), items = [], wajibTotal = 0, wajibOk = 0;
   _divheadDatasetDefs().forEach(function (def) {
@@ -11621,15 +11622,18 @@ function _divheadHitungAktivitas(tanggal, force) {
       var sh = ss.getSheetByName(def.sheet);
       if (!sh) it.error = 'Sheet ' + def.sheet + ' tidak ada';
       else {
-        var r = _divheadScanTanggal(sh, def.col, targetKey, tz);
+        var r = _divheadScanTanggal(sh, def.col, targetKey, tz, def.tol ? prevKey : '');
         it.jumlah = r.count; it.ada = r.count > 0; it.terakhir = r.lastKey;
+        if (!it.ada && def.tol && r.countPrev > 0) { it.ada = true; it.jumlah = r.countPrev; it.via = 'H-1'; }
         if (r.lastKey) it.selisihHari = Math.round((new Date(targetKey + 'T00:00:00Z') - new Date(r.lastKey + 'T00:00:00Z')) / 86400000);
       }
     } catch (e) { it.error = e.message; }
     var ul = (upl[def.key] || {});
     it.uploadTerakhir = ul.t || '';
     var uh = (ul.days && ul.days[targetKey]) || 0;
-    if (uh > 0) { it.ada = true; it.jumlah = Math.max(it.jumlah, uh); }   // ada upload pada tanggal itu = sudah diinput
+    var uhp = def.tol ? ((ul.days && ul.days[prevKey]) || 0) : 0;
+    if (uh > 0) { it.ada = true; it.jumlah = Math.max(it.jumlah, uh); it.via = ''; }   // ada upload pada tanggal itu = sudah diinput
+    else if (!it.ada && uhp > 0) { it.ada = true; it.jumlah = uhp; it.via = 'H-1'; }
     if (def.wajib) { wajibTotal++; if (it.ada) wajibOk++; }
     items.push(it);
   });
@@ -11718,20 +11722,16 @@ function _divheadBuildSummary(workspaceKey, pre) {
   var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
   var startKey = Utilities.formatDate(new Date(now.getTime() - 20 * 86400000), tz, 'yyyy-MM-dd');
   var bulan = String(now.getMonth() + 1), tahun = String(now.getFullYear());
-  var st = null, out = null, inn = null;
+  var st = null, out = null, inn = null, stP = null, stF = null, outP = null, outF = null, inP = null, inF = null;
   try {
     var sh = pre.stockHarian || getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' });
-    if (sh && sh.stock && sh.stock.tonase) st = +sh.stock.tonase.total || 0;
+    if (sh && sh.stock && sh.stock.tonase) { var tn = sh.stock.tonase; st = +tn.total || 0; stP = (+tn.pipaGreen || 0) + (+tn.pipaGrey || 0); stF = (+tn.fittingGreen || 0) + (+tn.fittingGrey || 0); }
   } catch (e) {}
   try {
-    var io = pre.ioTrend;
-    if (io && io.success && io.results && io.results.length) {
-      var lr = io.results[io.results.length - 1];
-      out = +((lr.out && lr.out.total) || 0); inn = +((lr['in'] && lr['in'].total) || 0);
-    } else {
-      var o = getOutboundData({ bulan: bulan, tahun: tahun }), i2 = getInboundData({ bulan: bulan, tahun: tahun });
-      out = +(o && o.total) || 0; inn = +(i2 && i2.total) || 0;
-    }
+    // selalu ambil langsung (butuh pecahan pipa/fitting); dijalankan di background sync, bukan saat pengguna menunggu
+    var o = getOutboundData({ bulan: bulan, tahun: tahun }), i2 = getInboundData({ bulan: bulan, tahun: tahun });
+    out = +(o && o.total) || 0; outP = +(o && o.pipa) || 0; outF = +(o && o.fitting) || 0;
+    inn = +(i2 && i2.total) || 0; inP = +(i2 && i2.pipa) || 0; inF = +(i2 && i2.fitting) || 0;
   } catch (e) {}
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID), valid = startKey, items = [];
   _divheadDatasetDefs().forEach(function (def) {
@@ -11744,7 +11744,7 @@ function _divheadBuildSummary(workspaceKey, pre) {
   });
   var terakhirEdit = '';
   try { terakhirEdit = Utilities.formatDate(DriveApp.getFileById(SPREADSHEET_ID).getLastUpdated(), tz, 'yyyy-MM-dd HH:mm'); } catch (e) {}
-  return { success: true, tanggal: todayStr, st: st, out: out, inn: inn,
+  return { success: true, tanggal: todayStr, st: st, out: out, inn: inn, stP: stP, stF: stF, outP: outP, outF: outF, inP: inP, inF: inF,
     aktivitas: { items: items, valid: valid, terakhirEdit: terakhirEdit, label: WORKSPACE_LABELS[workspaceKey] || workspaceKey },
     dibuat: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss') };
 }
