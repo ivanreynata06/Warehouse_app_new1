@@ -118,6 +118,7 @@
     if (!can('kanban')) { kpi('kpi-rak-pipa'); kpi('kpi-rak-fit'); section('Kapasitas Rak'); }
     if (!can('loading')) { var lt = document.querySelector('.kpi-card.c-red'); hideEl(lt); section('Loading Time'); }
     if (!can('rekap')) hideEl(document.getElementById('section-rekap-muatan'));
+    if (!can('fte')) { var fc = document.getElementById('kpi-fte-card'); if (fc) { fc.setAttribute('hidden', ''); fc.style.display = 'none'; } }
     if (!can('akurasi')) { var ak = document.getElementById('section-akurasi'); if (ak) { ak.setAttribute('hidden', ''); ak.style.display = 'none'; ak.removeAttribute('data-show'); new MutationObserver(function () { ak.setAttribute('hidden', ''); ak.style.display = 'none'; }).observe(ak, { attributes: true, attributeFilter: ['hidden', 'style'] }); } }
   }
 

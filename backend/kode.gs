@@ -125,6 +125,9 @@ var API_FUNCTIONS = {
   adminSetDivisiHead: adminSetDivisiHead,
   adminHapusDivisiHead: adminHapusDivisiHead,
   adminGetKategoriGroup: adminGetKategoriGroup,
+  getCtSettings: getCtSettings,
+  adminGetCtSettings: adminGetCtSettings,
+  adminSetCtSettings: adminSetCtSettings,
   adminSetKategoriGroup: adminSetKategoriGroup,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
@@ -242,14 +245,14 @@ var AUTH_ACTOR_BOUND = {
   adminGetSplJobBagian: 1, adminSetSplJobBagian: 1, adminHapusSplSignature: 1, adminSetSplTtdCutoff: 1, adminSetSplTtdUkuran: 1,
   adminSetJadwalPengirimanSumber: 1, adminGetJadwalPengirimanSumberStatus: 1,
   divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1, adminGetDivisiHead: 1, adminSetDivisiHead: 1, adminHapusDivisiHead: 1,
-  adminGetKategoriGroup: 1, adminSetKategoriGroup: 1
+  adminGetKategoriGroup: 1, adminSetKategoriGroup: 1, adminGetCtSettings: 1, adminSetCtSettings: 1
 };
 var CURRENT_AUTH = null;   // diisi handleApiRequest: { w, n, r } bila token valid
 
 // Aksi yang boleh dipanggil token Divisi Head -- HANYA baca data dashboard + fitur Divisi Head sendiri.
 // (Tidak ada save*/set*/delete*/approve*/upload* -> Divisi Head tidak bisa mengubah data plant mana pun.)
 // Izin data per akun Divisi Head (diatur Super Admin). Kunci halaman: overview, ct, log. Kunci data -> aksi API yg dibuka:
-var DIVHEAD_PERM_KEYS = ['overview', 'ct', 'log', 'stock', 'outbound', 'inbound', 'kanban', 'rekap', 'loading', 'akurasi'];
+var DIVHEAD_PERM_KEYS = ['overview', 'ct', 'log', 'stock', 'outbound', 'inbound', 'kanban', 'rekap', 'loading', 'akurasi', 'fte'];
 var DIVHEAD_PERM_ACTIONS = {
   stock: ['getDashboardData', 'getStockTrendBatch'],
   outbound: ['getOutboundData', 'getIOTrendBatch'],
@@ -258,10 +261,11 @@ var DIVHEAD_PERM_ACTIONS = {
   rekap: ['getRekapMuatanData'],
   loading: ['getResidenceTimeData', 'getLoadingTimeAnalytics'],
   akurasi: ['getAkurasiData', 'getAkurasiDataGabungan', 'soGetDashboard', 'soGetRekapPIC', 'soGetSkuCounts', 'soListLembar'],
+  fte: ['getAbsensiFTEData', 'getOvertimeTrend6Bulan', 'getLemburKategoriTrend6Bulan', 'getFTETrendTahunan'],
   log: ['divheadGetActivity', 'divheadKirimReminder']
 };
 var DIVHEAD_ALLOWED_ACTIONS = {
-  getAvailablePlantsForLogin: 1, getGroupList: 1, getDashboardData: 1, getOutboundData: 1, getInboundData: 1,
+  getAvailablePlantsForLogin: 1, getCtSettings: 1, getGroupList: 1, getDashboardData: 1, getOutboundData: 1, getInboundData: 1,
   getKanbanData: 1, getRekapMuatanData: 1, getResidenceTimeData: 1, getLoadingTimeAnalytics: 1,
   getStockTrendBatch: 1, getIOTrendBatch: 1, getPhotos: 1, getAbsensiFTEData: 1, getOvertimeTrend6Bulan: 1,
   getLemburKategoriTrend6Bulan: 1, getFTETrendTahunan: 1, getAkurasiData: 1, getAkurasiDataGabungan: 1,
@@ -11905,5 +11909,38 @@ function adminSetKategoriGroup(actorNik, daftar) {
     _KGL = null;
     var cache = CacheService.getScriptCache(); try { cache.remove('igm::' + SPREADSHEET_ID); } catch (e) {}
     return { success: true, jumlah: n, info: 'Tersimpan. Angka di dashboard & snapshot Supabase mengikuti aturan baru setelah sinkronisasi berikutnya (otomatis saat ada edit/harian, atau jalankan syncAllToSupabase).' };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+
+// ================================================================
+//  PENGATURAN CONTROL TOWER per departemen (Kelola User > Pengaturan Control Tower)
+//  - fte: tampilkan kartu inti "Produktivitas FTE" (Ton/FTE vs target) di Control Tower (TL, semua role & Divisi Head).
+//  Disimpan di Script Properties 'CT_SET_<workspace>' (JSON). Default: fte = aktif.
+// ================================================================
+function _ctSetGet(ws) {
+  try { var o = JSON.parse(PropertiesService.getScriptProperties().getProperty('CT_SET_' + ws) || '{}'); return o || {}; } catch (e) { return {}; }
+}
+function getCtSettings() {
+  try { var o = _ctSetGet(ACTIVE_WORKSPACE); return { success: true, fte: o.fte !== false }; } catch (err) { return { success: false, error: err.message }; }
+}
+function adminGetCtSettings(actorNik) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var out = [];
+    Object.keys(WORKSPACE_MAP).forEach(function (k) { if (WORKSPACE_MAP[k]) out.push({ key: k, label: WORKSPACE_LABELS[k] || k, fte: _ctSetGet(k).fte !== false }); });
+    return { success: true, data: out };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+// pengaturan: [{key:'<workspace>', fte:true|false}]
+function adminSetCtSettings(actorNik, pengaturan) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var props = PropertiesService.getScriptProperties(), n = 0;
+    (pengaturan || []).forEach(function (r) {
+      var k = String(r.key || ''); if (!WORKSPACE_MAP.hasOwnProperty(k) || !WORKSPACE_MAP[k]) return;
+      var o = _ctSetGet(k); o.fte = r.fte !== false; props.setProperty('CT_SET_' + k, JSON.stringify(o)); n++;
+    });
+    return { success: true, jumlah: n };
   } catch (err) { return { success: false, error: err.message }; }
 }

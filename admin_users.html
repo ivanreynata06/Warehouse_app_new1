@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261111f"></script>
+<script src="./assets/js/auth-guard.js?v=20261112a"></script>
 <script src="./assets/js/config.js?v=20261030a"></script>
-<script src="./assets/js/api-shim.js?v=20261111f"></script>
+<script src="./assets/js/api-shim.js?v=20261112a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="./assets/js/sb-storage-card.js?v=20261021a"></script>
@@ -432,6 +432,16 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <div style="font-size:10.5px;opacity:.7;margin-bottom:4px;">Daftar TL Lintas Departemen saat ini:</div>
             <div id="list-cross-tl" style="font-size:11px;"></div>
           </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);" id="ctset-section">
+          <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="sliders-horizontal" style="width:11px;color:var(--accent-gold);"></i>Pengaturan Control Tower</div>
+          <div class="modal-note" style="margin:0 0 8px;font-size:11px;opacity:.8;">
+            Pilih departemen yang menampilkan kartu inti <b>Produktivitas FTE</b> (Ton/FTE vs target) di Control Tower &mdash; untuk TL, semua role, dan Divisi Head (Divisi Head juga butuh izin <b>Produktivitas FTE</b> pada akunnya).
+          </div>
+          <div id="ct-list" style="display:flex;flex-direction:column;gap:4px;font-size:11px;"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn-flat btn-flat-accent" onclick="simpanCtSettings()"><i data-lucide="save" style="width:11px;"></i> Simpan pengaturan</button></div>
+          <div id="ct-status" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
         </div>
 
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);" id="katgroup-section">
@@ -1141,6 +1151,7 @@ function isiDropdownHapus(){
   buildDivheadIzin();
   loadDivisiHeadList();
   loadKategoriGroup();
+  loadCtSettings();
 }
 
 // ---- TL Lintas Departemen: load & render daftar yang sudah diatur ----
@@ -1202,6 +1213,26 @@ function hapusCrossWorkspaceTL(nik){
 
 
 // ---- Divisi Head: akun lintas semua plant/departemen (khusus Super Admin) ----
+// ---- Pengaturan Control Tower (kartu Produktivitas FTE per departemen) ----
+var ctRows = [];
+function loadCtSettings(){
+  var box = document.getElementById('ct-list'); if (!box) return;
+  google.script.run.withSuccessHandler(function(res){
+    if (!res || !res.success){ box.innerHTML = '<span style="opacity:.6;">Gagal memuat.</span>'; return; }
+    ctRows = res.data || [];
+    box.innerHTML = ctRows.map(function(r,i){
+      return '<label class="chk-row"><input type="checkbox" '+(r.fte?'checked':'')+' onchange="ctRows['+i+'].fte=this.checked"> '+escHtml(r.label)+' &mdash; tampilkan Produktivitas FTE</label>';
+    }).join('');
+  }).withFailureHandler(function(){ box.innerHTML = '<span style="opacity:.6;">Gagal terhubung.</span>'; }).adminGetCtSettings(actorNik);
+}
+function simpanCtSettings(){
+  var st = document.getElementById('ct-status'); st.textContent = 'Menyimpan...';
+  google.script.run.withSuccessHandler(function(res){
+    if (!res || !res.success){ st.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+    st.textContent = '✅ Tersimpan ('+res.jumlah+' departemen).'; showToast('Pengaturan Control Tower disimpan','success');
+  }).withFailureHandler(function(e){ st.textContent = '❌ Gagal terhubung: '+(e&&e.message||''); })
+  .adminSetCtSettings(actorNik, ctRows.map(function(r){ return {key:r.key, fte:!!r.fte}; }));
+}
 // ---- Kategori Group (Retail/Project/Import) ----
 var kgRows = [];
 function loadKategoriGroup(){
@@ -1241,7 +1272,7 @@ var divheadCache = [];
 var DH_IZIN = [
   ['overview','Halaman Semua Plant'],['ct','Dashboard Control Tower per departemen'],['log','Log Aktivitas & pengingat WA'],
   ['stock','Stock'],['outbound','Outbound'],['inbound','Inbound'],['kanban','Kapasitas Rak / Kanban'],
-  ['rekap','Rekap Muatan per PIC'],['loading','Loading Time'],['akurasi','Akurasi Scan']
+  ['rekap','Rekap Muatan per PIC'],['loading','Loading Time'],['akurasi','Akurasi Scan'],['fte','Produktivitas FTE']
 ];
 function buildDivheadIzin(sel){
   var w = document.getElementById('dh-izin'); if (!w) return;

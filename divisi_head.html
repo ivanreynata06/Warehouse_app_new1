@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rucika — Control Tower Divisi Head</title>
-<script src="./assets/js/auth-guard.js?v=20261111f"></script>
-<script src="./assets/js/config.js?v=20261111f"></script>
+<script src="./assets/js/auth-guard.js?v=20261112a"></script>
+<script src="./assets/js/config.js?v=20261112a"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261111f"></script>
+<script src="./assets/js/api-shim.js?v=20261112a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -311,6 +311,33 @@ html{color-scheme:dark}
 .dm-sub i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 .dm-note{margin:10px 0 0;padding:10px 14px;border-radius:14px;background:rgba(240,203,136,.1);color:var(--gold);font-size:12.5px}
 #dmList{animation:fadeUp .35s ease}
+/* ---------- lapisan lembut & elegan (override) ---------- */
+:root{--bg:#0f1527;--panel:#151e36;--line:rgba(170,190,255,.07);--line2:rgba(170,190,255,.12);--text:#e6ebf8;--muted:#9aa6c3;--dim:#6b789c}
+body{background:#0f1527}
+.bgfx i{opacity:.09;filter:blur(150px)}.bgfx i:nth-child(3){display:none}
+.kpi::after,.dm-stat::after{display:none!important}
+.hero{background:linear-gradient(120deg,rgba(64,86,150,.22),rgba(26,36,66,.42) 60%,rgba(64,150,146,.12));box-shadow:0 30px 60px -44px rgba(0,0,0,.5)}
+.hero h1{font-weight:600;letter-spacing:-.2px}
+.kpi,.card,.panel{background:linear-gradient(160deg,rgba(36,49,86,.46),rgba(24,34,62,.56));border-color:var(--line);box-shadow:none}
+.dc-in{background:linear-gradient(155deg,rgba(40,54,96,.6),rgba(26,36,66,.7));border-color:var(--line);box-shadow:0 18px 34px -28px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.04)}
+.dcard:hover .dc-in{border-color:rgba(240,203,136,.3)}
+.dcard:hover .glare{opacity:.5}
+.dm{background:linear-gradient(160deg,rgba(40,54,96,.96),rgba(22,30,56,.98))}
+.dm-stat{background:rgba(170,190,255,.05);border-color:var(--line)}
+.nav-item.on,.dept-b.on,.plant-h.on{border-color:rgba(240,203,136,.22)}
+.pill{font-weight:600}
+.tab.on{border-color:rgba(240,203,136,.4)}
+/* ---------- ponsel ---------- */
+html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kpi{min-width:0}
+@media (max-width:700px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px}
+  .kpi b{font-size:22px}.kpi{padding:14px!important}.kpi.click u{display:none}
+  .hero{padding:16px 18px!important}.hero h1{font-size:21px}.hero p{font-size:13px}
+  .filters{gap:8px}.fgroup{flex-wrap:wrap;width:100%}.fnote{text-align:left;min-width:0;width:100%}
+  .panel{padding:14px!important;border-radius:22px}.panel-h h3{font-size:17px}.panel-h p{font-size:12px}
+  .grid.compact{grid-template-columns:1fr}.card{padding:14px}
+  .chart-box{min-height:220px}
+}
 </style>
 </head>
 <body>
@@ -408,7 +435,7 @@ html{color-scheme:dark}
 
   var WS = []; try { WS = JSON.parse(SS.getItem('wh_dh_workspaces') || '[]'); } catch (e) {}
   var IZIN = null; try { IZIN = JSON.parse(SS.getItem('wh_dh_izin') || 'null'); } catch (e) {}
-  var ALLP = ['overview','ct','log','stock','outbound','inbound','kanban','rekap','loading','akurasi'];
+  var ALLP = ['overview','ct','log','stock','outbound','inbound','kanban','rekap','loading','akurasi','fte'];
   if (!IZIN || !IZIN.length) IZIN = ALLP;
   function can(k) { return IZIN.indexOf(k) !== -1; }
   var DATA = {};      // key -> {st,stP,stF,out,outP,outF,inn,inP,inF} (kg) bulan berjalan -- ringkas, disimpan ke localStorage

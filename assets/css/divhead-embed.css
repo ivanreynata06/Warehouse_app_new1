@@ -83,3 +83,11 @@ html.dh-embed .dh-show{opacity:1;filter:none;transform:perspective(1100px) rotat
 html.dh-embed .dh-show.moving{transition:transform .06s linear,box-shadow .3s,border-color .3s}
 @media (max-width:900px){html.dh-embed .content{padding:16px 14px 30px}html.dh-embed .grid-2{grid-template-columns:1fr}html.dh-embed .kpi-val{font-size:25px}}
 @media (prefers-reduced-motion:reduce){html.dh-embed *{animation:none!important;transition:none!important}html.dh-embed .dh-pre{opacity:1;transform:none}html.dh-embed .card,html.dh-embed .kpi-card{transform:none!important}}
+
+/* ---------- lapisan lembut & elegan ---------- */
+html.dh-embed{--bg-card:linear-gradient(160deg,rgba(36,49,86,.46),rgba(24,34,62,.58));--bg-card2:rgba(36,50,90,.4);--border:rgba(170,190,255,.07);--border2:rgba(170,190,255,.12);--txt:#e6ebf8}
+html.dh-embed .kpi-card::after,html.dh-embed .card::after{background:radial-gradient(300px circle at var(--gx,50%) var(--gy,0%),rgba(255,255,255,.045),transparent 62%)}
+html.dh-embed .kpi-card::before{background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.04) 50%,transparent 60%)}
+html.dh-embed .kpi-icon-bg{opacity:.06;filter:saturate(.5)}
+html.dh-embed .card:hover,html.dh-embed .kpi-card:hover{border-color:rgba(240,203,136,.28)}
+@keyframes dh-float{50%{translate:0 -3px}}

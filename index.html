@@ -2,10 +2,10 @@
 <html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261111f"></script>
+<script src="./assets/js/auth-guard.js?v=20261112a"></script>
 <script src="./assets/js/config.js?v=20261030a"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261111f"></script>
+<script src="./assets/js/api-shim.js?v=20261112a"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
@@ -402,6 +402,10 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
 .kpi-kat em{font-style:normal;font-weight:700;color:var(--txt,#e3e9f8);margin-right:2px}
 .kpi-kat span{padding:1px 8px;border-radius:99px;background:rgba(127,150,200,.14);white-space:nowrap}
 .kpi-kat b{font-weight:700;color:var(--txt,#e3e9f8);font-variant-numeric:tabular-nums}
+.kpi-strip.has-fte{grid-template-columns:repeat(8,1fr);}
+@media (max-width:1400px){.kpi-strip.has-fte{grid-template-columns:repeat(4,1fr);}}
+@media (max-width:900px){.kpi-strip.has-fte{grid-template-columns:repeat(2,1fr)!important;}}
+#kpi-fte-card[hidden]{display:none;}
 </style>
 </head>
 <body>
@@ -590,6 +594,14 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
           <div class="kpi-sub">mnt/pengiriman bln ini</div>
           <div class="kpi-delta flat" id="kpi-loading-delta">— pengiriman</div>
           <div class="kpi-icon-bg">⏱️</div>
+        </div>
+              <div class="kpi-card c-green" id="kpi-fte-card" hidden>
+          <div class="kpi-label">Produktivitas FTE</div>
+          <div class="kpi-val c-green" id="kpi-fte-val">—</div>
+          <div class="kpi-sub">Ton / FTE bulan ini</div>
+          <div class="kpi-delta flat" id="kpi-fte-status">Memuat…</div>
+          <div class="kpi-kat" id="kpi-fte-detail"></div>
+          <div class="kpi-icon-bg">👷</div>
         </div>
       </div>
 
@@ -992,7 +1004,28 @@ var _pending=0;
 var _months=[];
 var USE_DEMO = !(typeof google!=='undefined' && google.script && google.script.run);
 
+// Kartu inti Produktivitas FTE (Ton/FTE vs target). Tampil bila diaktifkan di Kelola User > Pengaturan Control Tower
+// dan akun berhak (Divisi Head: izin "FTE"). Gagal/ditolak -> kartu tetap tersembunyi.
+function loadFteCard(){
+  var card=document.getElementById('kpi-fte-card'); if(!card||typeof google==='undefined') return;
+  google.script.run.withSuccessHandler(function(cs){
+    if(!cs||!cs.success||cs.fte===false){ card.hidden=true; return; }
+    var n=new Date();
+    google.script.run.withSuccessHandler(function(r){
+      if(!r||!r.success||!r.internal) return;
+      var d=r.internal, ton=d.produktivitasTonFTE||0;
+      card.hidden=false; document.getElementById('kpi-strip').classList.add('has-fte');
+      setText('kpi-fte-val', ton? ton.toLocaleString('id-ID',{maximumFractionDigits:2}) : '—');
+      var st=document.getElementById('kpi-fte-status');
+      if(ton){ st.className='kpi-delta '+(d.produktivitasTercapai?'up':'down'); st.textContent=(d.produktivitasTercapai?'▲ Target tercapai':'▼ Di bawah target')+' ('+(d.produktivitasTarget||62.3).toLocaleString('id-ID',{maximumFractionDigits:1})+')'; }
+      else { st.className='kpi-delta flat'; st.textContent='Belum ada data bulan ini'; }
+      var f=function(v,x){return v==null?'—':Number(v).toLocaleString('id-ID',{maximumFractionDigits:x});};
+      document.getElementById('kpi-fte-detail').innerHTML='<div><span>Kg/FTE <b>'+f(d.produktivitasKgFTE,1)+'</b></span><span>FTE <b>'+f(d.totalFTE,1)+'</b></span><span>Lembur <b>'+f(d.overtimePct,1)+'%</b></span></div>';
+    }).withFailureHandler(function(){}).getAbsensiFTEData(n.getMonth()+1,n.getFullYear());
+  }).withFailureHandler(function(){ card.hidden=true; }).getCtSettings();
+}
 function loadAll(){
+  setTimeout(loadFteCard,300);
   showLoading(true,'Menghubungkan ke spreadsheet...');
   document.getElementById('btn-refresh').classList.add('spin');
   // Jaring pengaman terakhir: apa pun yang terjadi (error tak terduga,
