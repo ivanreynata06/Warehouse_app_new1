@@ -11791,7 +11791,10 @@ function _divheadUplGet(ws) {
 }
 function _divheadUplSimpan(ws, log) {
   PropertiesService.getScriptProperties().setProperty('DH_UPL_' + ws, JSON.stringify(log));
-  try { _supabaseUpsertSnapshot(ws + '::divhead:upl', { success: true, upl: log, dibuat: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss') }); } catch (e) {}
+  // Snapshot Supabase bisa dibaca publik (kunci anon) -> JANGAN sertakan NIK pengunggah ('by'); hanya tersimpan di Script Properties.
+  var logPublik = {};
+  Object.keys(log).forEach(function (k) { logPublik[k] = { t: log[k].t, days: log[k].days }; });
+  try { _supabaseUpsertSnapshot(ws + '::divhead:upl', { success: true, upl: logPublik, dibuat: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss') }); } catch (e) {}
 }
 function _divheadCatatUpload(dsKey, jumlah) {
   try {

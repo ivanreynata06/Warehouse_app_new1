@@ -102,6 +102,8 @@ Akun khusus pimpinan divisi yang **hanya melihat** (tidak bisa mengubah data) se
 
 **Cache Supabase Divisi Head:** snapshot `<workspace>::divhead:summary` (stock hari ini, outbound/inbound bulan ini, status input 21 hari) diisi `syncWorkspaceToSupabase` (tiap edit + harian). Halaman Divisi Head membaca semua departemen dalam 1 request ke Supabase; departemen tanpa snapshot otomatis memakai jalur Apps Script. Untuk mengisi pertama kali jalankan `divheadSyncSummaryAll()` di editor Apps Script. Tombol *Muat ulang* = cek langsung (Apps Script).
 
+**Keamanan Supabase/Apps Script:** frontend hanya memakai kunci `anon` (baca `dashboard_snapshots`); `service_role` hanya di Script Properties. Jalankan `supabase/hardening.sql` (opsional) untuk memastikan RLS & hak anon minimal. Snapshot publik tidak memuat NIK pengunggah. Langkah terpisah yang berdampak operasional: `aktifkanAuthEnforce()` (lihat log `[AUTH log]` di Apps Script > Executions dulu).
+
 **Kartu Produktivitas FTE di Control Tower:** kartu inti Ton/FTE vs target (data `getAbsensiFTEData`) tampil di Control Tower TL/semua role dan Divisi Head. Diaktifkan per departemen di Kelola User > Pengaturan Control Tower (`CT_SET_<ws>`); untuk Divisi Head juga butuh izin data "Produktivitas FTE".
 
 **Kategori Group (Retail/Project/Import):** diatur Super Admin di Kelola User > Kategori Group (Script Property `KAT_GROUP`, global semua plant). Default: Fitting Retail = Q055, Q070, K000-K003; Pipa Retail = I053; group lain = Lainnya. Stock dipecah dari kolom Group; Outbound/Inbound lewat Item Number -> Group (DASHBOARD_STOCK). Hasil muncul di KPI semua Control Tower dan kartu rincian Divisi Head setelah sinkronisasi Supabase berikutnya.
