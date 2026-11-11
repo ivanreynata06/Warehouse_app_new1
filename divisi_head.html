@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rucika — Control Tower Divisi Head</title>
-<script src="./assets/js/auth-guard.js?v=20261111e"></script>
-<script src="./assets/js/config.js?v=20261111e"></script>
+<script src="./assets/js/auth-guard.js?v=20261111f"></script>
+<script src="./assets/js/config.js?v=20261111f"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261111e"></script>
+<script src="./assets/js/api-shim.js?v=20261111f"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -286,6 +286,31 @@ html{color-scheme:dark}
 .dm-row.dept{margin-left:14px}
 @media (max-width:860px){.dm{padding:22px 18px}.dm-row{grid-template-columns:1fr auto}.dm-row .dm-bar{grid-column:1/-1;order:3}.fnote{text-align:left}}
 @media (prefers-reduced-motion:reduce){.dm,.dm-stat,.dm-row{transition:none!important;opacity:1;transform:none}.dm::before{animation:none}}
+/* ---------- monitor departemen ringkas (muat 1 halaman) ---------- */
+.grid.compact{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.grid.compact .dc-in{padding:14px 16px 12px;border-radius:20px}
+.grid.compact .dc-top{margin-bottom:12px;align-items:center}
+.dc-id{display:block;min-width:0}
+.grid.compact .dc-name{font-size:14.5px;min-height:0;-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis;display:block}
+.dc-plant{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+.grid.compact .dc-mid{margin-bottom:0;gap:14px}
+.grid.compact .dc-mid>span:first-child{width:46px;height:46px}
+.grid.compact .dc-metrics .m b{font-size:14.5px}
+.grid.compact .dc-metrics .m i{font-size:10.5px}
+.grid.compact .dc-foot{display:none}
+.grid.compact .pill{font-size:10.5px;padding:2px 9px}
+.hero{padding:20px 28px!important}
+.kpis{margin:12px 0!important}.kpi{padding:16px 18px!important}
+.panel{padding:18px 20px 20px!important;margin:14px 0!important}
+.dm-tabs{display:inline-flex;gap:4px;padding:4px;border-radius:14px;border:1px solid var(--line2);background:rgba(160,180,255,.06);margin:6px 0 12px}
+.dm-tabs button{border:0;background:transparent;color:var(--muted);font-weight:700;font-size:13px;padding:8px 18px;border-radius:10px;transition:background .25s,color .25s}
+.dm-tabs button.on{background:linear-gradient(135deg,rgba(143,208,255,.26),rgba(240,203,136,.18));color:#fff}
+.dm-sub{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;margin-top:10px;font-size:12px;color:#cfd8f0}
+.dm-sub span{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px dashed var(--line)}
+.dm-sub b{font-variant-numeric:tabular-nums;font-weight:700}
+.dm-sub i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.dm-note{margin:10px 0 0;padding:10px 14px;border-radius:14px;background:rgba(240,203,136,.1);color:var(--gold);font-size:12.5px}
+#dmList{animation:fadeUp .35s ease}
 </style>
 </head>
 <body>
@@ -476,8 +501,8 @@ html{color-scheme:dark}
         busy++; var k = w.key, d = CUS[k] = {}, left = 0, finish = function () { if (--left <= 0) { busy--; next(); if (!busy && !q.length && id === fvId && $('fBusy')) $('fBusy').remove(); } };
         function go(fn, args, ok) { left++; run(k, fn, args, function (r) { if (id !== fvId) { finish(); return; } ok(r); updateCard(k); scheduleSummary(); finish(); }, finish); }
         if (can('stock')) go('getDashboardData', ['harian', { dari: sd, sampai: sd }], function (r) { parseStock(r, d); });
-        if (can('outbound')) go('getOutboundData', [ioP], function (r) { parseIO(r, d, 'out', 'outP', 'outF'); });
-        if (can('inbound')) go('getInboundData', [ioP], function (r) { parseIO(r, d, 'inn', 'inP', 'inF'); });
+        if (can('outbound')) go('getOutboundData', [ioP], function (r) { parseIO(r, d, 'out', 'outP', 'outF', 'outK'); });
+        if (can('inbound')) go('getInboundData', [ioP], function (r) { parseIO(r, d, 'inn', 'inP', 'inF', 'inK'); });
         if (!left) { busy--; }
       })(q.shift());
     }
@@ -488,38 +513,52 @@ html{color-scheme:dark}
   var DM = { st: { t: 'Stock', ttl: 'Rincian stock', c: '#8fd0ff', ico: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>' },
              out: { t: 'Outbound', ttl: 'Rincian outbound', c: '#f0cb88', ico: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>' },
              inn: { t: 'Inbound', ttl: 'Rincian inbound', c: '#7fd9cc', ico: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/>' } };
-  var dmLast = null;
+  var dmLast = null, dmKind = '', dmJenis = 'pipa';
+  var CATS = [['Retail', '#7fd9cc', 'Retail'], ['Project', '#8fd0ff', 'Project'], ['Import', '#f0cb88', 'Import'], ['Lain', '#aaa3ff', 'Lainnya']];
+  function kv(d, kk, jenis, cat) { return +((d[kk] || {})[jenis + cat]) || 0; }
   function openDetail(kind) {
-    var m = DM[kind]; if (!m) return; dmLast = document.activeElement;
-    var kp = kind + 'P', kf = kind === 'inn' ? 'inF' : kind + 'F', kpp = kind === 'inn' ? 'inP' : kind + 'P';
-    var tot = 0, P = 0, F = 0, rows = [];
-    plants().forEach(function (pl) {
-      var pt = 0, pp = 0, pf = 0, dep = [];
-      pl.items.forEach(function (w) { var d = cur(w.key), t = +d[kind] || 0, a = +d[kpp] || 0, f = +d[kf] || 0; pt += t; pp += a; pf += f; dep.push({ w: w, t: t, p: a, f: f }); });
-      tot += pt; P += pp; F += pf; rows.push({ pl: pl, t: pt, p: pp, f: pf, dep: dep });
+    var m = DM[kind]; if (!m) return; dmLast = document.activeElement; dmKind = kind; dmJenis = 'pipa';
+    var kk = kind === 'st' ? 'stK' : kind === 'out' ? 'outK' : 'inK', per = periodText(), when = kind === 'st' ? 'Per ' + per.stock : per.io;
+    var tot = 0, P = 0, F = 0, hasKat = false, cat = { pipa: {}, fitting: {} };
+    CATS.forEach(function (c) { cat.pipa[c[0]] = 0; cat.fitting[c[0]] = 0; });
+    var kPP = kind === 'inn' ? 'inP' : kind + 'P', kFF = kind === 'inn' ? 'inF' : kind + 'F';
+    WS.forEach(function (w) {
+      var d = cur(w.key); tot += +d[kind] || 0; P += +d[kPP] || 0; F += +d[kFF] || 0; if (d[kk]) hasKat = true;
+      CATS.forEach(function (c) { cat.pipa[c[0]] += kv(d, kk, 'pipa', c[0]); cat.fitting[c[0]] += kv(d, kk, 'fitting', c[0]); });
     });
-    var oth = Math.max(0, tot - P - F); if (oth < 1) oth = 0;
-    var per = periodText(), when = kind === 'st' ? 'Per ' + per.stock : per.io, mx = 0; rows.forEach(function (r) { r.dep.forEach(function (d) { if (d.t > mx) mx = d.t; }); });
     function pct(v) { return tot ? Math.round(v * 100 / tot) : 0; }
-    function bar(t, a, f, base) { var o = Math.max(0, t - a - f); return '<div class="dm-bar" data-bar><i style="background:#8fd0ff" data-w="' + (base ? a * 100 / base : 0) + '"></i><i style="background:#f0cb88" data-w="' + (base ? f * 100 / base : 0) + '"></i><i style="background:#aaa3ff" data-w="' + (base ? o * 100 / base : 0) + '"></i></div>'; }
-    var h = '<div class="dm-head" style="--dc:' + m.c + '"><span class="dm-ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + m.ico + '</svg></span><div><h3 id="dmTitle">' + m.ttl + '</h3><p>' + esc(when) + ' · seluruh plant dan departemen</p></div></div>';
+    function sub(j) { return hasKat ? '<div class="dm-sub">' + CATS.map(function (c) { return '<span><em style="font-style:normal"><i style="background:' + c[1] + '"></i>' + c[2] + '</em><b>' + nf(ton(cat[j][c[0]]), 1) + '</b></span>'; }).join('') + '</div>' : ''; }
+    var h = '<div class="dm-head" style="--dc:' + m.c + '"><span class="dm-ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + m.ico + '</svg></span><div><h3 id="dmTitle">' + m.ttl + '</h3><p>' + esc(when) + ' · seluruh plant dan departemen · satuan ton</p></div></div>';
     h += '<div class="dm-stats"><div class="dm-stat" style="--c:' + m.c + ';--i:0"><span>Total ' + m.t.toLowerCase() + '</span><b><i data-cnt="' + ton(tot) + '">0</i><em>ton</em></b><small>' + WS.length + ' departemen</small></div>' +
-      '<div class="dm-stat" style="--c:#8fd0ff;--i:1"><span>Pipa</span><b><i data-cnt="' + ton(P) + '">0</i><em>ton</em></b><small>' + pct(P) + '% dari total</small></div>' +
-      '<div class="dm-stat" style="--c:#f0cb88;--i:2"><span>Fitting</span><b><i data-cnt="' + ton(F) + '">0</i><em>ton</em></b><small>' + pct(F) + '% dari total</small></div>' +
-      (oth ? '<div class="dm-stat" style="--c:#aaa3ff;--i:3"><span>Lainnya</span><b><i data-cnt="' + ton(oth) + '">0</i><em>ton</em></b><small>' + pct(oth) + '% dari total</small></div>' : '') + '</div>';
-    h += '<div class="dm-split">' + bar(tot, P, F, tot) + '<div class="dm-leg"><span>Pipa <b>' + pct(P) + '%</b></span><span>Fitting <b>' + pct(F) + '%</b></span>' + (oth ? '<span>Lainnya <b>' + pct(oth) + '%</b></span>' : '') + '</div></div>';
-    h += '<h4>Per plant dan departemen</h4>'; var ix = 0;
-    rows.forEach(function (r) {
-      h += '<div class="dm-row plant" style="--i:' + (ix++) + '"><div class="nm">' + esc(r.pl.name) + '<small>' + r.pl.items.length + ' departemen</small></div>' + bar(r.t, r.p, r.f, r.t || 1) + '<div class="v">' + nf(ton(r.t), 1) + ' ton<small>Pipa ' + nf(ton(r.p), 1) + ' · Fitting ' + nf(ton(r.f), 1) + '</small></div></div>';
-      r.dep.forEach(function (d) { h += '<div class="dm-row dept" style="--i:' + (ix++) + '"><div class="nm">' + esc(d.w.deptLabel) + '</div>' + bar(d.t, d.p, d.f, mx || 1) + '<div class="v">' + nf(ton(d.t), 1) + ' ton<small>Pipa ' + nf(ton(d.p), 1) + ' · Fitting ' + nf(ton(d.f), 1) + '</small></div></div>'; });
-    });
-    if (!tot) h += '<div class="empty" style="margin-top:14px">Belum ada data untuk periode ini.</div>';
-    $('dmBody').innerHTML = h; $('dmBg').classList.add('on');
+      '<div class="dm-stat" style="--c:#8fd0ff;--i:1"><span>Pipa</span><b><i data-cnt="' + ton(P) + '">0</i><em>ton</em></b><small>' + pct(P) + '% dari total</small>' + sub('pipa') + '</div>' +
+      '<div class="dm-stat" style="--c:#f0cb88;--i:2"><span>Fitting</span><b><i data-cnt="' + ton(F) + '">0</i><em>ton</em></b><small>' + pct(F) + '% dari total</small>' + sub('fitting') + '</div></div>';
+    if (!hasKat) h += '<p class="dm-note">Pecahan Retail / Project / Import belum tersedia di data cache. Muncul otomatis setelah sinkronisasi Supabase berikutnya.</p>';
+    h += '<div class="dm-tabs" role="tablist"><button class="on" data-jt="pipa" role="tab">Pipa</button><button data-jt="fitting" role="tab">Fitting</button></div><div id="dmList"></div>';
+    $('dmBody').innerHTML = h; $('dmBg').classList.add('on'); renderDmList();
     requestAnimationFrame(function () { requestAnimationFrame(function () {
-      $('dmBody').querySelectorAll('[data-w]').forEach(function (e) { e.style.width = Math.min(100, +e.dataset.w) + '%'; });
       $('dmBody').querySelectorAll('[data-cnt]').forEach(function (e) { e.dataset.v = 0; countTo(e, +e.dataset.cnt, 1); });
     }); });
     $('dmX').focus();
+  }
+  // Daftar per plant/departemen utk jenis terpilih (Pipa/Fitting): bar bersegmen Retail/Project/Import/Lainnya
+  function renderDmList() {
+    var kk = dmKind === 'st' ? 'stK' : dmKind === 'out' ? 'outK' : 'inK', j = dmJenis, mx = 0, h = '', ix = 0;
+    var leg = CATS.map(function (c) { return '<span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + c[1] + ';margin-right:6px"></i>' + c[2] + '</span>'; }).join('');
+    function tt(d) { var t = 0; CATS.forEach(function (c) { t += kv(d, kk, j, c[0]); }); return t; }
+    WS.forEach(function (w) { var t = tt(cur(w.key)); if (t > mx) mx = t; });
+    function bar(vals, base) { return '<div class="dm-bar">' + CATS.map(function (c, n) { return '<i style="background:' + c[1] + '" data-w="' + (base ? vals[n] * 100 / base : 0) + '"></i>'; }).join('') + '</div>'; }
+    function vtxt(vals) { return CATS.map(function (c, n) { return c[2].charAt(0) + ' ' + nf(ton(vals[n]), 1); }).join(' · '); }
+    h += '<div class="dm-leg" style="margin:0 0 8px">' + leg + '</div>';
+    plants().forEach(function (pl) {
+      var pv = [0, 0, 0, 0], dep = [];
+      pl.items.forEach(function (w) { var d = cur(w.key), v = CATS.map(function (c) { return kv(d, kk, j, c[0]); }); v.forEach(function (x, n) { pv[n] += x; }); dep.push({ w: w, v: v, t: v.reduce(function (a, b) { return a + b; }, 0) }); });
+      var pt = pv.reduce(function (a, b) { return a + b; }, 0);
+      h += '<div class="dm-row plant" style="--i:' + (ix++) + '"><div class="nm">' + esc(pl.name) + '<small>' + pl.items.length + ' departemen</small></div>' + bar(pv, pt || 1) + '<div class="v">' + nf(ton(pt), 1) + ' ton<small>' + vtxt(pv) + '</small></div></div>';
+      dep.forEach(function (d) { h += '<div class="dm-row dept" style="--i:' + (ix++) + '"><div class="nm">' + esc(d.w.deptLabel) + '</div>' + bar(d.v, mx || 1) + '<div class="v">' + nf(ton(d.t), 1) + ' ton<small>' + vtxt(d.v) + '</small></div></div>'; });
+    });
+    var host = $('dmList'); host.innerHTML = h;
+    host.querySelectorAll('.dm-row').forEach(function (e) { e.style.opacity = 1; e.style.transform = 'none'; });
+    requestAnimationFrame(function () { requestAnimationFrame(function () { host.querySelectorAll('[data-w]').forEach(function (e) { e.style.width = Math.min(100, +e.dataset.w) + '%'; }); }); });
   }
   function closeDetail() { $('dmBg').classList.remove('on'); if (dmLast && dmLast.focus) try { dmLast.focus(); } catch (e) {} }
 
@@ -569,14 +608,13 @@ html{color-scheme:dark}
     var ms = [];
     if (can('stock')) ms.push(['stock', 'Stock']); if (can('outbound')) ms.push(['out', 'Outbound']); if (can('inbound')) ms.push(['inn', 'Inbound']);
     var open = can('ct') ? ' data-ws-go="' + esc(w.key) + '"' : ' style="cursor:default"';
-    var live = can('log');
-    var idx = WS.indexOf(w);
+    var live = can('log'), idx = WS.indexOf(w);
     return '<button class="dcard" style="--i:' + idx + '" data-card="' + esc(w.key) + '"' + open + '><span class="dc-in"><span class="glare"></span>' +
-      '<span class="dc-top"><span class="dc-name" title="' + esc(w.deptLabel) + '">' + esc(w.deptLabel) + '</span>' + (live ? '<span class="pill" data-f="pill">Memuat…</span>' : '') + '</span>' +
-      '<span class="dc-mid">' + (live ? '<span data-f="ring">' + ringSvg(null, 64, 7) + '</span>' : '') +
+      '<span class="dc-top"><span class="dc-id"><span class="dc-name" title="' + esc(w.deptLabel) + '">' + esc(w.deptLabel) + '</span><span class="dc-plant">' + esc(w.plantLabel) + '</span></span>' + (live ? '<span class="pill" data-f="pill">Memuat…</span>' : '') + '</span>' +
+      '<span class="dc-mid">' + (live ? '<span data-f="ring">' + ringSvg(null, 46, 6) + '</span>' : '') +
       '<span class="dc-metrics" style="grid-template-columns:repeat(' + Math.max(1, ms.length) + ',minmax(0,1fr))">' +
       ms.map(function (m) { return '<span class="m"><b data-f="' + m[0] + '" class="skel">0000</b><i>' + m[1] + '</i></span>'; }).join('') + '</span></span>' +
-      (live ? '<span class="dc-foot" data-f="foot">Menunggu data…</span>' : (can('ct') ? '<span class="dc-foot">Klik untuk membuka dashboard</span>' : '')) + '</span></button>';
+      '<span class="dc-foot" data-f="foot">Menunggu data…</span></span></button>';
   }
   function bindTilt(root) {
     if (REDUCE) return;
@@ -605,7 +643,7 @@ html{color-scheme:dark}
         setRing(f('ring'), a.persen);
         pill.className = 'pill ' + (a.lengkap ? 'ok' : (a.persen >= 50 ? 'warn' : 'bad')); pill.textContent = a.lengkap ? 'Input lengkap' : 'Belum lengkap';
         var last = lastData(a), kurang = a.items.filter(function (i) { return i.wajib && !i.ada; }).map(function (i) { return i.label; });
-        foot.textContent = a.lengkap ? (last ? 'Data hari ini lengkap · terakhir ' + fmtTgl(last) : 'Tidak ada input wajib') : 'Belum diinput: ' + kurang.join(', '); foot.title = foot.textContent;
+        foot.textContent = a.lengkap ? (last ? 'Data hari ini lengkap · terakhir ' + fmtTgl(last) : 'Tidak ada input wajib') : 'Belum diinput: ' + kurang.join(', '); c.title = foot.textContent;
       } else if (a && a.err) { pill.className = 'pill'; pill.textContent = 'Gagal cek'; foot.textContent = 'Status input belum bisa dicek'; }
     });
     var dot = document.querySelector('[data-dot="' + key + '"]');
@@ -699,15 +737,13 @@ html{color-scheme:dark}
     hide($('navAll'), !can('overview')); hide($('navLog'), !can('log')); hide($('navSep'), !can('ct')); hide($('navPlants'), !can('ct'));
   }
   function buildOverview() {
-    $('deptGrid').innerHTML = plants().map(function (p) {
-      return '<div class="plant-title"><h3>' + esc(p.name) + '</h3><span>' + p.items.length + ' departemen</span><span class="psum" data-psum="' + esc(p.name) + '"></span></div><div class="grid">' + p.items.map(cardHtml).join('') + '</div>';
-    }).join('');
-    $('heroRing').innerHTML = ringSvg(null, 84, 9);
+    $('deptGrid').innerHTML = '<div class="grid compact">' + WS.map(cardHtml).join('') + '</div>';
+    $('heroRing').innerHTML = ringSvg(null, 72, 8);
     bindTilt($('deptGrid'));
   }
   function buildPlantView(name) {
     var p = plants().filter(function (x) { return x.name === name; })[0]; if (!p) return;
-    $('viewPlant').innerHTML = '<div class="plant-title" style="margin-top:6px"><h3>Pilih dashboard departemen di ' + esc(p.name) + '</h3><span>Klik salah satu untuk membuka Control Tower-nya</span></div><div class="grid">' + p.items.map(cardHtml).join('') + '</div>';
+    $('viewPlant').innerHTML = '<div class="plant-title" style="margin-top:6px"><h3>Pilih dashboard departemen di ' + esc(p.name) + '</h3><span>Klik salah satu untuk membuka Control Tower-nya</span></div><div class="grid compact">' + p.items.map(cardHtml).join('') + '</div>';
     bindTilt($('viewPlant')); p.items.forEach(updateCard);
   }
 
@@ -755,6 +791,7 @@ html{color-scheme:dark}
       var sn = m.sum[w.key]; if (!sn) { miss.push(w); return; }
       SNAP[w.key] = sn; var d = DATA[w.key] = DATA[w.key] || {};
       ['st', 'stP', 'stF', 'out', 'outP', 'outF', 'inn', 'inP', 'inF'].forEach(function (f) { if (sn[f] != null && d[f] !== sn[f]) { d[f] = sn[f]; changed = true; } });
+      ['stK', 'outK', 'inK'].forEach(function (f) { if (sn[f] && JSON.stringify(d[f]) !== JSON.stringify(sn[f])) { d[f] = sn[f]; changed = true; } });
       if (sn.dibuat && sn.dibuat > snapTime) snapTime = sn.dibuat;
       dates.forEach(function (tgl) {
         var k = tgl + '|' + w.key, cur = ACT[k], n = actFromSnap(sn, tgl, w);
@@ -794,8 +831,9 @@ html{color-scheme:dark}
   function parseStock(r, d) {
     var t = r && r.stock && r.stock.tonase; if (!t) return;
     d.st = +t.total || 0; d.stP = (+t.pipaGreen || 0) + (+t.pipaGrey || 0); d.stF = (+t.fittingGreen || 0) + (+t.fittingGrey || 0);
+    if (r.stock.kat) d.stK = r.stock.kat;
   }
-  function parseIO(r, d, kt, kp, kf) { if (r && r.total != null) { d[kt] = +r.total || 0; d[kp] = +r.pipa || 0; d[kf] = +r.fitting || 0; } }
+  function parseIO(r, d, kt, kp, kf, kk) { if (r && r.total != null) { d[kt] = +r.total || 0; d[kp] = +r.pipa || 0; d[kf] = +r.fitting || 0; if (r.kat) d[kk] = r.kat; } }
   function prioritize(keys) {
     keys.forEach(function (k) { for (var i = 0; i < loadQ.length; i++) if (loadQ[i].w.key === k) { loadQ.unshift(loadQ.splice(i, 1)[0]); break; } });
   }
@@ -810,8 +848,8 @@ html{color-scheme:dark}
         // Tiap sumber ditandai selesai SEKALI (shim bisa memanggil handler 2x: cache lalu data segar); gagal/timeout tidak menahan antrean.
         function mark(x) { if (marks[x]) return; marks[x] = 1; if (++finished >= need.length) { clearTimeout(guard); loading--; pump(); } }
         if (can('stock')) run(k, 'getDashboardData', ['harian', { dari: today(), sampai: today() }], function (r) { parseStock(r, d); updateCard(k); scheduleSummary(); mark('s'); }, function () { mark('s'); });
-        if (can('outbound')) run(k, 'getOutboundData', [p], function (r) { parseIO(r, d, 'out', 'outP', 'outF'); updateCard(k); scheduleSummary(); mark('o'); }, function () { mark('o'); });
-        if (can('inbound')) run(k, 'getInboundData', [p], function (r) { parseIO(r, d, 'inn', 'inP', 'inF'); updateCard(k); scheduleSummary(); mark('i'); }, function () { mark('i'); });
+        if (can('outbound')) run(k, 'getOutboundData', [p], function (r) { parseIO(r, d, 'out', 'outP', 'outF', 'outK'); updateCard(k); scheduleSummary(); mark('o'); }, function () { mark('o'); });
+        if (can('inbound')) run(k, 'getInboundData', [p], function (r) { parseIO(r, d, 'inn', 'inP', 'inF', 'inK'); updateCard(k); scheduleSummary(); mark('i'); }, function () { mark('i'); });
         if (can('log')) loadAct(w, today(), !!job.force, function () { mark('a'); });
       })(loadQ.shift());
     }
@@ -970,6 +1008,7 @@ html{color-scheme:dark}
   document.addEventListener('click', function (e) {
     var t;
     if ((t = e.target.closest('[data-detail]'))) { openDetail(t.dataset.detail); return; }
+    if ((t = e.target.closest('[data-jt]'))) { dmJenis = t.dataset.jt; document.querySelectorAll('[data-jt]').forEach(function (b) { b.classList.toggle('on', b === t); }); renderDmList(); return; }
     if (e.target === $('dmBg') || e.target.closest('#dmX')) { closeDetail(); return; }
     if ((t = e.target.closest('[data-go]'))) { go(t.dataset.go === 'all' ? 'all' : t.dataset.go); return; }
     if ((t = e.target.closest('[data-plant-go]'))) { go('plant=' + t.dataset.plantGo); return; }

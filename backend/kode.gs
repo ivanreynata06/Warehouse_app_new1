@@ -124,6 +124,8 @@ var API_FUNCTIONS = {
   adminGetDivisiHead: adminGetDivisiHead,
   adminSetDivisiHead: adminSetDivisiHead,
   adminHapusDivisiHead: adminHapusDivisiHead,
+  adminGetKategoriGroup: adminGetKategoriGroup,
+  adminSetKategoriGroup: adminSetKategoriGroup,
   // Approval Lembur & Cuti + Tanda Tangan Digital TL
   getPendingApprovals     : getPendingApprovals,
   approveItem             : approveItem,
@@ -239,7 +241,8 @@ var AUTH_ACTOR_BOUND = {
   adminSetMenuConfig: 1, adminGetCrossWorkspaceTL: 1, adminSetCrossWorkspaceTL: 1, getPendingApprovals: 1, adminGetSplSignatures: 1, adminUploadSplSignature: 1,
   adminGetSplJobBagian: 1, adminSetSplJobBagian: 1, adminHapusSplSignature: 1, adminSetSplTtdCutoff: 1, adminSetSplTtdUkuran: 1,
   adminSetJadwalPengirimanSumber: 1, adminGetJadwalPengirimanSumberStatus: 1,
-  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1, adminGetDivisiHead: 1, adminSetDivisiHead: 1, adminHapusDivisiHead: 1
+  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1, adminGetDivisiHead: 1, adminSetDivisiHead: 1, adminHapusDivisiHead: 1,
+  adminGetKategoriGroup: 1, adminSetKategoriGroup: 1
 };
 var CURRENT_AUTH = null;   // diisi handleApiRequest: { w, n, r } bila token valid
 
@@ -1651,6 +1654,7 @@ function getOutboundData(params) {
       pipa       : data.pipa,
       lem        : data.lem,
       fitting    : data.fitting,
+      kat        : data.kat,
       trend      : data.trend,
       fastMoving : fastMoving
     };
@@ -1679,6 +1683,7 @@ function getInboundData(params) {
       pipa       : data.pipa,
       lem        : data.lem,
       fitting    : data.fitting,
+      kat        : data.kat,
       trend      : data.trend,
       fastMoving : fastMoving
     };
@@ -2131,7 +2136,8 @@ function getStockData(ss, range, group) {
     globalTonase : 0,   // total semua item dalam rentang (tanpa filter group)
     groupTonase  : 0,   // total item dalam rentang + filter group (= globalTonase jika group kosong)
     tonase : { pipaGreen:0, pipaGrey:0, fittingGreen:0, fittingGrey:0, total:0 },
-    stok   : { pipaGreen:0, pipaGrey:0, fittingGreen:0, fittingGrey:0, total:0 }
+    stok   : { pipaGreen:0, pipaGrey:0, fittingGreen:0, fittingGrey:0, total:0 },
+    kat    : _katKosong()   // pecahan Retail/Project/Import/Lain per jenis (aturan group di Kelola User)
   };
   var rucika = isRucikaFitting();
   if (rucika) KATEGORI_RUCIKA.forEach(function(k){ out.tonase[k] = 0; out.stok[k] = 0; });
@@ -2172,6 +2178,7 @@ function getStockData(ss, range, group) {
     var pcs = parseFloat(row[6]) || 0;
     out.tonase[kat] += tonnaseH;
     out.stok[kat]   += pcs;
+    if (!rucika) { var jn = kat.indexOf('pipa') === 0 ? 'pipa' : 'fitting'; out.kat[jn + _katDariGroup(jn, row[3])] += tonnaseH; }
   }
 
   if (rucika) {
@@ -2980,6 +2987,8 @@ function readTransaksi(ss, sheetName, range) {
   var data     = sheet.getDataRange().getValues();
   var trendMap = {};
   var rucika   = isRucikaFitting();
+  out.kat = _katKosong();
+  var igm = rucika ? null : _itemGroupMap(ss);   // Item Number -> Group (dari DASHBOARD_STOCK)
   for (var i = 1; i < data.length; i++) {
     var row    = data[i];
     var tgl    = toDate(row[4]);
@@ -3001,6 +3010,8 @@ function readTransaksi(ss, sheetName, range) {
     out[kat]   += weight;
     if (kat === 'pipaGreen'    || kat === 'pipaGrey')    out.pipa    += weight;
     if (kat === 'fittingGreen' || kat === 'fittingGrey') out.fitting += weight;
+    var jn2 = kat.indexOf('pipa') === 0 ? 'pipa' : 'fitting';
+    out.kat[jn2 + _katDariGroup(jn2, igm[String(row[0] || '').trim().toUpperCase()])] += weight;
     var key = fmtD(tgl);
     if (!trendMap[key]) trendMap[key] = { label:key, pipa:0, fitting:0 };
     if (kat === 'pipaGreen'    || kat === 'pipaGrey')    trendMap[key].pipa    += weight;
@@ -11722,16 +11733,17 @@ function _divheadBuildSummary(workspaceKey, pre) {
   var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
   var startKey = Utilities.formatDate(new Date(now.getTime() - 20 * 86400000), tz, 'yyyy-MM-dd');
   var bulan = String(now.getMonth() + 1), tahun = String(now.getFullYear());
-  var st = null, out = null, inn = null, stP = null, stF = null, outP = null, outF = null, inP = null, inF = null;
+  var st = null, out = null, inn = null, stP = null, stF = null, outP = null, outF = null, inP = null, inF = null, stK = null, outK = null, inK = null;
   try {
     var sh = pre.stockHarian || getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' });
-    if (sh && sh.stock && sh.stock.tonase) { var tn = sh.stock.tonase; st = +tn.total || 0; stP = (+tn.pipaGreen || 0) + (+tn.pipaGrey || 0); stF = (+tn.fittingGreen || 0) + (+tn.fittingGrey || 0); }
+    if (sh && sh.stock && sh.stock.tonase) { var tn = sh.stock.tonase; st = +tn.total || 0; stP = (+tn.pipaGreen || 0) + (+tn.pipaGrey || 0); stF = (+tn.fittingGreen || 0) + (+tn.fittingGrey || 0); stK = sh.stock.kat || null; }
   } catch (e) {}
   try {
     // selalu ambil langsung (butuh pecahan pipa/fitting); dijalankan di background sync, bukan saat pengguna menunggu
     var o = getOutboundData({ bulan: bulan, tahun: tahun }), i2 = getInboundData({ bulan: bulan, tahun: tahun });
     out = +(o && o.total) || 0; outP = +(o && o.pipa) || 0; outF = +(o && o.fitting) || 0;
     inn = +(i2 && i2.total) || 0; inP = +(i2 && i2.pipa) || 0; inF = +(i2 && i2.fitting) || 0;
+    outK = (o && o.kat) || null; inK = (i2 && i2.kat) || null;
   } catch (e) {}
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID), valid = startKey, items = [];
   _divheadDatasetDefs().forEach(function (def) {
@@ -11744,7 +11756,7 @@ function _divheadBuildSummary(workspaceKey, pre) {
   });
   var terakhirEdit = '';
   try { terakhirEdit = Utilities.formatDate(DriveApp.getFileById(SPREADSHEET_ID).getLastUpdated(), tz, 'yyyy-MM-dd HH:mm'); } catch (e) {}
-  return { success: true, tanggal: todayStr, st: st, out: out, inn: inn, stP: stP, stF: stF, outP: outP, outF: outF, inP: inP, inF: inF,
+  return { success: true, tanggal: todayStr, st: st, out: out, inn: inn, stP: stP, stF: stF, outP: outP, outF: outF, inP: inP, inF: inF, stK: stK, outK: outK, inK: inK,
     aktivitas: { items: items, valid: valid, terakhirEdit: terakhirEdit, label: WORKSPACE_LABELS[workspaceKey] || workspaceKey },
     dibuat: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss') };
 }
@@ -11800,4 +11812,98 @@ function _divheadHapusCatatan(tab, dari, sampai) {
     for (var t = a.getTime(); t <= b.getTime() && t - a.getTime() < 40 * 86400000; t += 86400000) delete it.days[Utilities.formatDate(new Date(t), tz, 'yyyy-MM-dd')];
     _divheadUplSimpan(ACTIVE_WORKSPACE, log);
   } catch (e) {}
+}
+
+
+// ================================================================
+//  ATURAN KATEGORI GROUP (Retail / Project / Import / Lainnya) -- dipakai SEMUA Control Tower & Divisi Head
+//  Disimpan global di Script Properties 'KAT_GROUP' (diatur Super Admin: Kelola User > Kategori Group).
+//  Default: Fitting Retail = Q055, Q070, K000-K003; Pipa Retail = I053. Group lain -> "Lainnya" sampai diatur.
+//  Pecahan dihitung dari kolom Group (D) DASHBOARD_STOCK; utk Outbound/Inbound lewat Item Number -> Group.
+// ================================================================
+var KAT_GROUP_DEFAULT = { pipa: { retail: ['I053'], project: [], import: [] }, fitting: { retail: ['Q055', 'Q070', 'K000-K003'], project: [], import: [] } };
+var KAT_LIST = ['Retail', 'Project', 'Import', 'Lain'];
+var _KGL = null;
+function _katKosong() {
+  var o = {}; ['pipa', 'fitting'].forEach(function (j) { KAT_LIST.forEach(function (k) { o[j + k] = 0; }); }); return o;
+}
+function _katConfig() {
+  var raw = PropertiesService.getScriptProperties().getProperty('KAT_GROUP');
+  if (raw) { try { var c = JSON.parse(raw); if (c && c.pipa && c.fitting) return c; } catch (e) {} }
+  return JSON.parse(JSON.stringify(KAT_GROUP_DEFAULT));
+}
+// "K000-K003" -> K000,K001,K002,K003 (lebar angka dipertahankan); kode lain apa adanya
+function _katExpand(list) {
+  var out = [];
+  (list || []).forEach(function (t) {
+    t = String(t || '').trim().toUpperCase(); if (!t) return;
+    var m = t.match(/^([A-Z]*)(\d+)\s*-\s*(?:\1)?(\d+)$/);
+    if (m) {
+      var a = parseInt(m[2], 10), b = parseInt(m[3], 10), w = m[2].length;
+      if (b >= a && b - a <= 500) { for (var n = a; n <= b; n++) { var d = String(n); while (d.length < w) d = '0' + d; out.push(m[1] + d); } return; }
+    }
+    out.push(t);
+  });
+  return out;
+}
+function _katDariGroup(jenis, group) {
+  if (!_KGL) {
+    var c = _katConfig(); _KGL = { pipa: {}, fitting: {} };
+    ['pipa', 'fitting'].forEach(function (j) {
+      ['retail', 'project', 'import'].forEach(function (k) {
+        _katExpand((c[j] || {})[k]).forEach(function (code) { _KGL[j][code] = k.charAt(0).toUpperCase() + k.slice(1); });
+      });
+    });
+  }
+  var g = String(group || '').trim().toUpperCase();
+  return (g && _KGL[jenis] && _KGL[jenis][g]) || 'Lain';
+}
+// Item Number -> Group dari DASHBOARD_STOCK (baris terbaru menimpa); di-cache 10 menit per spreadsheet
+function _itemGroupMap(ss) {
+  var cache = CacheService.getScriptCache(), ck = 'igm::' + SPREADSHEET_ID;
+  try { var hit = cache.get(ck); if (hit) return JSON.parse(hit); } catch (e) {}
+  var map = {}, sh = ss.getSheetByName(SH_STOCK);
+  if (sh && sh.getLastRow() > 1) {
+    var last = sh.getLastRow(), from = Math.max(2, last - 11999);
+    var v = sh.getRange(from, 1, last - from + 1, 4).getValues();
+    for (var i = 0; i < v.length; i++) { var it = String(v[i][0] || '').trim().toUpperCase(), g = String(v[i][3] || '').trim().toUpperCase(); if (it && g) map[it] = g; }
+  }
+  try { var js = JSON.stringify(map); if (js.length < 95000) cache.put(ck, js, 600); } catch (e) {}
+  return map;
+}
+function adminGetKategoriGroup(actorNik) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var cfg = _katConfig(), rows = {}, ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(SH_STOCK), obs = {};
+    if (sh && sh.getLastRow() > 1) {
+      var last = sh.getLastRow(), from = Math.max(2, last - 7999), v = sh.getRange(from, 4, last - from + 1, 6).getValues();   // D..I
+      for (var i = 0; i < v.length; i++) {
+        var g = String(v[i][0] || '').trim().toUpperCase(); if (!g) continue;
+        var kt = getKategoriStock(v[i][5]) || getKategoriStockFallback(v[i][1]); if (!kt) continue;
+        var j = kt.indexOf('pipa') === 0 ? 'pipa' : 'fitting', o = obs[g] || (obs[g] = { pipa: 0, fitting: 0 }); o[j]++;
+      }
+    }
+    Object.keys(obs).forEach(function (g) { rows[g] = obs[g].pipa >= obs[g].fitting ? 'pipa' : 'fitting'; });
+    var daftar = [];   // semua kode yang terlihat di spreadsheet ini + yang sudah diatur
+    var seen = {};
+    ['pipa', 'fitting'].forEach(function (j) { ['retail', 'project', 'import'].forEach(function (k) { _katExpand(cfg[j][k]).forEach(function (code) { seen[code] = 1; daftar.push({ kode: code, jenis: j, kat: k }); }); }); });
+    Object.keys(rows).sort().forEach(function (g) { if (!seen[g]) daftar.push({ kode: g, jenis: rows[g], kat: 'lain' }); });
+    return { success: true, daftar: daftar };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+// daftar: [{kode, jenis:'pipa'|'fitting', kat:'retail'|'project'|'import'|'lain'}]
+function adminSetKategoriGroup(actorNik, daftar) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var cfg = { pipa: { retail: [], project: [], import: [] }, fitting: { retail: [], project: [], import: [] } }, n = 0;
+    (daftar || []).forEach(function (r) {
+      var kode = String(r.kode || '').trim().toUpperCase(), j = r.jenis === 'fitting' ? 'fitting' : 'pipa', k = String(r.kat || '').toLowerCase();
+      if (!kode || ['retail', 'project', 'import'].indexOf(k) === -1) return;
+      if (cfg[j][k].indexOf(kode) === -1) { cfg[j][k].push(kode); n++; }
+    });
+    PropertiesService.getScriptProperties().setProperty('KAT_GROUP', JSON.stringify(cfg));
+    _KGL = null;
+    var cache = CacheService.getScriptCache(); try { cache.remove('igm::' + SPREADSHEET_ID); } catch (e) {}
+    return { success: true, jumlah: n, info: 'Tersimpan. Angka di dashboard & snapshot Supabase mengikuti aturan baru setelah sinkronisasi berikutnya (otomatis saat ada edit/harian, atau jalankan syncAllToSupabase).' };
+  } catch (err) { return { success: false, error: err.message }; }
 }

@@ -2,9 +2,9 @@
 <html lang="id">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261111e"></script>
+<script src="./assets/js/auth-guard.js?v=20261111f"></script>
 <script src="./assets/js/config.js?v=20261030a"></script>
-<script src="./assets/js/api-shim.js?v=20261111e"></script>
+<script src="./assets/js/api-shim.js?v=20261111f"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="./assets/js/sb-storage-card.js?v=20261021a"></script>
@@ -432,6 +432,22 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
             <div style="font-size:10.5px;opacity:.7;margin-bottom:4px;">Daftar TL Lintas Departemen saat ini:</div>
             <div id="list-cross-tl" style="font-size:11px;"></div>
           </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);" id="katgroup-section">
+          <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="layers" style="width:11px;color:var(--accent-gold);"></i>Kategori Group (Retail / Project / Import)</div>
+          <div class="modal-note" style="margin:0 0 8px;font-size:11px;opacity:.8;">
+            Atur kode <b>Group</b> masuk kategori mana, untuk <b>Pipa</b> dan <b>Fitting</b>. Aturan ini berlaku di <b>semua</b> Control Tower semua plant dan di dashboard Divisi Head (stock, outbound, inbound). Group yang belum diatur otomatis masuk <b>Lainnya</b>. Rentang boleh ditulis seperti <b>K000-K003</b>.
+          </div>
+          <div id="kg-list" style="font-size:11px;max-height:260px;overflow:auto;border:1px solid var(--border-color);border-radius:8px;padding:6px;"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center;">
+            <input type="text" id="kg-new" placeholder="Kode group / rentang (K000-K003)" style="flex:1;min-width:180px;">
+            <select id="kg-new-j"><option value="pipa">Pipa</option><option value="fitting">Fitting</option></select>
+            <select id="kg-new-k"><option value="retail">Retail</option><option value="project">Project</option><option value="import">Import</option><option value="lain">Lainnya</option></select>
+            <button class="btn-flat btn-flat-ghost" onclick="tambahKgBaris()">Tambah</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn-flat btn-flat-accent" onclick="simpanKategoriGroup()"><i data-lucide="save" style="width:11px;"></i> Simpan aturan group</button></div>
+          <div id="kg-status" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
         </div>
 
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);" id="divhead-section">
@@ -1124,6 +1140,7 @@ function isiDropdownHapus(){
   buildDivheadWsList();
   buildDivheadIzin();
   loadDivisiHeadList();
+  loadKategoriGroup();
 }
 
 // ---- TL Lintas Departemen: load & render daftar yang sudah diatur ----
@@ -1185,6 +1202,41 @@ function hapusCrossWorkspaceTL(nik){
 
 
 // ---- Divisi Head: akun lintas semua plant/departemen (khusus Super Admin) ----
+// ---- Kategori Group (Retail/Project/Import) ----
+var kgRows = [];
+function loadKategoriGroup(){
+  var box = document.getElementById('kg-list'); if (!box) return;
+  google.script.run.withSuccessHandler(function(res){
+    if (!res || !res.success){ box.innerHTML = '<span style="opacity:.6;">Gagal memuat.</span>'; return; }
+    kgRows = res.daftar || []; renderKgRows();
+  }).withFailureHandler(function(){ box.innerHTML = '<span style="opacity:.6;">Gagal terhubung.</span>'; }).adminGetKategoriGroup(actorNik);
+}
+function renderKgRows(){
+  var box = document.getElementById('kg-list');
+  if (!kgRows.length){ box.innerHTML = '<span style="opacity:.6;">Belum ada group.</span>'; return; }
+  var opt = function(v,sel){ return '<option value="'+v[0]+'"'+(v[0]===sel?' selected':'')+'>'+v[1]+'</option>'; };
+  var K = [['retail','Retail'],['project','Project'],['import','Import'],['lain','Lainnya']];
+  box.innerHTML = kgRows.map(function(r,i){
+    return '<div style="display:flex;gap:6px;align-items:center;padding:3px 0;border-bottom:1px solid var(--border-color);">'+
+      '<b style="min-width:84px;">'+escHtml(r.kode)+'</b>'+
+      '<select onchange="kgRows['+i+'].jenis=this.value"><option value="pipa"'+(r.jenis==='pipa'?' selected':'')+'>Pipa</option><option value="fitting"'+(r.jenis==='fitting'?' selected':'')+'>Fitting</option></select>'+
+      '<select onchange="kgRows['+i+'].kat=this.value">'+K.map(function(k){return opt(k,r.kat);}).join('')+'</select>'+
+      '<button class="btn-flat btn-flat-ghost" style="margin-left:auto;" onclick="kgRows.splice('+i+',1);renderKgRows()">Hapus</button></div>';
+  }).join('');
+}
+function tambahKgBaris(){
+  var kode = document.getElementById('kg-new').value.trim().toUpperCase(); if (!kode) return;
+  var j = document.getElementById('kg-new-j').value, k = document.getElementById('kg-new-k').value;
+  kgRows.push({kode:kode, jenis:j, kat:k}); document.getElementById('kg-new').value=''; renderKgRows();
+}
+function simpanKategoriGroup(){
+  var st = document.getElementById('kg-status'); st.textContent = 'Menyimpan...';
+  google.script.run.withSuccessHandler(function(res){
+    if (!res || !res.success){ st.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+    st.textContent = '✅ '+(res.info||'Tersimpan.'); showToast('Aturan kategori group disimpan','success'); loadKategoriGroup();
+  }).withFailureHandler(function(e){ st.textContent = '❌ Gagal terhubung: '+(e&&e.message||''); })
+  .adminSetKategoriGroup(actorNik, kgRows.filter(function(r){ return r.kat!=='lain'; }));
+}
 var divheadCache = [];
 var DH_IZIN = [
   ['overview','Halaman Semua Plant'],['ct','Dashboard Control Tower per departemen'],['log','Log Aktivitas & pengingat WA'],
