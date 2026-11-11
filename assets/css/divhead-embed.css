@@ -6,26 +6,34 @@
    kartu kaca 3D, animasi masuk, dan keterbacaan (label lebih besar, tanpa huruf kapital semua).
 ================================================================ */
 html.dh-embed{
-  --bg-page:radial-gradient(900px 520px at 8% -8%,rgba(42,88,255,.26),transparent 60%),radial-gradient(800px 500px at 100% 100%,rgba(24,182,163,.2),transparent 60%),#090e1b;
-  --bg-page-solid:#090e1b;
-  --bg-card:linear-gradient(160deg,rgba(26,40,76,.82),rgba(13,20,40,.9));
-  --bg-card2:rgba(22,34,64,.7);
-  --bg-sunken:#070b16;
-  --bg-header:rgba(9,14,27,.72);
-  --border:rgba(150,172,255,.12);
-  --border2:rgba(150,172,255,.24);
-  --txt:#eaf0fe; --txt2:#a3b0cf; --txt3:#8d9aba;
+  --bg-page:radial-gradient(900px 520px at 8% -8%,rgba(70,100,200,.2),transparent 60%),radial-gradient(800px 500px at 100% 100%,rgba(70,180,170,.14),transparent 60%),#0c1222;
+  --bg-page-solid:#0c1222;
+  --bg-card:linear-gradient(160deg,rgba(38,56,104,.6),rgba(20,30,58,.72));
+  --bg-card2:rgba(34,50,92,.5);
+  --bg-sunken:#0a0f1c;
+  --bg-header:rgba(12,18,34,.72);
+  --border:rgba(160,180,255,.09);
+  --border2:rgba(160,180,255,.16);
+  --txt:#e3e9f8; --txt2:#a3b0cf; --txt3:#8d9aba;
   --radius:22px; --radius-sm:12px;
   --font-disp:'Sora','Plus Jakarta Sans',system-ui,sans-serif;
-  --e1:0 1px 0 rgba(255,255,255,.06) inset,0 24px 44px -26px rgba(0,0,0,.85),0 4px 12px rgba(0,0,0,.3);
-  --e2:0 1px 0 rgba(255,255,255,.08) inset,0 34px 60px -26px rgba(0,0,0,.9),0 8px 20px rgba(0,0,0,.35);
+  --e1:0 1px 0 rgba(255,255,255,.05) inset,0 30px 50px -34px rgba(0,0,0,.55);
+  --e2:0 1px 0 rgba(255,255,255,.07) inset,0 40px 70px -34px rgba(0,0,0,.6);
 }
 html.dh-embed,html.dh-embed body{font-family:'Plus Jakarta Sans','Inter',system-ui,sans-serif;font-size:13.5px;line-height:1.5}
 html.dh-embed{color-scheme:dark}
-html.dh-embed *{scrollbar-width:thin;scrollbar-color:rgba(243,185,77,.5) transparent}
+/* gerak halus: kartu KPI 'melayang' pelan (properti translate terpisah dari tilt), tiap kartu beda fase */
+html.dh-embed .kpi-card{animation:dh-float 9s ease-in-out infinite;animation-delay:calc(var(--fi,0)*-1.4s)}
+html.dh-embed .kpi-card.moving{animation-play-state:paused}
+@keyframes dh-float{50%{translate:0 -5px}}
+/* garis kilau lembut menyapu kartu saat muncul */
+html.dh-embed .kpi-card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.07) 50%,transparent 65%);transform:translateX(-120%);animation:dh-sheen 1.6s .5s ease-out 1 forwards}
+@keyframes dh-sheen{to{transform:translateX(120%)}}
+html.dh-embed canvas{filter:saturate(.92)}
+html.dh-embed *{scrollbar-width:thin;scrollbar-color:rgba(240,203,136,.45) transparent}
 html.dh-embed ::-webkit-scrollbar{width:10px;height:10px}
 html.dh-embed ::-webkit-scrollbar-track{background:transparent}
-html.dh-embed ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(243,185,77,.6),rgba(145,165,255,.45));border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+html.dh-embed ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(240,203,136,.5),rgba(160,180,255,.38));border-radius:99px;border:2px solid transparent;background-clip:padding-box}
 html.dh-embed ::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,#f3b94d,#9aa9ff);background-clip:padding-box}
 html.dh-embed ::-webkit-scrollbar-corner{background:transparent}
 /* rapikan kepala halaman: sembunyikan yang tidak relevan utk Divisi Head */
@@ -46,7 +54,7 @@ html.dh-embed .card,html.dh-embed .kpi-card{
   border:1px solid var(--border2);backdrop-filter:blur(8px);
   transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s,border-color .3s;will-change:transform}
 html.dh-embed .card.moving,html.dh-embed .kpi-card.moving{transition:transform .06s linear,box-shadow .3s,border-color .3s}
-html.dh-embed .card:hover,html.dh-embed .kpi-card:hover{box-shadow:var(--e2);border-color:rgba(243,185,77,.45)}
+html.dh-embed .card:hover,html.dh-embed .kpi-card:hover{box-shadow:var(--e2);border-color:rgba(240,203,136,.4)}
 html.dh-embed .card::after,html.dh-embed .kpi-card::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
   background:radial-gradient(300px circle at var(--gx,50%) var(--gy,0%),rgba(255,255,255,.1),transparent 62%)}
 html.dh-embed .card:hover::after,html.dh-embed .kpi-card:hover::after{opacity:1}
@@ -69,9 +77,9 @@ html.dh-embed .grid-2{gap:16px}
 html.dh-embed .fsel,html.dh-embed .filter-group select,html.dh-embed select{border-radius:12px;font-size:13px}
 html.dh-embed .btn-icon{border-radius:12px}
 /* animasi masuk -- satu rangkaian saat dashboard dibuka */
-html.dh-embed .dh-pre{opacity:0;transform:perspective(1100px) translateY(26px) rotateX(9deg) scale(.98)}
-html.dh-embed .dh-show{opacity:1;transform:perspective(1100px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
-  transition:opacity .6s ease var(--d,0ms),transform .75s cubic-bezier(.2,.9,.2,1) var(--d,0ms),box-shadow .3s,border-color .3s}
+html.dh-embed .dh-pre{opacity:0;transform:perspective(1100px) translateY(30px) rotateX(10deg) scale(.975);filter:blur(4px)}
+html.dh-embed .dh-show{opacity:1;filter:none;transform:perspective(1100px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
+  transition:opacity .8s ease var(--d,0ms),filter .8s ease var(--d,0ms),transform .95s cubic-bezier(.2,.9,.2,1) var(--d,0ms),box-shadow .3s,border-color .3s}
 html.dh-embed .dh-show.moving{transition:transform .06s linear,box-shadow .3s,border-color .3s}
 @media (max-width:900px){html.dh-embed .content{padding:16px 14px 30px}html.dh-embed .grid-2{grid-template-columns:1fr}html.dh-embed .kpi-val{font-size:25px}}
 @media (prefers-reduced-motion:reduce){html.dh-embed *{animation:none!important;transition:none!important}html.dh-embed .dh-pre{opacity:1;transform:none}html.dh-embed .card,html.dh-embed .kpi-card{transform:none!important}}

@@ -23,7 +23,34 @@
       }
       if (C.defaults.plugins && C.defaults.plugins.legend && C.defaults.plugins.legend.labels) C.defaults.plugins.legend.labels.font = { size: 12.5 };
     } catch (e) {}
+    registerPremium();
     return true;
+  }
+
+  // Plugin grafik premium (hanya tampilan; data/logika dashboard tidak disentuh):
+  //  - batang membulat, garis halus (kurva) dgn area gradien lembut, donat bercelah & membulat
+  //  - animasi masuk berurutan per data + gerak halus saat hover
+  var _reg = false;
+  function registerPremium() {
+    var C = window.Chart; if (_reg || !C || !C.register) return; _reg = true;
+    try {
+      if (!REDUCE) C.defaults.animation.delay = function (c) { return (c.type === 'data' && c.mode === 'default') ? c.dataIndex * 55 + c.datasetIndex * 110 : 0; };
+      C.defaults.animation.duration = REDUCE ? 0 : 1200; C.defaults.transitions = C.defaults.transitions || {};
+      C.defaults.plugins.legend.labels.usePointStyle = true; C.defaults.plugins.legend.labels.boxWidth = 8;
+      C.register({
+        id: 'dhPremium',
+        beforeUpdate: function (ch) {
+          var t = ch.config.type;
+          ch.data.datasets.forEach(function (ds) {
+            if (t === 'bar') { if (ds.borderRadius == null) ds.borderRadius = 10; if (ds.borderSkipped == null) ds.borderSkipped = false; }
+            if (t === 'line') { if (ds.tension == null) ds.tension = 0.4; if (ds.pointRadius == null) ds.pointRadius = 0; if (ds.pointHoverRadius == null) ds.pointHoverRadius = 6; if (ds.borderWidth == null) ds.borderWidth = 2.5; }
+            if (t === 'doughnut' || t === 'pie') { if (ds.spacing == null) ds.spacing = 4; if (ds.borderRadius == null) ds.borderRadius = 10; ds.borderWidth = 0; if (ds.hoverOffset == null) ds.hoverOffset = 12; }
+          });
+          var sc = ch.options && ch.options.scales;
+          if (sc) Object.keys(sc).forEach(function (k) { var g = sc[k].grid; if (g && g.display !== false) g.color = 'rgba(160,180,255,.07)'; if (sc[k].border) sc[k].border.display = false; });
+        }
+      });
+    } catch (e) {}
   }
 
   // Tilt 3D mengikuti kursor (halus; kartu besar miring lebih sedikit)
@@ -97,6 +124,7 @@
   ready(function () {
     applyPerms();
     var tries = 0; (function t() { if (!tuneCharts() && tries++ < 20) setTimeout(t, 150); })();
+    document.querySelectorAll('.kpi-card').forEach(function (el, i) { el.style.setProperty('--fi', i); });
     bindTilt(); bindReveal();
   });
 })();

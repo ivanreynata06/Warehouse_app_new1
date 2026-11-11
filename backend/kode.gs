@@ -4214,8 +4214,10 @@ function syncWorkspaceToSupabase(workspaceKey) {
     return getDashboardData('bulanan', { bulan: bulanIni, tahun: tahunIni, group: '' }); // fallback kalau tren gagal
   });
   // Stock harian hari ini — TETAP dihitung sendiri (tren cuma bulanan, tidak ada versi harian)
+  var stockHarianRes = null;
   put('stock:harian:' + todayStr, function () {
-    return getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' });
+    stockHarianRes = getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' });
+    return stockHarianRes;
   });
 
   // Outbound/Inbound bulan ini — ambil dari hasil tren 6 bulan juga
@@ -4325,6 +4327,12 @@ function syncWorkspaceToSupabase(workspaceKey) {
   // lambat karena selalu fallback ke Apps Script sendirian.
   put('residence_time:bulanan:' + tahunIni + '-' + _pad2(+bulanIni), function () {
     return getResidenceTimeData('bulan');
+  });
+
+  // Ringkasan utk akun Divisi Head (1 baris per departemen: stock/outbound/inbound + status input).
+  // Dibaca browser LANGSUNG dari Supabase (1 request utk semua departemen) -> Semua Plant & Log Aktivitas tampil cepat.
+  put('divhead:summary', function () {
+    return _divheadBuildSummary(workspaceKey, { stockHarian: stockHarianRes, ioTrend: ioTrendResult });
   });
 
   Logger.log(log.join('\n'));
@@ -11664,4 +11672,80 @@ function divheadKirimReminder(actorNik, tanggal) {
     }
     return { success: true, terkirim: !!r.ok, pesan: r.pesan || '', saran: r.saran || '', item: kurang.map(function (i) { return i.label; }) };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+
+// ----------------------------------------------------------------
+//  Ringkasan Divisi Head di Supabase (snapshot 'divhead:summary' per departemen)
+//  Isi: total stock hari ini, outbound & inbound bulan ini (kg), dan status input per dataset
+//  (tanggal terakhir + jumlah baris per tanggal utk 21 hari terakhir) -> browser menghitung
+//  kelengkapan utk tanggal apa pun dalam jendela itu tanpa memanggil Apps Script.
+//  Ikut ter-refresh otomatis oleh syncWorkspaceToSupabase (tiap ada edit + harian).
+// ----------------------------------------------------------------
+function _divheadScanCounts(sheet, col, tz, startKey) {
+  var last = sheet.getLastRow();
+  if (last < 2) return { last: '', byDate: {}, valid: startKey };
+  var from = Math.max(2, last - 7999), truncated = from > 2;
+  var vals = sheet.getRange(from, col, last - from + 1, 1).getValues(), byDate = {}, maxKey = '', minKey = '';
+  for (var i = 0; i < vals.length; i++) {
+    var v = vals[i][0]; if (v === '' || v === null) continue;
+    var d = (v instanceof Date) ? v : _parseTanggalFleksibel(v);
+    if (!(d instanceof Date) || isNaN(d.getTime())) continue;
+    var k = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+    if (k > maxKey) maxKey = k; if (!minKey || k < minKey) minKey = k;
+    if (k >= startKey) byDate[k] = (byDate[k] || 0) + 1;
+  }
+  // jendela terpotong (sheet sangat besar) -> tanggal sebelum minKey tidak bisa dipastikan
+  return { last: maxKey, byDate: byDate, valid: (truncated && minKey > startKey) ? minKey : startKey };
+}
+function _divheadBuildSummary(workspaceKey, pre) {
+  ACTIVE_WORKSPACE = workspaceKey;
+  pre = pre || {};
+  var tz = Session.getScriptTimeZone(), now = new Date();
+  var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var startKey = Utilities.formatDate(new Date(now.getTime() - 20 * 86400000), tz, 'yyyy-MM-dd');
+  var bulan = String(now.getMonth() + 1), tahun = String(now.getFullYear());
+  var st = null, out = null, inn = null;
+  try {
+    var sh = pre.stockHarian || getDashboardData('harian', { dari: todayStr, sampai: todayStr, group: '' });
+    if (sh && sh.stock && sh.stock.tonase) st = +sh.stock.tonase.total || 0;
+  } catch (e) {}
+  try {
+    var io = pre.ioTrend;
+    if (io && io.success && io.results && io.results.length) {
+      var lr = io.results[io.results.length - 1];
+      out = +((lr.out && lr.out.total) || 0); inn = +((lr['in'] && lr['in'].total) || 0);
+    } else {
+      var o = getOutboundData({ bulan: bulan, tahun: tahun }), i2 = getInboundData({ bulan: bulan, tahun: tahun });
+      out = +(o && o.total) || 0; inn = +(i2 && i2.total) || 0;
+    }
+  } catch (e) {}
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), valid = startKey, items = [];
+  _divheadDatasetDefs().forEach(function (def) {
+    var it = { key: def.key, label: def.label, wajib: def.wajib, last: '', byDate: {} };
+    try {
+      var sheet = ss.getSheetByName(def.sheet);
+      if (sheet) { var r = _divheadScanCounts(sheet, def.col, tz, startKey); it.last = r.last; it.byDate = r.byDate; if (r.valid > valid) valid = r.valid; }
+    } catch (e) {}
+    items.push(it);
+  });
+  var terakhirEdit = '';
+  try { terakhirEdit = Utilities.formatDate(DriveApp.getFileById(SPREADSHEET_ID).getLastUpdated(), tz, 'yyyy-MM-dd HH:mm'); } catch (e) {}
+  return { success: true, tanggal: todayStr, st: st, out: out, inn: inn,
+    aktivitas: { items: items, valid: valid, terakhirEdit: terakhirEdit, label: WORKSPACE_LABELS[workspaceKey] || workspaceKey },
+    dibuat: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm') };
+}
+// Jalankan SEKALI dari editor Apps Script (atau biarkan syncAllToSupabase/onEdit yang mengisi) utk mengisi
+// ringkasan Divisi Head semua departemen tanpa menunggu sync penuh.
+function divheadSyncSummaryAll() {
+  var log = [];
+  Object.keys(WORKSPACE_MAP).forEach(function (k) {
+    if (!WORKSPACE_MAP[k]) return;
+    try {
+      ACTIVE_WORKSPACE = k; SPREADSHEET_ID = resolveWorkspaceSpreadsheetId(k);
+      _supabaseUpsertSnapshot(k + '::divhead:summary', _divheadBuildSummary(k, null));
+      log.push('OK   ' + k);
+    } catch (err) { log.push('GAGAL ' + k + ': ' + err.message); }
+  });
+  Logger.log(log.join('\n')); return log;
 }
