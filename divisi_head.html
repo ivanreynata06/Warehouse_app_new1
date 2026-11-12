@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rucika — Control Tower Divisi Head</title>
-<script src="./assets/js/auth-guard.js?v=20261112b"></script>
-<script src="./assets/js/config.js?v=20261112b"></script>
+<script src="./assets/js/auth-guard.js?v=20261112c"></script>
+<script src="./assets/js/config.js?v=20261112c"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261112b"></script>
+<script src="./assets/js/api-shim.js?v=20261112c"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -265,11 +265,11 @@ html{color-scheme:dark}
 .dm-stat{position:relative;padding:18px 20px;border-radius:22px;border:1px solid var(--line2);background:rgba(160,180,255,.06);overflow:hidden;opacity:0;transform:translateY(18px) scale(.96);transition:opacity .5s,transform .6s cubic-bezier(.2,1.1,.3,1);transition-delay:calc(var(--i,0)*90ms + 160ms)}
 .dm-bg.on .dm-stat{opacity:1;transform:none}
 .dm-stat::after{content:"";position:absolute;right:-26px;top:-26px;width:100px;height:100px;border-radius:50%;background:var(--c);opacity:.18;filter:blur(10px)}
-.dm-stat span{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-weight:600}
-.dm-stat span::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 12px var(--c)}
-.dm-stat b{display:block;margin-top:6px;font-family:var(--disp);font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
-.dm-stat b em{font-style:normal;font-size:13px;color:var(--muted);font-weight:500;margin-left:5px;font-family:var(--font)}
-.dm-stat small{color:var(--muted);font-size:12px}
+.dm-stat>span{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-weight:600}
+.dm-stat>span::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 12px var(--c)}
+.dm-stat>b{display:block;margin-top:6px;font-family:var(--disp);font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}
+.dm-stat>b em{font-style:normal;font-size:13px;color:var(--muted);font-weight:500;margin-left:5px;font-family:var(--font)}
+.dm-stat>small{display:block;margin-top:2px;color:var(--muted);font-size:12px}
 .dm-split{margin:18px 0 6px}
 .dm-bar{display:flex;height:14px;border-radius:99px;overflow:hidden;background:rgba(160,180,255,.1)}
 .dm-bar i{display:block;width:0;transition:width 1.1s cubic-bezier(.2,.9,.2,1) .45s}
@@ -306,8 +306,13 @@ html{color-scheme:dark}
 .dm-tabs button{border:0;background:transparent;color:var(--muted);font-weight:700;font-size:13px;padding:8px 18px;border-radius:10px;transition:background .25s,color .25s}
 .dm-tabs button.on{background:linear-gradient(135deg,rgba(143,208,255,.26),rgba(240,203,136,.18));color:#fff}
 .dm-sub{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;margin-top:10px;font-size:12px;color:#cfd8f0}
-.dm-sub span{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px dashed var(--line)}
-.dm-sub b{font-variant-numeric:tabular-nums;font-weight:700}
+
+.dm-sub{margin-top:12px;padding-top:8px;border-top:1px solid var(--line)}
+.dm-sub span{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px dashed var(--line);font-size:12.5px;line-height:1.3}
+.dm-sub span:first-child{border-top:0}
+.dm-sub span::before{display:none!important}
+.dm-sub em{display:inline-flex;align-items:center;font-style:normal;color:#cfd8f0}
+.dm-sub b{display:inline!important;margin:0!important;font-family:var(--font)!important;font-size:13px!important;font-weight:700;font-variant-numeric:tabular-nums;color:#fff}
 .dm-sub i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 .dm-note{margin:10px 0 0;padding:10px 14px;border-radius:14px;background:rgba(240,203,136,.1);color:var(--gold);font-size:12.5px}
 #dmList{animation:fadeUp .35s ease}
@@ -399,6 +404,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
           <div class="kpi click" data-detail="st" role="button" tabindex="0" style="--kc:var(--sky)"><span>Total stock</span><b><i id="kStock">—</i><em>ton</em></b><u>Lihat rincian</u></div>
           <div class="kpi click" data-detail="out" role="button" tabindex="0" style="--kc:var(--gold)"><span>Outbound</span><b><i id="kOut">—</i><em>ton</em></b><u>Lihat rincian</u></div>
           <div class="kpi click" data-detail="inn" role="button" tabindex="0" style="--kc:var(--teal)"><span>Inbound</span><b><i id="kIn">—</i><em>ton</em></b><u>Lihat rincian</u></div>
+          <div class="kpi click" data-go="fte" id="tileFte" role="button" tabindex="0" style="--kc:var(--violet)"><span>Produktivitas FTE</span><b><i id="kFte">—</i><em id="kFteU">ton/FTE</em></b><u>Buka Monitoring FTE</u></div>
           <div class="kpi click" data-go="log" role="button" tabindex="0" style="--kc:var(--coral)"><span>Departemen belum lengkap</span><b><i id="kBad">—</i><em id="kBadOf"></em></b><u>Buka log aktivitas</u></div>
         </div>
         <section class="panel" id="deptPanel">
@@ -589,7 +595,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     h += '<div class="dm-stats"><div class="dm-stat" style="--c:' + m.c + ';--i:0"><span>Total ' + m.t.toLowerCase() + '</span><b><i data-cnt="' + ton(tot) + '">0</i><em>ton</em></b><small>' + WS.length + ' departemen</small></div>' +
       '<div class="dm-stat" style="--c:#8fd0ff;--i:1"><span>Pipa</span><b><i data-cnt="' + ton(P) + '">0</i><em>ton</em></b><small>' + pct(P) + '% dari total</small>' + sub('pipa') + '</div>' +
       '<div class="dm-stat" style="--c:#f0cb88;--i:2"><span>Fitting</span><b><i data-cnt="' + ton(F) + '">0</i><em>ton</em></b><small>' + pct(F) + '% dari total</small>' + sub('fitting') + '</div></div>';
-    if (!hasKat) h += '<p class="dm-note">Pecahan Retail / Project / Import belum tersedia di data cache. Muncul otomatis setelah sinkronisasi Supabase berikutnya.</p>';
+    if (!hasKat) h += '<p class="dm-note">Rincian Retail / Project / Import belum ada di data cache (cache dibuat sebelum fitur ini aktif). <button class="ibtn" data-live="1" style="margin-left:8px;padding:5px 12px">Muat data lengkap sekarang</button><br><small>Memuat langsung dari server (beberapa detik). Agar otomatis, jalankan <b>divheadSyncSummaryAll</b> sekali di Apps Script.</small></p>';
     h += '<div class="dm-tabs" role="tablist"><button class="on" data-jt="pipa" role="tab">Pipa</button><button data-jt="fitting" role="tab">Fitting</button></div><div id="dmList"></div>';
     $('dmBody').innerHTML = h; $('dmBg').classList.add('on'); renderDmList();
     requestAnimationFrame(function () { requestAnimationFrame(function () {
@@ -616,6 +622,20 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     var host = $('dmList'); host.innerHTML = h;
     host.querySelectorAll('.dm-row').forEach(function (e) { e.style.opacity = 1; e.style.transform = 'none'; });
     requestAnimationFrame(function () { requestAnimationFrame(function () { host.querySelectorAll('[data-w]').forEach(function (e) { e.style.width = Math.min(100, +e.dataset.w) + '%'; }); }); });
+  }
+  // Muat langsung (lewati cache/snapshot) stock, outbound, inbound -> memuat pecahan Retail/Project/Import tanpa menunggu sinkronisasi
+  function muatLangsung(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Memuat…'; }
+    window.__SHIM_FRESH_UNTIL = Date.now() + 120000;
+    var p = { bulan: String(NOW.getMonth() + 1), tahun: String(NOW.getFullYear()) }, left = 0, kind = dmKind;
+    function done() { if (--left <= 0) { window.__SHIM_FRESH_UNTIL = 0; scheduleSummary(); if ($('dmBg').classList.contains('on') && dmKind === kind) openDetail(kind); } }
+    WS.forEach(function (w) {
+      var k = w.key, d = DATA[k] = DATA[k] || {};
+      if (can('stock')) { left++; run(k, 'getDashboardData', ['harian', { dari: today(), sampai: today() }], function (r) { parseStock(r, d); updateCard(k); done(); }, done); }
+      if (can('outbound')) { left++; run(k, 'getOutboundData', [p], function (r) { parseIO(r, d, 'out', 'outP', 'outF', 'outK'); updateCard(k); done(); }, done); }
+      if (can('inbound')) { left++; run(k, 'getInboundData', [p], function (r) { parseIO(r, d, 'inn', 'inP', 'inF', 'inK'); updateCard(k); done(); }, done); }
+    });
+    if (!left) done();
   }
   function closeDetail() { $('dmBg').classList.remove('on'); if (dmLast && dmLast.focus) try { dmLast.focus(); } catch (e) {} }
 
@@ -726,6 +746,10 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     });
     countTo($('kStock'), ton(s), 1); countTo($('kOut'), ton(o), 1); countTo($('kIn'), ton(i), 1);
     $('kBad').textContent = known ? bad : '—'; $('kBadOf').textContent = known ? 'dari ' + WS.length : '';
+    (function () {   // Produktivitas FTE gabungan = total ton / total FTE (rata-rata tertimbang)
+      var sumT = 0, sumF = 0, tg = 0, n = 0; WS.forEach(function (w) { var f = (DATA[w.key] || {}).fte; if (f && f.fte > 0) { sumT += f.ton * f.fte; sumF += f.fte; tg += f.target; n++; } });
+      $('kFte').textContent = sumF ? nf(sumT / sumF, 1) : '—'; $('kFteU').textContent = sumF ? 'ton/FTE · ' + n + ' dept' : 'ton/FTE';
+    })();
     var pct = known ? Math.round(ok * 100 / WS.length) : null;
     setRing($('heroRing'), pct, known ? ok + '/' + WS.length : null);
     $('heroT1').textContent = known ? (bad ? bad + ' departemen belum lengkap' : 'Semua input lengkap') : 'Memuat status…';
@@ -784,8 +808,9 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
   // Sembunyikan bagian ringkasan yang tidak diizinkan Super Admin utk akun ini
   function applyPerms() {
     function hide(el, on) { if (el) el.style.display = on ? 'none' : ''; }
+    hide($('tileFte'), !can('fte'));
     hide($('kStock').closest('.kpi'), !can('stock')); hide($('kOut').closest('.kpi'), !can('outbound')); hide($('kIn').closest('.kpi'), !can('inbound')); hide($('kBad').closest('.kpi'), !can('log'));
-    var vis = ['stock', 'outbound', 'inbound', 'log'].filter(can).length; $('viewAll').querySelector('.kpis').style.gridTemplateColumns = 'repeat(' + Math.max(1, vis) + ',minmax(0,1fr))';
+    var vis = ['stock', 'outbound', 'inbound', 'fte', 'log'].filter(can).length; $('viewAll').querySelector('.kpis').style.gridTemplateColumns = 'repeat(' + Math.max(1, vis) + ',minmax(0,1fr))';
     hide($('chBar').closest('.card'), !(can('outbound') || can('inbound'))); hide($('chDonut').closest('.card'), !can('stock'));
     var both = (can('outbound') || can('inbound')) && can('stock'); $('viewAll').querySelector('.charts').style.gridTemplateColumns = both ? '' : '1fr';
     hide($('viewAll').querySelector('.charts'), !(can('outbound') || can('inbound') || can('stock')));
@@ -848,6 +873,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
       var sn = m.sum[w.key]; if (!sn) { miss.push(w); return; }
       SNAP[w.key] = sn; var d = DATA[w.key] = DATA[w.key] || {};
       ['st', 'stP', 'stF', 'out', 'outP', 'outF', 'inn', 'inP', 'inF'].forEach(function (f) { if (sn[f] != null && d[f] !== sn[f]) { d[f] = sn[f]; changed = true; } });
+      if (sn.fte && JSON.stringify(d.fte) !== JSON.stringify(sn.fte)) { d.fte = sn.fte; changed = true; }
       ['stK', 'outK', 'inK'].forEach(function (f) { if (sn[f] && JSON.stringify(d[f]) !== JSON.stringify(sn[f])) { d[f] = sn[f]; changed = true; } });
       if (sn.dibuat && sn.dibuat > snapTime) snapTime = sn.dibuat;
       dates.forEach(function (tgl) {
@@ -861,10 +887,23 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     });
     return { miss: miss, changed: changed };
   }
+  // FTE: bila snapshot belum memuatnya, ambil langsung dari server (terbatas 3 paralel; di-cache server 3 menit)
+  function loadFteLive(force) {
+    if (!can('fte')) return;
+    var q = WS.filter(function (w) { return force || !(DATA[w.key] && DATA[w.key].fte); }), n = new Date(), busy = 0;
+    (function next() {
+      while (busy < 3 && q.length) (function (w) {
+        busy++; run(w.key, 'getAbsensiFTEData', [n.getMonth() + 1, n.getFullYear()], function (r) {
+          if (r && r.success && r.internal) { var d = DATA[w.key] = DATA[w.key] || {}, i = r.internal; d.fte = { ton: i.produktivitasTonFTE || 0, kg: i.produktivitasKgFTE || 0, target: i.produktivitasTarget || 0, ok: !!i.produktivitasTercapai, fte: i.totalFTE || 0, lembur: i.overtimePct || 0 }; scheduleSummary(); }
+          busy--; next();
+        }, function () { busy--; next(); });
+      })(q.shift());
+    })();
+  }
   function loadFromSnapshots(done) {
     sbFetch().then(function (m) {
       var r = applySnapshots(m, [today(), logDate]); snapReady = true;
-      scheduleSummary();
+      scheduleSummary(); loadFteLive(false);
       if (state.view === 'log') loadLog(false);     // hanya departemen tanpa snapshot yg dicek langsung (Apps Script)
       if (done) done(r.miss);
     });
@@ -1154,6 +1193,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
   /* ---------- event ---------- */
   document.addEventListener('click', function (e) {
     var t;
+    if ((t = e.target.closest('[data-live]'))) { muatLangsung(t); return; }
     if ((t = e.target.closest('[data-detail]'))) { openDetail(t.dataset.detail); return; }
     if ((t = e.target.closest('[data-jt]'))) { dmJenis = t.dataset.jt; document.querySelectorAll('[data-jt]').forEach(function (b) { b.classList.toggle('on', b === t); }); renderDmList(); return; }
     if (e.target === $('dmBg') || e.target.closest('#dmX')) { closeDetail(); return; }

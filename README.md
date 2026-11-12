@@ -104,6 +104,8 @@ Akun khusus pimpinan divisi yang **hanya melihat** (tidak bisa mengubah data) se
 
 **Keamanan Supabase/Apps Script:** frontend hanya memakai kunci `anon` (baca `dashboard_snapshots`); `service_role` hanya di Script Properties. Jalankan `supabase/hardening.sql` (opsional) untuk memastikan RLS & hak anon minimal. Snapshot publik tidak memuat NIK pengunggah. Langkah terpisah yang berdampak operasional: `aktifkanAuthEnforce()` (lihat log `[AUTH log]` di Apps Script > Executions dulu).
 
+**Sync Supabase bertahap:** `syncAllToSupabase` kini berhenti di anggaran waktu 4,5 menit (batas Apps Script 6 menit), menyimpan posisi (`SYNC_ALL_NEXT`) dan melanjutkan otomatis lewat `syncAllLanjut` (~1 menit); bisa juga dijalankan ulang manual. Peta Item->Group di-memo per eksekusi agar sync tidak berat.
+
 **Kelola User - Divisi Head:** dua panel terpisah: (1) *Akun Divisi Head* (NIK, nama, kata sandi, cakupan plant) dan (2) *Tampilan Dashboard Divisi Head* (pilih akun -> centang data yang boleh tampil -> Simpan; `adminSetDivisiHeadIzin`).
 
 **Akurasi Scan Barcode:** data per departemen/plant, tidak digabung (baca `getAkurasiData`; `getAkurasiDataGabungan` kini hanya mengembalikan departemen aktif).

@@ -3960,19 +3960,40 @@ function setupMonthlyArchiveTrigger() {
 // lanjut). Dipanggil oleh trigger harian jam 00:xx (jaring pengaman),
 // selain sync real-time lewat onSheetEditSync() di atas.
 function syncAllToSupabase() {
-  var allLogs = [];
-  Object.keys(WORKSPACE_MAP).forEach(function (workspaceKey) {
-    if (!WORKSPACE_MAP[workspaceKey]) return; // belum di-provision -> lewati
+  // Batas Apps Script 6 menit/eksekusi: proses departemen satu per satu dgn anggaran waktu 4,5 menit.
+  // Bila belum selesai, posisi disimpan (SYNC_ALL_NEXT) dan dilanjutkan otomatis ~1 menit kemudian (syncAllLanjut),
+  // atau jalankan fungsi ini lagi secara manual -- akan melanjutkan dari departemen berikutnya.
+  var t0 = Date.now(), BUDGET = 270000, props = PropertiesService.getScriptProperties();
+  var keys = Object.keys(WORKSPACE_MAP).filter(function (k) { return WORKSPACE_MAP[k]; });   // belum di-provision -> lewati
+  var start = 0;
+  try { var st = JSON.parse(props.getProperty('SYNC_ALL_NEXT') || 'null'); if (st && Date.now() - st.t < 30 * 60000 && st.i < keys.length) start = st.i; } catch (e) {}
+  var allLogs = [], i;
+  for (i = start; i < keys.length; i++) {
+    if (i > start && Date.now() - t0 > BUDGET) break;
     try {
-      var result = syncWorkspaceToSupabase(workspaceKey);
-      allLogs.push('=== ' + workspaceKey + ' ===\n' + result.join('\n'));
-    } catch (err) {
-      allLogs.push('=== ' + workspaceKey + ' === GAGAL TOTAL: ' + err.message);
-    }
-  });
-  try { _supabaseRpc('wh_storage_stats', {}); } catch (e) { /* riwayat ukuran DB: abaikan bila fungsi SQL belum dibuat */ }
+      var result = syncWorkspaceToSupabase(keys[i]);
+      allLogs.push('=== ' + keys[i] + ' ===\n' + result.join('\n'));
+    } catch (err) { allLogs.push('=== ' + keys[i] + ' === GAGAL TOTAL: ' + err.message); }
+  }
+  if (i < keys.length) {
+    props.setProperty('SYNC_ALL_NEXT', JSON.stringify({ i: i, t: Date.now() }));
+    var lanjut = false;
+    try {
+      ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'syncAllLanjut') ScriptApp.deleteTrigger(t); });
+      ScriptApp.newTrigger('syncAllLanjut').timeBased().after(60 * 1000).create(); lanjut = true;
+    } catch (e) {}
+    allLogs.push('--- DITUNDA di departemen ke-' + (i + 1) + ' dari ' + keys.length + ' (batas waktu). ' + (lanjut ? 'Dilanjutkan otomatis ~1 menit lagi.' : 'Jalankan syncAllToSupabase lagi untuk melanjutkan.'));
+  } else {
+    props.deleteProperty('SYNC_ALL_NEXT');
+    try { _supabaseRpc('wh_storage_stats', {}); } catch (e) { /* riwayat ukuran DB: abaikan bila fungsi SQL belum dibuat */ }
+    allLogs.push('--- SELESAI: semua departemen tersinkron.');
+  }
   Logger.log(allLogs.join('\n\n'));
   return allLogs;
+}
+function syncAllLanjut() {
+  try { ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'syncAllLanjut') ScriptApp.deleteTrigger(t); }); } catch (e) {}
+  return syncAllToSupabase();
 }
 
 // Dipanggil manual dari tombol "Sync Sekarang" di halaman Upload Data --
@@ -11759,7 +11780,9 @@ function _divheadBuildSummary(workspaceKey, pre) {
   } catch (e) {}
   try {
     // selalu ambil langsung (butuh pecahan pipa/fitting); dijalankan di background sync, bukan saat pengguna menunggu
-    var o = getOutboundData({ bulan: bulan, tahun: tahun }), i2 = getInboundData({ bulan: bulan, tahun: tahun });
+    var io = pre.ioTrend, lr = (io && io.success && io.results && io.results.length) ? io.results[io.results.length - 1] : null;
+    var o = (lr && lr.out && lr.out.kat) ? lr.out : getOutboundData({ bulan: bulan, tahun: tahun });
+    var i2 = (lr && lr['in'] && lr['in'].kat) ? lr['in'] : getInboundData({ bulan: bulan, tahun: tahun });
     out = +(o && o.total) || 0; outP = +(o && o.pipa) || 0; outF = +(o && o.fitting) || 0;
     inn = +(i2 && i2.total) || 0; inP = +(i2 && i2.pipa) || 0; inF = +(i2 && i2.fitting) || 0;
     outK = (o && o.kat) || null; inK = (i2 && i2.kat) || null;
@@ -11773,9 +11796,17 @@ function _divheadBuildSummary(workspaceKey, pre) {
     } catch (e) {}
     items.push(it);
   });
+  // Produktivitas FTE bulan ini (hanya bila diaktifkan utk departemen ini di Kelola User > Pengaturan Control Tower)
+  var fte = null;
+  try {
+    if (_ctSetGet(workspaceKey).fte !== false) {
+      var fr = getAbsensiFTEData(now.getMonth() + 1, now.getFullYear());
+      if (fr && fr.success && fr.internal) { var fd = fr.internal; fte = { ton: fd.produktivitasTonFTE || 0, kg: fd.produktivitasKgFTE || 0, target: fd.produktivitasTarget || 0, ok: !!fd.produktivitasTercapai, fte: fd.totalFTE || 0, lembur: fd.overtimePct || 0 }; }
+    }
+  } catch (e) {}
   var terakhirEdit = '';
   try { terakhirEdit = Utilities.formatDate(DriveApp.getFileById(SPREADSHEET_ID).getLastUpdated(), tz, 'yyyy-MM-dd HH:mm'); } catch (e) {}
-  return { success: true, tanggal: todayStr, st: st, out: out, inn: inn, stP: stP, stF: stF, outP: outP, outF: outF, inP: inP, inF: inF, stK: stK, outK: outK, inK: inK,
+  return { success: true, tanggal: todayStr, fte: fte, st: st, out: out, inn: inn, stP: stP, stF: stF, outP: outP, outF: outF, inP: inP, inF: inF, stK: stK, outK: outK, inK: inK,
     aktivitas: { items: items, valid: valid, terakhirEdit: terakhirEdit, label: WORKSPACE_LABELS[workspaceKey] || workspaceKey },
     dibuat: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss') };
 }
@@ -11881,9 +11912,11 @@ function _katDariGroup(jenis, group) {
   return (g && _KGL[jenis] && _KGL[jenis][g]) || 'Lain';
 }
 // Item Number -> Group dari DASHBOARD_STOCK (baris terbaru menimpa); di-cache 10 menit per spreadsheet
+var _IGM_MEMO = {};
 function _itemGroupMap(ss) {
+  if (_IGM_MEMO[SPREADSHEET_ID]) return _IGM_MEMO[SPREADSHEET_ID];   // sekali per eksekusi (io_trend memanggil belasan kali)
   var cache = CacheService.getScriptCache(), ck = 'igm::' + SPREADSHEET_ID;
-  try { var hit = cache.get(ck); if (hit) return JSON.parse(hit); } catch (e) {}
+  try { var hit = cache.get(ck); if (hit) return (_IGM_MEMO[SPREADSHEET_ID] = JSON.parse(hit)); } catch (e) {}
   var map = {}, sh = ss.getSheetByName(SH_STOCK);
   if (sh && sh.getLastRow() > 1) {
     var last = sh.getLastRow(), from = Math.max(2, last - 11999);
@@ -11891,6 +11924,7 @@ function _itemGroupMap(ss) {
     for (var i = 0; i < v.length; i++) { var it = String(v[i][0] || '').trim().toUpperCase(), g = String(v[i][3] || '').trim().toUpperCase(); if (it && g) map[it] = g; }
   }
   try { var js = JSON.stringify(map); if (js.length < 95000) cache.put(ck, js, 600); } catch (e) {}
+  _IGM_MEMO[SPREADSHEET_ID] = map;
   return map;
 }
 function adminGetKategoriGroup(actorNik) {
@@ -11901,7 +11935,7 @@ function adminGetKategoriGroup(actorNik) {
       var last = sh.getLastRow(), from = Math.max(2, last - 7999), v = sh.getRange(from, 4, last - from + 1, 6).getValues();   // D..I
       for (var i = 0; i < v.length; i++) {
         var g = String(v[i][0] || '').trim().toUpperCase(); if (!g) continue;
-        var kt = getKategoriStock(v[i][5]) || getKategoriStockFallback(v[i][1]); if (!kt) continue;
+        var kt = getKategoriStock(v[i][5]) || (typeof getKategoriStockFallback === 'function' ? getKategoriStockFallback(v[i][1]) : null); if (!kt) continue;
         var j = kt.indexOf('pipa') === 0 ? 'pipa' : 'fitting', o = obs[g] || (obs[g] = { pipa: 0, fitting: 0 }); o[j]++;
       }
     }
@@ -11925,7 +11959,7 @@ function adminSetKategoriGroup(actorNik, daftar) {
     });
     PropertiesService.getScriptProperties().setProperty('KAT_GROUP', JSON.stringify(cfg));
     _KGL = null;
-    var cache = CacheService.getScriptCache(); try { cache.remove('igm::' + SPREADSHEET_ID); } catch (e) {}
+    var cache = CacheService.getScriptCache(); try { cache.remove('igm::' + SPREADSHEET_ID); } catch (e) {} _IGM_MEMO = {};
     return { success: true, jumlah: n, info: 'Tersimpan. Angka di dashboard & snapshot Supabase mengikuti aturan baru setelah sinkronisasi berikutnya (otomatis saat ada edit/harian, atau jalankan syncAllToSupabase).' };
   } catch (err) { return { success: false, error: err.message }; }
 }

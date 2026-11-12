@@ -2,10 +2,10 @@
 <html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261112b"></script>
+<script src="./assets/js/auth-guard.js?v=20261112c"></script>
 <script src="./assets/js/config.js?v=20261030a"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261112b"></script>
+<script src="./assets/js/api-shim.js?v=20261112c"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
@@ -604,6 +604,10 @@ body.sidebar-hidden #btn-show-sidebar{display:flex !important;}
           <div class="kpi-icon-bg">👷</div>
         </div>
       </div>
+      <div class="card" id="fte-chart-card" hidden>
+        <div class="card-header"><div class="card-title">Produktivitas FTE &mdash; Tren Bulanan</div><span class="card-badge" id="fte-chart-badge">Ton / FTE</span></div>
+        <div class="card-body"><div style="position:relative;height:270px"><canvas id="ch-fte"></canvas></div></div>
+      </div>
 
       <!-- ═══════════ SECTION 1: STOCK TONASE ═══════════ -->
       <div class="sec-divider">
@@ -1012,6 +1016,7 @@ function loadFteCard(){
   function fail(msg){ card.hidden=false; document.getElementById('kpi-strip').classList.add('has-fte'); setText('kpi-fte-val','—'); if(st){ st.className='kpi-delta flat'; st.textContent=msg; } }
   function tampil(){
     var n=new Date();
+    loadFteChart(n.getFullYear());
     google.script.run.withSuccessHandler(function(r){
       if(!r||!r.success||!r.internal){ fail((r&&r.error)?('Data FTE: '+r.error):'Data FTE belum tersedia'); return; }
       var d=r.internal, ton=d.produktivitasTonFTE||0;
@@ -1030,6 +1035,48 @@ function loadFteCard(){
     tampil();
   }).withFailureHandler(function(){ tampil(); }).getCtSettings();
 }
+// Pantau catatan upload (snapshot kecil di Supabase). Begitu ada upload Stock/Outbound/Inbound baru, data Control Tower
+// (termasuk Monitoring Kanban) diambil ulang langsung dari server -- tanpa perlu klik Refresh.
+var _chFte=null;
+// Grafik tren produktivitas (Ton/FTE per bulan vs target): batang hijau bila target tercapai, merah bila di bawah target
+function loadFteChart(tahun){
+  var card=document.getElementById('fte-chart-card'), cv=document.getElementById('ch-fte'); if(!card||!cv||typeof Chart==='undefined') return;
+  google.script.run.withSuccessHandler(function(r){
+    if(!r||!r.success||!r.bulan) return;
+    var tg=(r.target&&r.target.produktivitasTonFTE)||0, NM=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    var vals=r.bulan.map(function(b){return b.adaData&&b.produktivitasTonFTE!=null?b.produktivitasTonFTE:null;});
+    if(!vals.some(function(v){return v!=null;})) return;
+    card.hidden=false; document.getElementById('fte-chart-badge').textContent='Target '+tg.toLocaleString('id-ID',{maximumFractionDigits:1})+' ton/FTE · '+tahun;
+    var cols=vals.map(function(v){return v==null?'rgba(150,170,210,.15)':(v>=tg?'rgba(52,211,153,.85)':'rgba(255,120,110,.85)');});
+    if(_chFte){ _chFte.destroy(); }
+    _chFte=new Chart(cv,{type:'bar',data:{labels:NM,datasets:[
+      {type:'bar',label:'Produktivitas (ton/FTE)',data:vals,backgroundColor:cols,borderRadius:8,maxBarThickness:38,order:2},
+      {type:'line',label:'Target',data:NM.map(function(){return tg;}),borderColor:'#f0cb88',borderDash:[6,4],borderWidth:2,pointRadius:0,tension:0,order:1}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:9}},tooltip:{callbacks:{label:function(c){return ' '+c.dataset.label+': '+(c.parsed.y==null?'—':c.parsed.y.toLocaleString('id-ID',{maximumFractionDigits:2}));}}}},
+        scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'rgba(150,170,210,.12)'},title:{display:true,text:'ton / FTE'}}}}});
+  }).withFailureHandler(function(){}).getFTETrendTahunan(tahun);
+}
+var _uplSig=null;
+function pollUpl(init){
+  var U=window.SUPABASE_URL,K=window.SUPABASE_ANON_KEY;
+  if(!U||!K||typeof fetch!=='function'||typeof getWorkspace!=='function') return;
+  if(document.visibilityState!=='visible'&&!init) return;
+  var key=getWorkspace()+'::divhead:upl';
+  fetch(U.replace(/\/$/,'')+'/rest/v1/dashboard_snapshots?snapshot_key=eq.'+encodeURIComponent(key)+'&select=payload',{headers:{apikey:K,Authorization:'Bearer '+K}})
+    .then(function(r){return r.ok?r.json():[];})
+    .then(function(rows){
+      var up=rows&&rows[0]&&rows[0].payload&&rows[0].payload.upl; if(!up) return;
+      var ts=['stock','outbound','inbound'].map(function(k){return (up[k]&&up[k].t)||'';}), sig=ts.join('|'), last=0;
+      ts.forEach(function(t){ if(t){ var ms=Date.parse(t.replace(' ','T')+'+07:00'); if(ms>last) last=ms; } });
+      if(last) window.__SHIM_FRESH_UNTIL=last+6*60000;   // snapshot belum tentu sudah ter-sync -> ambil langsung
+      var changed=_uplSig!==null&&sig!==_uplSig, recent=_uplSig===null&&last&&(Date.now()-last)<6*60000;
+      _uplSig=sig;
+      if(changed||recent){ if(window.clearApiCache) clearApiCache(); loadAll(); }
+    }).catch(function(){});
+}
+setTimeout(function(){pollUpl(true);},900);
+setInterval(function(){pollUpl(false);},20000);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') pollUpl(false); });
 function loadAll(){
   setTimeout(loadFteCard,300);
   showLoading(true,'Menghubungkan ke spreadsheet...');
