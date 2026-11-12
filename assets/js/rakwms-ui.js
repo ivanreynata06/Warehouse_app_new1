@@ -12,12 +12,45 @@
   var S = load(), ui = { allowed: [], g: 'all', q: '', f: 'all', open: null, items: [], plan: null, sum: null, soStat: {}, soErr: '' };
   var $ = function (id) { return document.getElementById(id); };
 
+  /* ---------- SUMBER DATA SO RAK ----------
+     'lembar' = terhubung ke lembar SO / Dashboard Stock Opname (perilaku asli).
+     'qad'    = SO rak MANDIRI dari data QAD yang diupload di Akurasi Rak WMS: tidak terkunci, tidak dikirim ke
+                Dashboard Stock Opname. Pilihan + isian mandiri disimpan lokal per user (tidak ikut data bersama di server),
+                sehingga data lembar tidak tercampur. Saat mandiri aktif, isian lembar disimpan sementara di LEM. */
+  var MODE_KEYS = ['inputs', 'manual', 'koreksi', 'soConfirm', 'adjDone', 'adjSig', 'adjOff', 'soPick', 'qad', 'qadSkip'], MODE_META = ['qadAt', 'qadFile'], LEM = {}, LEMM = {};
+  var SRC_KEY = 'rakwms_src::' + USER, MAN_KEY = 'rakwms_mandiri::' + USER;
+  var SRC = (function () { try { return localStorage.getItem(SRC_KEY) === 'qad' ? 'qad' : 'lembar'; } catch (e) { return 'lembar'; } })();
+  function isMandiri() { return SRC === 'qad'; }
+  function modeDef(k) { return (k === 'qad' || k === 'qadSkip') ? [] : {}; }
+  function enterMandiri() {
+    var m = {}; try { m = JSON.parse(localStorage.getItem(MAN_KEY) || '{}') || {}; } catch (e) {}
+    MODE_KEYS.forEach(function (k) { LEM[k] = S[k]; S[k] = (m[k] && typeof m[k] === 'object') ? m[k] : modeDef(k); });
+    S.meta = S.meta || {}; var mm = m.meta || {};
+    MODE_META.forEach(function (k) { LEMM[k] = S.meta[k]; S.meta[k] = mm[k] || ''; });
+  }
+  function saveMandiri() {
+    if (!isMandiri()) return; var o = { meta: {} }; MODE_KEYS.forEach(function (k) { o[k] = S[k]; }); MODE_META.forEach(function (k) { o.meta[k] = (S.meta || {})[k] || ''; });
+    try { localStorage.setItem(MAN_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+  function leaveMandiri() {
+    saveMandiri(); MODE_KEYS.forEach(function (k) { S[k] = LEM[k] !== undefined ? LEM[k] : modeDef(k); });
+    MODE_META.forEach(function (k) { S.meta[k] = LEMM[k] !== undefined ? LEMM[k] : ''; }); LEM = {}; LEMM = {};
+  }
+  // state yang disimpan ke browser/server/cadangan = selalu data LEMBAR (isian & QAD mandiri tidak ikut)
+  function snapS() {
+    if (!isMandiri()) return S; var o = Object.assign({}, S); o.meta = Object.assign({}, S.meta);
+    MODE_KEYS.forEach(function (k) { o[k] = LEM[k] !== undefined ? LEM[k] : modeDef(k); }); MODE_META.forEach(function (k) { o.meta[k] = LEMM[k] !== undefined ? LEMM[k] : ''; });
+    return o;
+  }
+  if (isMandiri()) enterMandiri();
+
   /* ---------- penyimpanan lokal (BUKAN Supabase / Spreadsheet) ---------- */
   function load() { try { var j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.wms) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; return j; } } catch (e) {} return K.blank(); }
   var NIK = (sessionStorage.getItem('wh_nik') || '').trim(), NAMA = (sessionStorage.getItem('wh_nama') || '').trim(), SKEY = 'SHARED', syncTimer = null, syncState = ['idle', ''], soTimer = null, soBusy = false, lastPull = 0;
   function saveLocal() {
-    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Penyimpanan browser penuh / diblokir. Data tetap disalin ke server; gunakan juga Simpan Cadangan.', true); }
-    idbSet(JSON.stringify(S));
+    var snap = JSON.stringify(snapS());
+    try { localStorage.setItem(KEY, snap); } catch (e) { toast('Penyimpanan browser penuh / diblokir. Data tetap disalin ke server; gunakan juga Simpan Cadangan.', true); }
+    idbSet(snap); saveMandiri();
   }
   function save() { S.meta.dirty = true; saveLocal(); scheduleSync(); }
   /* ---------- sinkron ke server (hanya kolom terpilih; sisa kolom file sudah dibuang saat upload & disaring lagi di server) ---------- */
@@ -36,7 +69,7 @@
   function scheduleSync() { clearTimeout(syncTimer); setSync('pending'); syncTimer = setTimeout(syncNow, 2500); scheduleSo(); }
   function syncNow() {
     clearTimeout(syncTimer); setSync('saving');
-    return gs('saveRakWmsData', [SKEY, JSON.stringify(S)]).then(function (r) {
+    return gs('saveRakWmsData', [SKEY, JSON.stringify(snapS())]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'ditolak server');
       S.meta.syncAt = r.updatedAt; S.meta.dirty = false; saveLocal(); setSync('ok', 'Tersimpan di server ' + new Date().toLocaleTimeString('id-ID'));
     }).catch(function (e) { setSync('err', 'Gagal simpan ke server: ' + (e && e.message || e) + ' (data aman di browser, akan dicoba lagi)'); clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, 30000); });
@@ -62,6 +95,7 @@
   // Data Akurasi WMS versi lama disimpan PER AKUN. Isian rak (aktual/manual/koreksi) & riwayat milik akun ini yang belum ada di data bersama
   // digabungkan sekali, supaya SO yang sudah pernah dikerjakan sebelumnya tidak hilang / tidak terbaca.
   function mergeLegacy() {
+    if (isMandiri()) return Promise.resolve();   // digabung nanti saat kembali ke mode Lembar SO
     var fk = 'rakwms_legacy_done::' + String(NAMA || NIK).toLowerCase();
     try { if (localStorage.getItem(fk)) return Promise.resolve(); } catch (e) {}
     return gs('getRakWmsData', [NIK || NAMA]).then(function (o) {
@@ -96,18 +130,18 @@
   }
   function isTransit(rak) { return /TRANSIT/i.test(String(rak || '')); }
   var SOG = ['I053'];   // group yang pengisian SO-nya sudah dipindah ke Akurasi WMS (Fitting / Q055 menyusul)
-  function inSOG(it) { return SOG.indexOf(String(it.grp).toUpperCase()) >= 0; }
+  function inSOG(it) { return isMandiri() || SOG.indexOf(String(it.grp).toUpperCase()) >= 0; }   // mandiri: semua group yang diizinkan
   function sogAllowed() { return ui.allowed.filter(function (g) { return SOG.indexOf(String(g).toUpperCase()) >= 0; }); }
   function soKey(kode) { return String(kode == null ? '' : kode).trim().toUpperCase(); }
-  function soRec(it) { var g = ui.soStat && ui.soStat[it.grp]; var r = g && g.items && g.items[soKey(it.kode)]; return r && r.fisik !== null && r.fisik !== undefined ? r : null; }
+  function soRec(it) { if (isMandiri()) return null; var g = ui.soStat && ui.soStat[it.grp]; var r = g && g.items && g.items[soKey(it.kode)]; return r && r.fisik !== null && r.fisik !== undefined ? r : null; }
   var BLN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   function tglP(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? (+m[3]) + ' ' + BLN3[+m[2] - 1] + ' ' + m[1] : ''; }
   // group SO terhubung yang lembar periode berjalannya belum dibuat (hasil SO di Akurasi WMS belum bisa tercatat di Stock Opname)
-  function needLembar() { return sogAllowed().filter(function (g) { return ui.soStat && Object.prototype.hasOwnProperty.call(ui.soStat, g) && ui.soStat[g] === null; }); }
+  function needLembar() { if (isMandiri()) return []; return sogAllowed().filter(function (g) { return ui.soStat && Object.prototype.hasOwnProperty.call(ui.soStat, g) && ui.soStat[g] === null; }); }
   function soTglF(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
   // SO ulang: item yang sudah di-SO tetapi kuncinya dibuka PIC (hasilnya memperbarui Dashboard SO selama periode berjalan; periode lampau terkunci)
   function soGrp(it) { return ui.soStat && ui.soStat[it.grp]; }
-  function ulangOf(it) { var g = soGrp(it); return (g && g.ulang && g.ulang[soKey(it.kode)]) || null; }
+  function ulangOf(it) { if (isMandiri()) return null; var g = soGrp(it); return (g && g.ulang && g.ulang[soKey(it.kode)]) || null; }
   function carryN(it) { var g = soGrp(it); return g ? (g.carryBelum || 0) : 0; }
   function locked(it) { return !!soRec(it) && !ulangOf(it); }
   function clearItem(kode) { if (S.soConfirm) delete S.soConfirm[kode]; if (S.adjDone) delete S.adjDone[kode]; delete S.inputs[kode]; delete S.manual[kode]; if (S.koreksi) delete S.koreksi[kode]; if (S.soSent) delete S.soSent[soKey(kode)]; }
@@ -134,7 +168,7 @@
     return out;
   }
   function loadSoStat() {
-    var gr = sogAllowed(); if (!gr.length) { ui.soStat = {}; return Promise.resolve(true); }
+    var gr = sogAllowed(); if (isMandiri() || !gr.length) { ui.soStat = {}; return Promise.resolve(true); }
     return gs('soStatusDariRak', [JSON.stringify(gr)]).then(function (r) {
       if (!r || r.success === false) throw new Error((r && r.error) || 'gagal');
       ui.soStat = r.data || {}; ui.soPeriode = r.periode || null; ui.soErr = ''; return true;
@@ -143,13 +177,13 @@
   // jadwal sinkron ke SO: "segera" (saat drawer/form ditutup) tidak boleh ditimpa jadwal debounce 12 detik dari save()
   var soDue = 0;
   function scheduleSo(now) {
-    if (!ui.items.length) return;
+    if (isMandiri() || !ui.items.length) return;
     var due = Date.now() + (now ? 50 : 12000);
     if (soTimer && soDue && soDue < due) return;
     clearTimeout(soTimer); soDue = due; soTimer = setTimeout(syncSo, now ? 50 : 12000);
   }
   function syncSo() {
-    clearTimeout(soTimer); soTimer = null; soDue = 0; if (soBusy || !ui.items.length) return Promise.resolve();
+    clearTimeout(soTimer); soTimer = null; soDue = 0; if (isMandiri() || soBusy || !ui.items.length) return Promise.resolve();   // mandiri: tidak ada kiriman ke Stock Opname
     if (ui.open || ui.soOpen) return Promise.resolve();   // jangan mengunci item saat PIC masih mengetik
     S.soSent = S.soSent || {};
     var fresh = [], rep = [], sig = {}; S.soSentQ = S.soSentQ || {};
@@ -199,7 +233,11 @@
   function idb(cb) { try { var r = indexedDB.open('rakwms', 1); r.onupgradeneeded = function () { r.result.createObjectStore('kv'); }; r.onsuccess = function () { cb(r.result); }; r.onerror = function () { cb(null); }; } catch (e) { cb(null); } }
   function idbSet(v) { idb(function (db) { if (!db) return; try { db.transaction('kv', 'readwrite').objectStore('kv').put(v, KEY); } catch (e) {} }); }
   function idbGet(cb) { idb(function (db) { if (!db) return cb(null); try { var q = db.transaction('kv').objectStore('kv').get(KEY); q.onsuccess = function () { cb(q.result || null); }; q.onerror = function () { cb(null); }; } catch (e) { cb(null); } }); }
-  function adopt(j) { var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k]; S = j; }
+  function adopt(j) {
+    var b = K.blank(); for (var k in b) if (j[k] === undefined) j[k] = b[k];
+    if (isMandiri()) { var cur = {}, cm = {}; MODE_KEYS.forEach(function (k) { cur[k] = S[k]; LEM[k] = j[k]; j[k] = cur[k]; }); j.meta = j.meta || {}; MODE_META.forEach(function (k) { cm[k] = (S.meta || {})[k] || ''; LEMM[k] = j.meta[k]; j.meta[k] = cm[k]; }); }   // data masuk = data lembar; isian & QAD mandiri tetap
+    S = j;
+  }
   function toast(m, err) { if (typeof window.toast === 'function') window.toast(m, err); else alert(m); }
   function todayIso() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   // Tanggal template otomatis = hari ini. Tanggal yang dipilih manual hanya berlaku di hari itu (tidak basi di hari berikutnya).
@@ -318,6 +356,7 @@
   function soBanner() {
     var g0 = Object.keys(ui.soStat || {}).filter(function (g) { return ui.soStat[g]; });
     var t = g0.map(function (g) { var x = ui.soStat[g]; return '<b>' + esc(g) + '</b> ' + fmt(x.isi) + '/' + fmt(x.total) + ' item (' + esc(soTgl(x.mulai)) + ' - ' + esc(soTgl(x.akhir)) + ')'; }).join(' &middot; ');
+    if (isMandiri()) return '<div class="infob" style="margin-bottom:8px">&#128193; <b>Mode SO Rak mandiri (data QAD upload).</b> Hasil SO di mode ini <b>tidak terkunci</b> dan <b>tidak dikirim</b> ke Dashboard Stock Opname. Upload Saldo QAD di bawah (data QAD mode ini terpisah dari mode Lembar SO).</div>';
     var h = '', nl = ui.items.filter(locked).length, nm = ui.items.filter(function (i) { return locked(i) && i.sel !== 0; }).length, nu = ui.items.filter(function (i) { return !!ulangOf(i); }).length;
     h += '<div class="rk-leg"><span><i style="background:#34d399"></i>Sudah di-SO &amp; sesuai</span><span><i style="background:#fbbf24"></i>Sudah di-SO, data terbaru selisih</span><span><i style="background:#a78bfa"></i>SO ulang berjalan</span></div>';
     var nl0 = needLembar();
@@ -377,6 +416,7 @@
   function renderTbl() {
     var a = filtered(), lim = 400;
     $('rk-tbl').innerHTML = '<div class="gh"><h3>Daftar Item &amp; Rak <em>klik baris untuk input aktual</em></h3><div class="rk-tools">' +
+      '<div class="rk-seg" title="Sumber data SO rak">' + [['lembar', 'Lembar SO'], ['qad', 'Upload QAD (mandiri)']].map(function (x) { return '<button class="' + (SRC === x[0] ? 'on' : '') + '" onclick="RakUI.src(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<button class="btn2 pri" onclick="RakUI.openSO()">&#128221; Form Stock Opname</button>' +
       '<input type="text" id="rk-q" placeholder="Cari kode / nama item..." value="' + esc(ui.q) + '" style="width:220px" oninput="RakUI.search(this.value)">' +
       (ui.allowed.length > 1 ? '<div class="rk-seg">' + [['all', 'Semua group'], ['I053', 'I053 Pipa'], ['Q055', 'Q055 Fitting']].map(function (x) { return '<button class="' + (ui.g === x[0] ? 'on' : '') + '" onclick="RakUI.grp(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div>' : '') + '<div class="rk-seg">' + [['all', 'Semua'], ['sel', 'Selisih'], ['ok', 'Sesuai'], ['todo', 'Belum SO'], ['done', 'Sudah SO'], ['soSel', 'SO tapi selisih']].map(function (x) { return '<button class="' + (ui.f === x[0] ? 'on' : '') + '" onclick="RakUI.filter(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div></div>' +
@@ -892,7 +932,7 @@
     backup: function () {
       if (!S.wms.length && !S.qad.length) return toast('Belum ada data untuk dicadangkan.', true);
       S.meta.backupAt = new Date().toLocaleString('id-ID'); save();
-      var blob = new Blob([JSON.stringify({ app: 'rakwms', v: 1, user: USER, S: S })], { type: 'application/json' }), a = document.createElement('a');
+      var blob = new Blob([JSON.stringify({ app: 'rakwms', v: 1, user: USER, S: snapS() })], { type: 'application/json' }), a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = 'CADANGAN_AKURASI_RAK_' + S.cfg.tgl.replace(/-/g, '') + '.json'; document.body.appendChild(a); a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); renderUp(); toast('Cadangan diunduh.');
     },
@@ -905,6 +945,17 @@
           catch (x) { toast(x.message || 'File cadangan tidak valid.', true); }
         }; rd.readAsText(f);
       }; i.click();
+    },
+    src: function (v) {
+      v = v === 'qad' ? 'qad' : 'lembar'; if (v === SRC) return;
+      if (ui.open || ui.soOpen) return toast('Tutup panel item / Form Stock Opname dulu sebelum ganti sumber data.', true);
+      if (v === 'qad' && !confirm('Pakai mode SO Rak mandiri (upload data QAD)?\n\nHasil SO di mode ini TIDAK terkunci dan TIDAK masuk Dashboard Stock Opname. Data QAD mode ini terpisah - upload Saldo QAD di Akurasi Rak WMS.')) return;
+      saveLocal();
+      if (v === 'qad') { SRC = 'qad'; enterMandiri(); } else { leaveMandiri(); SRC = 'lembar'; }
+      try { localStorage.setItem(SRC_KEY, SRC); } catch (e) {}
+      so.q = ''; recalc(); render();
+      if (v === 'lembar') loadSoStat().then(function () { renderTbl(); renderAdj(); scheduleSo(true); });
+      toast(v === 'qad' ? 'Mode SO Rak mandiri aktif - tidak terhubung ke Dashboard Stock Opname.' : 'Kembali ke mode Lembar SO (terhubung ke Dashboard Stock Opname).');
     },
     openSO: function () { recalc(); so.lim = 30; renderSO(); $('rk-ov').classList.add('on'); $('rk-so').classList.add('on'); ui.soOpen = true; },
     closeSO: function () { scheduleSo(true); ui.soOpen = false; $('rk-so').classList.remove('on'); $('rk-ov').classList.remove('on'); save(); recalc(); renderHero(); renderChart(); renderTbl(); renderAdj(); animate(); },
