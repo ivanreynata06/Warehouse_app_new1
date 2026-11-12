@@ -11486,7 +11486,11 @@ function _divheadWorkspaceList(acc) {
 function _divheadIzin(acc) {
   var iz = acc && acc.izin;
   if (!iz || !iz.length) return DIVHEAD_PERM_KEYS.slice();
-  return DIVHEAD_PERM_KEYS.filter(function (k) { return iz.indexOf(k) !== -1; });
+  // Akun yang izinnya disimpan SEBELUM izin 'fte' ada (tanpa penanda izinV) otomatis mendapat 'fte' bila boleh melihat Control Tower,
+  // supaya kartu & halaman Monitoring FTE tampil. Setelah Super Admin menyimpan ulang izin, pilihannya dihormati apa adanya.
+  var eff = DIVHEAD_PERM_KEYS.filter(function (k) { return iz.indexOf(k) !== -1; });
+  if (!acc.izinV && eff.indexOf('ct') !== -1 && eff.indexOf('fte') === -1) eff.push('fte');
+  return eff;
 }
 // Aksi yg dikendalikan izin hanya boleh bila SALAH SATU izin pemiliknya aktif; aksi lain (mis. getGroupList) bebas.
 function _divheadPermAllows(acc, action) {
@@ -11569,7 +11573,7 @@ function adminSetDivisiHead(actorNik, targetNik, nama, password, workspaceKeys, 
     if (izin !== undefined && izin !== null) {
       var iz = (izin || []).map(String).filter(function (k) { return DIVHEAD_PERM_KEYS.indexOf(k) !== -1; });
       if (!iz.length) return { success: false, error: 'Pilih minimal 1 izin data/halaman untuk Divisi Head.' };
-      acc.izin = iz;
+      acc.izin = iz; acc.izinV = 2;
     }
     acc.aktif = (aktif === false) ? false : true;
     acc.diubah = new Date().toISOString();
@@ -11585,7 +11589,7 @@ function adminSetDivisiHeadIzin(actorNik, targetNik, izin) {
     if (!acc) return { success: false, error: 'Akun Divisi Head ' + nik + ' tidak ditemukan.' };
     var iz = (izin || []).map(String).filter(function (k) { return DIVHEAD_PERM_KEYS.indexOf(k) !== -1; });
     if (!iz.length) return { success: false, error: 'Pilih minimal 1 data/halaman yang boleh ditampilkan.' };
-    acc.izin = iz; acc.diubah = new Date().toISOString();
+    acc.izin = iz; acc.izinV = 2; acc.diubah = new Date().toISOString();
     _divheadSaveAccount(nik, acc);
     return { success: true, izin: iz };
   } catch (err) { return { success: false, error: err.message }; }

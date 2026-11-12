@@ -327,6 +327,20 @@ body{background:#0f1527}
 .nav-item.on,.dept-b.on,.plant-h.on{border-color:rgba(240,203,136,.22)}
 .pill{font-weight:600}
 .tab.on{border-color:rgba(240,203,136,.4)}
+/* ---------- monitoring FTE ---------- */
+.fte-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fte-tbl{border-collapse:separate;border-spacing:0;width:100%;min-width:760px;font-size:12.5px}
+.fte-tbl th,.fte-tbl td{padding:8px 9px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+.fte-tbl th{color:var(--muted);font-weight:600;font-size:11.5px;position:sticky;top:0}
+.fte-tbl td:first-child,.fte-tbl th:first-child{text-align:left;position:sticky;left:0;background:#151e36;z-index:1;min-width:150px}
+.fte-tbl tr.pl td{background:rgba(143,208,255,.07);font-weight:700}
+.fte-tbl tr.pl td:first-child{background:#1a2440}
+.fte-tbl tr.dp td:first-child{padding-left:22px;font-weight:600}
+.fte-tbl td.ok{color:#7fd9cc;background:rgba(127,217,204,.10)}
+.fte-tbl td.bad{color:#ff9e92;background:rgba(255,158,146,.10)}
+.fte-tbl td.na{color:var(--dim)}
+.fte-tbl td.avg{font-weight:700}
+.fte-tbl .errc{color:#ff9e92;text-align:left;white-space:normal}
 /* ---------- ponsel ---------- */
 html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kpi{min-width:0}
 @media (max-width:700px){
@@ -350,6 +364,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     </div>
     <button class="nav-item" id="navAll" data-go="all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Semua plant</button>
     <button class="nav-item" id="navLog" data-go="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Log aktivitas<span class="badge" id="logBadge"></span></button>
+    <button class="nav-item" id="navFte" data-go="fte"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>Monitoring FTE</button>
     <div class="nav-sep" id="navSep">Pilih plant</div>
     <div id="navPlants"></div>
     <div class="me">
@@ -401,6 +416,21 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
       <section class="view flush" id="viewDept">
         <div class="stage" id="stage"></div>
         <div class="loadcover" id="cover"><div class="loader"></div><div style="color:var(--muted)" id="coverTxt">Membuka dashboard…</div></div>
+      </section>
+
+      <section class="view" id="viewFte">
+        <div class="hero">
+          <div><h1>Monitoring FTE &mdash; Produktivitas</h1><p>Pencapaian bulanan Ton/FTE tiap plant dan departemen terhadap target. Hijau = mencapai target.</p></div>
+        </div>
+        <div class="log-tools">
+          <div class="fgroup"><label for="fteYear">Tahun</label><select id="fteYear" aria-label="Tahun"></select></div>
+          <div class="seg" id="fteMode"><button data-m="dept" class="on">Per departemen</button><button data-m="plant">Per plant</button></div>
+          <div class="fnote" id="fteNote" style="flex:1"></div>
+        </div>
+        <div class="kpis" id="fteSum" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
+        <div class="card" style="margin-bottom:14px"><h3>Produktivitas bulanan (Ton/FTE) <span id="fteLineSub" style="font-weight:500;color:var(--muted);font-size:12px"></span></h3><div class="chart-box" style="height:340px"><canvas id="chFteLine"></canvas></div></div>
+        <div class="card" style="margin-bottom:14px"><h3>Pencapaian target per bulan <span style="font-weight:500;color:var(--muted);font-size:12px">% departemen yang mencapai target</span></h3><div class="chart-box" style="height:260px"><canvas id="chFteBar"></canvas></div></div>
+        <section class="panel"><div class="panel-h"><h3>Rincian per plant &amp; departemen</h3><p>Ton/FTE per bulan &middot; plant = rata-rata departemennya &middot; &mdash; = belum ada data</p></div><div class="fte-wrap"><table class="fte-tbl" id="fteTbl"></table></div></section>
       </section>
 
       <section class="view" id="viewLog">
@@ -761,7 +791,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     hide($('viewAll').querySelector('.charts'), !(can('outbound') || can('inbound') || can('stock')));
     hide($('heroRing'), !can('log')); hide($('heroT1').parentNode, !can('log'));
     hide($('filters'), !(can('stock') || can('outbound') || can('inbound')));
-    hide($('navAll'), !can('overview')); hide($('navLog'), !can('log')); hide($('navSep'), !can('ct')); hide($('navPlants'), !can('ct'));
+    hide($('navAll'), !can('overview')); hide($('navLog'), !can('log')); hide($('navFte'), !can('fte')); hide($('navSep'), !can('ct')); hide($('navPlants'), !can('ct'));
   }
   function buildOverview() {
     $('deptGrid').innerHTML = '<div class="grid compact">' + WS.map(cardHtml).join('') + '</div>';
@@ -997,27 +1027,116 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     });
   }
 
+  /* ---------- MONITORING FTE: produktivitas Ton/FTE bulanan antar plant & departemen ---------- */
+  var FTE = { year: String(NOW.getFullYear()), mode: 'dept', data: {}, t: null, built: false }, chFteLine = null, chFteBar = null;
+  function fteStore() { return FTE.data[FTE.year] || (FTE.data[FTE.year] = {}); }
+  function fteVal(rec, m) { var b = rec && rec.ok && rec.bulan && rec.bulan[m]; return (b && b.adaData && b.produktivitasTonFTE != null) ? +b.produktivitasTonFTE : null; }
+  function fteTarget(rec) { return rec && rec.ok && rec.target ? +rec.target : 62.3; }
+  function fteBuild() {
+    if (FTE.built) return; FTE.built = true; var y = NOW.getFullYear();
+    $('fteYear').innerHTML = [y - 2, y - 1, y].map(function (v) { return '<option value="' + v + '">' + v + '</option>'; }).join(''); $('fteYear').value = FTE.year;
+    $('fteYear').addEventListener('change', function () { FTE.year = $('fteYear').value; loadFte(false); });
+    $('fteMode').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; FTE.mode = b.dataset.m; Array.prototype.forEach.call($('fteMode').children, function (x) { x.classList.toggle('on', x === b); }); renderFte(); });
+  }
+  function loadFte(force) {
+    fteBuild(); var y = FTE.year; if (force) FTE.data[y] = {};
+    var store = fteStore(), q = WS.filter(function (w) { return !store[w.key]; }), busy = 0;
+    renderFte(); if (!q.length) return;
+    function put(k, rec) { store[k] = rec; busy--; if (FTE.year === y && state.view === 'fte') fteSchedule(); next(); }
+    function next() {
+      while (busy < 4 && q.length) (function (w) {
+        busy++;
+        run(w.key, 'getFTETrendTahunan', [+y], function (r) { put(w.key, (r && r.success) ? { ok: true, target: (r.target || {}).produktivitasTonFTE, bulan: r.bulan || [] } : { ok: false, err: (r && r.error) || 'Data FTE tidak tersedia' }); },
+          function (e) { put(w.key, { ok: false, err: (e && e.message) || 'Gagal terhubung' }); });
+      })(q.shift());
+    }
+    next();
+  }
+  function fteSchedule() { clearTimeout(FTE.t); FTE.t = setTimeout(renderFte, 160); }
+  // seri per departemen / per plant (rata-rata departemen yang sudah punya data bulan itu)
+  function fteSeries() {
+    var st = fteStore(), out = [];
+    function row(label, vals, tg) { out.push({ label: label, vals: vals, target: tg }); }
+    if (FTE.mode === 'dept') WS.forEach(function (w) { var r = st[w.key]; row(w.deptLabel + ' · ' + w.plantLabel.replace(/^Plant /, ''), [0,1,2,3,4,5,6,7,8,9,10,11].map(function (m) { return fteVal(r, m); }), fteTarget(r)); });
+    else plants().forEach(function (pl) {
+      var vals = [0,1,2,3,4,5,6,7,8,9,10,11].map(function (m) { var a = pl.items.map(function (w) { return fteVal(st[w.key], m); }).filter(function (v) { return v != null; }); return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; });
+      row(pl.name, vals, fteTarget(st[pl.items[0].key]));
+    });
+    return out;
+  }
+  function fteAvg(vals) { var a = vals.filter(function (v) { return v != null; }); return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; }
+  function renderFte() {
+    if (!$('viewFte')) return; fteBuild();
+    var st = fteStore(), pend = WS.filter(function (w) { return !st[w.key]; }).length, errs = WS.filter(function (w) { return st[w.key] && !st[w.key].ok; });
+    var tg = 62.3; WS.some(function (w) { var r = st[w.key]; if (r && r.ok && r.target) { tg = +r.target; return true; } return false; });
+    $('fteNote').innerHTML = 'Tahun <b>' + esc(FTE.year) + '</b> · target <b>' + nf(tg, 1) + '</b> Ton/FTE' + (pend ? ' · <span style="color:var(--gold)">memuat ' + pend + ' departemen…</span>' : '') + (errs.length ? ' · <span style="color:var(--coral)">' + errs.length + ' departemen gagal dimuat</span>' : '');
+    // --- ringkasan ---
+    var perDept = WS.map(function (w) { var r = st[w.key], v = [0,1,2,3,4,5,6,7,8,9,10,11].map(function (m) { return fteVal(r, m); }); return { w: w, r: r, v: v, avg: fteAvg(v) }; });
+    var allAvg = fteAvg(perDept.map(function (d) { return d.avg; })), lastM = -1;
+    for (var m = 11; m >= 0; m--) { if (perDept.some(function (d) { return d.v[m] != null; })) { lastM = m; break; } }
+    var elig = lastM < 0 ? [] : perDept.filter(function (d) { return d.v[lastM] != null; }), okN = elig.filter(function (d) { return d.v[lastM] >= fteTarget(d.r); }).length;
+    function kpi(c, l, v, u, sub) { return '<div class="kpi" style="--kc:' + c + '"><span>' + l + '</span><b><i>' + v + '</i><em>' + u + '</em></b>' + (sub ? '<small style="color:var(--muted);font-size:11.5px">' + sub + '</small>' : '') + '</div>'; }
+    $('fteSum').innerHTML = kpi('var(--sky)', 'Rata-rata ' + esc(FTE.year), allAvg == null ? '—' : nf(allAvg, 1), 'Ton/FTE', 'rata-rata semua departemen') +
+      kpi('var(--gold)', 'Target', nf(tg, 1), 'Ton/FTE', 'per FTE per bulan') +
+      kpi(okN === elig.length && elig.length ? 'var(--teal)' : 'var(--coral)', lastM < 0 ? 'Departemen mencapai target' : 'Tercapai · ' + BLN[lastM], elig.length ? okN + ' / ' + elig.length : '—', 'dept', lastM < 0 ? 'belum ada data' : 'bulan terakhir yang berdata');
+    // --- tabel rincian ---
+    function cell(v, t) { return v == null ? '<td class="na">—</td>' : '<td class="' + (v >= t ? 'ok' : 'bad') + '">' + nf(v, 1) + '</td>'; }
+    var h = '<thead><tr><th>Plant / departemen</th>' + BLN.map(function (b) { return '<th>' + b + '</th>'; }).join('') + '<th>Rata-rata</th></tr></thead><tbody>';
+    plants().forEach(function (pl) {
+      var rows = pl.items.map(function (w) { return perDept.filter(function (d) { return d.w.key === w.key; })[0]; }), pv = [0,1,2,3,4,5,6,7,8,9,10,11].map(function (m) { var a = rows.map(function (d) { return d.v[m]; }).filter(function (v) { return v != null; }); return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; }), pt = fteTarget(rows[0] && rows[0].r), pa = fteAvg(pv);
+      h += '<tr class="pl"><td>' + esc(pl.name) + '</td>' + pv.map(function (v) { return cell(v, pt); }).join('') + (pa == null ? '<td class="na avg">—</td>' : '<td class="avg ' + (pa >= pt ? 'ok' : 'bad') + '">' + nf(pa, 1) + '</td>') + '</tr>';
+      rows.forEach(function (d) {
+        if (d.r && !d.r.ok) { h += '<tr class="dp"><td>' + esc(d.w.deptLabel) + '</td><td colspan="13" class="errc">' + esc(d.r.err) + '</td></tr>'; return; }
+        var t = fteTarget(d.r);
+        h += '<tr class="dp"><td>' + esc(d.w.deptLabel) + (d.r ? '' : ' <small style="color:var(--dim)">memuat…</small>') + '</td>' + d.v.map(function (v) { return cell(v, t); }).join('') + (d.avg == null ? '<td class="na avg">—</td>' : '<td class="avg ' + (d.avg >= t ? 'ok' : 'bad') + '">' + nf(d.avg, 1) + '</td>') + '</tr>';
+      });
+    });
+    $('fteTbl').innerHTML = h + '</tbody>';
+    // --- grafik garis ---
+    if (!window.Chart) return;
+    var ser = fteSeries(), lbl = BLN, grid = 'rgba(160,180,255,.08)', tick = '#a9b5d3';
+    $('fteLineSub').textContent = FTE.mode === 'dept' ? '· satu garis per departemen' : '· rata-rata departemen per plant';
+    var ds = ser.map(function (x, i) { var c = PALETTE[i % PALETTE.length]; return { label: x.label, data: x.vals, borderColor: c, backgroundColor: c, pointBackgroundColor: c, pointRadius: 4, pointHoverRadius: 6, borderWidth: 2.4, tension: .3, spanGaps: true }; });
+    ds.push({ label: 'Target (' + nf(tg, 1) + ')', data: lbl.map(function () { return tg; }), borderColor: '#ff9e92', borderDash: [6, 5], borderWidth: 1.6, pointRadius: 0, pointHoverRadius: 0, fill: false });
+    var lineOpt = { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, animation: { duration: REDUCE ? 0 : 600 },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 9, padding: 14, color: '#d7dff3', font: { size: 12 } } }, tooltip: { padding: 12, cornerRadius: 12, callbacks: { label: function (c) { return c.parsed.y == null ? null : ' ' + c.dataset.label + ': ' + nf(c.parsed.y, 1) + ' Ton/FTE'; } } } },
+      scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: tick } }, y: { grid: { color: grid }, border: { display: false }, ticks: { color: tick, callback: function (v) { return nf(v, 0); } }, title: { display: true, text: 'Ton/FTE', color: '#94a1c0' } } } };
+    if (!chFteLine) chFteLine = new Chart($('chFteLine'), { type: 'line', data: { labels: lbl, datasets: ds }, options: lineOpt });
+    else { chFteLine.data.datasets = ds; chFteLine.update(); }
+    // --- grafik batang: % departemen yang mencapai target tiap bulan ---
+    var pct = [], cnt = [];
+    for (var k = 0; k < 12; k++) { var e = perDept.filter(function (d) { return d.v[k] != null; }), o = e.filter(function (d) { return d.v[k] >= fteTarget(d.r); }).length; cnt.push([o, e.length]); pct.push(e.length ? Math.round(o * 1000 / e.length) / 10 : null); }
+    var bds = [{ label: '% departemen mencapai target', data: pct, backgroundColor: pct.map(function (v) { return v == null ? 'rgba(150,160,190,.2)' : v >= 100 ? '#7fd9cc' : v >= 50 ? '#f0cb88' : '#ff9e92'; }), borderRadius: 10, borderSkipped: false, barPercentage: .62 }];
+    var barOpt = { responsive: true, maintainAspectRatio: false, animation: { duration: REDUCE ? 0 : 600 },
+      plugins: { legend: { display: false }, tooltip: { padding: 12, cornerRadius: 12, callbacks: { label: function (c) { var n = cnt[c.dataIndex]; return c.parsed.y == null ? ' belum ada data' : ' ' + nf(c.parsed.y, 0) + '% (' + n[0] + ' dari ' + n[1] + ' departemen)'; } } } },
+      scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: tick } }, y: { min: 0, max: 100, grid: { color: grid }, border: { display: false }, ticks: { color: tick, callback: function (v) { return v + '%'; } } } } };
+    if (!chFteBar) chFteBar = new Chart($('chFteBar'), { type: 'bar', data: { labels: lbl, datasets: bds }, options: barOpt });
+    else { chFteBar.data.datasets = bds; chFteBar.update(); }
+  }
+
   /* ---------- routing ---------- */
   function parseHash() {
     var h = decodeURIComponent((location.hash || '').replace(/^#/, ''));
     if (h.indexOf('dept=') === 0 && byKey(h.slice(5))) return guardView({ view: 'dept', ws: h.slice(5), plant: byKey(h.slice(5)).plantLabel });
     if (h.indexOf('plant=') === 0) return guardView({ view: 'plant', plant: h.slice(6) });
     if (h === 'log') return guardView({ view: 'log' });
+    if (h === 'fte') return guardView({ view: 'fte' });
     return guardView({ view: 'all' });
   }
   function guardView(r) {
-    var bad = (r.view === 'all' && !can('overview')) || ((r.view === 'dept' || r.view === 'plant') && !can('ct')) || (r.view === 'log' && !can('log'));
+    var bad = (r.view === 'all' && !can('overview')) || ((r.view === 'dept' || r.view === 'plant') && !can('ct')) || (r.view === 'log' && !can('log')) || (r.view === 'fte' && !can('fte'));
     if (!bad) return r;
     if (can('overview')) return { view: 'all' };
     if (can('ct')) { var p = plants()[0]; return p ? { view: 'plant', plant: p.name } : { view: 'all' }; }
     if (can('log')) return { view: 'log' };
+    if (can('fte')) return { view: 'fte' };
     return { view: 'all' };
   }
   function go(h) { if (decodeURIComponent((location.hash || '').replace(/^#/, '')) === h) route(); else location.hash = encodeURIComponent(h).replace(/%3D/g, '='); }
   function route() {
     var s = parseHash(); state.view = s.view; state.plant = s.plant || state.plant; state.ws = s.ws || '';
     if (s.view === 'all') state.plant = '';
-    ['All', 'Plant', 'Dept', 'Log'].forEach(function (n) { $('view' + n).classList.toggle('on', n.toLowerCase() === s.view); });
+    ['All', 'Plant', 'Dept', 'Log', 'Fte'].forEach(function (n) { $('view' + n).classList.toggle('on', n.toLowerCase() === s.view); });
     $('tabsWrap').hidden = !(s.view === 'all' || s.view === 'dept') || +$('tabs').getAttribute('data-n') <= 1;
     if (s.view !== 'dept') Object.keys(frames).forEach(function (k) { frames[k].classList.remove('on'); });
     if (s.view === 'plant') { var pp = plants().filter(function (x) { return x.name === s.plant; })[0]; if (pp) prioritize(pp.items.map(function (x) { return x.key; })); }
@@ -1027,6 +1146,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     if (s.view === 'plant') { t = s.plant; sub = 'Pilih departemen yang ingin dilihat'; buildPlantView(s.plant); }
     if (s.view === 'dept') { var w = byKey(s.ws); t = w.deptLabel; sub = w.plantLabel + ' · Control Tower'; showDept(s.ws); }
     if (s.view === 'log') { t = 'Log aktivitas input'; sub = 'Pantau plant yang belum mengunggah data, dan ingatkan lewat WhatsApp'; loadLog(false); }
+    if (s.view === 'fte') { t = 'Monitoring FTE'; sub = 'Pencapaian bulanan produktivitas (Ton/FTE) antar plant dan departemen'; loadFte(false); }
     $('title').textContent = t; $('subtitle').textContent = sub; document.title = t + ' — Rucika Control Tower';
     markNav(); $('rail').classList.remove('open');
   }
@@ -1070,6 +1190,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     var ic = $('icoRef'); ic.classList.add('spin'); setTimeout(function () { ic.classList.remove('spin'); }, 1200);   // (log: spinner sampai cek langsung selesai)
     if (typeof window.clearApiCache === 'function') window.clearApiCache();
     if (state.view === 'dept') { var f = frames[state.ws]; if (f) { f.dataset.ready = ''; $('cover').classList.remove('off'); f.src = f.src; } return; }
+    if (state.view === 'fte') { ic.classList.add('spin'); loadFte(true); setTimeout(function () { ic.classList.remove('spin'); }, 1200); return; }
     if (state.view === 'log') { ic.classList.add('spin'); loadLog(true, function () { ic.classList.remove('spin'); }); return; }
     if (!isDefault()) applyFilters();
     loadFromSnapshots(function (miss) { miss.forEach(function (w) { loadWs(w, true); }); });

@@ -1007,46 +1007,29 @@ var USE_DEMO = !(typeof google!=='undefined' && google.script && google.script.r
 // Kartu inti Produktivitas FTE (Ton/FTE vs target). Tampil bila diaktifkan di Kelola User > Pengaturan Control Tower
 // dan akun berhak (Divisi Head: izin "FTE"). Gagal/ditolak -> kartu tetap tersembunyi.
 function loadFteCard(){
-  var card=document.getElementById('kpi-fte-card'); if(!card||typeof google==='undefined') return;
-  google.script.run.withSuccessHandler(function(cs){
-    if(!cs||!cs.success||cs.fte===false){ card.hidden=true; return; }
+  var card=document.getElementById('kpi-fte-card'); if(!card||typeof google==='undefined'||!google.script||!google.script.run) return;
+  var st=document.getElementById('kpi-fte-status');
+  function fail(msg){ card.hidden=false; document.getElementById('kpi-strip').classList.add('has-fte'); setText('kpi-fte-val','—'); if(st){ st.className='kpi-delta flat'; st.textContent=msg; } }
+  function tampil(){
     var n=new Date();
     google.script.run.withSuccessHandler(function(r){
-      if(!r||!r.success||!r.internal) return;
+      if(!r||!r.success||!r.internal){ fail((r&&r.error)?('Data FTE: '+r.error):'Data FTE belum tersedia'); return; }
       var d=r.internal, ton=d.produktivitasTonFTE||0;
       card.hidden=false; document.getElementById('kpi-strip').classList.add('has-fte');
       setText('kpi-fte-val', ton? ton.toLocaleString('id-ID',{maximumFractionDigits:2}) : '—');
-      var st=document.getElementById('kpi-fte-status');
       if(ton){ st.className='kpi-delta '+(d.produktivitasTercapai?'up':'down'); st.textContent=(d.produktivitasTercapai?'▲ Target tercapai':'▼ Di bawah target')+' ('+(d.produktivitasTarget||62.3).toLocaleString('id-ID',{maximumFractionDigits:1})+')'; }
       else { st.className='kpi-delta flat'; st.textContent='Belum ada data bulan ini'; }
       var f=function(v,x){return v==null?'—':Number(v).toLocaleString('id-ID',{maximumFractionDigits:x});};
       document.getElementById('kpi-fte-detail').innerHTML='<div><span>Kg/FTE <b>'+f(d.produktivitasKgFTE,1)+'</b></span><span>FTE <b>'+f(d.totalFTE,1)+'</b></span><span>Lembur <b>'+f(d.overtimePct,1)+'%</b></span></div>';
-    }).withFailureHandler(function(){}).getAbsensiFTEData(n.getMonth()+1,n.getFullYear());
-  }).withFailureHandler(function(){ card.hidden=true; }).getCtSettings();
+    }).withFailureHandler(function(e){ fail('Data FTE gagal dimuat'); }).getAbsensiFTEData(n.getMonth()+1,n.getFullYear());
+  }
+  // Pengaturan per departemen (Kelola User > Pengaturan Control Tower): hanya bila SECARA EKSPLISIT dimatikan kartu disembunyikan.
+  // Bila backend belum di-deploy ulang (getCtSettings belum ada) atau gagal, kartu tetap tampil (bawaan = aktif).
+  google.script.run.withSuccessHandler(function(cs){
+    if(cs&&cs.success&&cs.fte===false){ card.hidden=true; return; }
+    tampil();
+  }).withFailureHandler(function(){ tampil(); }).getCtSettings();
 }
-// Pantau catatan upload (snapshot kecil di Supabase). Begitu ada upload Stock/Outbound/Inbound baru, data Control Tower
-// (termasuk Monitoring Kanban) diambil ulang langsung dari server -- tanpa perlu klik Refresh.
-var _uplSig=null;
-function pollUpl(init){
-  var U=window.SUPABASE_URL,K=window.SUPABASE_ANON_KEY;
-  if(!U||!K||typeof fetch!=='function'||typeof getWorkspace!=='function') return;
-  if(document.visibilityState!=='visible'&&!init) return;
-  var key=getWorkspace()+'::divhead:upl';
-  fetch(U.replace(/\/$/,'')+'/rest/v1/dashboard_snapshots?snapshot_key=eq.'+encodeURIComponent(key)+'&select=payload',{headers:{apikey:K,Authorization:'Bearer '+K}})
-    .then(function(r){return r.ok?r.json():[];})
-    .then(function(rows){
-      var up=rows&&rows[0]&&rows[0].payload&&rows[0].payload.upl; if(!up) return;
-      var ts=['stock','outbound','inbound'].map(function(k){return (up[k]&&up[k].t)||'';}), sig=ts.join('|'), last=0;
-      ts.forEach(function(t){ if(t){ var ms=Date.parse(t.replace(' ','T')+'+07:00'); if(ms>last) last=ms; } });
-      if(last) window.__SHIM_FRESH_UNTIL=last+6*60000;   // snapshot belum tentu sudah ter-sync -> ambil langsung
-      var changed=_uplSig!==null&&sig!==_uplSig, recent=_uplSig===null&&last&&(Date.now()-last)<6*60000;
-      _uplSig=sig;
-      if(changed||recent){ if(window.clearApiCache) clearApiCache(); loadAll(); }
-    }).catch(function(){});
-}
-setTimeout(function(){pollUpl(true);},900);
-setInterval(function(){pollUpl(false);},20000);
-document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') pollUpl(false); });
 function loadAll(){
   setTimeout(loadFteCard,300);
   showLoading(true,'Menghubungkan ke spreadsheet...');
