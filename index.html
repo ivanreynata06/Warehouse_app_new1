@@ -2,10 +2,10 @@
 <html lang="id" data-theme="dark">
 <head>
 <!-- Backend API config + shim (menggantikan google.script.run bawaan Apps Script) -->
-<script src="./assets/js/auth-guard.js?v=20261112a"></script>
+<script src="./assets/js/auth-guard.js?v=20261112b"></script>
 <script src="./assets/js/config.js?v=20261030a"></script>
 <script src="./assets/js/supabase-cache.js?v=20260722d"></script>
-<script src="./assets/js/api-shim.js?v=20261112a"></script>
+<script src="./assets/js/api-shim.js?v=20261112b"></script>
 <script src="./assets/js/sw-register.js?v=20260722d"></script>
 <!-- Preconnect ke Apps Script supaya koneksi (DNS/TLS) sudah siap sebelum data benar-benar diminta -> mempercepat load pertama -->
 <link rel="preconnect" href="https://script.google.com">
@@ -1024,6 +1024,29 @@ function loadFteCard(){
     }).withFailureHandler(function(){}).getAbsensiFTEData(n.getMonth()+1,n.getFullYear());
   }).withFailureHandler(function(){ card.hidden=true; }).getCtSettings();
 }
+// Pantau catatan upload (snapshot kecil di Supabase). Begitu ada upload Stock/Outbound/Inbound baru, data Control Tower
+// (termasuk Monitoring Kanban) diambil ulang langsung dari server -- tanpa perlu klik Refresh.
+var _uplSig=null;
+function pollUpl(init){
+  var U=window.SUPABASE_URL,K=window.SUPABASE_ANON_KEY;
+  if(!U||!K||typeof fetch!=='function'||typeof getWorkspace!=='function') return;
+  if(document.visibilityState!=='visible'&&!init) return;
+  var key=getWorkspace()+'::divhead:upl';
+  fetch(U.replace(/\/$/,'')+'/rest/v1/dashboard_snapshots?snapshot_key=eq.'+encodeURIComponent(key)+'&select=payload',{headers:{apikey:K,Authorization:'Bearer '+K}})
+    .then(function(r){return r.ok?r.json():[];})
+    .then(function(rows){
+      var up=rows&&rows[0]&&rows[0].payload&&rows[0].payload.upl; if(!up) return;
+      var ts=['stock','outbound','inbound'].map(function(k){return (up[k]&&up[k].t)||'';}), sig=ts.join('|'), last=0;
+      ts.forEach(function(t){ if(t){ var ms=Date.parse(t.replace(' ','T')+'+07:00'); if(ms>last) last=ms; } });
+      if(last) window.__SHIM_FRESH_UNTIL=last+6*60000;   // snapshot belum tentu sudah ter-sync -> ambil langsung
+      var changed=_uplSig!==null&&sig!==_uplSig, recent=_uplSig===null&&last&&(Date.now()-last)<6*60000;
+      _uplSig=sig;
+      if(changed||recent){ if(window.clearApiCache) clearApiCache(); loadAll(); }
+    }).catch(function(){});
+}
+setTimeout(function(){pollUpl(true);},900);
+setInterval(function(){pollUpl(false);},20000);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') pollUpl(false); });
 function loadAll(){
   setTimeout(loadFteCard,300);
   showLoading(true,'Menghubungkan ke spreadsheet...');

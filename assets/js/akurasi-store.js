@@ -141,22 +141,12 @@
     if (Object.keys(al.map).length) out.alasan = al;
     return out;
   }
-  // onProg(persen, tahap) opsional. Mengembalikan { data, source, warn, gabungan:true }
+  // onProg(persen, tahap) opsional. Data akurasi PER DEPARTEMEN/PLANT (tidak digabung dengan departemen lain).
   function loadAll(onProg) {
-    var prog = function (v, t) { try { if (onProg) onProg(v, t); } catch (e) {} };
-    prog(8, 'Menghubungi server');
-    return api('getAkurasiDataGabungan', []).then(function (r) {
-      prog(70, 'Menggabungkan data departemen');
-      return { data: mergeDepts((r && r.data) || {}), source: 'server', warn: '', gabungan: true };
-    }).catch(function (err) {
-      // Server / fungsi gabungan belum aktif: pakai data departemen sendiri dari cache
-      prog(70, 'Server tidak terjangkau, memakai salinan perangkat');
-      return load().then(function (res) {
-        var w = ws();
-        ['voucher', 'bfl', 'ter'].forEach(function (k) { var rec = res.data[k]; if (rec && rec.rows) rec.rows.forEach(function (r) { r.dept = r.dept || w; }); });
-        res.warn = friendly(err); res.source = 'local'; res.gabungan = false;
-        return res;
-      });
+    return load(onProg).then(function (res) {
+      var w = ws();
+      ['voucher', 'bfl', 'ter'].forEach(function (k) { var rec = res.data[k]; if (rec && rec.rows) rec.rows.forEach(function (r) { r.dept = r.dept || w; }); });
+      res.gabungan = false; return res;
     });
   }
 

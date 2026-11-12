@@ -238,8 +238,11 @@
             return proxy;
           }
 
+          // Setelah ada upload baru (lihat pollUpl di Control Tower) snapshot Supabase/cache browser bisa tertinggal beberapa menit:
+          // selama jendela 'segar' ambil langsung dari Apps Script.
+          var fresh = !!(global.__SHIM_FRESH_UNTIL && Date.now() < global.__SHIM_FRESH_UNTIL);
           var key = cacheKey(prop, args, wsOverride);
-          var cached = readCache(key);
+          var cached = fresh ? null : readCache(key);
           var isFresh = cached && (Date.now() - cached.t < TTL);
 
           if (cached && successCb) {
@@ -266,7 +269,7 @@
           // (tidak ada fitur yang hilang, cuma yang jarang dipakai lebih
           // lambat sedikit).
           var sb = global.__supabaseSnapshot;
-          var sbKey = sb ? sb.buildKey(prop, args) : null;
+          var sbKey = (sb && !fresh) ? sb.buildKey(prop, args) : null;
           if (sbKey) sbKey = getWorkspace(wsOverride) + '::' + sbKey; // pisahkan snapshot per departemen
           if (sbKey) {
             sb.fetchSnapshot(sbKey).then(function (payload) {

@@ -124,6 +124,7 @@ var API_FUNCTIONS = {
   adminGetDivisiHead: adminGetDivisiHead,
   adminSetDivisiHead: adminSetDivisiHead,
   adminHapusDivisiHead: adminHapusDivisiHead,
+  adminSetDivisiHeadIzin: adminSetDivisiHeadIzin,
   adminGetKategoriGroup: adminGetKategoriGroup,
   getCtSettings: getCtSettings,
   adminGetCtSettings: adminGetCtSettings,
@@ -244,7 +245,7 @@ var AUTH_ACTOR_BOUND = {
   adminSetMenuConfig: 1, adminGetCrossWorkspaceTL: 1, adminSetCrossWorkspaceTL: 1, getPendingApprovals: 1, adminGetSplSignatures: 1, adminUploadSplSignature: 1,
   adminGetSplJobBagian: 1, adminSetSplJobBagian: 1, adminHapusSplSignature: 1, adminSetSplTtdCutoff: 1, adminSetSplTtdUkuran: 1,
   adminSetJadwalPengirimanSumber: 1, adminGetJadwalPengirimanSumberStatus: 1,
-  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1, adminGetDivisiHead: 1, adminSetDivisiHead: 1, adminHapusDivisiHead: 1,
+  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1, adminGetDivisiHead: 1, adminSetDivisiHead: 1, adminHapusDivisiHead: 1, adminSetDivisiHeadIzin: 1,
   adminGetKategoriGroup: 1, adminSetKategoriGroup: 1, adminGetCtSettings: 1, adminSetCtSettings: 1
 };
 var CURRENT_AUTH = null;   // diisi handleApiRequest: { w, n, r } bila token valid
@@ -8958,11 +8959,8 @@ function _akurasiBacaDariSS(ss) {
 function getAkurasiDataGabungan() {
   try {
     var out = {};
-    AKURASI_WS.forEach(function (ws) {
-      var id = resolveWorkspaceSpreadsheetId(ws);
-      if (!id) return;
-      try { out[ws] = _akurasiBacaDariSS(SpreadsheetApp.openById(id)); } catch (e) { out[ws] = {}; }
-    });
+    // Data akurasi TIDAK digabung lintas plant/departemen: hanya departemen yang sedang aktif.
+    try { out[ACTIVE_WORKSPACE] = _akurasiBacaDariSS(SpreadsheetApp.openById(SPREADSHEET_ID)); } catch (e) { out[ACTIVE_WORKSPACE] = {}; }
     return { success: true, data: out };
   } catch (err) {
     return { success: false, error: String(err && err.message || err) };
@@ -9076,7 +9074,7 @@ function simpanAkurasiAlasan(payloadStr) {
     // datanya (entry.dept). Tanpa dept = departemen akun yang sedang login.
     var groups = {};
     entries.forEach(function (e) {
-      var ws = (e.dept && AKURASI_WS.indexOf(e.dept) !== -1) ? e.dept : ACTIVE_WORKSPACE;
+      var ws = ACTIVE_WORKSPACE;   // alasan hanya ditulis ke departemen yang sedang aktif (tidak lintas departemen)
       (groups[ws] = groups[ws] || []).push(e);
     });
     var at = '', count = 0;
@@ -11577,6 +11575,19 @@ function adminSetDivisiHead(actorNik, targetNik, nama, password, workspaceKeys, 
     acc.diubah = new Date().toISOString();
     _divheadSaveAccount(nik, acc);
     return { success: true, baru: !old };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+// Izin tampilan dashboard saja (tanpa menyentuh NIK/nama/kata sandi/cakupan) -- dipakai panel "Tampilan Dashboard Divisi Head".
+function adminSetDivisiHeadIzin(actorNik, targetNik, izin) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var nik = String(targetNik || '').trim().toUpperCase(), acc = _divheadGetAccount(nik);
+    if (!acc) return { success: false, error: 'Akun Divisi Head ' + nik + ' tidak ditemukan.' };
+    var iz = (izin || []).map(String).filter(function (k) { return DIVHEAD_PERM_KEYS.indexOf(k) !== -1; });
+    if (!iz.length) return { success: false, error: 'Pilih minimal 1 data/halaman yang boleh ditampilkan.' };
+    acc.izin = iz; acc.diubah = new Date().toISOString();
+    _divheadSaveAccount(nik, acc);
+    return { success: true, izin: iz };
   } catch (err) { return { success: false, error: err.message }; }
 }
 function adminHapusDivisiHead(actorNik, targetNik) {
