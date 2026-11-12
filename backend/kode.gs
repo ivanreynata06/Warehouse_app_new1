@@ -2142,7 +2142,7 @@ function getStockData(ss, range, group) {
     groupTonase  : 0,   // total item dalam rentang + filter group (= globalTonase jika group kosong)
     tonase : { pipaGreen:0, pipaGrey:0, fittingGreen:0, fittingGrey:0, total:0 },
     stok   : { pipaGreen:0, pipaGrey:0, fittingGreen:0, fittingGrey:0, total:0 },
-    kat    : _katKosong()   // pecahan Retail/Project/Import/Lain per jenis (aturan group di Kelola User)
+    kat    : isRucikaFitting() ? null : _katKosong()   // pecahan Retail/Project/Import/Lain per jenis (aturan group di Kelola User)
   };
   var rucika = isRucikaFitting();
   if (rucika) KATEGORI_RUCIKA.forEach(function(k){ out.tonase[k] = 0; out.stok[k] = 0; });
@@ -2992,7 +2992,7 @@ function readTransaksi(ss, sheetName, range) {
   var data     = sheet.getDataRange().getValues();
   var trendMap = {};
   var rucika   = isRucikaFitting();
-  out.kat = _katKosong();
+  out.kat = rucika ? null : _katKosong();
   var igm = rucika ? null : _itemGroupMap(ss);   // Item Number -> Group (dari DASHBOARD_STOCK)
   for (var i = 1; i < data.length; i++) {
     var row    = data[i];
@@ -3016,7 +3016,7 @@ function readTransaksi(ss, sheetName, range) {
     if (kat === 'pipaGreen'    || kat === 'pipaGrey')    out.pipa    += weight;
     if (kat === 'fittingGreen' || kat === 'fittingGrey') out.fitting += weight;
     var jn2 = kat.indexOf('pipa') === 0 ? 'pipa' : 'fitting';
-    out.kat[jn2 + _katDariGroup(jn2, igm[String(row[0] || '').trim().toUpperCase()])] += weight;
+    if (igm) out.kat[jn2 + _katDariGroup(jn2, igm[String(row[0] || '').trim().toUpperCase()])] += weight;   // Fitting Rucika: kategori stock-nya beda -> tanpa pecahan
     var key = fmtD(tgl);
     if (!trendMap[key]) trendMap[key] = { label:key, pipa:0, fitting:0 };
     if (kat === 'pipaGreen'    || kat === 'pipaGrey')    trendMap[key].pipa    += weight;
