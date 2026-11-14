@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rucika — SCM Delivery Control</title>
-<script src="./assets/js/auth-guard.js?v=20261114a"></script>
-<script src="./assets/js/config.js?v=20261114a"></script>
-<script src="./assets/js/api-shim.js?v=20261114a"></script>
+<script src="./assets/js/auth-guard.js?v=20261114b"></script>
+<script src="./assets/js/config.js?v=20261114b"></script>
+<script src="./assets/js/api-shim.js?v=20261114b"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -29,11 +29,10 @@ html{scroll-behavior:smooth}
 body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background .4s,color .4s;overflow-x:hidden}
 h1,h2,h3,.num{font-family:'Sora','Plus Jakarta Sans',sans-serif}
 .bg{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:linear-gradient(160deg,var(--bg),var(--bg2))}
-.blob{position:absolute;border-radius:50%;filter:blur(70px);animation:float 18s ease-in-out infinite}
-.b1{width:480px;height:480px;background:var(--blob1);top:-120px;left:-100px}.b2{width:420px;height:420px;background:var(--blob2);bottom:-120px;right:-80px;animation-delay:-7s}
-@keyframes float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(50px,36px) scale(1.12)}}
+.blob{position:absolute;border-radius:50%}
+.b1{width:620px;height:620px;background:radial-gradient(circle,var(--blob1),transparent 68%);top:-220px;left:-180px}.b2{width:560px;height:560px;background:radial-gradient(circle,var(--blob2),transparent 68%);bottom:-200px;right:-160px}
 .wrap{position:relative;z-index:1;max-width:1380px;margin:0 auto;padding:18px 20px 60px}
-header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 18px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);position:sticky;top:10px;z-index:20;backdrop-filter:blur(10px)}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 18px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);position:sticky;top:10px;z-index:20}
 .logo{display:flex;align-items:center;gap:12px}.logo img{height:38px;border-radius:8px;background:#fff;padding:2px 6px;border:1px solid var(--line)}
 .logo h1{font-size:18px;font-weight:800;letter-spacing:-.3px}.logo small{display:block;color:var(--muted);font-size:11.5px;font-weight:600}
 .sp{flex:1}
@@ -41,7 +40,7 @@ select,input,button{font:inherit;color:var(--text)}
 .sel,.inp{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-weight:600;font-size:13px;outline:none;transition:border .2s,box-shadow .2s}
 .sel:focus,.inp:focus{border-color:var(--c1);box-shadow:0 0 0 3px var(--c1a)}
 .btn{border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:transform .15s,box-shadow .2s,background .2s}
-.btn:hover{transform:translateY(-2px);box-shadow:var(--shadow)}.btn:active{transform:scale(.97)}
+.btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.97)}
 .btn.pri{background:linear-gradient(135deg,var(--c1),var(--c6));color:var(--onacc);border:0;box-shadow:var(--glow)}
 .btn.ok{background:var(--c4);color:var(--onacc);border:0}.btn.warn{background:var(--c3);color:var(--onacc);border:0}.btn.bad{background:transparent;color:var(--c5);border-color:var(--c5)}
 .btn[disabled]{opacity:.5;pointer-events:none}
@@ -49,12 +48,12 @@ select,input,button{font:inherit;color:var(--text)}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--c4);box-shadow:0 0 0 0 var(--c4);animation:pulse 1.8s infinite}.dot.off{background:var(--c5);animation:none}
 @keyframes pulse{70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
 .tabs{display:flex;gap:6px;margin:18px 0 14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:5px;width:max-content;max-width:100%;overflow:auto}
-.tab{border:0;background:transparent;padding:10px 18px;border-radius:12px;font-weight:700;font-size:13.5px;cursor:pointer;color:var(--muted);transition:all .25s}
+.tab{border:0;background:transparent;padding:10px 18px;border-radius:12px;font-weight:700;font-size:13.5px;cursor:pointer;color:var(--muted);transition:background .2s,color .2s}
 .tab.on{background:linear-gradient(135deg,var(--c1),var(--c6));color:var(--onacc);box-shadow:var(--glow)}
 .ro{display:none;margin:12px 0 0;padding:10px 14px;border-radius:12px;background:var(--c3a);border:1px solid var(--c3);font-size:12.5px;font-weight:600}
 .grid{display:grid;gap:14px}.kpis{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}.two{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
-.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:var(--shadow);animation:up .6s both;transition:transform .25s,box-shadow .25s}
-.card:hover{transform:translateY(-3px);box-shadow:var(--glow)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:var(--shadow);transition:transform .2s}
+.card:hover{transform:translateY(-2px)}
 @keyframes up{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 .kpi{position:relative;overflow:hidden}.kpi::after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:var(--ka,var(--c1a));filter:blur(4px)}
 .kpi .l{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
@@ -65,12 +64,12 @@ select,input,button{font:inherit;color:var(--text)}
 .sec{display:flex;align-items:center;gap:10px;margin:22px 0 12px;flex-wrap:wrap}.sec h2{font-size:17px;font-weight:800}.sec .tag{font-size:11.5px;font-weight:700;color:var(--muted)}
 .hero{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center}
 .rings{display:flex;gap:18px;flex-wrap:wrap}
-.ring{--p:0;width:118px;height:118px;border-radius:50%;background:conic-gradient(var(--rc) calc(var(--p)*1%),var(--line) 0);display:grid;place-items:center;transition:--p 1s;position:relative}
+.ring{--p:0;width:118px;height:118px;border-radius:50%;background:conic-gradient(var(--rc) calc(var(--p)*1%),var(--line) 0);display:grid;place-items:center;transition:--p .6s;position:relative}
 .ring::before{content:"";position:absolute;inset:11px;border-radius:50%;background:var(--card)}
 .ring b{position:relative;font-family:Sora;font-size:21px;font-weight:800}.rl{text-align:center;font-size:12px;font-weight:700;color:var(--muted);margin-top:6px}
 .road{position:relative;height:42px;border-radius:14px;background:var(--card2);border:1px solid var(--line);overflow:hidden;margin-top:12px}
-.road i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--c1a),var(--c1));border-radius:14px;transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
-.road span{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:22px;transition:left 1.2s cubic-bezier(.2,.8,.2,1);animation:bump 1.2s infinite}
+.road i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--c1a),var(--c1));border-radius:14px;transition:width .7s ease}
+.road span{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:22px;transition:left .7s ease}
 @keyframes bump{50%{margin-top:-2px}}
 .tw{overflow:auto;border-radius:14px;border:1px solid var(--line);max-height:430px}
 table{border-collapse:collapse;width:100%;font-size:12.5px;white-space:nowrap}
@@ -79,8 +78,8 @@ td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:right;font-we
 .pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800}.p-ok{background:var(--c4a);color:var(--c4)}.p-bad{background:var(--c5a);color:var(--c5)}.p-n{background:var(--c1a);color:var(--c1)}.p-w{background:var(--c3a);color:var(--c3)}.p-c{background:var(--c2a);color:var(--c2)}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 13px;font-weight:700;font-size:12.5px;cursor:pointer;transition:all .2s}.chip.on{background:var(--c1);color:var(--onacc);border-color:var(--c1)}
 .trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
-.trip{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--sc,var(--c1));border-radius:16px;padding:14px;box-shadow:var(--shadow);animation:up .45s both;transition:transform .2s,border-color .3s}
-.trip:hover{transform:translateY(-3px)}
+.trip{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--sc,var(--c1));border-radius:16px;padding:14px;box-shadow:var(--shadow);transition:transform .2s}
+.trip:hover{transform:translateY(-2px)}
 .trip .t1{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.trip b{font-size:14px;font-weight:800;line-height:1.25}.trip .m{font-size:12px;color:var(--muted);font-weight:600;margin:3px 0 8px}
 .times{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}.times div{background:var(--card2);border-radius:10px;padding:6px 8px;font-size:11px;color:var(--muted);font-weight:700}.times b{display:block;font-size:14px;color:var(--text)}
 .acts{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px}.acts .btn{padding:7px 11px;font-size:12px}
@@ -194,7 +193,7 @@ function avg(a){a=a.filter(function(v){return v!=null&&!isNaN(v)});return a.leng
 function cv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
 function ago(ms){var s=Math.max(0,Math.round((Date.now()-ms)/1000));if(s<60)return s+' dtk lalu';if(s<3600)return Math.floor(s/60)+' mnt lalu';return Math.floor(s/3600)+' jam lalu'}
 function fts(iso){if(!iso)return '–';var d=new Date(iso);if(isNaN(d))return '–';return d.getDate()+' '+BLN[d.getMonth()].slice(0,3)+' '+d.getFullYear()+', '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)}
-function countUp(el,to,dec,suf){if(to==null||isNaN(to)){el.textContent='–';return}if(REDUCE){el.textContent=(dec?n1(to):n0(to))+(suf||'');return}var t0=performance.now(),dur=1000;(function f(t){var p=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-p,3),v=to*e;el.textContent=(dec===2?n2(v):dec?n1(v):n0(v))+(suf||'');if(p<1)requestAnimationFrame(f)})(t0)}
+function countUp(el,to,dec,suf){if(to==null||isNaN(to)){el.textContent='–';return}if(REDUCE){el.textContent=(dec?n1(to):n0(to))+(suf||'');return}var t0=performance.now(),dur=500;(function f(t){var p=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-p,3),v=to*e;el.textContent=(dec===2?n2(v):dec?n1(v):n0(v))+(suf||'');if(p<1)requestAnimationFrame(f)})(t0)}
 
 /* ---------- tema ---------- */
 function setTheme(t){document.documentElement.setAttribute('data-theme',t);try{LS.setItem('scm_theme',t)}catch(e){}$('btnTheme').textContent=t==='dark'?'☀️ Terang':'🌙 Gelap';if(window.Chart){Chart.defaults.color=cv('--text');Chart.defaults.borderColor=cv('--grid')}if(D.rows.length)renderCharts()}
@@ -209,7 +208,7 @@ function init(){
   $('btnOut').textContent=IS_DH?'← Kembali':'Keluar';
   $('btnOut').onclick=function(){if(IS_DH)location.href='./divisi_head.html';else{try{SS.clear()}catch(e){}location.href='./login.html'}};
   if(IS_DH)$('roBanner').style.display='block';
-  if(window.Chart){Chart.defaults.font.family="'Plus Jakarta Sans',sans-serif";Chart.defaults.font.weight='600';Chart.defaults.color=cv('--text');Chart.defaults.borderColor=cv('--grid');Chart.defaults.animation={duration:REDUCE?0:1200,easing:'easeOutQuart'}}
+  if(window.Chart){Chart.defaults.font.family="'Plus Jakarta Sans',sans-serif";Chart.defaults.font.weight='600';Chart.defaults.color=cv('--text');Chart.defaults.borderColor=cv('--grid');Chart.defaults.animation={duration:REDUCE?0:450,easing:'easeOutCubic'}}
   api('scmGetSites',[NIK]).then(function(r){
     if(!r||!r.success){fatal(r&&r.error||'Akses ditolak');return}
     SITES=r.data||[];IZIN=r.izin||IZIN;
@@ -223,7 +222,7 @@ function init(){
     $('cDate').value=todayKey();
     switchTab(IZIN.indexOf('dashboard')!==-1?'dash':'ctrl');
     refreshAll();
-    setInterval(tick,1000);setInterval(autoRefresh,20000);
+    setInterval(tick,1000);setInterval(autoRefresh,30000);
   }).catch(function(e){fatal('Gagal terhubung: '+(e&&e.message||''))});
 }
 function fatal(m){$('liveTxt').textContent=m;$('dot').classList.add('off');toast(m)}
@@ -237,12 +236,16 @@ var busy=false;
 function refreshAll(manual){
   if(busy)return;busy=true;$('btnRef').firstChild.nodeValue='⟳ Memuat…';
   var jobs=[];
-  if(IZIN.indexOf('dashboard')!==-1)jobs.push(api('scmGetDashboard',[NIK,SITE]).then(function(r){if(!r||!r.success)throw new Error(r&&r.error||'Dashboard gagal dimuat');D=r;renderDash()}));
-  if(IZIN.indexOf('kontrol')!==-1)jobs.push(loadCtrl(true));
-  Promise.all(jobs).then(function(){lastOk=Date.now();$('dot').classList.remove('off');if(manual)toast('✅ Data diperbarui')}).catch(function(e){$('dot').classList.add('off');toast('⚠️ '+(e&&e.message||'Gagal memuat'))}).then(function(){busy=false;$('btnRef').firstChild.nodeValue='⟳ Muat ulang'})
+  var fails=0,total=0,msg='';
+  function wrap(p){total++;return p.then(function(){lastOk=Date.now()}).catch(function(e){fails++;msg=(e&&e.message)||'Gagal memuat'})}
+  if(IZIN.indexOf('dashboard')!==-1)jobs.push(wrap(api('scmGetDashboard',[NIK,SITE]).then(function(r){if(!r||!r.success)throw new Error(r&&r.error||'Dashboard gagal dimuat');applyDash(r,true)}).catch(function(e){showDashErr(e&&e.message);throw e})));
+  if(IZIN.indexOf('kontrol')!==-1)jobs.push(wrap(loadCtrl(true)));
+  Promise.all(jobs).then(function(){$('dot').classList.toggle('off',fails>=total&&total>0);if(fails)toast('⚠️ '+msg);else if(manual)toast('✅ Data diperbarui')}).then(function(){busy=false;$('btnRef').firstChild.nodeValue='⟳ Muat ulang'})
 }
-function loadCtrl(all){var tg=$('cDate').value||todayKey();return api('scmGetControl',[NIK,SITE,tg]).then(function(r){if(!r||!r.success)throw new Error(r&&r.error||'Kontrol gagal dimuat');if($('cDate').value!==tg)return;C=r;renderCtrl();renderToday()})}
-function autoRefresh(){if(document.hidden||busy||!NIK)return;if(IZIN.indexOf('kontrol')!==-1){loadCtrl().then(function(){lastOk=Date.now()}).catch(function(){})}if(IZIN.indexOf('dashboard')!==-1&&Date.now()-(autoRefresh._d||0)>60000){autoRefresh._d=Date.now();api('scmGetDashboard',[NIK,SITE]).then(function(r){if(r&&r.success){D=r;renderDash()}}).catch(function(){})}}
+function showDashErr(m){$('kpis').innerHTML='<div class="card" style="grid-column:1/-1;border-color:var(--c5)"><h3 style="color:var(--c5)">⚠️ Dashboard gagal dimuat</h3><div class="sub" style="margin:6px 0 10px">'+esc(m||'Terjadi kesalahan')+'</div><button class="btn pri" onclick="document.getElementById(\'btnRef\').click()">Coba lagi</button></div>'}
+function applyDash(r,force){var sig=JSON.stringify(r.rows)+'|'+(r.info&&r.info.webT||'')+'|'+(r.info&&r.info.sheetT||'');if(!force&&D._sig===sig){D.info=r.info;return}r._sig=sig;D=r;renderDash()}
+function loadCtrl(all){var tg=$('cDate').value||todayKey();return api('scmGetControl',[NIK,SITE,tg]).then(function(r){if(!r||!r.success)throw new Error(r&&r.error||'Kontrol gagal dimuat');if($('cDate').value!==tg)return;var sig=JSON.stringify(r.trips);if(C._sig===sig&&C.tanggal===tg&&!all){C.info=r.info;return}r._sig=sig;C=r;renderCtrl();renderToday()})}
+function autoRefresh(){if(document.hidden||busy||!NIK)return;if(IZIN.indexOf('kontrol')!==-1){loadCtrl().then(function(){lastOk=Date.now()}).catch(function(){})}if(IZIN.indexOf('dashboard')!==-1&&Date.now()-(autoRefresh._d||0)>60000){autoRefresh._d=Date.now();api('scmGetDashboard',[NIK,SITE]).then(function(r){if(r&&r.success)applyDash(r)}).catch(function(){})}}
 function tick(){
   $('liveTxt').textContent=lastOk?('Realtime · diperbarui '+ago(lastOk)):'Menghubungkan…';
   document.querySelectorAll('[data-since]').forEach(function(e){var m=tm(e.dataset.since);if(m==null)return;var n=new Date(),d=n.getHours()*60+n.getMinutes()-m;if(d<0)d+=1440;e.textContent=Math.floor(d/60)+' j '+(d%60)+' mnt'})
@@ -365,9 +368,9 @@ function act(id,aksi,extra){
   renderCtrl();renderToday();
   api('scmUpdateTrip',[NIK,SITE,id,aksi==='ton'?'catatan':aksi,aksi==='ton'?{tonAct:extra.tonAct}:null]).then(function(r){
     if(!r||!r.success)throw new Error(r&&r.error||'Gagal menyimpan');
-    lastOk=Date.now();toast('✅ '+t.mitra+' → '+r.status+(r.jam?' ('+r.jam+')':''));
+    C._sig=JSON.stringify(C.trips);lastOk=Date.now();toast('✅ '+t.mitra+' → '+r.status+(r.jam?' ('+r.jam+')':''));
     if(r.sinkron&&r.sinkron.alasan)$('planMsg').textContent='ℹ️ '+r.sinkron.alasan;
-    if(IZIN.indexOf('dashboard')!==-1)api('scmGetDashboard',[NIK,SITE]).then(function(d){if(d&&d.success){D=d;renderDash()}}).catch(function(){})
+    if(IZIN.indexOf('dashboard')!==-1)api('scmGetDashboard',[NIK,SITE]).then(function(d){if(d&&d.success)applyDash(d,true)}).catch(function(){})
   }).catch(function(e){Object.assign(t,bak);renderCtrl();renderToday();toast('⚠️ '+(e&&e.message||'Gagal'))})
 }
 $('q').oninput=function(){renderCtrl()};
@@ -398,7 +401,7 @@ function buildManual(){
 }
 $('btnManual').onclick=function(){
   var v={};document.querySelectorAll('.mf').forEach(function(i){v[i.dataset.k]=i.value});var b=this;b.disabled=true;
-  api('scmSaveManual',[NIK,SITE,C.tanggal,v]).then(function(r){if(!r||!r.success)throw new Error(r&&r.error||'Gagal');var h=r.hasil||{};toast(h.alasan?'ℹ️ '+h.alasan:'✅ Tersimpan ('+(h.ditulis||[]).length+' kolom)'+((h.dilewati||[]).length?' · '+h.dilewati.length+' kolom berumus dilewati':''));return api('scmGetDashboard',[NIK,SITE]).then(function(d){if(d&&d.success){D=d;renderDash();buildManual()}})}).catch(function(e){toast('⚠️ '+e.message)}).then(function(){b.disabled=false})
+  api('scmSaveManual',[NIK,SITE,C.tanggal,v]).then(function(r){if(!r||!r.success)throw new Error(r&&r.error||'Gagal');var h=r.hasil||{};toast(h.alasan?'ℹ️ '+h.alasan:'✅ Tersimpan ('+(h.ditulis||[]).length+' kolom)'+((h.dilewati||[]).length?' · '+h.dilewati.length+' kolom berumus dilewati':''));return api('scmGetDashboard',[NIK,SITE]).then(function(d){if(d&&d.success){applyDash(d,true);buildManual()}})}).catch(function(e){toast('⚠️ '+e.message)}).then(function(){b.disabled=false})
 };
 init();
 })();

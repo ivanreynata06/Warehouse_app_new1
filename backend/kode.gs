@@ -11821,7 +11821,12 @@ function _scmCatatUpdate(site, nama, sumber) {
 }
 function _scmInfoUpdate(site, ss) {
   var info = {}; try { info = JSON.parse(PropertiesService.getScriptProperties().getProperty('SCM_LASTUPD_' + site) || '{}'); } catch (e) {}
-  var sheetT = ''; try { sheetT = DriveApp.getFileById(ss.getId()).getLastUpdated().toISOString(); } catch (e) {}
+  var sheetT = '', ck = 'SCM_SHEETT_' + ss.getId();
+  try {
+    var cc = CacheService.getScriptCache(), hit = cc.get(ck);
+    if (hit !== null) sheetT = hit;
+    else { try { sheetT = DriveApp.getFileById(ss.getId()).getLastUpdated().toISOString(); } catch (e2) { sheetT = ''; } cc.put(ck, sheetT, 120); }
+  } catch (e) {}
   return { webT: info.t || '', webBy: info.by || '', webSrc: info.src || '', sheetT: sheetT, serverT: new Date().toISOString() };
 }
 
@@ -11835,32 +11840,40 @@ function scmGetSites(actorNik) {
   } catch (err) { return { success: false, error: err.message }; }
 }
 
-// Dashboard: semua baris harian (400 hari terakhir) + penanda kolom manual vs rumus + info update terakhir.
+// Dashboard: baris harian (400 hari terakhir) + penanda kolom manual vs rumus + info update terakhir.
+// Dioptimalkan: hanya membaca EKOR sheet (bukan seluruh sheet) & rumus hanya dari 60 baris terakhir.
 function scmGetDashboard(actorNik, site) {
   try {
     _scmAkses(actorNik, site, 'dashboard', false);
     var ss = _scmSS(site), sh = _scmSheetDash(ss);
-    if (!sh) return { success: false, error: 'Sheet "DASHBOARD NEW" / "INPUT ALL" tidak ditemukan di spreadsheet SCM ' + site + '.' };
+    if (!sh) return { success: false, error: 'Sheet "DASHBOARD NEW" / "INPUT ALL" tidak ditemukan di spreadsheet SCM ' + site + '. (Spreadsheet: ' + ss.getName() + ')' };
     var peta = _scmPetaKolom(sh);
     if (!peta) return { success: false, error: 'Header (PLAN MOBIL, MASUK, KELUAR, ...) tidak ditemukan di sheet "' + sh.getName() + '".' };
-    var last = sh.getLastRow(), first = peta.headerRow + 1, n = last - peta.headerRow;
-    if (n < 1) return { success: true, rows: [], manual: [], info: _scmInfoUpdate(site, ss), sheet: sh.getName() };
-    var lastC = sh.getLastColumn(), rng = sh.getRange(first, 1, n, lastC);
-    var vals = rng.getValues(), disp = rng.getDisplayValues(), forms = rng.getFormulas();
-    var rows = [], fcnt = {}, ncnt = {}, cutoff = Utilities.formatDate(new Date(Date.now() - 400 * 86400000), _scmTz(), 'yyyy-MM-dd');
-    for (var i = 0; i < n; i++) {
-      var d = _scmTgl(vals[i][peta.dateCol - 1]) || _scmTgl(disp[i][peta.dateCol - 1]); if (!d) continue;
-      var o = { date: d, row: first + i };
-      Object.keys(peta.cols).forEach(function (f) {
-        var c = peta.cols[f] - 1, v = vals[i][c], dv = disp[i][c];
+    var last = sh.getLastRow(), first = peta.headerRow + 1, n = last - peta.headerRow, info = _scmInfoUpdate(site, ss);
+    if (n < 1) return { success: true, rows: [], manual: [], info: info, sheet: sh.getName() };
+    var cutoff = Utilities.formatDate(new Date(Date.now() - 400 * 86400000), _scmTz(), 'yyyy-MM-dd');
+    var dcol = sh.getRange(first, peta.dateCol, n, 1).getValues(), startIdx = n;
+    for (var q = 0; q < n; q++) { var dq = _scmTgl(dcol[q][0]); if (dq && dq >= cutoff) { startIdx = q; break; } }
+    if (startIdx >= n) return { success: true, rows: [], manual: [], info: info, sheet: sh.getName() };
+    var fields = Object.keys(peta.cols), minC = peta.dateCol, maxC = peta.dateCol;
+    fields.forEach(function (f) { if (peta.cols[f] < minC) minC = peta.cols[f]; if (peta.cols[f] > maxC) maxC = peta.cols[f]; });
+    var cnt = n - startIdx, r0 = first + startIdx, w = maxC - minC + 1, rng = sh.getRange(r0, minC, cnt, w);
+    var vals = rng.getValues(), disp = rng.getDisplayValues();
+    var fN = Math.min(cnt, 60), forms = sh.getRange(r0 + cnt - fN, minC, fN, w).getFormulas();   // rumus: cukup contoh 60 baris terakhir
+    var rows = [], fcnt = {}, ncnt = {};
+    for (var i = 0; i < cnt; i++) {
+      var d = _scmTgl(vals[i][peta.dateCol - minC]) || _scmTgl(disp[i][peta.dateCol - minC]); if (!d) continue;
+      var o = { date: d, row: r0 + i }, fi = i - (cnt - fN);
+      for (var k = 0; k < fields.length; k++) {
+        var f = fields[k], c = peta.cols[f] - minC, v = vals[i][c], dv = disp[i][c];
         o[f] = SCM_TEXT_FIELDS[f] ? String(dv || '').trim() : _scmNum(v);
-        if (dv !== '' && v !== '') { ncnt[f] = (ncnt[f] || 0) + 1; if (forms[i][c]) fcnt[f] = (fcnt[f] || 0) + 1; }
-      });
-      if (d >= cutoff) rows.push(o);
+        if (fi >= 0 && dv !== '' && v !== '') { ncnt[f] = (ncnt[f] || 0) + 1; if (forms[fi][c]) fcnt[f] = (fcnt[f] || 0) + 1; }
+      }
+      rows.push(o);
     }
     var manual = [];
-    Object.keys(peta.cols).forEach(function (f) { if (SCM_MANUAL_OK[f] && ((fcnt[f] || 0) / Math.max(1, ncnt[f] || 0)) < 0.5) manual.push(f); });
-    return { success: true, rows: rows, manual: manual, formulaFields: Object.keys(fcnt), info: _scmInfoUpdate(site, ss), sheet: sh.getName(), colMap: peta.cols };
+    fields.forEach(function (f) { if (SCM_MANUAL_OK[f] && ((fcnt[f] || 0) / Math.max(1, ncnt[f] || 0)) < 0.5) manual.push(f); });
+    return { success: true, rows: rows, manual: manual, formulaFields: Object.keys(fcnt), info: info, sheet: sh.getName(), colMap: peta.cols };
   } catch (err) { return { success: false, error: err.message }; }
 }
 
@@ -11901,11 +11914,11 @@ function _scmSheetCtrl(ss) {
 }
 function _scmBacaCtrl(sh, site, tanggal) {
   var last = sh.getLastRow(); if (last < 2) return [];
-  var v = sh.getRange(2, 1, last - 1, SCM_CTRL_HEAD.length).getDisplayValues(), out = [];
+  var st0 = Math.max(2, last - 799), v = sh.getRange(st0, 1, last - st0 + 1, SCM_CTRL_HEAD.length).getDisplayValues(), out = [];
   for (var i = 0; i < v.length; i++) {
     var tg = _scmTgl(v[i][1]) || v[i][1];
     if (tg !== tanggal || String(v[i][2]) !== site) continue;
-    out.push({ id: v[i][0], row: i + 2, tanggal: tg, site: v[i][2], mitra: v[i][3], armada: v[i][4], kota: v[i][5], tonPlan: _scmNum(v[i][6]), status: v[i][7] || 'Dijadwalkan', jamMasuk: v[i][8], jamSelesai: v[i][9], jamKeluar: v[i][10], tonAct: _scmNum(v[i][11]), catatan: v[i][12], sumber: v[i][13], oleh: v[i][14], pada: v[i][15] });
+    out.push({ id: v[i][0], row: i + st0, tanggal: tg, site: v[i][2], mitra: v[i][3], armada: v[i][4], kota: v[i][5], tonPlan: _scmNum(v[i][6]), status: v[i][7] || 'Dijadwalkan', jamMasuk: v[i][8], jamSelesai: v[i][9], jamKeluar: v[i][10], tonAct: _scmNum(v[i][11]), catatan: v[i][12], sumber: v[i][13], oleh: v[i][14], pada: v[i][15] });
   }
   return out;
 }
