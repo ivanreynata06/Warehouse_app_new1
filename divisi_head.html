@@ -370,6 +370,7 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
     <button class="nav-item" id="navAll" data-go="all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Semua plant</button>
     <button class="nav-item" id="navLog" data-go="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Log aktivitas<span class="badge" id="logBadge"></span></button>
     <button class="nav-item" id="navFte" data-go="fte"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>Monitoring FTE</button>
+    <button class="nav-item" id="navScm" style="display:none" onclick="location.href='./scm.html'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h13v13H1z"/><path d="M14 8h4l4 4v4h-8z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/></svg>Dashboard SCM</button>
     <div class="nav-sep" id="navSep">Pilih plant</div>
     <div id="navPlants"></div>
     <div class="me">
@@ -471,9 +472,10 @@ html,body{overflow-x:hidden}.view{overflow-x:hidden}.main,.panel,.card,.hero,.kp
 
   var WS = []; try { WS = JSON.parse(SS.getItem('wh_dh_workspaces') || '[]'); } catch (e) {}
   var IZIN = null; try { IZIN = JSON.parse(SS.getItem('wh_dh_izin') || 'null'); } catch (e) {}
-  var ALLP = ['overview','ct','log','stock','outbound','inbound','kanban','rekap','loading','akurasi','fte'];
+  var ALLP = ['overview','ct','log','stock','outbound','inbound','kanban','rekap','loading','akurasi','fte','scm'];
   if (!IZIN || !IZIN.length) IZIN = ALLP;
   function can(k) { return IZIN.indexOf(k) !== -1; }
+  try { var _ns = document.getElementById('navScm'); if (_ns && can('scm')) _ns.style.display = ''; } catch (e) {}
   var DATA = {};      // key -> {st,stP,stF,out,outP,outF,inn,inP,inF} (kg) bulan berjalan -- ringkas, disimpan ke localStorage
   var CUS = {}, fvId = 0;   // data utk filter non-default (bulan/periode/tanggal stock lain)
   var NOW = new Date(), FV = { bulan: String(NOW.getMonth() + 1), tahun: String(NOW.getFullYear()), dari: '', sampai: '', stock: '' };

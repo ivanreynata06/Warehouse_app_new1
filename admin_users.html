@@ -503,6 +503,54 @@ body.theme-light .toast{background:#f8f9fb;color:#1a1d2e;}
           </div>
           <div id="dhi-status" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
         </div>
+
+        <!-- ═══ SCM: akun Plant/DC + izin + sumber data ═══ -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-color);" id="scm-section">
+          <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="truck" style="width:11px;color:var(--accent-gold);"></i>Akun SCM &mdash; login Plant / DC, dashboard &amp; kontrol pengiriman</div>
+          <div class="modal-note" style="margin:0 0 8px;font-size:11px;opacity:.8;">
+            Akun SCM masuk lewat opsi <b>SCM</b> di halaman login lalu memilih <b>Plant / DC</b> yang sudah diizinkan di sini. Izin: <b>Dashboard</b> (lihat dashboard delivery), <b>Kontrol</b> (klik mobil masuk / selesai muat / keluar &amp; isi data manual), <b>Planning</b> (tarik data planning dari spreadsheet). Divisi Head otomatis bisa melihat dashboard &amp; kontrol SCM (hanya baca) lewat izin <b>Dashboard SCM</b> pada panel tampilan Divisi Head.
+          </div>
+          <div class="modal-field two-col">
+            <div><label for="scm-nik">NIK</label><input type="text" id="scm-nik" placeholder="Contoh: PEG12345678" autocomplete="off"></div>
+            <div><label for="scm-nama">Nama</label><input type="text" id="scm-nama" placeholder="Nama lengkap" autocomplete="off"></div>
+          </div>
+          <div class="modal-field">
+            <label for="scm-pwd">Kata sandi <span style="opacity:.6;font-weight:400;">(min. 6 karakter)</span></label>
+            <input type="password" id="scm-pwd" autocomplete="new-password" placeholder="Isi untuk akun baru / ganti kata sandi">
+          </div>
+          <label class="chk-row" style="margin:8px 0 4px;"><input type="checkbox" id="scm-all" checked onchange="onScmAllChange()"> Semua plant / DC (termasuk yang ditambahkan nanti)</label>
+          <div id="scm-site-list" style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0;opacity:.5;pointer-events:none;"></div>
+          <div style="font-size:10.5px;opacity:.7;margin:8px 0 4px;">Izin akun:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:8px;">
+            <label class="chk-row"><input type="checkbox" class="chk-scm-izin" value="dashboard" checked> Dashboard</label>
+            <label class="chk-row"><input type="checkbox" class="chk-scm-izin" value="kontrol" checked> Kontrol pengiriman</label>
+            <label class="chk-row"><input type="checkbox" class="chk-scm-izin" value="planning" checked> Tarik planning</label>
+          </div>
+          <label class="chk-row" style="margin:4px 0 8px;"><input type="checkbox" id="scm-aktif" checked> Akun aktif</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-flat btn-flat-accent" onclick="simpanScm()"><i data-lucide="save" style="width:11px;"></i> Simpan akun SCM</button>
+            <button class="btn-flat btn-flat-ghost" id="scm-batal" style="display:none;" onclick="resetFormScm()">Batal edit</button>
+          </div>
+          <div id="scm-status" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
+          <div style="margin-top:12px;">
+            <div style="font-size:10.5px;opacity:.7;margin-bottom:4px;">Daftar akun SCM saat ini:</div>
+            <div id="scm-list" style="font-size:11px;"></div>
+          </div>
+
+          <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border-color);">
+            <div class="card-title" style="font-size:11px;margin-bottom:8px;"><i data-lucide="link" style="width:11px;color:var(--accent-gold);"></i>Sumber data SCM per Plant / DC</div>
+            <div class="modal-note" style="margin:0 0 8px;font-size:11px;opacity:.8;">
+              <b>Spreadsheet Dashboard</b>: berisi sheet <code>DASHBOARD NEW</code> (atau <code>INPUT ALL</code>). Kolom berumus ditarik otomatis; kolom tanpa rumus muncul di menu Kontrol. Kosong = pakai spreadsheet bawaan.<br>
+              <b>Spreadsheet Planning</b>: tab bernama tanggal (mis. <code>14</code>) dengan kolom MITRA USAHA, JENIS ARMADA, KOTA, TONASE. Cukup tempel link-nya &mdash; planning hari ini &amp; besok ditarik otomatis (jalankan <code>setupScmTrigger()</code> 1x di Apps Script) atau lewat tombol Tarik Planning di halaman SCM.
+            </div>
+            <div class="modal-field"><label for="scms-site">Plant / DC</label><select id="scms-site" onchange="pilihScmSumber()"></select></div>
+            <div class="modal-field"><label for="scms-dash">Link spreadsheet Dashboard</label><input type="text" id="scms-dash" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off"></div>
+            <div class="modal-field"><label for="scms-plan">Link spreadsheet Planning</label><input type="text" id="scms-plan" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off"></div>
+            <div class="modal-field"><label for="scms-extra">Tambah DC lain (pisahkan koma)</label><input type="text" id="scms-extra" placeholder="Contoh: DC Medan, DC Surabaya" autocomplete="off"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-flat btn-flat-accent" onclick="simpanScmSumber()"><i data-lucide="save" style="width:11px;"></i> Simpan sumber data</button></div>
+            <div id="scms-status" style="font-size:10.5px;color:var(--text-muted,#9aa0b4);margin-top:6px;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- ═══ PENYIMPANAN SUPABASE -- hanya tampil utk Super Admin & TL (divalidasi ulang di backend) ═══ -->
@@ -1165,6 +1213,7 @@ function isiDropdownHapus(){
   buildDivheadWsList();
   buildDivheadIzin();
   loadDivisiHeadList();
+  loadScm();
   loadKategoriGroup();
   loadCtSettings();
 }
@@ -1287,7 +1336,7 @@ var divheadCache = [];
 var DH_IZIN = [
   ['overview','Halaman Semua Plant'],['ct','Dashboard Control Tower per departemen'],['log','Log Aktivitas & pengingat WA'],
   ['stock','Stock'],['outbound','Outbound'],['inbound','Inbound'],['kanban','Kapasitas Rak / Kanban'],
-  ['rekap','Rekap Muatan per PIC'],['loading','Loading Time'],['akurasi','Akurasi Scan'],['fte','Produktivitas FTE']
+  ['rekap','Rekap Muatan per PIC'],['loading','Loading Time'],['akurasi','Akurasi Scan'],['fte','Produktivitas FTE'],['scm','Dashboard SCM (delivery & kontrol, hanya lihat)']
 ];
 function buildDivheadIzin(sel){
   var w = document.getElementById('dhi-izin'); if (!w) return;
@@ -1324,6 +1373,106 @@ function simpanDivheadIzin(){
     .withFailureHandler(function(err){ st.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
     .adminSetDivisiHeadIzin(actorNik, nik, izin);
 }
+// ---- SCM: akun Plant/DC + sumber data (khusus Super Admin) ----
+var scmCache = [], scmInfo = { allSites: [], sumber: {} };
+function onScmAllChange(){
+  var all = document.getElementById('scm-all').checked, wrap = document.getElementById('scm-site-list');
+  wrap.style.opacity = all ? '.5' : '1'; wrap.style.pointerEvents = all ? 'none' : 'auto';
+}
+function buildScmSiteList(sel){
+  var wrap = document.getElementById('scm-site-list'); if (!wrap) return;
+  wrap.innerHTML = (scmInfo.allSites||[]).map(function(x){
+    return '<label class="chk-row"><input type="checkbox" class="chk-scm-site" value="'+escHtml(x)+'"'+((sel&&sel.indexOf(x)!==-1)?' checked':'')+'>'+escHtml(x)+'</label>';
+  }).join('') || '<span style="opacity:.6;">Belum ada plant/DC.</span>';
+}
+function loadScm(){
+  var box = document.getElementById('scm-list'); if (!box) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ box.innerHTML = '<span style="opacity:.6;">Gagal memuat'+(res&&res.error?': '+escHtml(res.error):'')+' (pastikan kode.gs terbaru sudah di-deploy).</span>'; return; }
+      scmCache = res.data || []; scmInfo = res;
+      buildScmSiteList();
+      var sel = document.getElementById('scms-site');
+      if (sel){ var keep = sel.value; sel.innerHTML = (res.allSites||[]).map(function(x){ return '<option value="'+escHtml(x)+'">'+escHtml(x)+'</option>'; }).join(''); if (keep) sel.value = keep; pilihScmSumber(); }
+      var ex = document.getElementById('scms-extra'); if (ex && !ex.dataset.dirty) ex.value = res.extraSites || '';
+      if (!scmCache.length){ box.innerHTML = '<span style="opacity:.6;">Belum ada akun SCM.</span>'; return; }
+      box.innerHTML = scmCache.map(function(a){
+        var n = escHtml(a.nik), st = (a.sites||[]).indexOf('*')!==-1 ? 'Semua plant/DC' : (a.sites||[]).map(escHtml).join(', ');
+        return '<div style="padding:8px 0;border-bottom:1px solid var(--border-color);"><b>'+n+'</b> — '+escHtml(a.nama)+(a.aktif?'':' <span style="color:#e5484d;">(nonaktif)</span>')+
+          '<div style="opacity:.7;font-size:10.5px;margin:2px 0 6px;">'+st+' · izin: '+(a.izin||[]).map(escHtml).join(', ')+'</div>'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+
+            '<button class="btn-flat btn-flat-info" onclick="editScm(\''+n+'\')">Edit</button>'+
+            '<button class="btn-flat btn-flat-ghost" onclick="toggleScmAktif(\''+n+'\')">'+(a.aktif?'Nonaktifkan':'Aktifkan')+'</button>'+
+            '<button class="btn-flat btn-flat-danger" onclick="hapusScm(\''+n+'\')">Hapus</button></div></div>';
+      }).join('');
+    })
+    .withFailureHandler(function(){ box.innerHTML = '<span style="opacity:.6;">Gagal terhubung.</span>'; })
+    .adminGetScm(actorNik);
+}
+function pilihScmSumber(){
+  var site = document.getElementById('scms-site').value, s = (scmInfo.sumber||{})[site] || {};
+  var toUrl = function(id){ return id ? 'https://docs.google.com/spreadsheets/d/'+id+'/edit' : ''; };
+  document.getElementById('scms-dash').value = toUrl(s.dash); document.getElementById('scms-plan').value = toUrl(s.plan);
+}
+function simpanScmSumber(){
+  var st = document.getElementById('scms-status'), site = document.getElementById('scms-site').value;
+  st.textContent = 'Menyimpan & memeriksa akses spreadsheet...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ st.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+      st.textContent = '✅ Tersimpan.'; showToast('Sumber data SCM '+(site||'')+' disimpan','success');
+      var ex = document.getElementById('scms-extra'); if (ex) delete ex.dataset.dirty; loadScm();
+    })
+    .withFailureHandler(function(err){ st.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
+    .adminSetScmSumber(actorNik, site, document.getElementById('scms-dash').value.trim(), document.getElementById('scms-plan').value.trim(), document.getElementById('scms-extra').value.trim());
+}
+function resetFormScm(){
+  ['scm-nik','scm-nama','scm-pwd'].forEach(function(i){ document.getElementById(i).value=''; });
+  document.getElementById('scm-nik').disabled = false; document.getElementById('scm-all').checked = true; document.getElementById('scm-aktif').checked = true;
+  document.querySelectorAll('.chk-scm-izin').forEach(function(c){ c.checked = true; });
+  buildScmSiteList(); onScmAllChange(); document.getElementById('scm-batal').style.display = 'none'; document.getElementById('scm-status').textContent = '';
+}
+function editScm(nik){
+  var a = scmCache.find(function(x){ return x.nik===nik; }); if (!a) return;
+  document.getElementById('scm-nik').value = a.nik; document.getElementById('scm-nik').disabled = true;
+  document.getElementById('scm-nama').value = a.nama; document.getElementById('scm-pwd').value = '';
+  var all = (a.sites||[]).indexOf('*')!==-1; document.getElementById('scm-all').checked = all;
+  buildScmSiteList(all ? [] : a.sites); onScmAllChange();
+  document.querySelectorAll('.chk-scm-izin').forEach(function(c){ c.checked = (a.izin||[]).indexOf(c.value)!==-1; });
+  document.getElementById('scm-aktif').checked = a.aktif; document.getElementById('scm-batal').style.display = '';
+  document.getElementById('scm-section').scrollIntoView({behavior:'smooth', block:'start'});
+}
+function simpanScm(){
+  var nik = document.getElementById('scm-nik').value.trim(), nama = document.getElementById('scm-nama').value.trim(), pwd = document.getElementById('scm-pwd').value, st = document.getElementById('scm-status');
+  if (!nik){ st.textContent = 'Isi NIK dulu.'; return; }
+  var all = document.getElementById('scm-all').checked;
+  var sites = all ? ['*'] : Array.prototype.slice.call(document.querySelectorAll('.chk-scm-site:checked')).map(function(c){ return c.value; });
+  if (!sites.length){ st.textContent = 'Pilih minimal 1 plant/DC, atau centang "Semua".'; return; }
+  var izin = Array.prototype.slice.call(document.querySelectorAll('.chk-scm-izin:checked')).map(function(c){ return c.value; });
+  if (!izin.length){ st.textContent = 'Pilih minimal 1 izin.'; return; }
+  st.textContent = 'Menyimpan...';
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.success){ st.textContent = '❌ '+(res&&res.error||'Gagal'); return; }
+      showToast('Akun SCM '+nik+(res.baru?' dibuat':' diperbarui'),'success'); resetFormScm(); loadScm();
+    })
+    .withFailureHandler(function(err){ st.textContent = '❌ Gagal terhubung: '+(err&&err.message||''); })
+    .adminSetScm(actorNik, nik, nama, pwd, sites, document.getElementById('scm-aktif').checked, izin);
+}
+function toggleScmAktif(nik){
+  var a = scmCache.find(function(x){ return x.nik===nik; }); if (!a) return;
+  google.script.run
+    .withSuccessHandler(function(res){ if (!res||!res.success){ showToast((res&&res.error)||'Gagal','error'); return; } showToast('Akun '+nik+(a.aktif?' dinonaktifkan':' diaktifkan'),'success'); loadScm(); })
+    .adminSetScm(actorNik, nik, a.nama, '', a.sites, !a.aktif, a.izin);
+}
+function hapusScm(nik){
+  if (!confirm('Hapus akun SCM '+nik+'? Akun ini tidak bisa login lagi.')) return;
+  google.script.run
+    .withSuccessHandler(function(res){ if (!res||!res.success){ showToast((res&&res.error)||'Gagal','error'); return; } showToast('Akun SCM dihapus','success'); loadScm(); })
+    .adminHapusScm(actorNik, nik);
+}
+document.addEventListener('input', function(e){ if (e.target && e.target.id === 'scms-extra') e.target.dataset.dirty = '1'; });
+
 function buildDivheadWsList(){
   var wrap = document.getElementById('dh-ws-list');
   if (!wrap) return;

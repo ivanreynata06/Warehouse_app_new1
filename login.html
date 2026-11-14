@@ -254,8 +254,8 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-    .mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
-    .mode-btn{border:0;background:transparent;color:inherit;opacity:.7;font:inherit;font-size:13px;font-weight:600;padding:9px 8px;border-radius:9px;cursor:pointer;transition:background .2s,opacity .2s,transform .15s}
+    .mode-switch{display:grid;grid-template-columns:1.25fr 1fr .8fr;gap:4px;padding:4px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+    .mode-btn{border:0;background:transparent;color:inherit;opacity:.7;font:inherit;font-size:12.5px;font-weight:600;padding:9px 6px;border-radius:9px;cursor:pointer;transition:background .2s,opacity .2s,transform .15s}
     .mode-btn:hover{opacity:1}
     .mode-btn.active{opacity:1;background:linear-gradient(135deg,#d4af37,#b8912a);color:#1a1405;box-shadow:0 4px 14px rgba(212,175,55,.35)}
     .mode-btn:active{transform:scale(.97)}
@@ -290,6 +290,7 @@
           <div class="mode-switch" id="loginMode" role="tablist" aria-label="Jenis akun">
             <button type="button" class="mode-btn active" id="modeStaff" role="tab" aria-selected="true">Plant / Departemen</button>
             <button type="button" class="mode-btn" id="modeHead" role="tab" aria-selected="false">Divisi Head</button>
+            <button type="button" class="mode-btn" id="modeScm" role="tab" aria-selected="false">SCM</button>
           </div>
         </div>
         <div class="field" id="plantField">
@@ -458,24 +459,39 @@
     muatDaftarPlant();
 
     // ---- Pilihan jenis akun: Plant/Departemen (biasa) atau Divisi Head (tanpa plant/departemen) ----
+    let SCM_SITES = [], STAFF_PLANT_HTML = '';
+    google.script.run.withSuccessHandler(function (r) { if (r && r.success) SCM_SITES = r.data || []; if (loginMode === 'scm') fillScmSites(); }).withFailureHandler(function () {}).scmLoginSites();
+    function fillScmSites() {
+      if (!SCM_SITES.length) return;
+      plantSel.innerHTML = '<option value="" disabled selected>— Pilih Plant / DC —</option>' + SCM_SITES.map(function (x) { return '<option value="' + escL(x) + '">' + escL(x) + '</option>'; }).join('');
+    }
+    let loginMode = 'staff';           // 'staff' | 'head' | 'scm'
     let loginAsHead = false;
-    function setLoginMode(head) {
-      loginAsHead = !!head;
-      document.getElementById('modeStaff').classList.toggle('active', !head);
-      document.getElementById('modeHead').classList.toggle('active', !!head);
-      document.getElementById('modeStaff').setAttribute('aria-selected', String(!head));
-      document.getElementById('modeHead').setAttribute('aria-selected', String(!!head));
-      document.getElementById('plantField').style.display = head ? 'none' : '';
-      plantSel.required = !head;
-      if (head) { deptField.style.display = 'none'; deptSel.required = false; }
+    function setLoginMode(mode) {
+      if (mode === true) mode = 'head'; else if (mode === false) mode = 'staff';
+      loginMode = mode; loginAsHead = (mode === 'head');
+      var isStaff = mode === 'staff', isScm = mode === 'scm';
+      [['modeStaff', isStaff], ['modeHead', mode === 'head'], ['modeScm', isScm]].forEach(function (m) {
+        var el = document.getElementById(m[0]); if (!el) return;
+        el.classList.toggle('active', m[1]); el.setAttribute('aria-selected', String(m[1]));
+      });
+      // Plant/DC tampil utk Staff & SCM; Divisi Head tanpa plant. Departemen hanya utk Staff.
+      document.getElementById('plantField').style.display = (mode === 'head') ? 'none' : '';
+      if (isScm) { if (!STAFF_PLANT_HTML) STAFF_PLANT_HTML = plantSel.innerHTML; fillScmSites(); }
+      else if (STAFF_PLANT_HTML) { plantSel.innerHTML = STAFF_PLANT_HTML; STAFF_PLANT_HTML = ''; }
+      var lbl = document.querySelector('label[for="plant"]'); if (lbl) lbl.textContent = isScm ? 'Plant / DC' : 'Plant';
+      plantSel.required = (mode !== 'head');
+      if (!isStaff) { deptField.style.display = 'none'; deptSel.required = false; }
       else if (currentDeptOptions.length) { deptField.style.display = 'block'; deptSel.required = true; }
       clearLoginError();
     }
-    document.getElementById('modeStaff').addEventListener('click', function () { setLoginMode(false); });
-    document.getElementById('modeHead').addEventListener('click', function () { setLoginMode(true); });
+    document.getElementById('modeStaff').addEventListener('click', function () { setLoginMode('staff'); });
+    document.getElementById('modeHead').addEventListener('click', function () { setLoginMode('head'); });
+    document.getElementById('modeScm').addEventListener('click', function () { setLoginMode('scm'); });
 
     plantSel.addEventListener('change', () => {
       var plantLabel = plantSel.value;
+      if (loginMode === 'scm') { deptField.style.display = 'none'; deptSel.required = false; currentDeptOptions = []; return; }
       currentDeptOptions = PLANT_ENTRIES.filter(function (x) { return x.plantLabel === plantLabel; });
       if (!currentDeptOptions.length) {
         deptField.style.display = 'none';
@@ -585,6 +601,37 @@
             showLoginError('Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi'));
           })
           .loginDivisiHead(nik, pwd);
+        return;
+      }
+
+      // ---- Mode SCM: pilih Plant/DC + NIK + kata sandi (hak akses plant/DC diatur Super Admin di Kelola User) ----
+      if (loginMode === 'scm') {
+        if (!plantLabel) { showLoginError('Pilih Plant / DC terlebih dahulu.'); return; }
+        if (!nik || !pwd) { showLoginError('NIK dan kata sandi wajib diisi.'); return; }
+        setLoading(true);
+        google.script.run
+          .withSuccessHandler(function (res) {
+            setLoading(false);
+            if (!res || !res.success) { showLoginError((res && res.error) ? res.error : 'Login gagal, coba lagi.'); return; }
+            try {
+              sessionStorage.clear();
+              sessionStorage.setItem('wh_workspace', res.workspace || 'scm');
+              sessionStorage.setItem('wh_nik', res.nik);
+              sessionStorage.setItem('wh_nama', res.nama);
+              sessionStorage.setItem('wh_role', 'SCM');
+              sessionStorage.setItem('wh_token', res.token || '');
+              sessionStorage.setItem('wh_menu_keys', '[]');
+              sessionStorage.setItem('wh_scm_site', res.site || plantLabel);
+              sessionStorage.setItem('wh_scm_sites', JSON.stringify(res.sites || []));
+              sessionStorage.setItem('wh_scm_izin', JSON.stringify(res.izin || []));
+            } catch (err) {}
+            window.location.href = './scm.html';
+          })
+          .withFailureHandler(function (err) {
+            setLoading(false);
+            showLoginError('Gagal terhubung ke server: ' + (err && err.message ? err.message : 'cek koneksi'));
+          })
+          .loginScm(plantLabel, nik, pwd);
         return;
       }
 

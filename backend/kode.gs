@@ -125,6 +125,10 @@ var API_FUNCTIONS = {
   adminSetDivisiHead: adminSetDivisiHead,
   adminHapusDivisiHead: adminHapusDivisiHead,
   adminSetDivisiHeadIzin: adminSetDivisiHeadIzin,
+  // SCM (login Plant/DC, dashboard delivery, kontrol pengiriman, planning otomatis)
+  loginScm: loginScm, scmLoginSites: scmLoginSites, scmGetSites: scmGetSites, scmGetDashboard: scmGetDashboard, scmGetControl: scmGetControl,
+  scmUpdateTrip: scmUpdateTrip, scmTambahTrip: scmTambahTrip, scmSaveManual: scmSaveManual, scmSyncPlanning: scmSyncPlanning,
+  adminGetScm: adminGetScm, adminSetScm: adminSetScm, adminHapusScm: adminHapusScm, adminSetScmSumber: adminSetScmSumber,
   adminGetKategoriGroup: adminGetKategoriGroup,
   getCtSettings: getCtSettings,
   adminGetCtSettings: adminGetCtSettings,
@@ -235,7 +239,7 @@ var CACHE_TTL_DEFAULT = 90;
 //    Darurat: matikanAuth() (kembali ke 'off').
 // ================================================================
 var AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
-var AUTH_PUBLIC_ACTIONS = { loginUser: 1, getAvailablePlantsForLogin: 1, loginDivisiHead: 1 };
+var AUTH_PUBLIC_ACTIONS = { loginUser: 1, getAvailablePlantsForLogin: 1, loginDivisiHead: 1, loginScm: 1, scmLoginSites: 1 };
 var AUTH_ACTOR_BOUND = {
   auditProduktivitasFTE: 1, getSupabaseStorageStats: 1, setSupabaseDbLimitMB: 1, bersihkanPengajuanDitolakLama: 1, getAkunList: 1,
   adminTambahUser: 1, adminResetPassword: 1, adminSetAktif: 1, adminEditUser: 1, adminHapusUser: 1, adminSetFonnteToken: 1, adminGetFonnteStatus: 1,
@@ -246,14 +250,17 @@ var AUTH_ACTOR_BOUND = {
   adminGetSplJobBagian: 1, adminSetSplJobBagian: 1, adminHapusSplSignature: 1, adminSetSplTtdCutoff: 1, adminSetSplTtdUkuran: 1,
   adminSetJadwalPengirimanSumber: 1, adminGetJadwalPengirimanSumberStatus: 1,
   divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1, adminGetDivisiHead: 1, adminSetDivisiHead: 1, adminHapusDivisiHead: 1, adminSetDivisiHeadIzin: 1,
-  adminGetKategoriGroup: 1, adminSetKategoriGroup: 1, adminGetCtSettings: 1, adminSetCtSettings: 1
+  adminGetKategoriGroup: 1, adminSetKategoriGroup: 1, adminGetCtSettings: 1, adminSetCtSettings: 1,
+  scmGetSites: 1, scmGetDashboard: 1, scmGetControl: 1, scmUpdateTrip: 1, scmTambahTrip: 1, scmSaveManual: 1, scmSyncPlanning: 1,
+  adminGetScm: 1, adminSetScm: 1, adminHapusScm: 1, adminSetScmSumber: 1
 };
+var SCM_ALLOWED_ACTIONS = { getAvailablePlantsForLogin: 1, scmGetSites: 1, scmGetDashboard: 1, scmGetControl: 1, scmUpdateTrip: 1, scmTambahTrip: 1, scmSaveManual: 1, scmSyncPlanning: 1 };
 var CURRENT_AUTH = null;   // diisi handleApiRequest: { w, n, r } bila token valid
 
 // Aksi yang boleh dipanggil token Divisi Head -- HANYA baca data dashboard + fitur Divisi Head sendiri.
 // (Tidak ada save*/set*/delete*/approve*/upload* -> Divisi Head tidak bisa mengubah data plant mana pun.)
 // Izin data per akun Divisi Head (diatur Super Admin). Kunci halaman: overview, ct, log. Kunci data -> aksi API yg dibuka:
-var DIVHEAD_PERM_KEYS = ['overview', 'ct', 'log', 'stock', 'outbound', 'inbound', 'kanban', 'rekap', 'loading', 'akurasi', 'fte'];
+var DIVHEAD_PERM_KEYS = ['overview', 'ct', 'log', 'stock', 'outbound', 'inbound', 'kanban', 'rekap', 'loading', 'akurasi', 'fte', 'scm'];
 var DIVHEAD_PERM_ACTIONS = {
   stock: ['getDashboardData', 'getStockTrendBatch'],
   outbound: ['getOutboundData', 'getIOTrendBatch'],
@@ -263,7 +270,8 @@ var DIVHEAD_PERM_ACTIONS = {
   loading: ['getResidenceTimeData', 'getLoadingTimeAnalytics'],
   akurasi: ['getAkurasiData', 'getAkurasiDataGabungan', 'soGetDashboard', 'soGetRekapPIC', 'soGetSkuCounts', 'soListLembar'],
   fte: ['getAbsensiFTEData', 'getOvertimeTrend6Bulan', 'getLemburKategoriTrend6Bulan', 'getFTETrendTahunan'],
-  log: ['divheadGetActivity', 'divheadKirimReminder']
+  log: ['divheadGetActivity', 'divheadKirimReminder'],
+  scm: ['scmGetSites', 'scmGetDashboard', 'scmGetControl']
 };
 var DIVHEAD_ALLOWED_ACTIONS = {
   getAvailablePlantsForLogin: 1, getCtSettings: 1, getGroupList: 1, getDashboardData: 1, getOutboundData: 1, getInboundData: 1,
@@ -271,7 +279,8 @@ var DIVHEAD_ALLOWED_ACTIONS = {
   getStockTrendBatch: 1, getIOTrendBatch: 1, getPhotos: 1, getAbsensiFTEData: 1, getOvertimeTrend6Bulan: 1,
   getLemburKategoriTrend6Bulan: 1, getFTETrendTahunan: 1, getAkurasiData: 1, getAkurasiDataGabungan: 1,
   soGetDashboard: 1, soGetRekapPIC: 1, soGetSkuCounts: 1, soListLembar: 1,
-  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1
+  divheadGetWorkspaces: 1, divheadGetActivity: 1, divheadKirimReminder: 1,
+  scmGetSites: 1, scmGetDashboard: 1, scmGetControl: 1
 };
 
 function _b64u(bytes) { return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, ''); }
@@ -319,6 +328,14 @@ function _authCheck(action, args, workspaceKey, token) {
       if (ad !== who.n) return { ok: false, why: 'actorNik (' + ad + ') != NIK token (' + who.n + ')', who: who };
     }
     return { ok: true, why: 'ok-divhead', who: who };
+  }
+  // SCM: token terikat NIK (w='*', r='SCM'); hanya aksi SCM. Hak plant/DC & izin dicek lagi di tiap fungsi scm*.
+  if (String(who.r || '').toUpperCase() === 'SCM') {
+    if (!SCM_ALLOWED_ACTIONS[action]) return { ok: false, why: 'aksi "' + action + '" tidak diizinkan untuk SCM', who: who };
+    var sa = _scmGetAccount(who.n);
+    if (!sa || sa.aktif === false) return { ok: false, why: 'akun SCM tidak aktif', who: who };
+    if (AUTH_ACTOR_BOUND[action]) { var ax = String((args && args[0]) || '').trim().toUpperCase(); if (ax !== who.n) return { ok: false, why: 'actorNik (' + ax + ') != NIK token (' + who.n + ')', who: who }; }
+    return { ok: true, why: 'ok-scm', who: who };
   }
   if (who.w !== workspaceKey) return { ok: false, why: 'workspace token (' + who.w + ') != workspace request (' + workspaceKey + ')', who: who };
   if (AUTH_ACTOR_BOUND[action]) {
@@ -11511,6 +11528,7 @@ function _divheadIzin(acc) {
   // supaya kartu & halaman Monitoring FTE tampil. Setelah Super Admin menyimpan ulang izin, pilihannya dihormati apa adanya.
   var eff = DIVHEAD_PERM_KEYS.filter(function (k) { return iz.indexOf(k) !== -1; });
   if (!acc.izinV && eff.indexOf('ct') !== -1 && eff.indexOf('fte') === -1) eff.push('fte');
+  if (!acc.izinV3 && eff.indexOf('scm') === -1) eff.push('scm');   // akun lama otomatis boleh melihat Dashboard SCM sampai Super Admin menyimpan ulang izin
   return eff;
 }
 // Aksi yg dikendalikan izin hanya boleh bila SALAH SATU izin pemiliknya aktif; aksi lain (mis. getGroupList) bebas.
@@ -11594,7 +11612,7 @@ function adminSetDivisiHead(actorNik, targetNik, nama, password, workspaceKeys, 
     if (izin !== undefined && izin !== null) {
       var iz = (izin || []).map(String).filter(function (k) { return DIVHEAD_PERM_KEYS.indexOf(k) !== -1; });
       if (!iz.length) return { success: false, error: 'Pilih minimal 1 izin data/halaman untuk Divisi Head.' };
-      acc.izin = iz; acc.izinV = 2;
+      acc.izin = iz; acc.izinV = 2; acc.izinV3 = true;
     }
     acc.aktif = (aktif === false) ? false : true;
     acc.diubah = new Date().toISOString();
@@ -11610,7 +11628,7 @@ function adminSetDivisiHeadIzin(actorNik, targetNik, izin) {
     if (!acc) return { success: false, error: 'Akun Divisi Head ' + nik + ' tidak ditemukan.' };
     var iz = (izin || []).map(String).filter(function (k) { return DIVHEAD_PERM_KEYS.indexOf(k) !== -1; });
     if (!iz.length) return { success: false, error: 'Pilih minimal 1 data/halaman yang boleh ditampilkan.' };
-    acc.izin = iz; acc.izinV = 2; acc.diubah = new Date().toISOString();
+    acc.izin = iz; acc.izinV = 2; acc.izinV3 = true; acc.diubah = new Date().toISOString();
     _divheadSaveAccount(nik, acc);
     return { success: true, izin: iz };
   } catch (err) { return { success: false, error: err.message }; }
@@ -11621,6 +11639,417 @@ function adminHapusDivisiHead(actorNik, targetNik) {
     PropertiesService.getScriptProperties().deleteProperty(DIVHEAD_PREFIX + String(targetNik || '').trim().toUpperCase());
     return { success: true };
   } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ================================================================
+//  SCM -- login Plant/DC, Dashboard Delivery, Kontrol Pengiriman realtime & tarik data planning otomatis
+// ----------------------------------------------------------------
+//  - Akun SCM disimpan di Script Properties ('SCM_ACC_<NIK>'), diatur Super Admin di Kelola User > SCM.
+//    Cakupan plant/DC per akun = daftar label plant ('*' = semua). Izin: dashboard | kontrol | planning.
+//  - Spreadsheet dashboard per plant/DC = Script Property 'SCM_SS_<plant>' (kosong -> SCM_SS_DEFAULT di bawah).
+//  - Dashboard membaca sheet 'DASHBOARD NEW' (atau 'INPUT ALL') berdasarkan NAMA HEADER, bukan posisi kolom.
+//    Kolom yang berisi RUMUS ditandai otomatis (tidak bisa diisi dari web); kolom tanpa rumus = MANUAL -> muncul di menu Kontrol.
+//  - Kontrol pengiriman: sheet 'SCM_CONTROL' (dibuat otomatis) -- 1 baris = 1 mobil/mitra usaha. Klik Masuk / Selesai muat / Keluar
+//    mengisi jam otomatis & menulis ringkasan harian (MASUK, KELUAR, FINISH LOADING, FINISH DELIVERY, 9:00-15:00) ke sheet dashboard
+//    HANYA untuk kolom yang manual.
+//  - Planning otomatis: link spreadsheet planning per plant/DC (tab bernama tanggal, mis. "14"), dibaca seperti Loading Time.
+// ================================================================
+var SCM_PREFIX = 'SCM_ACC_';
+var SCM_SS_DEFAULT = '1FKRuNde0r2hRLHLwSaQ1ZBKQCrHXjsAo17-y299tf3o';
+var SCM_PERM_KEYS = ['dashboard', 'kontrol', 'planning'];
+var SCM_SHEET_DASH = ['DASHBOARD NEW', 'INPUT ALL'];
+var SCM_SHEET_CTRL = 'SCM_CONTROL';
+var SCM_CTRL_HEAD = ['ID', 'Tanggal', 'Site', 'Mitra Usaha', 'Armada', 'Kota', 'Ton Plan', 'Status', 'Jam Masuk', 'Jam Selesai Muat', 'Jam Keluar', 'Ton Aktual', 'Catatan', 'Sumber', 'Diubah Oleh', 'Diubah Pada'];
+var SCM_MANUAL_OK = { masuk: 1, keluar: 1, tonAct: 1, finLoading: 1, finDelivery: 1, tglUndr: 1, undTJ: 1, undALS: 1, gagalTJ: 1, gagalALS: 1, finKota: 1, totKota: 1, h9: 1, h11: 1, h13: 1, h15: 1, masuk14: 1, planSjt: 1, sjtMasuk: 1, tonSjt: 1, plan: 1, tonPlan: 1 };
+var SCM_HEADER_MAP = [
+  [/^PLAN\s*MOBIL$/, 'plan'], [/^MASUK$/, 'masuk'], [/^KELUAR$/, 'keluar'], [/^TON\s*PLAN$/, 'tonPlan'], [/^TON\s*ACT/, 'tonAct'],
+  [/^FINISH\s*LOADING$/, 'finLoading'], [/^FINISH\s*DELIVERY$/, 'finDelivery'], [/^TGL\s*UNDR/, 'tglUndr'],
+  [/^UNDERTONAGE\s*TJ$/, 'undTJ'], [/^UNDERTONAGE\s*ALS$/, 'undALS'], [/^GAGAL\s*TJ$/, 'gagalTJ'], [/^GAGAL\s*ALS$/, 'gagalALS'],
+  [/^TGL\s*FINISH$/, 'tglFinish'], [/^FINISH\s*KOTA$/, 'finKota'], [/^TOTAL\s*MOBIL\s*KOTA$/, 'totKota'],
+  [/^(0?9)[:.]00/, 'h9'], [/^11[:.]00/, 'h11'], [/^13[:.]00/, 'h13'], [/^15[:.]00/, 'h15'], [/^TOTAL$/, 'totalSlot'],
+  [/^MOBIL\s*MASUK\s*>\s*14/, 'masuk14'], [/^PLANNING\s*SJT$/, 'planSjt'], [/^SJT\s*MASUK$/, 'sjtMasuk'], [/^TON\s*SJT$/, 'tonSjt'], [/^TGL\s*SJT$/, 'tglSjt']
+];
+var SCM_TEXT_FIELDS = { finLoading: 1, finDelivery: 1, tglUndr: 1, undTJ: 1, undALS: 1, gagalTJ: 1, gagalALS: 1, tglFinish: 1, finKota: 1, tglSjt: 1 };
+
+function _scmGetAccount(nik) { try { var r = PropertiesService.getScriptProperties().getProperty(SCM_PREFIX + String(nik || '').trim().toUpperCase()); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+function _scmSaveAccount(nik, acc) { PropertiesService.getScriptProperties().setProperty(SCM_PREFIX + String(nik).trim().toUpperCase(), JSON.stringify(acc)); }
+function _scmIzin(acc) { var iz = acc && acc.izin; if (!iz || !iz.length) return SCM_PERM_KEYS.slice(); return SCM_PERM_KEYS.filter(function (k) { return iz.indexOf(k) !== -1; }); }
+// Daftar plant/DC yang tersedia (label plant dari daftar login + tambahan manual 'SCM_EXTRA_SITES' dipisah koma, mis. "DC Medan, DC Surabaya").
+function _scmAllSites() {
+  var out = [];
+  try { (getAvailablePlantsForLogin().data || []).forEach(function (x) { if (out.indexOf(x.plantLabel) === -1) out.push(x.plantLabel); }); } catch (e) {}
+  String(PropertiesService.getScriptProperties().getProperty('SCM_EXTRA_SITES') || '').split(',').forEach(function (t) { t = t.trim(); if (t && out.indexOf(t) === -1) out.push(t); });
+  return out;
+}
+function _scmSitesFor(acc) { var all = _scmAllSites(); if (!acc || !acc.sites || acc.sites.indexOf('*') !== -1) return all; return all.filter(function (s) { return acc.sites.indexOf(s) !== -1; }); }
+
+// Daftar plant/DC utk dropdown login mode SCM (publik, hanya nama).
+function scmLoginSites() { try { return { success: true, data: _scmAllSites() }; } catch (e) { return { success: false, error: e.message }; } }
+
+function loginScm(site, nik, password) {
+  try {
+    var nikIn = String(nik || '').trim().toUpperCase(), siteIn = String(site || '').trim();
+    if (!nikIn || !password) return { success: false, error: 'NIK dan kata sandi wajib diisi.' };
+    if (!siteIn) return { success: false, error: 'Pilih Plant / DC terlebih dahulu.' };
+    if (_loginTerkunci('SCM', nikIn)) return { success: false, error: 'Terlalu banyak percobaan login gagal. Coba lagi dalam 10 menit.' };
+    var acc = _scmGetAccount(nikIn);
+    if (!acc || acc.aktif === false || String(acc.hash) !== _hashPassword(password)) { _loginCatatGagal('SCM', nikIn); return { success: false, error: 'NIK atau kata sandi salah.' }; }
+    _loginResetGagal('SCM', nikIn);
+    var sites = _scmSitesFor(acc);
+    if (sites.indexOf(siteIn) === -1) return { success: false, error: 'Akun ini tidak punya akses ke Plant/DC "' + siteIn + '". Hubungi Super Admin.' };
+    return { success: true, workspace: 'scm', nik: nikIn, nama: acc.nama || nikIn, role: 'SCM', site: siteIn, sites: sites, izin: _scmIzin(acc), token: _authIssue('*', nikIn, 'SCM') };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ---- Super Admin: kelola akun SCM + sumber data ----
+function adminGetScm(actorNik) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var props = PropertiesService.getScriptProperties().getProperties(), out = [];
+    Object.keys(props).forEach(function (k) {
+      if (k.indexOf(SCM_PREFIX) !== 0) return;
+      try { var a = JSON.parse(props[k]); out.push({ nik: k.substring(SCM_PREFIX.length), nama: a.nama || '', aktif: a.aktif !== false, sites: a.sites || ['*'], izin: _scmIzin(a) }); } catch (e) {}
+    });
+    out.sort(function (x, y) { return x.nik < y.nik ? -1 : 1; });
+    var src = {};
+    _scmAllSites().forEach(function (s) { src[s] = { dash: props['SCM_SS_' + s] || '', plan: props['SCM_PLAN_' + s] || '' }; });
+    return { success: true, data: out, allSites: _scmAllSites(), sumber: src, defaultSs: SCM_SS_DEFAULT, extraSites: props.SCM_EXTRA_SITES || '' };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+function adminSetScm(actorNik, targetNik, nama, password, sites, aktif, izin) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var nik = String(targetNik || '').trim().toUpperCase();
+    if (!nik) return { success: false, error: 'NIK wajib diisi.' };
+    var keys = (sites || []).map(function (k) { return String(k).trim(); }).filter(Boolean);
+    if (!keys.length) return { success: false, error: 'Pilih minimal 1 plant/DC (atau Semua).' };
+    if (keys.indexOf('*') !== -1) keys = ['*'];
+    var old = _scmGetAccount(nik), acc = old || { dibuat: new Date().toISOString() };
+    if (password) { if (String(password).length < 6) return { success: false, error: 'Kata sandi minimal 6 karakter.' }; acc.hash = _hashPassword(password); }
+    else if (!old) return { success: false, error: 'Kata sandi wajib diisi untuk akun baru.' };
+    acc.nama = String(nama || (old && old.nama) || nik).trim();
+    acc.sites = keys;
+    if (izin !== undefined && izin !== null) {
+      var iz = (izin || []).map(String).filter(function (k) { return SCM_PERM_KEYS.indexOf(k) !== -1; });
+      if (!iz.length) return { success: false, error: 'Pilih minimal 1 izin (Dashboard / Kontrol / Planning).' };
+      acc.izin = iz;
+    }
+    acc.aktif = (aktif === false) ? false : true;
+    acc.diubah = new Date().toISOString();
+    _scmSaveAccount(nik, acc);
+    return { success: true, baru: !old };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+function adminHapusScm(actorNik, targetNik) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    PropertiesService.getScriptProperties().deleteProperty(SCM_PREFIX + String(targetNik || '').trim().toUpperCase());
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+// Atur link spreadsheet dashboard & planning per plant/DC (kosong = hapus / pakai default). extraSites: tambah DC baru (opsional).
+function adminSetScmSumber(actorNik, site, dashUrl, planUrl, extraSites) {
+  try {
+    if (!_isSuperAdmin(actorNik)) return { success: false, error: 'Akses ditolak -- cuma Super Admin.' };
+    var props = PropertiesService.getScriptProperties();
+    if (extraSites !== undefined && extraSites !== null) props.setProperty('SCM_EXTRA_SITES', String(extraSites));
+    site = String(site || '').trim();
+    if (!site) return { success: true };
+    function simpan(key, raw) {
+      raw = String(raw || '').trim();
+      if (!raw) { props.deleteProperty(key); return null; }
+      var id = _extractSpreadsheetId(raw);
+      try { SpreadsheetApp.openById(id); } catch (e) { return 'Tidak bisa membuka spreadsheet (' + key + '): cek link & akses akun Apps Script. ' + e.message; }
+      props.setProperty(key, id); return null;
+    }
+    var e1 = simpan('SCM_SS_' + site, dashUrl); if (e1) return { success: false, error: e1 };
+    var e2 = simpan('SCM_PLAN_' + site, planUrl); if (e2) return { success: false, error: e2 };
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ---- Akses: akun SCM (sesuai plant/DC & izin) atau Divisi Head (izin 'scm', hanya baca) ----
+function _scmAkses(actorNik, site, izinDiperlukan, tulis) {
+  var nik = String(actorNik || '').trim().toUpperCase(), acc = _scmGetAccount(nik);
+  if (acc) {
+    if (acc.aktif === false) throw new Error('Akun SCM tidak aktif.');
+    if (_scmSitesFor(acc).indexOf(site) === -1) throw new Error('Tidak punya akses ke Plant/DC ' + site + '.');
+    if (_scmIzin(acc).indexOf(izinDiperlukan) === -1) throw new Error('Izin "' + izinDiperlukan + '" tidak diberikan untuk akun ini.');
+    return { nik: nik, nama: acc.nama || nik, tipe: 'scm' };
+  }
+  var dh = _divheadGetAccount(nik);
+  if (dh && dh.aktif !== false && !tulis && _divheadIzin(dh).indexOf('scm') !== -1) return { nik: nik, nama: dh.nama || nik, tipe: 'dh' };
+  throw new Error('Akses ditolak.');
+}
+function _scmSS(site) {
+  var id = PropertiesService.getScriptProperties().getProperty('SCM_SS_' + site) || SCM_SS_DEFAULT;
+  return SpreadsheetApp.openById(id);
+}
+function _scmTz() { return Session.getScriptTimeZone() || 'Asia/Jakarta'; }
+function _scmNum(v) { if (typeof v === 'number') return v; var s = String(v == null ? '' : v).trim(); if (!s) return null; s = s.replace(/\./g, function (m, i) { return (s.indexOf(',') !== -1) ? '' : m; }).replace(',', '.'); var n = parseFloat(s); return isNaN(n) ? null : n; }
+function _scmTgl(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) return Utilities.formatDate(v, _scmTz(), 'yyyy-MM-dd');
+  var s = String(v || '').trim(); if (!s) return '';
+  var m = /(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/.exec(s); if (m) { var y = +m[3]; if (y < 100) y += 2000; return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2); }
+  var bln = ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER'];
+  var t = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/.exec(s); if (t) { var bi = bln.indexOf(t[2].toUpperCase()); if (bi !== -1) return t[3] + '-' + ('0' + (bi + 1)).slice(-2) + '-' + ('0' + t[1]).slice(-2); }
+  return '';
+}
+function _scmSheetDash(ss) { for (var i = 0; i < SCM_SHEET_DASH.length; i++) { var sh = ss.getSheetByName(SCM_SHEET_DASH[i]); if (sh) return sh; } return null; }
+// Petakan kolom berdasarkan nama header (6 baris pertama). Mengembalikan { headerRow, cols:{field:colIndex(1-based)}, dateCol }.
+function _scmPetaKolom(sh) {
+  var lastC = sh.getLastColumn(), vals = sh.getRange(1, 1, Math.min(6, sh.getLastRow()), lastC).getDisplayValues();
+  var cols = {}, headerRow = 1, gapCount = 0;
+  for (var r = 0; r < vals.length; r++) {
+    var hit = 0, tmp = {}, gaps = 0;
+    for (var c = 0; c < lastC; c++) {
+      var t = String(vals[r][c] || '').toUpperCase().replace(/\s+/g, ' ').trim(); if (!t) continue;
+      if (t === 'GAP') { gaps++; tmp[gaps === 1 ? 'gapMobil' : 'gapTon'] = c + 1; hit++; continue; }
+      for (var k = 0; k < SCM_HEADER_MAP.length; k++) if (SCM_HEADER_MAP[k][0].test(t) && !tmp[SCM_HEADER_MAP[k][1]]) { tmp[SCM_HEADER_MAP[k][1]] = c + 1; hit++; break; }
+    }
+    if (hit >= 5) { cols = tmp; headerRow = r + 1; break; }
+  }
+  if (!cols.plan) return null;
+  // Kolom tanggal = kolom di kiri 'plan' yang barisnya berisi tanggal (mis. "Sabtu, 12 Juli 2025")
+  var dateCol = 0, probe = sh.getRange(headerRow + 1, 1, Math.min(8, Math.max(1, sh.getLastRow() - headerRow)), cols.plan).getValues();
+  for (var cc = cols.plan - 2; cc >= 0 && !dateCol; cc--) for (var rr = 0; rr < probe.length; rr++) if (_scmTgl(probe[rr][cc])) { dateCol = cc + 1; break; }
+  if (!dateCol) return null;
+  return { headerRow: headerRow, cols: cols, dateCol: dateCol };
+}
+function _scmCatatUpdate(site, nama, sumber) {
+  PropertiesService.getScriptProperties().setProperty('SCM_LASTUPD_' + site, JSON.stringify({ t: new Date().toISOString(), by: nama || '', src: sumber || '' }));
+}
+function _scmInfoUpdate(site, ss) {
+  var info = {}; try { info = JSON.parse(PropertiesService.getScriptProperties().getProperty('SCM_LASTUPD_' + site) || '{}'); } catch (e) {}
+  var sheetT = ''; try { sheetT = DriveApp.getFileById(ss.getId()).getLastUpdated().toISOString(); } catch (e) {}
+  return { webT: info.t || '', webBy: info.by || '', webSrc: info.src || '', sheetT: sheetT, serverT: new Date().toISOString() };
+}
+
+function scmGetSites(actorNik) {
+  try {
+    var nik = String(actorNik || '').trim().toUpperCase(), acc = _scmGetAccount(nik);
+    if (acc) return { success: true, data: _scmSitesFor(acc), izin: _scmIzin(acc), tipe: 'scm' };
+    var dh = _divheadGetAccount(nik);
+    if (dh && dh.aktif !== false && _divheadIzin(dh).indexOf('scm') !== -1) return { success: true, data: _scmAllSites(), izin: ['dashboard', 'kontrol'], tipe: 'dh' };
+    return { success: false, error: 'Akses ditolak.' };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Dashboard: semua baris harian (400 hari terakhir) + penanda kolom manual vs rumus + info update terakhir.
+function scmGetDashboard(actorNik, site) {
+  try {
+    _scmAkses(actorNik, site, 'dashboard', false);
+    var ss = _scmSS(site), sh = _scmSheetDash(ss);
+    if (!sh) return { success: false, error: 'Sheet "DASHBOARD NEW" / "INPUT ALL" tidak ditemukan di spreadsheet SCM ' + site + '.' };
+    var peta = _scmPetaKolom(sh);
+    if (!peta) return { success: false, error: 'Header (PLAN MOBIL, MASUK, KELUAR, ...) tidak ditemukan di sheet "' + sh.getName() + '".' };
+    var last = sh.getLastRow(), first = peta.headerRow + 1, n = last - peta.headerRow;
+    if (n < 1) return { success: true, rows: [], manual: [], info: _scmInfoUpdate(site, ss), sheet: sh.getName() };
+    var lastC = sh.getLastColumn(), rng = sh.getRange(first, 1, n, lastC);
+    var vals = rng.getValues(), disp = rng.getDisplayValues(), forms = rng.getFormulas();
+    var rows = [], fcnt = {}, ncnt = {}, cutoff = Utilities.formatDate(new Date(Date.now() - 400 * 86400000), _scmTz(), 'yyyy-MM-dd');
+    for (var i = 0; i < n; i++) {
+      var d = _scmTgl(vals[i][peta.dateCol - 1]) || _scmTgl(disp[i][peta.dateCol - 1]); if (!d) continue;
+      var o = { date: d, row: first + i };
+      Object.keys(peta.cols).forEach(function (f) {
+        var c = peta.cols[f] - 1, v = vals[i][c], dv = disp[i][c];
+        o[f] = SCM_TEXT_FIELDS[f] ? String(dv || '').trim() : _scmNum(v);
+        if (dv !== '' && v !== '') { ncnt[f] = (ncnt[f] || 0) + 1; if (forms[i][c]) fcnt[f] = (fcnt[f] || 0) + 1; }
+      });
+      if (d >= cutoff) rows.push(o);
+    }
+    var manual = [];
+    Object.keys(peta.cols).forEach(function (f) { if (SCM_MANUAL_OK[f] && ((fcnt[f] || 0) / Math.max(1, ncnt[f] || 0)) < 0.5) manual.push(f); });
+    return { success: true, rows: rows, manual: manual, formulaFields: Object.keys(fcnt), info: _scmInfoUpdate(site, ss), sheet: sh.getName(), colMap: peta.cols };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// Tulis nilai ke baris tanggal di sheet dashboard -- HANYA untuk kolom manual (tanpa rumus). Mengembalikan daftar kolom yang ditulis/dilewati.
+function _scmTulisBarisDash(site, tanggal, nilai) {
+  var ss = _scmSS(site), sh = _scmSheetDash(ss); if (!sh) throw new Error('Sheet dashboard tidak ditemukan.');
+  var peta = _scmPetaKolom(sh); if (!peta) throw new Error('Header dashboard tidak terbaca.');
+  var last = sh.getLastRow(), n = last - peta.headerRow; if (n < 1) throw new Error('Sheet dashboard kosong.');
+  var dv = sh.getRange(peta.headerRow + 1, peta.dateCol, n, 1).getValues(), baris = 0;
+  for (var i = 0; i < n; i++) if (_scmTgl(dv[i][0]) === tanggal) { baris = peta.headerRow + 1 + i; break; }
+  if (!baris) return { ditulis: [], dilewati: Object.keys(nilai), alasan: 'Baris tanggal ' + tanggal + ' belum ada di sheet dashboard.' };
+  var ditulis = [], dilewati = [];
+  Object.keys(nilai).forEach(function (f) {
+    var col = peta.cols[f]; if (!col || !SCM_MANUAL_OK[f]) { dilewati.push(f); return; }
+    var cell = sh.getRange(baris, col);
+    if (cell.getFormula()) { dilewati.push(f); return; }   // kolom berumus tidak boleh ditimpa
+    var v = nilai[f]; cell.setValue(v === null || v === undefined ? '' : v); ditulis.push(f);
+  });
+  return { ditulis: ditulis, dilewati: dilewati, baris: baris };
+}
+// Simpan isian MANUAL harian (undertonage, gagal kirim, finish kota, dll.) dari menu Kontrol.
+function scmSaveManual(actorNik, site, tanggal, nilai) {
+  try {
+    var who = _scmAkses(actorNik, site, 'kontrol', true);
+    var bersih = {}; Object.keys(nilai || {}).forEach(function (f) { if (SCM_MANUAL_OK[f]) { var v = nilai[f]; bersih[f] = (v === '' || v === null) ? '' : (SCM_TEXT_FIELDS[f] ? String(v) : (_scmNum(v) === null ? '' : _scmNum(v))); } });
+    var r = _scmTulisBarisDash(site, String(tanggal), bersih);
+    _scmCatatUpdate(site, who.nama, 'manual');
+    return { success: true, hasil: r };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ---- Kontrol pengiriman (sheet SCM_CONTROL) ----
+function _scmSheetCtrl(ss) {
+  var sh = ss.getSheetByName(SCM_SHEET_CTRL);
+  if (!sh) { sh = ss.insertSheet(SCM_SHEET_CTRL); sh.getRange(1, 1, 1, SCM_CTRL_HEAD.length).setValues([SCM_CTRL_HEAD]).setFontWeight('bold'); sh.setFrozenRows(1);
+    sh.getRange('B:B').setNumberFormat('@'); sh.getRange('I:K').setNumberFormat('@'); sh.getRange('P:P').setNumberFormat('@'); }   // teks murni: tanggal & jam tidak diubah Sheets jadi Date/Time
+  return sh;
+}
+function _scmBacaCtrl(sh, site, tanggal) {
+  var last = sh.getLastRow(); if (last < 2) return [];
+  var v = sh.getRange(2, 1, last - 1, SCM_CTRL_HEAD.length).getDisplayValues(), out = [];
+  for (var i = 0; i < v.length; i++) {
+    var tg = _scmTgl(v[i][1]) || v[i][1];
+    if (tg !== tanggal || String(v[i][2]) !== site) continue;
+    out.push({ id: v[i][0], row: i + 2, tanggal: tg, site: v[i][2], mitra: v[i][3], armada: v[i][4], kota: v[i][5], tonPlan: _scmNum(v[i][6]), status: v[i][7] || 'Dijadwalkan', jamMasuk: v[i][8], jamSelesai: v[i][9], jamKeluar: v[i][10], tonAct: _scmNum(v[i][11]), catatan: v[i][12], sumber: v[i][13], oleh: v[i][14], pada: v[i][15] });
+  }
+  return out;
+}
+function scmGetControl(actorNik, site, tanggal) {
+  try {
+    _scmAkses(actorNik, site, 'kontrol', false);
+    var ss = _scmSS(site), sh = _scmSheetCtrl(ss), tg = tanggal || Utilities.formatDate(new Date(), _scmTz(), 'yyyy-MM-dd');
+    var list = _scmBacaCtrl(sh, site, tg);
+    return { success: true, tanggal: tg, trips: list, info: _scmInfoUpdate(site, ss), jamServer: Utilities.formatDate(new Date(), _scmTz(), 'HH:mm:ss') };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+function _scmJam(d) { return Utilities.formatDate(d || new Date(), _scmTz(), 'HH:mm'); }
+function _scmMenit(hhmm) { var m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || '')); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+// Hitung ulang ringkasan harian dari SCM_CONTROL lalu tulis ke kolom manual dashboard.
+function _scmSinkronHarian(site, tanggal) {
+  var ss = _scmSS(site), list = _scmBacaCtrl(_scmSheetCtrl(ss), site, tanggal).filter(function (t) { return t.status !== 'Batal'; });
+  var masuk = 0, keluar = 0, tonAct = 0, adaTon = false, lastSel = null, lastKel = null, h = { h9: 0, h11: 0, h13: 0, h15: 0 }, m14 = 0;
+  list.forEach(function (t) {
+    var jm = _scmMenit(t.jamMasuk);
+    if (jm !== null) { masuk++; if (jm <= 9 * 60) h.h9++; if (jm <= 11 * 60) h.h11++; if (jm <= 13 * 60) h.h13++; if (jm <= 15 * 60) h.h15++; if (jm > 14 * 60) m14++; }
+    if (_scmMenit(t.jamKeluar) !== null) { keluar++; if (lastKel === null || _scmMenit(t.jamKeluar) > _scmMenit(lastKel)) lastKel = t.jamKeluar; }
+    if (_scmMenit(t.jamSelesai) !== null && (lastSel === null || _scmMenit(t.jamSelesai) > _scmMenit(lastSel))) lastSel = t.jamSelesai;
+    if (t.tonAct !== null && t.tonAct !== undefined) { tonAct += t.tonAct; adaTon = true; }
+  });
+  var nilai = { masuk: masuk, keluar: keluar, h9: h.h9, h11: h.h11, h13: h.h13, h15: h.h15, masuk14: m14 };
+  if (lastSel) nilai.finLoading = lastSel;
+  if (lastKel && keluar >= list.length && list.length) nilai.finDelivery = lastKel;   // finish delivery baru diisi bila semua mobil sudah keluar
+  if (adaTon) nilai.tonAct = Math.round(tonAct * 100) / 100;
+  return _scmTulisBarisDash(site, tanggal, nilai);
+}
+// aksi: masuk | selesai | keluar | batal | reset | catatan.  extra: {tonAct, catatan}
+function scmUpdateTrip(actorNik, site, id, aksi, extra) {
+  try {
+    var who = _scmAkses(actorNik, site, 'kontrol', true), lock = LockService.getScriptLock(); lock.waitLock(15000);
+    try {
+      var ss = _scmSS(site), sh = _scmSheetCtrl(ss), last = sh.getLastRow(), ids = last < 2 ? [] : sh.getRange(2, 1, last - 1, 1).getValues(), row = 0;
+      for (var i = 0; i < ids.length; i++) if (String(ids[i][0]) === String(id)) { row = i + 2; break; }
+      if (!row) return { success: false, error: 'Data mobil tidak ditemukan (mungkin sudah dihapus).' };
+      var cur = sh.getRange(row, 1, 1, SCM_CTRL_HEAD.length).getValues()[0], tg = _scmTgl(cur[1]) || String(cur[1]);
+      if (String(cur[2]) !== site) return { success: false, error: 'Data bukan milik plant/DC ini.' };
+      var now = _scmJam(), st = cur[7] || 'Dijadwalkan';
+      if (aksi === 'masuk') { if (!cur[8]) cur[8] = now; st = 'Masuk / Loading'; }
+      else if (aksi === 'selesai') { if (!cur[8]) cur[8] = now; if (!cur[9]) cur[9] = now; st = 'Selesai Muat'; }
+      else if (aksi === 'keluar') { if (!cur[8]) cur[8] = now; if (!cur[9]) cur[9] = now; if (!cur[10]) cur[10] = now; st = 'Keluar'; }
+      else if (aksi === 'batal') { st = 'Batal'; }
+      else if (aksi === 'reset') { cur[8] = ''; cur[9] = ''; cur[10] = ''; st = 'Dijadwalkan'; }
+      cur[7] = st;
+      if (extra && extra.tonAct !== undefined && extra.tonAct !== '') cur[11] = _scmNum(extra.tonAct);
+      if (extra && extra.catatan !== undefined) cur[12] = String(extra.catatan);
+      cur[14] = who.nama; cur[15] = Utilities.formatDate(new Date(), _scmTz(), 'yyyy-MM-dd HH:mm:ss');
+      sh.getRange(row, 1, 1, SCM_CTRL_HEAD.length).setValues([cur]);
+      _scmCatatUpdate(site, who.nama, 'kontrol');
+      var sinkron = null; try { sinkron = _scmSinkronHarian(site, tg); } catch (e2) { sinkron = { error: e2.message }; }
+      return { success: true, status: st, jam: now, sinkron: sinkron };
+    } finally { lock.releaseLock(); }
+  } catch (err) { return { success: false, error: err.message }; }
+}
+function scmTambahTrip(actorNik, site, tanggal, mitra, armada, kota, tonPlan) {
+  try {
+    var who = _scmAkses(actorNik, site, 'kontrol', true);
+    if (!String(mitra || '').trim()) return { success: false, error: 'Nama mitra usaha wajib diisi.' };
+    var sh = _scmSheetCtrl(_scmSS(site)), id = 'T' + Utilities.getUuid().substring(0, 8).toUpperCase();
+    sh.appendRow([id, String(tanggal), site, String(mitra).trim(), String(armada || ''), String(kota || ''), _scmNum(tonPlan) === null ? '' : _scmNum(tonPlan) / 1, 'Dijadwalkan', '', '', '', '', '', 'Manual', who.nama, Utilities.formatDate(new Date(), _scmTz(), 'yyyy-MM-dd HH:mm:ss')]);
+    _scmCatatUpdate(site, who.nama, 'tambah');
+    return { success: true, id: id };
+  } catch (err) { return { success: false, error: err.message }; }
+}
+
+// ---- Planning otomatis dari spreadsheet planning (tab bernama tanggal, mis. "14") ----
+function _scmBacaPlanning(site, tanggal) {
+  var id = PropertiesService.getScriptProperties().getProperty('SCM_PLAN_' + site);
+  if (!id) return { success: false, error: 'Link spreadsheet planning ' + site + ' belum diisi (Kelola User > SCM > Sumber Data).' };
+  var ssP; try { ssP = SpreadsheetApp.openById(id); } catch (e) { return { success: false, error: 'Gagal membuka spreadsheet planning: ' + e.message }; }
+  var hari = parseInt(String(tanggal).substring(8, 10), 10), sh = ssP.getSheetByName(String(hari)) || ssP.getSheetByName('0' + hari);
+  if (!sh) return { success: false, error: 'Tab "' + hari + '" belum ada di spreadsheet planning.' };
+  var lastC = sh.getLastColumn(), top = sh.getRange(1, 1, Math.min(12, sh.getLastRow()), lastC).getDisplayValues(), hr = 0, col = {};
+  for (var r = 0; r < top.length && !hr; r++) {
+    var tmp = {};
+    for (var c = 0; c < lastC; c++) {
+      var t = String(top[r][c] || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      if (t === 'MITRA USAHA' && !tmp.mitra) tmp.mitra = c + 1;
+      else if (t === 'JENIS ARMADA' && !tmp.armada) tmp.armada = c + 1;
+      else if (t === 'KOTA' && !tmp.kota) tmp.kota = c + 1;
+      else if (t === 'TONASE' && !tmp.ton) tmp.ton = c + 1;
+      else if (t === 'KETERANGAN' && !tmp.ket) tmp.ket = c + 1;
+      else if (t === 'NOMOR' && !tmp.no) tmp.no = c + 1;
+      else if (t === 'JADWAL MASUK' && !tmp.jadwal) tmp.jadwal = c + 1;
+    }
+    if (tmp.mitra && tmp.ton) { hr = r + 1; col = tmp; }
+  }
+  if (!hr) return { success: false, error: 'Header MITRA USAHA / TONASE tidak ditemukan di tab "' + hari + '".' };
+  var n = sh.getLastRow() - hr; if (n < 1) return { success: true, items: [] };
+  var v = sh.getRange(hr + 1, 1, n, lastC).getValues(), items = [];
+  for (var i = 0; i < v.length; i++) {
+    var mitra = String(v[i][col.mitra - 1] || '').trim(); if (!mitra) continue;
+    var ton = _scmNum(v[i][col.ton - 1]);
+    items.push({ no: col.no ? String(v[i][col.no - 1]) : String(items.length + 1), mitra: mitra, armada: col.armada ? String(v[i][col.armada - 1] || '') : '', kota: col.kota ? String(v[i][col.kota - 1] || '') : '', tonKg: ton, ket: col.ket ? String(v[i][col.ket - 1] || '') : '' });
+  }
+  return { success: true, items: items };
+}
+// Tarik planning tanggal tertentu -> isi/Update SCM_CONTROL (tidak menimpa status yang sudah berjalan) + PLAN MOBIL & TON PLAN (bila kolom manual).
+function _scmSinkronPlanning(site, tanggal, namaPelaku) {
+  var p = _scmBacaPlanning(site, tanggal); if (!p.success) return p;
+  var ss = _scmSS(site), sh = _scmSheetCtrl(ss), ada = _scmBacaCtrl(sh, site, tanggal), kunci = {}, baru = 0, ubah = 0, tz = _scmTz();
+  ada.forEach(function (t) { kunci[t.sumber] = t; });
+  var rows = [], totalTon = 0;
+  p.items.forEach(function (it) {
+    var tonT = it.tonKg === null ? '' : Math.round(it.tonKg / 10) / 100; if (tonT !== '') totalTon += tonT;
+    var key = 'PLAN#' + it.no + '#' + it.mitra;
+    if (kunci[key]) {
+      var t = kunci[key];
+      if (t.status === 'Dijadwalkan' && (t.mitra !== it.mitra || t.armada !== it.armada || t.kota !== it.kota || t.tonPlan !== (tonT === '' ? null : tonT))) {
+        sh.getRange(t.row, 4, 1, 4).setValues([[it.mitra, it.armada, it.kota, tonT]]); ubah++;
+      }
+    } else rows.push(['P' + Utilities.getUuid().substring(0, 8).toUpperCase(), tanggal, site, it.mitra, it.armada, it.kota, tonT, 'Dijadwalkan', '', '', '', '', it.ket, key, namaPelaku || 'Auto', Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm:ss')]);
+  });
+  if (rows.length) { sh.getRange(sh.getLastRow() + 1, 1, rows.length, SCM_CTRL_HEAD.length).setValues(rows); baru = rows.length; }
+  var tulis = null; try { tulis = _scmTulisBarisDash(site, tanggal, { plan: p.items.length, tonPlan: Math.round(totalTon * 100) / 100 }); } catch (e) { tulis = { error: e.message }; }
+  _scmCatatUpdate(site, namaPelaku || 'Auto', 'planning');
+  return { success: true, tanggal: tanggal, jumlahMobil: p.items.length, tonPlan: Math.round(totalTon * 100) / 100, baru: baru, diperbarui: ubah, dashboard: tulis };
+}
+function scmSyncPlanning(actorNik, site, tanggal) {
+  try {
+    var who = _scmAkses(actorNik, site, 'planning', true);
+    return _scmSinkronPlanning(site, String(tanggal || Utilities.formatDate(new Date(), _scmTz(), 'yyyy-MM-dd')), who.nama);
+  } catch (err) { return { success: false, error: err.message }; }
+}
+// Dijalankan trigger berkala (tiap 10 menit): tarik planning HARI INI & BESOK untuk semua plant/DC yang punya link planning.
+function scmAutoSyncPlanning() {
+  var props = PropertiesService.getScriptProperties().getProperties(), tz = _scmTz(), out = [];
+  Object.keys(props).forEach(function (k) {
+    if (k.indexOf('SCM_PLAN_') !== 0) return;
+    var site = k.substring(9);
+    [0, 1].forEach(function (plus) {
+      try { var tg = Utilities.formatDate(new Date(Date.now() + plus * 86400000), tz, 'yyyy-MM-dd'); out.push(site + ' ' + tg + ': ' + JSON.stringify(_scmSinkronPlanning(site, tg, 'Auto'))); } catch (e) { out.push(site + ': ' + e.message); }
+    });
+  });
+  Logger.log(out.join('\n'));
+}
+// Jalankan MANUAL 1x dari editor Apps Script untuk memasang tarik otomatis planning tiap 10 menit.
+function setupScmTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'scmAutoSyncPlanning') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('scmAutoSyncPlanning').timeBased().everyMinutes(10).create();
+  return 'Trigger scmAutoSyncPlanning terpasang (tiap 10 menit).';
 }
 
 // ---- Log aktivitas input data (per workspace = ACTIVE_WORKSPACE dari request) ----

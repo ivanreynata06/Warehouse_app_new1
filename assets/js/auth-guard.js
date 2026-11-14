@@ -34,6 +34,18 @@ window.whEsc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']
   }
 
   // ================================================================
+  //  SCM -- akun Plant/DC khusus Supply Chain. Hanya boleh membuka scm.html (dashboard + kontrol pengiriman) dan login.html.
+  //  (Sisi server TETAP memvalidasi token + izin + plant/DC -- ini cuma lapisan tampilan.)
+  // ================================================================
+  if ((sessionStorage.getItem('wh_role') || '') === 'SCM') {
+    var hereS = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    if (hereS !== 'scm.html') { window.location.replace('./scm.html'); return; }
+    window.WH_SESSION = { workspace: workspace, nik: nik, nama: sessionStorage.getItem('wh_nama') || '', role: 'SCM', fullAccess: false, isTL: false, isSerahTerima: false, roleLabel: 'SCM', canUploadData: false, isDivisiHead: false, isFittingImport: false, menuKeys: [], hasRekapMuatan: false, isScm: true };
+    window.whLogout = window.whLogout || function () { try { sessionStorage.clear(); } catch (e) {} (window.top || window).location.href = './login.html'; };
+    return;
+  }
+
+  // ================================================================
   //  DIVISI HEAD -- akun lintas semua plant/departemen (hanya baca).
   //  Hanya boleh membuka: divisi_head.html (dashboard utama), index.html di dalam iframe
   //  (?embed=1&dhws=...) milik halaman itu, dan login.html. Selain itu -> dialihkan ke divisi_head.html.
@@ -42,7 +54,7 @@ window.whEsc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']
   if ((sessionStorage.getItem('wh_role') || '') === 'Divisi Head') {
     var hereDH = (window.location.pathname.split('/').pop() || '').toLowerCase();
     var embedDH = /[?&]embed=1\b/.test(window.location.search) && /[?&]dhws=/.test(window.location.search);
-    if (hereDH !== 'divisi_head.html' && !(hereDH === 'index.html' && embedDH)) {
+    if (hereDH !== 'divisi_head.html' && hereDH !== 'scm.html' && !(hereDH === 'index.html' && embedDH)) {
       window.location.replace('./divisi_head.html');
       return;
     }

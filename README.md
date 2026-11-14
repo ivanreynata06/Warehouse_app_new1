@@ -87,6 +87,21 @@ halaman tujuan yang terbaru dari GitHub, bukan versi lama yang
 mungkin masih tersimpan di cache. Jadi pindah menu dijamin selalu
 dapat versi terbaru, tanpa perlu hard refresh.
 
+## SCM (Plant / DC) — Dashboard Delivery & Kontrol Pengiriman
+
+Akun khusus Supply Chain. **Login:** di `login.html` pilih tab **SCM** -> pilih **Plant / DC** -> NIK + kata sandi -> masuk ke `scm.html`.
+
+**Kelola User > Akun SCM (Super Admin):** buat akun SCM (NIK, nama, kata sandi), pilih plant/DC yang boleh diakses (atau Semua), dan izin: **Dashboard**, **Kontrol pengiriman**, **Tarik planning**. Di bagian *Sumber data SCM per Plant / DC* tempel link spreadsheet **Dashboard** (sheet `DASHBOARD NEW`/`INPUT ALL`) dan spreadsheet **Planning** (tab bernama tanggal, mis. `14`). Kolom plant/DC lain (mis. `DC Medan`) bisa ditambah lewat kolom *Tambah DC lain*.
+
+**Isi `scm.html`:**
+- **Dashboard** — data sama dengan sheet Dashboard New (Plan/Masuk/Keluar, Ton Plan vs Aktual, Finish Loading/Delivery, Undertonage, Gagal Kirim, kedatangan 9/11/13/15, >14:00, SJT) + panel *Aktivitas Hari Ini* (realtime), info *data terakhir diperbarui* (jam & tanggal sheet, input web terakhir). Tema terang (default) & gelap, kontras font otomatis menyesuaikan tema.
+- **Kontrol Pengiriman** — per tanggal: klik **Masuk / Selesai Muat / Keluar** per mitra usaha (jam terisi otomatis), isi Ton aktual, tambah/batalkan mobil. Ringkasan harian (MASUK, KELUAR, FINISH LOADING, FINISH DELIVERY, 9:00–15:00, >14:00, TON ACT) otomatis ditulis ke sheet dashboard **hanya pada kolom yang tidak berumus**; kolom berumus tidak pernah ditimpa. Kolom manual lain (Undertonage, Gagal, Finish Kota, SJT) diisi lewat *Isian Manual Harian*. Data kontrol disimpan di sheet `SCM_CONTROL` (dibuat otomatis).
+- **Tarik Planning** — membaca spreadsheet planning (header MITRA USAHA, JENIS ARMADA, KOTA, TONASE) -> mengisi daftar mobil + PLAN MOBIL & TON PLAN. Otomatis tiap 10 menit untuk hari ini & besok setelah menjalankan `setupScmTrigger()` 1x di editor Apps Script.
+
+**Divisi Head:** tombol **Dashboard SCM** di sidebar (izin *Dashboard SCM* di Kelola User > Tampilan Dashboard Divisi Head) membuka `scm.html` mode **lihat saja** (aktivitas per hari & kalkulasi realtime, tidak bisa mengubah data).
+
+**Deploy:** salin `backend/kode.gs` ke Apps Script -> *Deploy > New version*. Spreadsheet SCM harus bisa diakses akun pemilik Apps Script. Jalankan `setupScmTrigger()` untuk tarik planning otomatis.
+
 ## Divisi Head (akses lintas semua plant/departemen)
 
 Akun khusus pimpinan divisi yang **hanya melihat** (tidak bisa mengubah data) seluruh plant & departemen.
